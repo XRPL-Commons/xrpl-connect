@@ -1,0 +1,44 @@
+{
+  "name": "xrpl-connect",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A framework-agnostic wallet connection toolkit for XRPL",
+  "keywords": [
+    "xrpl",
+    "wallet",
+    "web3",
+    "ripple",
+    "xaman",
+    "crossmark",
+    "walletconnect"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/xrpl-connect"
+  },
+  "license": "MIT",
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "test": "turbo test",
+    "lint": "turbo lint",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "clean": "turbo clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.1",
+    "@typescript-eslint/parser": "^8.46.1",
+    "eslint": "^9.37.0",
+    "prettier": "^3.3.0",
+    "tsup": "^8.1.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^1.6.0"
+  },
+  "packageManager": "pnpm@10.18.3",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}

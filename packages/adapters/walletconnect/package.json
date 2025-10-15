@@ -1,0 +1,42 @@
+{
+  "name": "@xrpl-connect/adapter-walletconnect",
+  "version": "0.0.1",
+  "description": "WalletConnect adapter for xrpl-connect",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .ts",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["xrpl", "walletconnect", "wallet", "adapter"],
+  "license": "MIT",
+  "dependencies": {
+    "@xrpl-connect/core": "workspace:*",
+    "@walletconnect/sign-client": "^2.16.0",
+    "@walletconnect/types": "^2.16.0",
+    "@walletconnect/utils": "^2.16.0",
+    "@walletconnect/modal": "^2.7.0"
+  },
+  "peerDependencies": {
+    "xrpl": "^3.0.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsup": "^8.1.0",
+    "typescript": "^5.5.0",
+    "vitest": "^1.6.0"
+  }
+}

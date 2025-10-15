@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XRPL Connect - Demo</title>
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>🔗 XRPL Connect Demo</h1>
+        <p>Framework-agnostic wallet connection toolkit for XRPL</p>
+      </header>
+
+      <main>
+        <!-- Connection Section -->
+        <section id="connect-section">
+          <h2>Connect Wallet</h2>
+          <div class="wallet-buttons">
+            <button id="connect-xaman" class="wallet-btn">
+              <span class="icon">🔐</span>
+              <span>Xaman Wallet</span>
+            </button>
+            <button id="connect-walletconnect" class="wallet-btn">
+              <span class="icon">📱</span>
+              <span>WalletConnect</span>
+            </button>
+            <button id="connect-crossmark" class="wallet-btn">
+              <span class="icon">✖️</span>
+              <span>Crossmark</span>
+            </button>
+            <button id="connect-gemwallet" class="wallet-btn">
+              <span class="icon">💎</span>
+              <span>GemWallet</span>
+            </button>
+          </div>
+          <div id="status" class="status"></div>
+        </section>
+
+        <!-- Account Info Section -->
+        <section id="account-section" style="display: none;">
+          <h2>Account Info</h2>
+          <div class="info-card">
+            <div class="info-row">
+              <span class="label">Address:</span>
+              <span id="address" class="value"></span>
+            </div>
+            <div class="info-row">
+              <span class="label">Network:</span>
+              <span id="network" class="value"></span>
+            </div>
+            <div class="info-row">
+              <span class="label">Wallet:</span>
+              <span id="wallet-name" class="value"></span>
+            </div>
+          </div>
+          <button id="disconnect" class="btn-secondary">Disconnect</button>
+        </section>
+
+        <!-- Transaction Section -->
+        <section id="transaction-section" style="display: none;">
+          <h2>Send Transaction</h2>
+          <form id="tx-form" class="tx-form">
+            <div class="form-group">
+              <label for="destination">Destination Address</label>
+              <input
+                type="text"
+                id="destination"
+                placeholder="rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label for="amount">Amount (drops)</label>
+              <input
+                type="number"
+                id="amount"
+                placeholder="1000000"
+                min="1"
+                required
+              />
+              <small>1 XRP = 1,000,000 drops</small>
+            </div>
+            <div class="button-group">
+              <button type="submit" class="btn-primary">Sign Only</button>
+              <button type="button" id="submit-tx" class="btn-primary">Sign & Submit</button>
+            </div>
+          </form>
+          <div id="tx-result" class="result"></div>
+        </section>
+
+        <!-- Sign Message Section -->
+        <section id="message-section" style="display: none;">
+          <h2>Sign Message</h2>
+          <form id="msg-form" class="msg-form">
+            <div class="form-group">
+              <label for="message">Message</label>
+              <textarea
+                id="message"
+                placeholder="Enter message to sign..."
+                rows="3"
+                required
+              ></textarea>
+            </div>
+            <button type="submit" class="btn-primary">Sign Message</button>
+          </form>
+          <div id="msg-result" class="result"></div>
+        </section>
+
+        <!-- Events Log -->
+        <section id="events-section">
+          <h2>Event Log</h2>
+          <div id="events-log" class="events-log"></div>
+          <button id="clear-log" class="btn-secondary">Clear Log</button>
+        </section>
+      </main>
+
+      <footer>
+        <p>Built with XRPL Connect - A framework-agnostic wallet toolkit</p>
+      </footer>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
