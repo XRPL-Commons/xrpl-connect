@@ -4,6 +4,7 @@ import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
 import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
 import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
+import { WalletConnectorElement } from '@xrpl-connect/ui';
 
 // Configuration - ADD YOUR API KEYS HERE
 const XAMAN_API_KEY = '15ba80a8-cba2-4789-a45b-c6a850d9d91b'; // Get from https://apps.xumm.dev/
@@ -38,12 +39,28 @@ walletManager.on('error', (error) => {
   showStatus(error.message, 'error');
 });
 
+// Initialize the wallet connector web component
+const walletConnector = document.getElementById('wallet-connector');
+walletConnector.setWalletManager(walletManager);
+
+// Listen to connector events
+walletConnector.addEventListener('connecting', (e) => {
+  showStatus(`Connecting to ${e.detail.walletId}...`, 'info');
+});
+
+walletConnector.addEventListener('connected', (e) => {
+  showStatus('Connected successfully!', 'success');
+  logEvent('Connected via Web Component', e.detail);
+});
+
+walletConnector.addEventListener('error', (e) => {
+  showStatus(`Connection failed: ${e.detail.error.message}`, 'error');
+  logEvent('Connection Error', e.detail);
+});
+
 // DOM Elements
 const elements = {
-  connectXaman: document.getElementById('connect-xaman'),
-  connectWalletConnect: document.getElementById('connect-walletconnect'),
-  connectCrossmark: document.getElementById('connect-crossmark'),
-  connectGemWallet: document.getElementById('connect-gemwallet'),
+  openConnector: document.getElementById('open-connector'),
   disconnect: document.getElementById('disconnect'),
   status: document.getElementById('status'),
   connectSection: document.getElementById('connect-section'),
@@ -61,52 +78,9 @@ const elements = {
   clearLog: document.getElementById('clear-log'),
 };
 
-// Connect to Xaman
-elements.connectXaman.addEventListener('click', async () => {
-  try {
-    showStatus('Connecting to Xaman...', 'info');
-    await walletManager.connect('xaman', {
-      apiKey: XAMAN_API_KEY,
-    });
-    showStatus('Connected successfully!', 'success');
-  } catch (error) {
-    showStatus(`Connection failed: ${error.message}`, 'error');
-  }
-});
-
-// Connect to WalletConnect
-elements.connectWalletConnect.addEventListener('click', async () => {
-  try {
-    showStatus('Opening WalletConnect modal...', 'info');
-    await walletManager.connect('walletconnect', {
-      projectId: WALLETCONNECT_PROJECT_ID,
-    });
-    showStatus('Connected successfully!', 'success');
-  } catch (error) {
-    showStatus(`Connection failed: ${error.message}`, 'error');
-  }
-});
-
-// Connect to Crossmark
-elements.connectCrossmark.addEventListener('click', async () => {
-  try {
-    showStatus('Connecting to Crossmark...', 'info');
-    await walletManager.connect('crossmark');
-    showStatus('Connected successfully!', 'success');
-  } catch (error) {
-    showStatus(`Connection failed: ${error.message}`, 'error');
-  }
-});
-
-// Connect to GemWallet
-elements.connectGemWallet.addEventListener('click', async () => {
-  try {
-    showStatus('Connecting to GemWallet...', 'info');
-    await walletManager.connect('gemwallet');
-    showStatus('Connected successfully!', 'success');
-  } catch (error) {
-    showStatus(`Connection failed: ${error.message}`, 'error');
-  }
+// Open wallet connector modal
+elements.openConnector.addEventListener('click', () => {
+  walletConnector.open();
 });
 
 // Disconnect

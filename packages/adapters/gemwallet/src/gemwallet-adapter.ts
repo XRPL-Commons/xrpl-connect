@@ -2,7 +2,13 @@
  * GemWallet Adapter for XRPL
  */
 
-import { isInstalled, getPublicKey, signMessage, signTransaction, submitTransaction } from '@gemwallet/api';
+import {
+  isInstalled,
+  getPublicKey,
+  signMessage,
+  signTransaction,
+  submitTransaction,
+} from '@gemwallet/api';
 import type {
   WalletAdapter,
   AccountInfo,
@@ -27,7 +33,8 @@ export interface GemWalletAdapterOptions {
 export class GemWalletAdapter implements WalletAdapter {
   readonly id = 'gemwallet';
   readonly name = 'GemWallet';
-  readonly icon = 'https://gemwallet.app/assets/logo.svg';
+  readonly icon =
+    'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGcgZmlsbD0ibm9uZSI+PHBhdGggZmlsbD0iIzAwQThFQSIgZD0iTTIwIDM5LjkxMS41OTMgMTcuNDIyaDM4LjgxNHoiLz48cGF0aCBmaWxsPSIjMzNEM0Y0IiBkPSJNMzMuMTg1IDUuMzMzSDYuODE1TC41OTMgMTcuNDIzaDM4LjgxNHoiLz48cGF0aCBmaWxsPSIjNDBFRUZGIiBkPSJtMjAgMzkuOTExLTcuMDM3LTIyLjQ4OWgxNC4wNzR6TTE0LjIyMiAxNC40IDguNjY3IDUuMzMzSDIwem0xMS4yNTkgMEwyMCA1LjMzM2gxMS4zMzN6Ii8+PHBhdGggZmlsbD0iI0ZGRiIgZD0iTTYuMjk2IDYuNDg5IDMuNDA3IDUuMzMzbDIuODktMS4xNTVMNy4yNTguNzFsLjk2MyAzLjQ2NyAyLjg5IDEuMTU1LTIuODkgMS4xNTYtLjk2MyAzLjQ2N3ptMjcuNDA4IDExLjI4OS0xLjg1Mi0uNzExIDEuODUyLS44LjY2Ni0yLjIyMy41OTMgMi4yMjMgMS44NTIuOC0xLjg1Mi43MUwzNC4zNyAyMHoiLz48cGF0aCBkPSJNMjEuODUyIDUuMzMzIDYuMjk2IDI0LjA5bC0xLjMzMy0xLjUxMSAxNC4zNy0xNy4yNDV6bTguNzQxIDBMMTAuNzQgMjkuMTU2IDcuNjMgMjUuNiAyNC40NDQgNS4zMzN6IiBvcGFjaXR5PSIuMiIgZmlsbD0iI0ZGRiIvPjwvZz48L3N2Zz4=';
   readonly url = 'https://gemwallet.app';
 
   private currentAccount: AccountInfo | null = null;
@@ -112,7 +119,10 @@ export class GemWalletAdapter implements WalletAdapter {
    * @param transaction - The transaction to sign
    * @param submit - Whether to submit to the ledger (default: true)
    */
-  async signAndSubmit(transaction: Transaction, submit: boolean = true): Promise<SubmittedTransaction> {
+  async signAndSubmit(
+    transaction: Transaction,
+    submit: boolean = true
+  ): Promise<SubmittedTransaction> {
     if (!this.currentAccount) {
       throw createWalletError.notConnected();
     }

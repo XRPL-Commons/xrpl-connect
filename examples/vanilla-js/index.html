@@ -17,24 +17,7 @@
         <!-- Connection Section -->
         <section id="connect-section">
           <h2>Connect Wallet</h2>
-          <div class="wallet-buttons">
-            <button id="connect-xaman" class="wallet-btn">
-              <span class="icon">🔐</span>
-              <span>Xaman Wallet</span>
-            </button>
-            <button id="connect-walletconnect" class="wallet-btn">
-              <span class="icon">📱</span>
-              <span>WalletConnect</span>
-            </button>
-            <button id="connect-crossmark" class="wallet-btn">
-              <span class="icon">✖️</span>
-              <span>Crossmark</span>
-            </button>
-            <button id="connect-gemwallet" class="wallet-btn">
-              <span class="icon">💎</span>
-              <span>GemWallet</span>
-            </button>
-          </div>
+          <button id="open-connector" class="btn-primary">Open Wallet Connector</button>
           <div id="status" class="status"></div>
         </section>
 
@@ -117,6 +100,14 @@
         <p>Built with XRPL Connect - A framework-agnostic wallet toolkit</p>
       </footer>
     </div>
+
+    <!-- XRPL Wallet Connector Web Component -->
+    <xrpl-wallet-connector
+      id="wallet-connector"
+      background-color="#1a202c"
+      primary-wallet="xaman"
+      show-help="true">
+    </xrpl-wallet-connector>
 
     <script type="module" src="/src/main.js"></script>
   </body>

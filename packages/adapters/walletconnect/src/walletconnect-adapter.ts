@@ -39,7 +39,7 @@ export class WalletConnectAdapter implements WalletAdapter {
   readonly id = 'walletconnect';
   readonly name = 'WalletConnect';
   readonly icon =
-    'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjE4NSIgdmlld0JveD0iMCAwIDMwMCAxODUiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik02MS40Mzc1IDM2LjQzNzVDMTA1LjQxMiAtNy41Mzc0NyAxNzguMDg4IC03LjUzNzQ3IDIyMi4wNjIgMzYuNDM3NUwyMjcuNDI4IDQxLjgwMzRDMjI5LjQxNSA0My43OTA5IDIyOS40MTUgNDcuMDQ2NiAyMjcuNDI4IDQ5LjAzNEwxOTUuODQgODAuNjIyQzE5NC44NDcgODEuNjE1MyAxOTMuMjgxIDgxLjYxNTMgMTkyLjI4OCA4MC42MjJMMTgxLjI1IDY5LjU4MzRDMTU0LjkzNyA0My4yNzAzIDExMi41NjMgNDMuMjcwMyA4Ni4yNSA2OS41ODM0TDc0LjE4NzUgODEuNjQ1OEM3My4xOTUzIDgyLjYzODEgNzEuNjI4OSA4Mi42MzgxIDcwLjYzNjcgODEuNjQ1OEwzOS4wNDg0IDUwLjA1NzZDMzcuMDYwOSA0OC4wNzAxIDM3LjA2MDkgNDQuODE0NCAzOS4wNDg0IDQyLjgyNjlMNjEuNDM3NSAzNi40Mzc1Wk0yNTcuODEyIDg4LjQzNzVMMjg1LjU2MiAxMTYuMTg4QzI4Ny41NSAxMTguMTc1IDI4Ny41NSAxMjEuNDMxIDI4NS41NjIgMTIzLjQxOUwyMTYuNjg4IDE5Mi4yOTJDMjE0LjcgMTk0LjI4IDIxMS40NDUgMTk0LjI4IDIwOS40NTcgMTkyLjI5Mkw2MC4xODc1IDQzLjAyMjVDNTguMiA0MS4wMzUgNTguMiAzNy43NzkzIDYwLjE4NzUgMzUuNzkxOEwxMjguMDYyIDMuNDM3NUMxMzAuMDUgMS40NSAxMzMuMzA1IDEuNDUgMTM1LjI5MyAzLjQzNzVMMjU3LjgxMiA4OC40Mzc1WiIgZmlsbD0iIzNiOTljZiIvPgo8L3N2Zz4=';
+    'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxuczp4b2RtPSJodHRwOi8vd3d3LmNvcmVsLmNvbS9jb3JlbGRyYXcvb2RtLzIwMDMiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHZlcnNpb249IjEuMSIgaWQ9IkxheWVyXzEiIHg9IjBweCIgeT0iMHB4IiB2aWV3Qm94PSIwIDAgMjQ5NyAyNDk3IiBzdHlsZT0iZW5hYmxlLWJhY2tncm91bmQ6bmV3IDAgMCAyNDk3IDI0OTc7IiB4bWw6c3BhY2U9InByZXNlcnZlIj4KPHN0eWxlIHR5cGU9InRleHQvY3NzIj4KCS5zdDB7ZmlsbDojMzM5NkZGO3N0cm9rZTojNjZCMUZGO3N0cm9rZS13aWR0aDozO3N0cm9rZS1taXRlcmxpbWl0OjIyLjkyNTY7fQoJLnN0MXtmaWxsOiNGRkZGRkY7fQo8L3N0eWxlPgo8ZyBpZD0iTGF5ZXJfeDAwMjBfMSI+Cgk8ZyBpZD0iXzI4MDYwNTAxMzY4OTYiPgoJCTxjaXJjbGUgY2xhc3M9InN0MCIgY3g9IjEyNDkiIGN5PSIxMjQ5IiByPSIxMjQ3Ij48L2NpcmNsZT4KCQk8cGF0aCBjbGFzcz0ic3QxIiBkPSJNNzY0LDkzMGMyNjctMjYxLDcwMS0yNjEsOTY5LDBsMzIsMzFjMTMsMTMsMTMsMzQsMCw0N2wtMTEwLDEwN2MtNyw3LTE4LDctMjQsMGwtNDQtNDMgICAgYy0xODctMTgyLTQ4OS0xODItNjc2LDBsLTQ3LDQ2Yy03LDctMTgsNy0yNCwwbC0xMTAtMTA3Yy0xMy0xMy0xMy0zNCwwLTQ3bDM1LTM0SDc2NHogTTE5NjAsMTE1Mmw5OCw5NmMxMywxMywxMywzNCwwLDQ3ICAgIGwtNDQyLDQzMWMtMTMsMTMtMzUsMTMtNDgsMGwtMzE0LTMwNmMtMy0zLTktMy0xMiwwbC0zMTQsMzA2Yy0xMywxMy0zNSwxMy00OCwwbC00NDItNDMxYy0xMy0xMy0xMy0zNCwwLTQ3bDk4LTk2ICAgIGMxMy0xMywzNS0xMyw0OCwwbDMxNCwzMDZjMywzLDksMywxMiwwbDMxNC0zMDZjMTMtMTMsMzUtMTMsNDgsMGwzMTQsMzA2YzMsMyw5LDMsMTIsMGwzMTQtMzA2QzE5MjUsMTEzOSwxOTQ3LDExMzksMTk2MCwxMTUyICAgIEwxOTYwLDExNTJ6Ij48L3BhdGg+Cgk8L2c+CjwvZz4KPC9zdmc+Cg==';
   readonly url = 'https://walletconnect.com';
 
   private client: SignClient | null = null;
@@ -93,7 +93,11 @@ export class WalletConnectAdapter implements WalletAdapter {
       const requiredNamespaces = {
         xrpl: {
           chains: [network.walletConnectId || `xrpl:${network.id}`],
-          methods: [XRPLMethod.SIGN_TRANSACTION, XRPLMethod.SIGN_TRANSACTION_FOR, 'xrpl_signMessage'],
+          methods: [
+            XRPLMethod.SIGN_TRANSACTION,
+            XRPLMethod.SIGN_TRANSACTION_FOR,
+            'xrpl_signMessage',
+          ],
           events: ['chainChanged', 'accountsChanged'],
         },
       };
@@ -193,7 +197,10 @@ export class WalletConnectAdapter implements WalletAdapter {
    * @param transaction - The transaction to sign
    * @param submit - Whether to submit to the ledger (default: true)
    */
-  async signAndSubmit(transaction: Transaction, submit: boolean = true): Promise<SubmittedTransaction> {
+  async signAndSubmit(
+    transaction: Transaction,
+    submit: boolean = true
+  ): Promise<SubmittedTransaction> {
     if (!this.client || !this.session || !this.currentAccount) {
       throw createWalletError.notConnected();
     }
@@ -208,7 +215,8 @@ export class WalletConnectAdapter implements WalletAdapter {
       // Request signature/submission via WalletConnect using XRPL RPC format
       const result = await this.client.request({
         topic: this.session.topic,
-        chainId: this.currentAccount.network.walletConnectId || `xrpl:${this.currentAccount.network.id}`,
+        chainId:
+          this.currentAccount.network.walletConnectId || `xrpl:${this.currentAccount.network.id}`,
         request: {
           method: XRPLMethod.SIGN_TRANSACTION,
           params: {

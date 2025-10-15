@@ -1,0 +1,40 @@
+{
+  "name": "@xrpl-connect/ui",
+  "version": "0.1.0",
+  "description": "Web component UI for XRPL Connect",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.cjs",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "eslint src",
+    "type-check": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@xrpl-connect/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@xrpl-connect/core": "workspace:*",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3"
+  },
+  "keywords": [
+    "xrpl",
+    "wallet",
+    "web-component",
+    "ui"
+  ],
+  "license": "MIT"
+}

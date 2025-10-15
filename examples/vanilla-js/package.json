@@ -14,6 +14,7 @@
     "@xrpl-connect/adapter-walletconnect": "workspace:*",
     "@xrpl-connect/adapter-crossmark": "workspace:*",
     "@xrpl-connect/adapter-gemwallet": "workspace:*",
+    "@xrpl-connect/ui": "workspace:*",
     "xrpl": "^4.0.0"
   },
   "devDependencies": {
