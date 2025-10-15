@@ -6,9 +6,9 @@ import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 import { WalletConnectorElement } from '@xrpl-connect/ui';
 
-// Configuration - ADD YOUR API KEYS HERE
-const XAMAN_API_KEY = '15ba80a8-cba2-4789-a45b-c6a850d9d91b'; // Get from https://apps.xumm.dev/
-const WALLETCONNECT_PROJECT_ID = '32798b46e13dfb0049706a524cf132d6'; // Get from https://cloud.walletconnect.com
+// API keys
+const XAMAN_API_KEY = '15ba80a8-cba2-4789-a45b-c6a850d9d91b';
+const WALLETCONNECT_PROJECT_ID = '32798b46e13dfb0049706a524cf132d6';
 
 // Initialize Wallet Manager
 const walletManager = new WalletManager({
@@ -23,29 +23,21 @@ const walletManager = new WalletManager({
   logger: { level: 'info' },
 });
 
-// Event listeners
-walletManager.on('connect', (account) => {
-  logEvent('Connected', account);
-  updateUI();
-});
-
-walletManager.on('disconnect', () => {
-  logEvent('Disconnected', null);
-  updateUI();
-});
-
-walletManager.on('error', (error) => {
-  logEvent('Error', error);
-  showStatus(error.message, 'error');
-});
-
-// Initialize the wallet connector web component
+// Initialize Web Component
 const walletConnector = document.getElementById('wallet-connector');
+
+// Set WalletManager
 walletConnector.setWalletManager(walletManager);
 
-// Listen to connector events
+// THEMING EXAMPLE
+walletConnector.setAttribute('background-color', '#000637'); // dark background
+walletConnector.setAttribute('text-color', '#dfe0e2'); // light text
+walletConnector.setAttribute('primary-color', '#75abbc'); // main button
+walletConnector.setAttribute('font-family', "'Poppins', sans-serif");
+
+// Connector events
 walletConnector.addEventListener('connecting', (e) => {
-  showStatus(`Connecting to ${e.detail.walletId}...`, 'info');
+  showStatus('Connecting to ' + e.detail.walletId + '...', 'info');
 });
 
 walletConnector.addEventListener('connected', (e) => {
@@ -54,7 +46,7 @@ walletConnector.addEventListener('connected', (e) => {
 });
 
 walletConnector.addEventListener('error', (e) => {
-  showStatus(`Connection failed: ${e.detail.error.message}`, 'error');
+  showStatus('Connection failed: ' + e.detail.error.message, 'error');
   logEvent('Connection Error', e.detail);
 });
 
@@ -79,9 +71,7 @@ const elements = {
 };
 
 // Open wallet connector modal
-elements.openConnector.addEventListener('click', () => {
-  walletConnector.open();
-});
+elements.openConnector.addEventListener('click', () => walletConnector.open());
 
 // Disconnect
 elements.disconnect.addEventListener('click', async () => {
@@ -89,43 +79,39 @@ elements.disconnect.addEventListener('click', async () => {
     await walletManager.disconnect();
     showStatus('Disconnected', 'info');
   } catch (error) {
-    showStatus(`Disconnect failed: ${error.message}`, 'error');
+    showStatus('Disconnect failed: ' + error.message, 'error');
   }
 });
 
-// Transaction Form (Sign & Submit)
+// Transaction Form
 elements.txForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-
   const destination = document.getElementById('destination').value;
   const amount = document.getElementById('amount').value;
 
   try {
-    elements.txResult.innerHTML = '<div class="loading">Signing and submitting transaction...</div>';
-
+    elements.txResult.innerHTML =
+      '<div class="loading">Signing and submitting transaction...</div>';
     const transaction = {
       TransactionType: 'Payment',
       Account: walletManager.account.address,
       Destination: destination,
       Amount: amount,
     };
-
-    // Use the unified signAndSubmit method - works across all wallets!
     const result = await walletManager.signAndSubmit(transaction);
 
     elements.txResult.innerHTML = `
       <div class="success">
         <h3>Transaction Submitted!</h3>
         <p><strong>Hash:</strong> ${result.hash || 'Pending'}</p>
-        ${result.id ? `<p><strong>ID:</strong> ${result.id}</p>` : ''}
-        ${result.tx_blob ? `<p><strong>Blob:</strong> <code>${result.tx_blob.substring(0, 50)}...</code></p>` : ''}
+        ${result.id ? '<p><strong>ID:</strong> ' + result.id + '</p>' : ''}
+        ${result.tx_blob ? '<p><strong>Blob:</strong> <code>' + result.tx_blob.substring(0, 50) + '...</code></p>' : ''}
         <p class="info">✅ Transaction has been signed and submitted to the ledger</p>
       </div>
     `;
-
     logEvent('Transaction Submitted', result);
   } catch (error) {
-    elements.txResult.innerHTML = `<div class="error">Failed: ${error.message}</div>`;
+    elements.txResult.innerHTML = '<div class="error">Failed: ' + error.message + '</div>';
     logEvent('Transaction Failed', error);
   }
 });
@@ -133,12 +119,10 @@ elements.txForm.addEventListener('submit', async (e) => {
 // Message Form
 elements.msgForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-
   const message = document.getElementById('message').value;
 
   try {
     elements.msgResult.innerHTML = '<div class="loading">Signing message...</div>';
-
     const signed = await walletManager.signMessage(message);
 
     elements.msgResult.innerHTML = `
@@ -148,10 +132,9 @@ elements.msgForm.addEventListener('submit', async (e) => {
         <p><strong>Signature:</strong> <code>${signed.signature ? signed.signature.substring(0, 50) + '...' : 'N/A'}</code></p>
       </div>
     `;
-
     logEvent('Message Signed', signed);
   } catch (error) {
-    elements.msgResult.innerHTML = `<div class="error">Failed: ${error.message}</div>`;
+    elements.msgResult.innerHTML = '<div class="error">Failed: ' + error.message + '</div>';
     logEvent('Message Sign Failed', error);
   }
 });
@@ -161,44 +144,32 @@ elements.clearLog.addEventListener('click', () => {
   elements.eventsLog.innerHTML = '';
 });
 
-// Update UI based on connection state
+// Update UI
 function updateUI() {
   const isConnected = walletManager.connected;
-
   if (isConnected) {
     const account = walletManager.account;
     const wallet = walletManager.wallet;
-
-    // Hide connect section
     elements.connectSection.style.display = 'none';
-
-    // Show account section
     elements.accountSection.style.display = 'block';
     elements.transactionSection.style.display = 'block';
     elements.messageSection.style.display = 'block';
-
-    // Update account info
     elements.address.textContent = account.address;
-    elements.network.textContent = `${account.network.name} (${account.network.id})`;
+    elements.network.textContent = account.network.name + ' (' + account.network.id + ')';
     elements.walletName.textContent = wallet.name;
   } else {
-    // Show connect section
     elements.connectSection.style.display = 'block';
-
-    // Hide account section
     elements.accountSection.style.display = 'none';
     elements.transactionSection.style.display = 'none';
     elements.messageSection.style.display = 'none';
-
-    // Clear results
     elements.txResult.innerHTML = '';
     elements.msgResult.innerHTML = '';
   }
 }
 
-// Show status message
+// Show status
 function showStatus(message, type = 'info') {
-  elements.status.innerHTML = `<div class="status-${type}">${message}</div>`;
+  elements.status.innerHTML = '<div class="status-' + type + '">' + message + '</div>';
   setTimeout(() => {
     elements.status.innerHTML = '';
   }, 5000);
@@ -209,18 +180,21 @@ function logEvent(event, data) {
   const timestamp = new Date().toLocaleTimeString();
   const eventDiv = document.createElement('div');
   eventDiv.className = 'event-item';
-  eventDiv.innerHTML = `
-    <span class="event-time">${timestamp}</span>
-    <span class="event-name">${event}</span>
-    <span class="event-data">${data ? JSON.stringify(data, null, 2) : ''}</span>
-  `;
+  eventDiv.innerHTML =
+    '<span class="event-time">' +
+    timestamp +
+    '</span>' +
+    '<span class="event-name">' +
+    event +
+    '</span>' +
+    '<span class="event-data">' +
+    (data ? JSON.stringify(data, null, 2) : '') +
+    '</span>';
   elements.eventsLog.prepend(eventDiv);
 }
 
-// Initialize UI
+// Initialize
 updateUI();
-
-// Check connection status message
 if (!walletManager.connected) {
   showStatus('Please connect a wallet to get started', 'info');
 } else {

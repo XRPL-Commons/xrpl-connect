@@ -19,7 +19,7 @@ function getLuminance(hex: string): number {
   const b = parseInt(color.substring(4, 6), 16) / 255;
 
   // Apply gamma correction
-  const [rs, gs, bs] = [r, g, b].map(c => {
+  const [rs, gs, bs] = [r, g, b].map((c) => {
     return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
   });
 
@@ -44,7 +44,15 @@ export class WalletConnectorElement extends HTMLElement {
 
   // Observed attributes
   static get observedAttributes() {
-    return ['background-color', 'primary-wallet', 'show-help'];
+    return [
+      'background-color',
+      'text-color',
+      'primary-color',
+      'font-family',
+      'custom-css',
+      'primary-wallet',
+      'show-help',
+    ];
   }
 
   constructor() {
@@ -127,351 +135,222 @@ export class WalletConnectorElement extends HTMLElement {
   /**
    * Render the component
    */
+
   private render() {
     if (!this.isOpen) {
       this.shadow.innerHTML = '';
       return;
     }
 
-    const backgroundColor = this.getAttribute('background-color') || '#2d3748';
-    const textColor = getTextColor(backgroundColor);
-    const showHelp = this.getAttribute('show-help') !== 'false';
+    // Core theme values
+    const backgroundColor = this.getAttribute('background-color') || '#000637';
+    const textColor = this.getAttribute('text-color') || getTextColor(backgroundColor);
+    const primaryColor = this.getAttribute('primary-color') || '#0ea5e9';
+    const fontFamily = this.getAttribute('font-family') || "'Inter', sans-serif";
+    const customCSS = this.getAttribute('custom-css') || '';
+
     this.primaryWalletId = this.getAttribute('primary-wallet');
 
-    // Get available wallets
+    // Wallets
     const wallets = this.walletManager?.wallets || [];
     const primaryWallet = this.primaryWalletId
-      ? wallets.find(w => w.id === this.primaryWalletId)
+      ? wallets.find((w) => w.id === this.primaryWalletId)
       : null;
-    const otherWallets = wallets.filter(w => w.id !== this.primaryWalletId);
+    const otherWallets = wallets.filter((w) => w.id !== this.primaryWalletId);
 
     this.shadow.innerHTML = `
-      <style>
-        * {
-          box-sizing: border-box;
-          margin: 0;
-          padding: 0;
-        }
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
 
-        :host {
-          --bg-color: ${backgroundColor};
-          --text-color: ${textColor};
-          --primary-color: #0ea5e9;
-          --wallet-btn-bg: ${this.adjustColor(backgroundColor, 0.1)};
-          --wallet-btn-hover: ${this.adjustColor(backgroundColor, 0.15)};
-        }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: var(--font-family);
+        color: var(--text-color);
+      }
 
-        .overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(0, 0, 0, 0.7);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 9999;
-          animation: fadeIn 0.2s ease-out;
-        }
+      :host {
+        --bg-color: ${backgroundColor};
+        --text-color: ${textColor};
+        --primary-color: ${primaryColor};
+        --font-family: ${fontFamily};
+        --wallet-btn-bg: ${this.adjustColor(backgroundColor, 0.1)};
+        --wallet-btn-hover: ${this.adjustColor(backgroundColor, 0.15)};
+      }
 
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
+      .overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        animation: fadeIn 0.2s ease-out;
+      }
 
-        .modal {
-          background: var(--bg-color);
-          color: var(--text-color);
-          border-radius: 24px;
-          width: 90%;
-          max-width: 460px;
-          max-height: 90vh;
-          overflow: hidden;
-          display: flex;
-          flex-direction: column;
-          animation: slideUp 0.3s ease-out;
-          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
-        }
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
 
-        @keyframes slideUp {
-          from {
-            transform: translateY(20px);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
-          }
-        }
+      .modal {
+        background: var(--bg-color);
+        color: var(--text-color);
+        border-radius: 20px;
+        width: 88%;
+        max-width: 400px;
+        max-height: 85vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        animation: slideUp 0.3s ease-out;
+        box-shadow: 0 8px 16px 20px rgba(0, 0, 0, 0.1);
+      }
 
-        .header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 24px 24px 20px;
-        }
+      @keyframes slideUp {
+        from { transform: translateY(20px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
 
-        .header-left {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-        }
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px 20px 16px;
+      }
 
-        .help-button {
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          border: none;
-          background: var(--wallet-btn-bg);
-          color: var(--text-color);
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 20px;
-          transition: all 0.2s;
-        }
+      .title {
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: -0.3px;
+      }
 
-        .help-button:hover {
-          background: var(--wallet-btn-hover);
-          transform: scale(1.05);
-        }
+      .close-button {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        border: none;
+        background: transparent;
+        color: var(--text-color);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        opacity: 0.7;
+        transition: all 0.2s;
+      }
 
-        .title {
-          font-size: 28px;
-          font-weight: 600;
-          letter-spacing: -0.5px;
-        }
+      .close-button:hover {
+        opacity: 1;
+        background: var(--wallet-btn-bg);
+      }
 
-        .close-button {
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          border: none;
-          background: transparent;
-          color: var(--text-color);
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 28px;
-          transition: all 0.2s;
-          opacity: 0.7;
-        }
+      .content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 20px 20px;
+      }
 
-        .close-button:hover {
-          opacity: 1;
-          background: var(--wallet-btn-bg);
-        }
 
-        .content {
-          flex: 1;
-          overflow-y: auto;
-          padding: 0 24px 24px;
-        }
+      .primary-button {
+        width: 100%;
+        padding: 16px 20px;
+        border-radius: 12px;
+        border: none;
+        background: var(--primary-color);
+        color: white;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        transition: all 0.2s;
+      }
 
-        .primary-wallet {
-          margin-bottom: 20px;
-        }
+      .primary-button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(14, 165, 233, 0.3);
+      }
 
-        .primary-button {
-          width: 100%;
-          padding: 20px 24px;
-          border-radius: 16px;
-          border: none;
-          background: var(--primary-color);
-          color: white;
-          font-size: 18px;
-          font-weight: 600;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 12px;
-          transition: all 0.2s;
-        }
+      .wallet-button {
+        width: 70%;
+        padding: 16px 20px;
+        border-radius: 12px;
+        margin: auto;
+        margin-bottom: 16px; 
+        border: none;
+        background: var(--wallet-btn-bg);
+        color: var(--text-color);
+        font-size: 18px;
+        font-weight: 500;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        transition: all 0.2s;
+      }
 
-        .primary-button:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 16px rgba(14, 165, 233, 0.3);
-        }
+      .wallet-button:hover {
+        background: var(--wallet-btn-hover);
+        transform: translateX(3px);
+      }
 
-        .primary-button:active {
-          transform: translateY(0);
-        }
+      ${customCSS}
+    </style>
 
-        .wallet-icon {
-          width: 28px;
-          height: 28px;
-          object-fit: contain;
-        }
+    <div class="overlay" part="overlay">
+      <div class="modal" part="modal">
+        <div class="header">
+          <h2 class="title">Connect Wallet</h2>
+          <button class="close-button" part="close-button" aria-label="Close">×</button>
+        </div>
 
-        .divider {
-          text-align: center;
-          margin: 24px 0;
-          color: var(--text-color);
-          opacity: 0.5;
-          font-size: 14px;
-        }
-
-        .wallet-list {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-
-        .wallet-button {
-          width: 100%;
-          padding: 20px 24px;
-          border-radius: 16px;
-          border: none;
-          background: var(--wallet-btn-bg);
-          color: var(--text-color);
-          font-size: 18px;
-          font-weight: 500;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          transition: all 0.2s;
-        }
-
-        .wallet-button:hover {
-          background: var(--wallet-btn-hover);
-          transform: translateX(4px);
-        }
-
-        .wallet-button:active {
-          transform: translateX(2px);
-        }
-
-        .wallet-icons {
-          display: flex;
-          gap: 6px;
-        }
-
-        .wallet-icons img {
-          width: 32px;
-          height: 32px;
-          object-fit: contain;
-        }
-
-        .footer {
-          padding: 16px 24px 24px;
-          text-align: center;
-        }
-
-        .footer-link {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          color: var(--text-color);
-          text-decoration: none;
-          font-size: 14px;
-          opacity: 0.6;
-          transition: opacity 0.2s;
-        }
-
-        .footer-link:hover {
-          opacity: 1;
-        }
-
-        .checkbox-icon {
-          width: 20px;
-          height: 20px;
-          border: 2px solid currentColor;
-          border-radius: 4px;
-        }
-
-        /* Scrollbar styles */
-        .content::-webkit-scrollbar {
-          width: 8px;
-        }
-
-        .content::-webkit-scrollbar-track {
-          background: transparent;
-        }
-
-        .content::-webkit-scrollbar-thumb {
-          background: var(--wallet-btn-bg);
-          border-radius: 4px;
-        }
-
-        .content::-webkit-scrollbar-thumb:hover {
-          background: var(--wallet-btn-hover);
-        }
-      </style>
-
-      <div class="overlay" part="overlay">
-        <div class="modal" part="modal">
-          <div class="header">
-            <div class="header-left">
-              ${showHelp ? `
-                <button class="help-button" part="help-button" aria-label="Help">
-                  ?
-                </button>
-              ` : ''}
-              <h2 class="title">Connect Wallet</h2>
-            </div>
-            <button class="close-button" part="close-button" aria-label="Close">
-              ×
-            </button>
-          </div>
-
-          <div class="content">
-            ${primaryWallet ? `
-              <div class="primary-wallet">
-                <button class="primary-button" data-wallet-id="${primaryWallet.id}">
-                  ${primaryWallet.icon ? `<img src="${primaryWallet.icon}" alt="${primaryWallet.name}" class="wallet-icon">` : ''}
-                  <span>Continue with ${primaryWallet.name}</span>
-                </button>
-              </div>
-
-              <div class="divider">or select a wallet from the list below</div>
-            ` : ''}
-
+        <div class="content">
+          ${
+            primaryWallet
+              ? `
             <div class="wallet-list">
-              ${otherWallets.map(wallet => `
-                <button class="wallet-button" data-wallet-id="${wallet.id}">
-                  <span>${wallet.name}</span>
-                  ${wallet.icon ? `
-                    <div class="wallet-icons">
-                      <img src="${wallet.icon}" alt="${wallet.name}">
-                    </div>
-                  ` : ''}
-                </button>
-              `).join('')}
+              <button class="wallet-button primary" data-wallet-id="${primaryWallet.id}">
+                <span>${primaryWallet.name}</span>
+                ${primaryWallet.icon ? `<img src="${primaryWallet.icon}" width="24" height="24" >` : ''}
+              </button>
             </div>
-          </div>
-
-          <div class="footer">
-            <a href="https://xrpl.org/wallets" target="_blank" class="footer-link">
-              <span class="checkbox-icon"></span>
-              <span>I don't have a wallet</span>
-            </a>
+          `
+              : ''
+          }
+          <div class="wallet-list">
+            ${otherWallets
+              .map(
+                (wallet) => `
+              <button class="wallet-button" data-wallet-id="${wallet.id}">
+                <span>${wallet.name}</span>
+                ${wallet.icon ? `<img src="${wallet.icon}" width="24" height="24">` : ''}
+              </button>`
+              )
+              .join('')}
           </div>
         </div>
       </div>
-    `;
+    </div>
+  `;
 
-    // Add event listeners
-    this.shadow.querySelector('.close-button')?.addEventListener('click', () => {
-      this.close();
-    });
-
+    // Event listeners
+    this.shadow.querySelector('.close-button')?.addEventListener('click', () => this.close());
     this.shadow.querySelector('.overlay')?.addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) {
-        this.close();
-      }
+      if (e.target === e.currentTarget) this.close();
     });
-
-    this.shadow.querySelectorAll('[data-wallet-id]').forEach(button => {
+    this.shadow.querySelectorAll('[data-wallet-id]').forEach((button) => {
       button.addEventListener('click', () => {
         const walletId = (button as HTMLElement).dataset.walletId;
-        if (walletId) {
-          this.connectWallet(walletId);
-        }
+        if (walletId) this.connectWallet(walletId);
       });
     });
   }
@@ -484,14 +363,14 @@ export class WalletConnectorElement extends HTMLElement {
     const num = parseInt(color, 16);
 
     let r = (num >> 16) + Math.round(255 * amount);
-    let g = ((num >> 8) & 0x00FF) + Math.round(255 * amount);
-    let b = (num & 0x0000FF) + Math.round(255 * amount);
+    let g = ((num >> 8) & 0x00ff) + Math.round(255 * amount);
+    let b = (num & 0x0000ff) + Math.round(255 * amount);
 
     r = Math.max(0, Math.min(255, r));
     g = Math.max(0, Math.min(255, g));
     b = Math.max(0, Math.min(255, b));
 
-    return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`;
+    return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
   }
 }
 
