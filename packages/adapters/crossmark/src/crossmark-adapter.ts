@@ -9,7 +9,6 @@ import type {
   ConnectOptions,
   NetworkInfo,
   Transaction,
-  SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
@@ -115,22 +114,24 @@ export class CrossmarkAdapter implements WalletAdapter {
   }
 
   /**
-   * Sign a transaction
+   * Sign and optionally submit a transaction
+   * @param transaction - The transaction to sign
+   * @param submit - Whether to submit to the ledger (default: true)
    */
-  async sign(transaction: Transaction): Promise<SignedTransaction> {
+  async signAndSubmit(transaction: Transaction, submit: boolean = true): Promise<SubmittedTransaction> {
     if (!this.currentAccount) {
       throw createWalletError.notConnected();
     }
 
     try {
       // Ensure Account field is set
-      const txToSign = {
+      const tx = {
         ...transaction,
         Account: transaction.Account || this.currentAccount.address,
       };
 
-      // Request signature from Crossmark
-      const signResponse = await sdk.methods.signAndWait(txToSign as any);
+      // Sign the transaction with Crossmark
+      const signResponse = await sdk.methods.signAndWait(tx as any);
 
       if (!signResponse || !signResponse.response || !signResponse.response.data) {
         throw new Error('Failed to sign transaction with Crossmark');
@@ -138,6 +139,17 @@ export class CrossmarkAdapter implements WalletAdapter {
 
       const { txBlob } = signResponse.response.data;
 
+      // If submit is true, also submit to the ledger
+      if (submit) {
+        const id = sdk.sync.submit(this.currentAccount.address, txBlob);
+        return {
+          hash: '',
+          id: id || '',
+          tx_blob: txBlob,
+        };
+      }
+
+      // Otherwise just return the signed transaction
       return {
         hash: '',
         tx_blob: txBlob,
@@ -177,46 +189,6 @@ export class CrossmarkAdapter implements WalletAdapter {
         publicKey: publicKey || this.currentAccount.publicKey || '',
       };
     } catch (error) {
-      throw createWalletError.signFailed(error as Error);
-    }
-  }
-
-  /**
-   * Submit a transaction to the ledger
-   * This combines signing and submission in one step
-   */
-  async submit(transaction: Transaction): Promise<SubmittedTransaction> {
-    if (!this.currentAccount) {
-      throw createWalletError.notConnected();
-    }
-
-    try {
-      // Ensure Account field is set
-      const txToSubmit = {
-        ...transaction,
-        Account: transaction.Account || this.currentAccount.address,
-      };
-
-      // First sign the transaction
-      const signResponse = await sdk.methods.signAndWait(txToSubmit as any);
-
-      if (!signResponse || !signResponse.response || !signResponse.response.data) {
-        throw new Error('Failed to sign transaction with Crossmark');
-      }
-
-      const { txBlob } = signResponse.response.data;
-
-      // Then submit the signed transaction
-      const id = sdk.sync.submit(this.currentAccount.address, txBlob);
-
-      return {
-        hash: '',
-        id: id || '',
-      };
-    } catch (error) {
-      if (error instanceof Error && error.message.toLowerCase().includes('reject')) {
-        throw createWalletError.signRejected();
-      }
       throw createWalletError.signFailed(error as Error);
     }
   }

@@ -8,7 +8,6 @@ import type {
   WalletManagerOptions,
   AccountInfo,
   Transaction,
-  SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
   WalletEvent,
@@ -184,21 +183,28 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
-   * Sign a transaction
+   * Sign and optionally submit a transaction to the ledger
+   * This unified method works consistently across all wallets
+   * @param transaction - The transaction to sign
+   * @param submit - Whether to submit the transaction to the ledger (default: true)
+   * @returns SubmittedTransaction with hash and optional submission details
    */
-  async sign(transaction: Transaction): Promise<SignedTransaction> {
+  async signAndSubmit(transaction: Transaction, submit: boolean = true): Promise<SubmittedTransaction> {
     if (!this.currentAdapter) {
       throw createWalletError.notConnected();
     }
 
-    this.logger.debug('Signing transaction', transaction);
+    this.logger.debug(`${submit ? 'Signing and submitting' : 'Signing'} transaction`, transaction);
 
     try {
-      const signed = await this.currentAdapter.sign(transaction);
-      this.logger.info('Transaction signed', signed.hash);
-      return signed;
+      const result = await this.currentAdapter.signAndSubmit(transaction, submit);
+      this.logger.info(
+        `Transaction ${submit ? 'submitted' : 'signed'}`,
+        result.hash || result.id
+      );
+      return result;
     } catch (error) {
-      this.logger.error('Failed to sign transaction:', error);
+      this.logger.error(`Failed to ${submit ? 'submit' : 'sign'} transaction:`, error);
       throw createWalletError.signFailed(error as Error);
     }
   }
@@ -219,34 +225,6 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       return signed;
     } catch (error) {
       this.logger.error('Failed to sign message:', error);
-      throw createWalletError.signFailed(error as Error);
-    }
-  }
-
-  /**
-   * Submit a transaction to the ledger
-   * This is a convenience method that combines signing and submission
-   * Only available for wallets that support direct submission (Crossmark, GemWallet)
-   */
-  async submit(transaction: Transaction): Promise<SubmittedTransaction> {
-    if (!this.currentAdapter) {
-      throw createWalletError.notConnected();
-    }
-
-    if (!this.currentAdapter.submit) {
-      throw createWalletError.unsupportedMethod(
-        `Transaction submission is not supported by ${this.currentAdapter.name}. Use the sign() method instead.`
-      );
-    }
-
-    this.logger.debug('Submitting transaction', transaction);
-
-    try {
-      const result = await this.currentAdapter.submit(transaction);
-      this.logger.info('Transaction submitted', result.hash || result.id);
-      return result;
-    } catch (error) {
-      this.logger.error('Failed to submit transaction:', error);
       throw createWalletError.signFailed(error as Error);
     }
   }

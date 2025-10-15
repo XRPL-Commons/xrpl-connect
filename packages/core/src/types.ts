@@ -131,12 +131,9 @@ export interface WalletAdapter {
   getAccount(): Promise<AccountInfo | null>;
   getNetwork(): Promise<NetworkInfo>;
 
-  // Signing operations
-  sign(transaction: Transaction): Promise<SignedTransaction>;
+  // Signing and submission operations
+  signAndSubmit(transaction: Transaction, submit?: boolean): Promise<SubmittedTransaction>;
   signMessage(message: string | Uint8Array): Promise<SignedMessage>;
-
-  // Transaction submission (optional, for wallets that support direct submission)
-  submit?(transaction: Transaction): Promise<SubmittedTransaction>;
 
   // Events (optional, for wallets that support event listening)
   on?(event: WalletAdapterEvent, callback: (data: unknown) => void): void;

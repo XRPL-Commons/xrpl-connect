@@ -54,7 +54,6 @@ const elements = {
   network: document.getElementById('network'),
   walletName: document.getElementById('wallet-name'),
   txForm: document.getElementById('tx-form'),
-  submitTx: document.getElementById('submit-tx'),
   msgForm: document.getElementById('msg-form'),
   txResult: document.getElementById('tx-result'),
   msgResult: document.getElementById('msg-result'),
@@ -120,7 +119,7 @@ elements.disconnect.addEventListener('click', async () => {
   }
 });
 
-// Transaction Form (Sign Only)
+// Transaction Form (Sign & Submit)
 elements.txForm.addEventListener('submit', async (e) => {
   e.preventDefault();
 
@@ -128,7 +127,7 @@ elements.txForm.addEventListener('submit', async (e) => {
   const amount = document.getElementById('amount').value;
 
   try {
-    elements.txResult.innerHTML = '<div class="loading">Signing transaction...</div>';
+    elements.txResult.innerHTML = '<div class="loading">Signing and submitting transaction...</div>';
 
     const transaction = {
       TransactionType: 'Payment',
@@ -137,59 +136,23 @@ elements.txForm.addEventListener('submit', async (e) => {
       Amount: amount,
     };
 
-    const signed = await walletManager.sign(transaction);
-
-    elements.txResult.innerHTML = `
-      <div class="success">
-        <h3>Transaction Signed!</h3>
-        <p><strong>Hash:</strong> ${signed.hash}</p>
-        ${signed.tx_blob ? `<p><strong>Blob:</strong> <code>${signed.tx_blob.substring(0, 50)}...</code></p>` : ''}
-        <p class="info">⚠️ Transaction signed but not submitted to the ledger</p>
-      </div>
-    `;
-
-    logEvent('Transaction Signed', signed);
-  } catch (error) {
-    elements.txResult.innerHTML = `<div class="error">Failed: ${error.message}</div>`;
-    logEvent('Transaction Failed', error);
-  }
-});
-
-// Submit Transaction (Sign & Submit)
-elements.submitTx.addEventListener('click', async () => {
-  const destination = document.getElementById('destination').value;
-  const amount = document.getElementById('amount').value;
-
-  if (!destination || !amount) {
-    elements.txResult.innerHTML = '<div class="error">Please fill in all fields</div>';
-    return;
-  }
-
-  try {
-    elements.txResult.innerHTML = '<div class="loading">Submitting transaction...</div>';
-
-    const transaction = {
-      TransactionType: 'Payment',
-      Account: walletManager.account.address,
-      Destination: destination,
-      Amount: amount,
-    };
-
-    const result = await walletManager.submit(transaction);
+    // Use the unified signAndSubmit method - works across all wallets!
+    const result = await walletManager.signAndSubmit(transaction);
 
     elements.txResult.innerHTML = `
       <div class="success">
         <h3>Transaction Submitted!</h3>
         <p><strong>Hash:</strong> ${result.hash || 'Pending'}</p>
         ${result.id ? `<p><strong>ID:</strong> ${result.id}</p>` : ''}
-        <p class="info">✅ Transaction has been submitted to the ledger</p>
+        ${result.tx_blob ? `<p><strong>Blob:</strong> <code>${result.tx_blob.substring(0, 50)}...</code></p>` : ''}
+        <p class="info">✅ Transaction has been signed and submitted to the ledger</p>
       </div>
     `;
 
     logEvent('Transaction Submitted', result);
   } catch (error) {
     elements.txResult.innerHTML = `<div class="error">Failed: ${error.message}</div>`;
-    logEvent('Transaction Submission Failed', error);
+    logEvent('Transaction Failed', error);
   }
 });
 

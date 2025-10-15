@@ -9,8 +9,8 @@ import type {
   ConnectOptions,
   NetworkInfo,
   Transaction,
-  SignedTransaction,
   SignedMessage,
+  SubmittedTransaction,
 } from '@xrpl-connect/core';
 import { createWalletError } from '@xrpl-connect/core';
 
@@ -123,9 +123,11 @@ export class XamanAdapter implements WalletAdapter {
   }
 
   /**
-   * Sign a transaction
+   * Sign and optionally submit a transaction
+   * Note: Xaman only supports signing via popup flow. The submit parameter is ignored.
+   * Users must submit the signed transaction separately or use Xaman's auto-submit feature.
    */
-  async sign(transaction: Transaction): Promise<SignedTransaction> {
+  async signAndSubmit(transaction: Transaction, _submit?: boolean): Promise<SubmittedTransaction> {
     if (!this.client || !this.currentAccount) {
       throw createWalletError.notConnected();
     }
@@ -149,6 +151,8 @@ export class XamanAdapter implements WalletAdapter {
         throw createWalletError.signRejected();
       }
 
+      // Xaman only signs; submission depends on user's wallet settings
+      // The submit parameter is documented but not used for Xaman
       return {
         hash: result.txid || '',
         tx_blob: result.tx_blob,
