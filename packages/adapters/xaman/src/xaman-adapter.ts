@@ -19,6 +19,8 @@ import { createWalletError } from '@xrpl-connect/core';
  */
 export interface XamanAdapterOptions {
   apiKey?: string; // Xumm API key (can also be provided in connect options)
+  onQRCode?: (uri: string) => void; // Callback for QR code URI
+  onDeepLink?: (uri: string) => string; // Transform URI for deep linking
 }
 
 /**
@@ -61,16 +63,40 @@ export class XamanAdapter implements WalletAdapter {
       );
     }
 
+    // Merge runtime options with constructor options (runtime takes precedence)
+    const onQRCode = (options as any)?.onQRCode || this.options.onQRCode;
+    const onDeepLink = (options as any)?.onDeepLink || this.options.onDeepLink;
+
+    // Temporarily store callbacks for use in openSignWindow
+    if (onQRCode) {
+      this.options.onQRCode = onQRCode;
+    }
+    if (onDeepLink) {
+      this.options.onDeepLink = onDeepLink;
+    }
+
     try {
       // Initialize Xumm client
       this.client = new Xumm(apiKey);
 
-      // Authorize with OAuth2 PKCE flow
+      console.log('[Xaman] Starting authorization flow');
+
+      // Use standard OAuth flow (opens popup)
+      /*const signInPayload: any = {
+        txjson: {
+          TransactionType: 'SignIn',
+          SignIn: 'true',
+        },
+      };
+      /*const a = await this.client.payload?.create(signInPayload, true);
+      console.log(a);*/
       const authResult = await this.client.authorize();
 
       if (!authResult || authResult instanceof Error) {
         throw authResult || new Error('Authorization failed');
       }
+
+      console.log('[Xaman] Authorization successful');
 
       // Get account info
       const account = authResult.me.account;
@@ -86,6 +112,7 @@ export class XamanAdapter implements WalletAdapter {
 
       return this.currentAccount;
     } catch (error) {
+      console.error('[Xaman] Authorization failed:', error);
       throw createWalletError.connectionFailed(this.name, error as Error);
     }
   }
@@ -240,9 +267,21 @@ export class XamanAdapter implements WalletAdapter {
   }
 
   /**
-   * Open popup window for signing
+   * Open popup window for signing or trigger QR code callback
    */
   private openSignWindow(url: string): void {
+    console.log('[Xaman] openSignWindow called with URL:', url.substring(0, 50) + '...');
+    console.log('[Xaman] onQRCode callback exists:', !!this.options.onQRCode);
+
+    // If QR code callback is provided, use that instead of popup
+    if (this.options.onQRCode) {
+      console.log('[Xaman] Calling onQRCode callback');
+      this.options.onQRCode(url);
+      return;
+    }
+
+    // Otherwise, open popup (legacy behavior)
+    console.log('[Xaman] Opening popup window');
     const width = 500;
     const height = 600;
     const left = window.screen.width / 2 - width / 2;
@@ -256,6 +295,17 @@ export class XamanAdapter implements WalletAdapter {
   }
 
   /**
+   * Get deep link URI for mobile (Xaman app)
+   */
+  public getDeepLinkURI(url: string): string {
+    if (this.options.onDeepLink) {
+      return this.options.onDeepLink(url);
+    }
+    // Xaman deep link format
+    return `xumm://xumm.app/sign/${url.split('/').pop()}`;
+  }
+
+  /**
    * Wait for signature via WebSocket
    */
   private waitForSignature(wsUrl: string): Promise<{
@@ -263,6 +313,7 @@ export class XamanAdapter implements WalletAdapter {
     txid?: string;
     tx_blob?: string;
     signature?: string;
+    account?: string;
   }> {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(wsUrl);
@@ -286,6 +337,7 @@ export class XamanAdapter implements WalletAdapter {
               txid: data.txid,
               tx_blob: data.tx_blob,
               signature: data.signature,
+              account: data.account,
             });
           } else if (data.signed === false) {
             clearTimeout(timeout);
