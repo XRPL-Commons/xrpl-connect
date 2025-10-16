@@ -4,7 +4,6 @@
 
 import SignClient from '@walletconnect/sign-client';
 import type { SignClientTypes, SessionTypes } from '@walletconnect/types';
-import { WalletConnectModal } from '@walletconnect/modal';
 import type {
   WalletAdapter,
   AccountInfo,
@@ -30,6 +29,8 @@ export enum XRPLMethod {
 export interface WalletConnectAdapterOptions {
   projectId?: string; // WalletConnect/Reown project ID
   metadata?: SignClientTypes.Metadata; // App metadata
+  onQRCode?: (uri: string) => void; // Callback for QR code URI
+  onDeepLink?: (uri: string) => string; // Transform URI for deep linking
 }
 
 /**
@@ -44,7 +45,6 @@ export class WalletConnectAdapter implements WalletAdapter {
 
   private client: SignClient | null = null;
   private session: SessionTypes.Struct | null = null;
-  private modal: WalletConnectModal | null = null;
   private currentAccount: AccountInfo | null = null;
   private options: WalletConnectAdapterOptions;
 
@@ -73,6 +73,10 @@ export class WalletConnectAdapter implements WalletAdapter {
         )
       );
     }
+
+    // Merge runtime options with constructor options (runtime takes precedence)
+    const onQRCode = (options as any)?.onQRCode || this.options.onQRCode;
+    // const onDeepLink = (options as any)?.onDeepLink || this.options.onDeepLink;
 
     try {
       // Determine network
@@ -111,19 +115,17 @@ export class WalletConnectAdapter implements WalletAdapter {
         throw new Error('Failed to generate WalletConnect URI');
       }
 
-      // Open modal with QR code
-      this.modal = new WalletConnectModal({
-        projectId,
-        chains: [network.walletConnectId || `xrpl:${network.id}`],
-      });
+      console.log('[WalletConnect] Generated URI:', uri.substring(0, 50) + '...');
+      console.log('[WalletConnect] onQRCode callback exists:', !!onQRCode);
 
-      this.modal.openModal({ uri });
+      // Call QR code callback if provided (for custom UI)
+      if (onQRCode) {
+        console.log('[WalletConnect] Calling onQRCode callback');
+        onQRCode(uri);
+      }
 
       // Wait for approval
       this.session = await approval();
-
-      // Close modal
-      this.modal.closeModal();
 
       // Extract account info from session
       const accounts = this.session.namespaces.xrpl?.accounts || [];
@@ -145,9 +147,6 @@ export class WalletConnectAdapter implements WalletAdapter {
 
       return this.currentAccount;
     } catch (error) {
-      if (this.modal) {
-        this.modal.closeModal();
-      }
       throw createWalletError.connectionFailed(this.name, error as Error);
     }
   }
@@ -292,12 +291,20 @@ export class WalletConnectAdapter implements WalletAdapter {
    * Cleanup adapter state
    */
   private cleanup(): void {
-    if (this.modal) {
-      this.modal.closeModal();
-    }
     this.client = null;
     this.session = null;
-    this.modal = null;
     this.currentAccount = null;
+  }
+
+  /**
+   * Get deep link URI for mobile
+   */
+  public getDeepLinkURI(uri: string): string {
+    if (this.options.onDeepLink) {
+      return this.options.onDeepLink(uri);
+    }
+    // Default: construct WalletConnect deep link
+    // Different wallets have different deep link schemes
+    return uri;
   }
 }

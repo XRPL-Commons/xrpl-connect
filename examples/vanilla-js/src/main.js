@@ -101,7 +101,8 @@ elements.txForm.addEventListener('submit', async (e) => {
   const amount = document.getElementById('amount').value;
 
   try {
-    elements.txResult.innerHTML = '<div class="loading">Signing and submitting transaction...</div>';
+    elements.txResult.innerHTML =
+      '<div class="loading">Signing and submitting transaction...</div>';
 
     const transaction = {
       TransactionType: 'Payment',
