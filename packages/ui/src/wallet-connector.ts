@@ -4,13 +4,13 @@
  */
 
 import type { WalletManager } from '@xrpl-connect/core';
-import QRCode from 'qrcode';
+import QRCodeStyling from 'qr-code-styling';
 
 /**
  * Calculate luminance to determine if text should be black or white
  * Based on WCAG relative luminance formula
  */
-function getLuminance(hex: string): number {
+/*function getLuminance(hex: string): number {
   // Remove # if present
   const color = hex.replace('#', '');
 
@@ -30,20 +30,22 @@ function getLuminance(hex: string): number {
 
 /**
  * Get text color (black or white) based on background luminance
- */
+ *
 function getTextColor(backgroundColor: string): string {
   const luminance = getLuminance(backgroundColor);
   // Use white text for dark backgrounds (luminance < 0.5)
   return luminance < 0.5 ? '#ffffff' : '#000000';
-}
+}*/
 
 export class WalletConnectorElement extends HTMLElement {
   private walletManager: WalletManager | null = null;
   private shadow: ShadowRoot;
   private isOpen = false;
   private primaryWalletId: string | null = null;
-  private viewState: 'list' | 'qr' = 'list';
+  private viewState: 'list' | 'qr' | 'loading' | 'error' = 'list';
   private qrCodeData: { walletId: string; uri: string } | null = null;
+  private loadingData: { walletId: string; walletName: string; walletIcon?: string } | null = null;
+  private errorData: { walletId: string; walletName: string; error: Error } | null = null;
 
   // Observed attributes
   static get observedAttributes() {
@@ -126,16 +128,20 @@ export class WalletConnectorElement extends HTMLElement {
     }
 
     try {
-      // Check if wallet uses QR code flow (only WalletConnect for now)
+      // Get wallet info
       const wallet = this.walletManager.wallets.find((w) => w.id === walletId);
+      if (!wallet) {
+        throw new Error('Wallet not found');
+      }
+
       console.log('[WalletConnector] Connecting to wallet:', walletId);
 
-      if (wallet && walletId === 'walletconnect') {
-        // Show QR code view first
+      if (walletId === 'walletconnect') {
+        // Show QR code view first for WalletConnect
         console.log('[WalletConnector] Showing QR view for', walletId);
         this.showQRCodeView(walletId);
 
-        // Set up QR code callback for this wallet
+        // Set up QR code callback
         const connectOptions = {
           ...options,
           onQRCode: (uri: string) => {
@@ -151,16 +157,18 @@ export class WalletConnectorElement extends HTMLElement {
         await this.walletManager.connect(walletId, connectOptions);
         this.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
       } else {
-        // For non-QR wallets (including Xaman popup), connect directly
+        // For non-QR wallets, show loading state
+        this.showLoadingView(walletId, wallet.name, wallet.icon);
+
         this.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
         await this.walletManager.connect(walletId, options);
         this.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
       }
     } catch (error) {
+      const wallet = this.walletManager?.wallets.find((w) => w.id === walletId);
+      this.showErrorView(walletId, wallet?.name || 'Wallet', error as Error);
       this.dispatchEvent(new CustomEvent('error', { detail: { error, walletId } }));
       console.error('Failed to connect:', error);
-      // Return to wallet list on error
-      this.showWalletList();
     }
   }
 
@@ -170,6 +178,30 @@ export class WalletConnectorElement extends HTMLElement {
   private showQRCodeView(walletId: string, uri?: string) {
     this.viewState = 'qr';
     this.qrCodeData = { walletId, uri: uri || '' };
+    this.loadingData = null;
+    this.errorData = null;
+    this.render();
+  }
+
+  /**
+   * Show loading view
+   */
+  private showLoadingView(walletId: string, walletName: string, walletIcon?: string) {
+    this.viewState = 'loading';
+    this.loadingData = { walletId, walletName, walletIcon };
+    this.qrCodeData = null;
+    this.errorData = null;
+    this.render();
+  }
+
+  /**
+   * Show error view
+   */
+  private showErrorView(walletId: string, walletName: string, error: Error) {
+    this.viewState = 'error';
+    this.errorData = { walletId, walletName, error };
+    this.qrCodeData = null;
+    this.loadingData = null;
     this.render();
   }
 
@@ -179,6 +211,8 @@ export class WalletConnectorElement extends HTMLElement {
   private showWalletList() {
     this.viewState = 'list';
     this.qrCodeData = null;
+    this.loadingData = null;
+    this.errorData = null;
     this.render();
   }
 
@@ -213,7 +247,7 @@ export class WalletConnectorElement extends HTMLElement {
   }
 
   /**
-   * Render QR code using QRCode library or direct image
+   * Render QR code using QRCodeStyling library with modern dot-style design
    */
   private async renderQRCode(uri: string) {
     console.log('[WalletConnector] renderQRCode called with URI:', uri.substring(0, 60) + '...');
@@ -231,7 +265,7 @@ export class WalletConnectorElement extends HTMLElement {
           <img
             src="${uri}"
             alt="QR Code"
-            style="width: 280px; height: 280px; border-radius: 16px; display: block;"
+            style="width: 260px; height: 260px; border-radius: 16px; display: block;"
             onload="console.log('[WalletConnector] QR image loaded successfully')"
             onerror="console.error('[WalletConnector] Failed to load QR image')"
           />
@@ -239,34 +273,43 @@ export class WalletConnectorElement extends HTMLElement {
         return;
       }
 
-      // Otherwise, generate QR code from URI (for WalletConnect, etc.)
-      console.log('[WalletConnector] Generating QR code from URI');
-      const qrDataUrl = await QRCode.toDataURL(uri, {
-        width: 280,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF',
+      // Otherwise, generate modern QR code with qr-code-styling
+      console.log('[WalletConnector] Generating modern QR code from URI');
+      const wallet = this.walletManager?.wallets.find((w) => w.id === this.qrCodeData?.walletId);
+
+      const qrCode = new QRCodeStyling({
+        width: 260,
+        height: 260,
+        type: 'svg',
+        data: uri,
+        image: wallet?.icon,
+        margin: 0,
+        qrOptions: {
+          errorCorrectionLevel: 'Q',
         },
-        errorCorrectionLevel: 'M',
+        dotsOptions: {
+          type: 'rounded',
+          color: '#000637',
+        },
+        backgroundOptions: {
+          color: 'transparent',
+        },
+        imageOptions: {
+          crossOrigin: 'anonymous',
+          margin: 6,
+          imageSize: 0.25,
+        },
       });
 
-      // Create img element with QR code
-      container.innerHTML = `
-        <img
-          src="${qrDataUrl}"
-          alt="QR Code"
-          style="width: 280px; height: 280px; border-radius: 16px; display: block;"
-        />
-      `;
-      console.log('[WalletConnector] QR code generated successfully');
+      // Clear container and append QR code
+      container.innerHTML = '';
+      qrCode.append(container as HTMLElement);
+      console.log('[WalletConnector] Modern QR code generated successfully');
     } catch (error) {
       console.error('[WalletConnector] Failed to generate QR code:', error);
       container.innerHTML = `
-        <div style="width: 280px; height: 280px; background: #f5f5f5; border-radius: 16px; display: flex; align-items: center; justify-content: center; padding: 20px;">
-          <p style="color: #333; font-size: 14px; text-align: center;">
-            Failed to generate QR code
-          </p>
+        <div class="qr-loading" style="color: #ef4444;">
+          Failed to generate QR code
         </div>
       `;
     }
@@ -284,9 +327,9 @@ export class WalletConnectorElement extends HTMLElement {
 
     // Core theme values
     const backgroundColor = this.getAttribute('background-color') || '#000637';
-    const textColor = this.getAttribute('text-color') || getTextColor(backgroundColor);
+    const textColor = this.getAttribute('text-color') || '#F5F4E7';
     const primaryColor = this.getAttribute('primary-color') || '#0ea5e9';
-    const fontFamily = this.getAttribute('font-family') || "'Inter', sans-serif";
+    const fontFamily = this.getAttribute('font-family') || "'Karla', sans-serif";
     const customCSS = this.getAttribute('custom-css') || '';
 
     this.primaryWalletId = this.getAttribute('primary-wallet');
@@ -299,14 +342,20 @@ export class WalletConnectorElement extends HTMLElement {
     const otherWallets = wallets.filter((w) => w.id !== this.primaryWalletId);
 
     // Render based on view state
-    const contentHTML =
-      this.viewState === 'qr' && this.qrCodeData
-        ? this.renderQRView()
-        : this.renderWalletListView(primaryWallet, otherWallets);
+    let contentHTML = '';
+    if (this.viewState === 'qr' && this.qrCodeData) {
+      contentHTML = this.renderQRView();
+    } else if (this.viewState === 'loading' && this.loadingData) {
+      contentHTML = this.renderLoadingView();
+    } else if (this.viewState === 'error' && this.errorData) {
+      contentHTML = this.renderErrorView();
+    } else {
+      contentHTML = this.renderWalletListView(primaryWallet, otherWallets);
+    }
 
     this.shadow.innerHTML = `
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Karla:wght@300;400;600&display=swap');
 
       * {
         box-sizing: border-box;
@@ -494,6 +543,67 @@ export class WalletConnectorElement extends HTMLElement {
         padding: 20px 0;
       }
 
+.qr-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 24px;
+  width: 320px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.qr-header {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111;
+}
+
+.qr-container {
+  width: 260px;
+  height: 260px;
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+}
+
+.qr-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.qr-loading {
+  font-size: 14px;
+  color: #555;
+}
+
+.qr-footer {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.copy-button {
+  padding: 12px 16px;
+  border: none;
+  border-radius: 10px;
+  background: #f3f3f3;
+  color: #111;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.copy-button:hover {
+  background: #e5e5e5;
+}
+
       .qr-placeholder {
         width: 280px;
         height: 280px;
@@ -533,6 +643,132 @@ export class WalletConnectorElement extends HTMLElement {
       .deeplink-button:hover {
         transform: translateY(-1px);
         box-shadow: 0 4px 8px rgba(14, 165, 233, 0.3);
+      }
+
+      /* Loading View */
+      .loading-view {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+        padding: 40px 0;
+      }
+
+      .loading-logo-container {
+        position: relative;
+        width: 120px;
+        height: 120px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .loading-logo {
+        width: 80px;
+        height: 80px;
+        border-radius: 16px;
+        object-fit: contain;
+        z-index: 1;
+      }
+
+      .loading-border {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border-radius: 20px;
+        border: 3px solid transparent;
+        border-top-color: var(--text-color);
+        border-right-color: var(--text-color);
+        animation: spin 1.5s linear infinite;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      .loading-text {
+        text-align: center;
+        font-size: 16px;
+        font-weight: 300;
+        opacity: 0.9;
+      }
+
+      /* Error View */
+      .error-view {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+        padding: 30px 0;
+      }
+
+      .error-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: rgba(239, 68, 68, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 48px;
+        color: #ef4444;
+      }
+
+      .error-text {
+        text-align: center;
+      }
+
+      .error-title {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+
+      .error-message {
+        font-size: 14px;
+        font-weight: 300;
+        opacity: 0.8;
+        line-height: 1.5;
+      }
+
+      .error-buttons {
+        width: 100%;
+        display: flex;
+        gap: 12px;
+        margin-top: 10px;
+      }
+
+      .error-button {
+        flex: 1;
+        padding: 14px 20px;
+        border-radius: 12px;
+        border: none;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .error-button-primary {
+        background: var(--primary-color);
+        color: white;
+      }
+
+      .error-button-primary:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(14, 165, 233, 0.3);
+      }
+
+      .error-button-secondary {
+        background: var(--wallet-btn-bg);
+        color: var(--text-color);
+      }
+
+      .error-button-secondary:hover {
+        background: var(--wallet-btn-hover);
       }
 
       ${customCSS}
@@ -590,27 +826,88 @@ export class WalletConnectorElement extends HTMLElement {
   private renderQRView(): string {
     const wallet = this.walletManager?.wallets.find((w) => w.id === this.qrCodeData?.walletId);
     const walletName = wallet?.name || 'Wallet';
+    //const walletIcon = wallet?.icon || '';
+
+    return `
+    <div class="header">
+      <div class="header-with-back">
+        <button class="back-button" id="back-button" aria-label="Back">←</button>
+        <h2 class="title">${walletName}</h2>
+      </div>
+      <button class="close-button" part="close-button" aria-label="Close">×</button>
+    </div>
+
+    <div class="content">
+      <div class="qr-view">
+        <div class="qr-card">
+          <div class="qr-header">Scan with Phone</div>
+          <div class="qr-container" id="qr-container">
+            <div class="qr-loading">Loading QR...</div>
+          </div>
+          <div class="qr-footer">
+            <button class="copy-button" id="copy-button">Copy to Clipboard</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  }
+  /**
+   * Render loading view
+   */
+  private renderLoadingView(): string {
+    if (!this.loadingData) return '';
+
+    const { walletName, walletIcon } = this.loadingData;
 
     return `
       <div class="header">
-        <div class="header-with-back">
-          <button class="back-button" id="back-button" aria-label="Back">←</button>
-          <h2 class="title">${walletName}</h2>
-        </div>
+        <h2 class="title">Connect Wallet</h2>
         <button class="close-button" part="close-button" aria-label="Close">×</button>
       </div>
 
       <div class="content">
-        <div class="qr-view">
-          <div class="qr-placeholder" id="qr-container">
-            <p>Loading QR Code...</p>
+        <div class="loading-view">
+          <div class="loading-logo-container">
+            ${walletIcon ? `<img src="${walletIcon}" alt="${walletName}" class="loading-logo">` : ''}
+            <div class="loading-border"></div>
           </div>
-          <div class="qr-instructions">
-            <p>Scan with your ${walletName} app</p>
+          <div class="loading-text">
+            <p>Requesting connection...</p>
+            <p style="margin-top: 8px; font-size: 14px; opacity: 0.7;">Check your ${walletName}</p>
           </div>
-          <div class="qr-deeplink">
-            <button class="deeplink-button" id="deeplink-button">
-              Open ${walletName}
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Render error view
+   */
+  private renderErrorView(): string {
+    if (!this.errorData) return '';
+
+    const { walletName, error } = this.errorData;
+
+    return `
+      <div class="header">
+        <h2 class="title">Connection Failed</h2>
+        <button class="close-button" part="close-button" aria-label="Close">×</button>
+      </div>
+
+      <div class="content">
+        <div class="error-view">
+          <div class="error-icon">⚠</div>
+          <div class="error-text">
+            <div class="error-title">Failed to connect to ${walletName}</div>
+            <div class="error-message">${error.message || 'An unexpected error occurred'}</div>
+          </div>
+          <div class="error-buttons">
+            <button class="error-button error-button-secondary" id="error-back-button">
+              Back
+            </button>
+            <button class="error-button error-button-primary" id="error-retry-button">
+              Try Again
             </button>
           </div>
         </div>
@@ -638,9 +935,25 @@ export class WalletConnectorElement extends HTMLElement {
       });
     });
 
-    // Back button
+    // Back button (QR view)
     this.shadow.querySelector('#back-button')?.addEventListener('click', () => {
       this.showWalletList();
+    });
+
+    // Copy button (QR view)
+    this.shadow.querySelector('#copy-button')?.addEventListener('click', async () => {
+      if (this.qrCodeData?.uri) {
+        try {
+          await navigator.clipboard.writeText(this.qrCodeData.uri);
+          const btn = this.shadow.querySelector('#copy-button') as HTMLButtonElement;
+          if (btn) {
+            btn.textContent = 'Copied!';
+            setTimeout(() => (btn.textContent = 'Copy to Clipboard'), 2000);
+          }
+        } catch (error) {
+          console.error('Failed to copy to clipboard:', error);
+        }
+      }
     });
 
     // Deeplink button
@@ -663,6 +976,18 @@ export class WalletConnectorElement extends HTMLElement {
           window.open(deepLink, '_blank');
         }
       }
+    });
+
+    // Error retry button
+    this.shadow.querySelector('#error-retry-button')?.addEventListener('click', () => {
+      if (this.errorData?.walletId) {
+        this.connectWallet(this.errorData.walletId);
+      }
+    });
+
+    // Error back button
+    this.shadow.querySelector('#error-back-button')?.addEventListener('click', () => {
+      this.showWalletList();
     });
   }
 
