@@ -48,6 +48,8 @@ export class WalletConnectorElement extends HTMLElement {
   private loadingData: { walletId: string; walletName: string; walletIcon?: string } | null = null;
   private errorData: { walletId: string; walletName: string; error: Error } | null = null;
   private previousModalHeight: number = 0;
+  private preGeneratedQRCode: any | null = null; // Store pre-generated QR code
+  private preGeneratedURI: string | null = null; // Store the URI used for pre-generation
 
   // Observed attributes
   static get observedAttributes() {
@@ -99,6 +101,9 @@ export class WalletConnectorElement extends HTMLElement {
     this.isFirstOpen = true;
     this.render();
     this.dispatchEvent(new CustomEvent('open'));
+
+    // Pre-initialize WalletConnect to reduce loading time
+    this.preInitializeWalletConnect();
   }
 
   /**
@@ -123,6 +128,92 @@ export class WalletConnectorElement extends HTMLElement {
       this.close();
     } else {
       this.open();
+    }
+  }
+
+  /**
+   * Pre-initialize WalletConnect when modal opens to reduce loading time
+   * Based on ConnectKit's eager initialization pattern
+   */
+  private async preInitializeWalletConnect() {
+    if (!this.walletManager) return;
+
+    // Find WalletConnect adapter
+    const walletConnectAdapter = this.walletManager.wallets.find((w) => w.id === 'walletconnect');
+
+    if (!walletConnectAdapter) return;
+
+    // Check if adapter has preInitialize method
+    if (typeof (walletConnectAdapter as any).preInitialize === 'function') {
+      try {
+        console.log('[WalletConnector] Pre-initializing WalletConnect...');
+
+        // Extract projectId from adapter's stored options
+        const projectId = (walletConnectAdapter as any).options?.projectId;
+
+        // Pass network information if available
+        const network = (this.walletManager as any).options?.network;
+
+        // Store the QR generation callback in the adapter's options
+        // The adapter will call this callback during pre-initialization
+        if (!((walletConnectAdapter as any).options)) {
+          (walletConnectAdapter as any).options = {};
+        }
+        (walletConnectAdapter as any).options.onQRCode = (uri: string) => {
+          console.log('[WalletConnector] Pre-generating QR code...');
+          this.preGenerateQRCode(uri);
+        };
+
+        // Pre-initialize with projectId and network
+        await (walletConnectAdapter as any).preInitialize(projectId, network);
+      } catch (error) {
+        console.warn('[WalletConnector] Failed to pre-initialize WalletConnect:', error);
+        // Silent failure - connection will initialize on demand if this fails
+      }
+    }
+  }
+
+  /**
+   * Pre-generate QR code to have it ready when user clicks WalletConnect
+   */
+  private async preGenerateQRCode(uri: string) {
+    try {
+      this.preGeneratedURI = uri;
+
+      // Get wallet icon for embedding
+      const wallet = this.walletManager?.wallets.find((w) => w.id === 'walletconnect');
+
+      // Create QR code instance
+      const qrCode = new QRCodeStyling({
+        width: 260,
+        height: 260,
+        type: 'svg',
+        data: uri,
+        image: wallet?.icon,
+        margin: 0,
+        qrOptions: {
+          errorCorrectionLevel: 'Q',
+        },
+        dotsOptions: {
+          type: 'rounded',
+          color: '#000637',
+        },
+        backgroundOptions: {
+          color: 'transparent',
+        },
+        imageOptions: {
+          crossOrigin: 'anonymous',
+          margin: 6,
+          imageSize: 0.25,
+        },
+      });
+
+      // Store the pre-generated QR code
+      this.preGeneratedQRCode = qrCode;
+      console.log('[WalletConnector] QR code pre-generated successfully');
+    } catch (error) {
+      console.warn('[WalletConnector] Failed to pre-generate QR code:', error);
+      // Silent failure - QR will be generated on demand if this fails
     }
   }
 
@@ -182,7 +273,7 @@ export class WalletConnectorElement extends HTMLElement {
         const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
         if (!isSafari) {
           // Small delay for UI animation on non-Safari browsers
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
 
         await this.walletManager.connect(walletId, options);
@@ -312,6 +403,14 @@ export class WalletConnectorElement extends HTMLElement {
             onerror="console.error('[WalletConnector] Failed to load QR image')"
           />
         `;
+        return;
+      }
+
+      // Check if we have a pre-generated QR code with matching URI
+      if (this.preGeneratedQRCode && this.preGeneratedURI === uri) {
+        console.log('[WalletConnector] Using pre-generated QR code - instant render!');
+        container.innerHTML = '';
+        this.preGeneratedQRCode.append(container as HTMLElement);
         return;
       }
 
@@ -592,12 +691,11 @@ export class WalletConnectorElement extends HTMLElement {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        transition: all 0.2s;
+        transition: background 0.2s;
       }
 
       .wallet-button:hover {
         background: var(--wallet-btn-hover);
-        transform: translateX(3px);
       }
 
       .wallet-button img {
@@ -997,7 +1095,7 @@ export class WalletConnectorElement extends HTMLElement {
   private renderErrorView(): string {
     if (!this.errorData) return '';
 
-    const { walletName, error } = this.errorData;
+    const { walletName } = this.errorData;
 
     return `
       <div class="header">
@@ -1010,7 +1108,6 @@ export class WalletConnectorElement extends HTMLElement {
           <div class="error-icon">⚠</div>
           <div class="error-text">
             <div class="error-title">Failed to connect to ${walletName}</div>
-            <div class="error-message">${error.message || 'An unexpected error occurred'}</div>
           </div>
           <div class="error-buttons">
             <button class="error-button error-button-secondary" id="error-back-button">

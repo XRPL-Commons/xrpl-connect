@@ -47,6 +47,8 @@ export class WalletConnectAdapter implements WalletAdapter {
   private session: SessionTypes.Struct | null = null;
   private currentAccount: AccountInfo | null = null;
   private options: WalletConnectAdapterOptions;
+  private initializationPromise: Promise<SignClient> | null = null;
+  private pendingConnection: { uri: string; approval: () => Promise<SessionTypes.Struct> } | null = null;
 
   constructor(options: WalletConnectAdapterOptions = {}) {
     this.options = options;
@@ -57,6 +59,86 @@ export class WalletConnectAdapter implements WalletAdapter {
    */
   async isAvailable(): Promise<boolean> {
     return true;
+  }
+
+  /**
+   * Pre-initialize WalletConnect by starting a connection session early
+   * This generates the QR code URI before the user clicks WalletConnect
+   * Based on ConnectKit's eager initialization pattern
+   */
+  async preInitialize(projectId?: string, network?: string): Promise<void> {
+    const pid = projectId || this.options.projectId;
+
+    if (!pid) {
+      console.warn('[WalletConnect] Cannot pre-initialize without project ID');
+      return;
+    }
+
+    // If already has pending connection, skip
+    if (this.pendingConnection) {
+      console.log('[WalletConnect] Already has pending connection, skipping pre-init');
+      return;
+    }
+
+    console.log('[WalletConnect] Pre-initializing connection session...');
+
+    try {
+      // Initialize SignClient if not already done
+      if (!this.client) {
+        if (!this.initializationPromise) {
+          this.initializationPromise = SignClient.init({
+            projectId: pid,
+            metadata: this.options.metadata || {
+              name: 'XRPL Connect',
+              description: 'XRPL Wallet Connection',
+              url: typeof window !== 'undefined' ? window.location.origin : 'https://xrpl.org',
+              icons: ['https://xrpl.org/favicon.ico'],
+            },
+          });
+        }
+        this.client = await this.initializationPromise;
+        console.log('[WalletConnect] SignClient initialized');
+      }
+
+      // Determine network for pre-initialization
+      const networkInfo = this.resolveNetwork(network);
+
+      // Start connection to generate URI (ConnectKit pattern)
+      const requiredNamespaces = {
+        xrpl: {
+          chains: [networkInfo.walletConnectId || `xrpl:${networkInfo.id}`],
+          methods: [
+            XRPLMethod.SIGN_TRANSACTION,
+            XRPLMethod.SIGN_TRANSACTION_FOR,
+            'xrpl_signMessage',
+          ],
+          events: ['chainChanged', 'accountsChanged'],
+        },
+      };
+
+      const { uri, approval } = await this.client.connect({
+        requiredNamespaces,
+      });
+
+      if (!uri) {
+        throw new Error('Failed to generate WalletConnect URI during pre-initialization');
+      }
+
+      // Store the pending connection
+      this.pendingConnection = { uri, approval };
+
+      console.log('[WalletConnect] QR code URI pre-generated:', uri.substring(0, 50) + '...');
+
+      // Call the onQRCode callback if provided
+      if (this.options.onQRCode) {
+        console.log('[WalletConnect] Calling onQRCode callback during pre-init');
+        this.options.onQRCode(uri);
+      }
+    } catch (error) {
+      console.error('[WalletConnect] Pre-initialization failed:', error);
+      this.initializationPromise = null;
+      this.pendingConnection = null;
+    }
   }
 
   /**
@@ -82,46 +164,76 @@ export class WalletConnectAdapter implements WalletAdapter {
       // Determine network
       const network = this.resolveNetwork(options?.network);
 
-      // Initialize SignClient
-      this.client = await SignClient.init({
-        projectId,
-        metadata: this.options.metadata || {
-          name: 'XRPL Connect',
-          description: 'XRPL Wallet Connection',
-          url: typeof window !== 'undefined' ? window.location.origin : 'https://xrpl.org',
-          icons: ['https://xrpl.org/favicon.ico'],
-        },
-      });
+      let uri: string;
+      let approval: () => Promise<SessionTypes.Struct>;
 
-      // Prepare namespace for XRPL
-      const requiredNamespaces = {
-        xrpl: {
-          chains: [network.walletConnectId || `xrpl:${network.id}`],
-          methods: [
-            XRPLMethod.SIGN_TRANSACTION,
-            XRPLMethod.SIGN_TRANSACTION_FOR,
-            'xrpl_signMessage',
-          ],
-          events: ['chainChanged', 'accountsChanged'],
-        },
-      };
+      // Check if we have a pending connection from pre-initialization (ConnectKit pattern)
+      if (this.pendingConnection) {
+        console.log('[WalletConnect] Using pre-generated connection');
+        uri = this.pendingConnection.uri;
+        approval = this.pendingConnection.approval;
 
-      // Connect and get URI
-      const { uri, approval } = await this.client.connect({
-        requiredNamespaces,
-      });
+        // Call QR code callback if provided (in case it wasn't called during pre-init)
+        if (onQRCode) {
+          console.log('[WalletConnect] Calling onQRCode callback with pre-generated URI');
+          onQRCode(uri);
+        }
+      } else {
+        // No pre-initialized connection, do it now
+        console.log('[WalletConnect] No pre-generated connection, creating now');
 
-      if (!uri) {
-        throw new Error('Failed to generate WalletConnect URI');
-      }
+        // Initialize SignClient if needed
+        if (!this.client) {
+          if (this.initializationPromise) {
+            console.log('[WalletConnect] Using pre-initialized SignClient');
+            this.client = await this.initializationPromise;
+          } else {
+            console.log('[WalletConnect] Initializing SignClient');
+            this.client = await SignClient.init({
+              projectId,
+              metadata: this.options.metadata || {
+                name: 'XRPL Connect',
+                description: 'XRPL Wallet Connection',
+                url: typeof window !== 'undefined' ? window.location.origin : 'https://xrpl.org',
+                icons: ['https://xrpl.org/favicon.ico'],
+              },
+            });
+          }
+        }
 
-      console.log('[WalletConnect] Generated URI:', uri.substring(0, 50) + '...');
-      console.log('[WalletConnect] onQRCode callback exists:', !!onQRCode);
+        // Prepare namespace for XRPL
+        const requiredNamespaces = {
+          xrpl: {
+            chains: [network.walletConnectId || `xrpl:${network.id}`],
+            methods: [
+              XRPLMethod.SIGN_TRANSACTION,
+              XRPLMethod.SIGN_TRANSACTION_FOR,
+              'xrpl_signMessage',
+            ],
+            events: ['chainChanged', 'accountsChanged'],
+          },
+        };
 
-      // Call QR code callback if provided (for custom UI)
-      if (onQRCode) {
-        console.log('[WalletConnect] Calling onQRCode callback');
-        onQRCode(uri);
+        // Connect and get URI
+        const result = await this.client.connect({
+          requiredNamespaces,
+        });
+
+        if (!result.uri) {
+          throw new Error('Failed to generate WalletConnect URI');
+        }
+
+        uri = result.uri;
+        approval = result.approval;
+
+        console.log('[WalletConnect] Generated URI:', uri.substring(0, 50) + '...');
+        console.log('[WalletConnect] onQRCode callback exists:', !!onQRCode);
+
+        // Call QR code callback if provided (for custom UI)
+        if (onQRCode) {
+          console.log('[WalletConnect] Calling onQRCode callback');
+          onQRCode(uri);
+        }
       }
 
       // Wait for approval
@@ -294,6 +406,8 @@ export class WalletConnectAdapter implements WalletAdapter {
     this.client = null;
     this.session = null;
     this.currentAccount = null;
+    this.initializationPromise = null;
+    this.pendingConnection = null;
   }
 
   /**
