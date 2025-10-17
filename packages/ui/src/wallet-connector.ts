@@ -41,11 +41,13 @@ export class WalletConnectorElement extends HTMLElement {
   private walletManager: WalletManager | null = null;
   private shadow: ShadowRoot;
   private isOpen = false;
+  private isFirstOpen = true;
   private primaryWalletId: string | null = null;
   private viewState: 'list' | 'qr' | 'loading' | 'error' = 'list';
   private qrCodeData: { walletId: string; uri: string } | null = null;
   private loadingData: { walletId: string; walletName: string; walletIcon?: string } | null = null;
   private errorData: { walletId: string; walletName: string; error: Error } | null = null;
+  private previousModalHeight: number = 0;
 
   // Observed attributes
   static get observedAttributes() {
@@ -94,6 +96,7 @@ export class WalletConnectorElement extends HTMLElement {
    */
   open() {
     this.isOpen = true;
+    this.isFirstOpen = true;
     this.render();
     this.dispatchEvent(new CustomEvent('open'));
   }
@@ -103,6 +106,11 @@ export class WalletConnectorElement extends HTMLElement {
    */
   close() {
     this.isOpen = false;
+    // Reset state to wallet list view when closing
+    this.viewState = 'list';
+    this.qrCodeData = null;
+    this.loadingData = null;
+    this.errorData = null;
     this.render();
     this.dispatchEvent(new CustomEvent('close'));
   }
@@ -157,17 +165,51 @@ export class WalletConnectorElement extends HTMLElement {
         await this.walletManager.connect(walletId, connectOptions);
         this.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
       } else {
-        // For non-QR wallets, show loading state
+        // For extension wallets, check availability first
+        const isAvailable = await wallet.isAvailable();
+
+        if (!isAvailable) {
+          // Wallet not installed - show appropriate error
+          throw new Error(`${wallet.name} is not installed. Please install the extension first.`);
+        }
+
+        // Show loading state
         this.showLoadingView(walletId, wallet.name, wallet.icon);
 
         this.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
+
+        // Browser-specific delay (Safari needs immediate connection for user gesture)
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        if (!isSafari) {
+          // Small delay for UI animation on non-Safari browsers
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
         await this.walletManager.connect(walletId, options);
         this.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
       }
-    } catch (error) {
+    } catch (error: any) {
       const wallet = this.walletManager?.wallets.find((w) => w.id === walletId);
-      this.showErrorView(walletId, wallet?.name || 'Wallet', error as Error);
-      this.dispatchEvent(new CustomEvent('error', { detail: { error, walletId } }));
+
+      // Detect error type based on error code (ConnectKit pattern)
+      let errorMessage = error.message || 'An unexpected error occurred';
+      let errorType: 'rejected' | 'unavailable' | 'failed' = 'failed';
+
+      // Check for specific error codes
+      if (error.code === 4001 || errorMessage.toLowerCase().includes('user rejected')) {
+        errorType = 'rejected';
+        errorMessage = 'Connection request was cancelled';
+      } else if (error.code === -32002 || errorMessage.toLowerCase().includes('already pending')) {
+        errorType = 'unavailable';
+        errorMessage = 'Wallet popup was closed or did not respond. Please try again.';
+      } else if (errorMessage.toLowerCase().includes('not installed')) {
+        errorType = 'unavailable';
+      }
+
+      console.log('[WalletConnector] Error type:', errorType, 'Code:', error.code);
+
+      this.showErrorView(walletId, wallet?.name || 'Wallet', new Error(errorMessage));
+      this.dispatchEvent(new CustomEvent('error', { detail: { error, walletId, errorType } }));
       console.error('Failed to connect:', error);
     }
   }
@@ -325,6 +367,12 @@ export class WalletConnectorElement extends HTMLElement {
       return;
     }
 
+    // Capture current modal height before re-rendering
+    const existingModal = this.shadow.querySelector('.modal') as HTMLElement;
+    if (existingModal) {
+      this.previousModalHeight = existingModal.offsetHeight;
+    }
+
     // Core theme values
     const backgroundColor = this.getAttribute('background-color') || '#000637';
     const textColor = this.getAttribute('text-color') || '#F5F4E7';
@@ -353,6 +401,14 @@ export class WalletConnectorElement extends HTMLElement {
       contentHTML = this.renderWalletListView(primaryWallet, otherWallets);
     }
 
+    const overlayClass = this.isFirstOpen ? 'overlay fade-in' : 'overlay';
+    const modalClass = this.isFirstOpen ? 'modal slide-up' : 'modal';
+
+    // Set flag to false after first render
+    if (this.isFirstOpen) {
+      this.isFirstOpen = false;
+    }
+
     this.shadow.innerHTML = `
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Karla:wght@300;400;600&display=swap');
@@ -374,6 +430,11 @@ export class WalletConnectorElement extends HTMLElement {
         --wallet-btn-hover: ${this.adjustColor(backgroundColor, 0.15)};
       }
 
+      @keyframes heightChange {
+        from { height: var(--old-height); }
+        to { height: var(--new-height); }
+      }
+
       .overlay {
         position: fixed;
         top: 0;
@@ -385,6 +446,9 @@ export class WalletConnectorElement extends HTMLElement {
         align-items: center;
         justify-content: center;
         z-index: 9999;
+      }
+
+      .overlay.fade-in {
         animation: fadeIn 0.2s ease-out;
       }
 
@@ -397,14 +461,19 @@ export class WalletConnectorElement extends HTMLElement {
         background: var(--bg-color);
         color: var(--text-color);
         border-radius: 20px;
-        width: 88%;
-        max-width: 400px;
+        width: 343px;
+        max-width: calc(100vw - 32px);
         max-height: 85vh;
         overflow: hidden;
         display: flex;
         flex-direction: column;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        transition: height 200ms cubic-bezier(0.25, 0.1, 0.25, 1);
+      }
+
+      .modal.slide-up {
         animation: slideUp 0.3s ease-out;
-        box-shadow: 0 8px 16px 20px rgba(0, 0, 0, 0.1);
       }
 
       @keyframes slideUp {
@@ -477,7 +546,7 @@ export class WalletConnectorElement extends HTMLElement {
       .content {
         flex: 1;
         overflow-y: auto;
-        padding: 0 20px 20px;
+        padding: 0 24px 24px;
         transition: opacity 0.3s ease;
       }
 
@@ -546,13 +615,15 @@ export class WalletConnectorElement extends HTMLElement {
 .qr-card {
   background: #fff;
   border-radius: 20px;
-  padding: 24px;
-  width: 320px;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+  padding: 28px;
+  width: 100%;
+  max-width: 295px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.05);
+  border: 1px solid rgba(0,0,0,0.06);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 18px;
 }
 
 .qr-header {
@@ -774,14 +845,50 @@ export class WalletConnectorElement extends HTMLElement {
       ${customCSS}
     </style>
 
-    <div class="overlay" part="overlay">
-      <div class="modal" part="modal">
+    <div class="${overlayClass}" part="overlay">
+      <div class="${modalClass}" part="modal">
         ${contentHTML}
       </div>
     </div>
   `;
 
     this.attachEventListeners();
+
+    // Update modal height smoothly after render
+    requestAnimationFrame(() => {
+      this.updateModalHeight();
+    });
+  }
+
+  /**
+   * Update modal height with smooth transition
+   */
+  private updateModalHeight() {
+    const modal = this.shadow.querySelector('.modal') as HTMLElement;
+    if (!modal) return;
+
+    // Use the stored previous height
+    const oldHeight = this.previousModalHeight;
+
+    // Measure new content height (modal is currently auto)
+    const newHeight = modal.offsetHeight;
+
+    // If heights are different and we have a valid old height, animate the transition
+    if (oldHeight > 0 && newHeight > 0 && oldHeight !== newHeight) {
+      // Set old height explicitly
+      modal.style.height = `${oldHeight}px`;
+
+      // Force reflow to apply the old height
+      void modal.offsetHeight;
+
+      // Transition to new height
+      requestAnimationFrame(() => {
+        modal.style.height = `${newHeight}px`;
+      });
+    }
+
+    // Store current height for next transition
+    this.previousModalHeight = newHeight;
   }
 
   /**
@@ -862,7 +969,10 @@ export class WalletConnectorElement extends HTMLElement {
 
     return `
       <div class="header">
-        <h2 class="title">Connect Wallet</h2>
+        <div class="header-with-back">
+          <button class="back-button" id="loading-back-button" aria-label="Back">←</button>
+          <h2 class="title">Connect Wallet</h2>
+        </div>
         <button class="close-button" part="close-button" aria-label="Close">×</button>
       </div>
 
@@ -937,6 +1047,11 @@ export class WalletConnectorElement extends HTMLElement {
 
     // Back button (QR view)
     this.shadow.querySelector('#back-button')?.addEventListener('click', () => {
+      this.showWalletList();
+    });
+
+    // Back button (Loading view)
+    this.shadow.querySelector('#loading-back-button')?.addEventListener('click', () => {
       this.showWalletList();
     });
 
