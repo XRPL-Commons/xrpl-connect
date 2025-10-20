@@ -35,3 +35,6 @@ export { Storage, LocalStorageAdapter, MemoryStorageAdapter } from './storage';
 
 // Logger
 export { Logger, createLogger } from './logger';
+
+// Constants
+export { TIME } from './constants';

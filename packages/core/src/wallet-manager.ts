@@ -18,6 +18,7 @@ import type {
 import { createWalletError } from './errors';
 import { Logger } from './logger';
 import { Storage } from './storage';
+import { TIME } from './constants';
 
 /**
  * Main class for managing wallet connections
@@ -71,9 +72,8 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * Check if stored state is still valid (not too old)
    */
   private isStateValid(state: StoredState): boolean {
-    const MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
     const age = Date.now() - state.timestamp;
-    return age < MAX_AGE;
+    return age < TIME.STATE_MAX_AGE;
   }
 
 
