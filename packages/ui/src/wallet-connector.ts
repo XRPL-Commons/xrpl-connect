@@ -156,7 +156,7 @@ export class WalletConnectorElement extends HTMLElement {
 
         // Store the QR generation callback in the adapter's options
         // The adapter will call this callback during pre-initialization
-        if (!((walletConnectAdapter as any).options)) {
+        if (!(walletConnectAdapter as any).options) {
           (walletConnectAdapter as any).options = {};
         }
         (walletConnectAdapter as any).options.onQRCode = (uri: string) => {
@@ -524,6 +524,7 @@ export class WalletConnectorElement extends HTMLElement {
         --bg-color: ${backgroundColor};
         --text-color: ${textColor};
         --primary-color: ${primaryColor};
+        --primary-bn-hover: ${this.adjustColor(primaryColor, 0.15)};
         --font-family: ${fontFamily};
         --wallet-btn-bg: ${this.adjustColor(backgroundColor, 0.1)};
         --wallet-btn-hover: ${this.adjustColor(backgroundColor, 0.15)};
@@ -668,8 +669,8 @@ export class WalletConnectorElement extends HTMLElement {
       }
 
       .primary-button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(14, 165, 233, 0.3);
+          background: var(--primary-bn-hover);
+
       }
 
       .wallet-list {
