@@ -837,29 +837,57 @@ export class WalletConnectorElement extends HTMLElement {
         width: 80px;
         height: 80px;
         border-radius: 16px;
-        object-fit: contain;
-        z-index: 1;
+        z-index: 2;
+        position: relative;
       }
 
-      .loading-border {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        border-radius: 20px;
-        border: 3px solid transparent;
-        border-top-color: var(--text-color);
-        border-right-color: var(--text-color);
-        animation: spin 1.5s linear infinite;
-      }
+.loading-border {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  right: -4px;
+  bottom: -4px;
+  border-radius: 20px;
+  overflow: hidden;
+}
 
-      @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-      }
+.loading-border::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: conic-gradient(
+    transparent 0deg 90deg, 
+    #007bff 90deg 180deg,  /* Blue color, adjust as needed */
+    transparent 180deg 270deg, 
+    #007bff 270deg 360deg
+  );
+  animation: rotate 2s linear infinite;
+}
 
-      .loading-text {
+.loading-border::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  background: #1a1a2e; /* Match your background color */
+  border-radius: 16px;
+  z-index: 1;
+}
+
+@keyframes rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+        .loading-text {
         text-align: center;
         font-size: 16px;
         font-weight: 300;
