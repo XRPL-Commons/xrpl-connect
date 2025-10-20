@@ -15,8 +15,8 @@ const walletManager = new WalletManager({
   adapters: [
     new XamanAdapter({ apiKey: XAMAN_API_KEY }),
     new WalletConnectAdapter({ projectId: WALLETCONNECT_PROJECT_ID }),
-    new CrossmarkAdapter(),
-    new GemWalletAdapter(),
+    //    new CrossmarkAdapter(),
+    //    new GemWalletAdapter(),
   ],
   network: 'testnet',
   autoConnect: true,

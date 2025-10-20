@@ -214,6 +214,40 @@ importers:
         specifier: ^5.3.3
         version: 5.9.3
 
+  packages/xrpl-connect:
+    dependencies:
+      '@xrpl-connect/adapter-crossmark':
+        specifier: workspace:*
+        version: link:../adapters/crossmark
+      '@xrpl-connect/adapter-gemwallet':
+        specifier: workspace:*
+        version: link:../adapters/gemwallet
+      '@xrpl-connect/adapter-walletconnect':
+        specifier: workspace:*
+        version: link:../adapters/walletconnect
+      '@xrpl-connect/adapter-xaman':
+        specifier: workspace:*
+        version: link:../adapters/xaman
+      '@xrpl-connect/core':
+        specifier: workspace:*
+        version: link:../core
+      '@xrpl-connect/ui':
+        specifier: workspace:*
+        version: link:../ui
+      xrpl:
+        specifier: ^3.0.0 || ^4.0.0
+        version: 4.4.2(bufferutil@4.0.9)(utf-8-validate@5.0.10)
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.21
+      tsup:
+        specifier: ^8.1.0
+        version: 8.5.0(postcss@8.5.6)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+
 packages:
 
   '@adraffy/ens-normalize@1.11.1':

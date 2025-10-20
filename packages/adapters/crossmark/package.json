@@ -1,7 +1,27 @@
 {
   "name": "@xrpl-connect/adapter-crossmark",
-  "version": "0.0.1",
-  "description": "Crossmark adapter for xrpl-connect",
+  "version": "0.1.0",
+  "description": "Crossmark wallet adapter for XRPL Connect - Browser extension wallet support",
+  "author": "XRPL Connect Contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/your-org/xrpl-connect#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/xrpl-connect",
+    "directory": "packages/adapters/crossmark"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/xrpl-connect/issues"
+  },
+  "keywords": [
+    "xrpl",
+    "crossmark",
+    "wallet",
+    "adapter",
+    "web3",
+    "ripple",
+    "browser-extension"
+  ],
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -12,7 +32,7 @@
       "require": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "README.md"],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -21,8 +41,6 @@
     "lint": "eslint src --ext .ts",
     "clean": "rm -rf dist"
   },
-  "keywords": ["xrpl", "crossmark", "wallet", "adapter"],
-  "license": "MIT",
   "dependencies": {
     "@xrpl-connect/core": "workspace:*",
     "@crossmarkio/sdk": "^0.4.0"

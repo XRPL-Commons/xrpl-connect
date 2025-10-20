@@ -1,26 +1,33 @@
 {
-  "name": "@xrpl-connect/adapter-gemwallet",
+  "name": "xrpl-connect",
   "version": "0.1.0",
-  "description": "GemWallet adapter for XRPL Connect - Browser extension wallet support",
+  "description": "The easiest way to connect XRPL wallets to your app - Framework-agnostic toolkit with plug-and-play UI",
   "author": "XRPL Connect Contributors",
   "license": "MIT",
   "homepage": "https://github.com/your-org/xrpl-connect#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/xrpl-connect",
-    "directory": "packages/adapters/gemwallet"
+    "url": "https://github.com/your-org/xrpl-connect"
   },
   "bugs": {
     "url": "https://github.com/your-org/xrpl-connect/issues"
   },
   "keywords": [
     "xrpl",
-    "gemwallet",
     "wallet",
-    "adapter",
     "web3",
     "ripple",
-    "browser-extension"
+    "xaman",
+    "crossmark",
+    "gemwallet",
+    "walletconnect",
+    "wallet-adapter",
+    "wallet-connection",
+    "web-component",
+    "ui",
+    "react",
+    "vue",
+    "vanilla-js"
   ],
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -32,18 +39,22 @@
       "require": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "lint": "eslint src --ext .ts",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@xrpl-connect/core": "workspace:*",
-    "@gemwallet/api": "^3.7.0"
+    "@xrpl-connect/ui": "workspace:*",
+    "@xrpl-connect/adapter-xaman": "workspace:*",
+    "@xrpl-connect/adapter-crossmark": "workspace:*",
+    "@xrpl-connect/adapter-gemwallet": "workspace:*",
+    "@xrpl-connect/adapter-walletconnect": "workspace:*"
   },
   "peerDependencies": {
     "xrpl": "^3.0.0 || ^4.0.0"
@@ -51,7 +62,6 @@
   "devDependencies": {
     "@types/node": "^20.14.0",
     "tsup": "^8.1.0",
-    "typescript": "^5.5.0",
-    "vitest": "^1.6.0"
+    "typescript": "^5.5.0"
   }
 }

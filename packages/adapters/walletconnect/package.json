@@ -1,7 +1,28 @@
 {
   "name": "@xrpl-connect/adapter-walletconnect",
-  "version": "0.0.1",
-  "description": "WalletConnect adapter for xrpl-connect",
+  "version": "0.1.0",
+  "description": "WalletConnect adapter for XRPL Connect - QR code based wallet connections",
+  "author": "XRPL Connect Contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/your-org/xrpl-connect#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/xrpl-connect",
+    "directory": "packages/adapters/walletconnect"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/xrpl-connect/issues"
+  },
+  "keywords": [
+    "xrpl",
+    "walletconnect",
+    "wallet",
+    "adapter",
+    "web3",
+    "ripple",
+    "qr-code",
+    "reown"
+  ],
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -12,7 +33,7 @@
       "require": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "README.md"],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -21,8 +42,6 @@
     "lint": "eslint src --ext .ts",
     "clean": "rm -rf dist"
   },
-  "keywords": ["xrpl", "walletconnect", "wallet", "adapter"],
-  "license": "MIT",
   "dependencies": {
     "@xrpl-connect/core": "workspace:*",
     "@walletconnect/sign-client": "^2.16.0",
