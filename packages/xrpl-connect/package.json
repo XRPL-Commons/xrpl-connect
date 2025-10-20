@@ -1,6 +1,6 @@
 {
   "name": "xrpl-connect",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "The easiest way to connect XRPL wallets to your app - Framework-agnostic toolkit with plug-and-play UI",
   "author": "XRPL Connect Contributors",
   "license": "MIT",
@@ -37,6 +37,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
+    },
+    "./ui": {
+      "import": "../ui/dist/index.mjs",
+      "require": "../ui/dist/index.js"
     }
   },
   "files": [
