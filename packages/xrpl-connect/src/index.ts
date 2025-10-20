@@ -18,8 +18,8 @@
  * ```
  */
 
-// Re-export everything from core
 export * from '../../core';
+export * from '../../ui';
 
 // Re-export all adapters
 export { XamanAdapter } from '../../adapters/xaman';
