@@ -12,7 +12,12 @@ import type {
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
-import { createWalletError } from '@xrpl-connect/core';
+import { createWalletError, createLogger } from '@xrpl-connect/core';
+
+/**
+ * Logger instance for Xaman adapter
+ */
+const logger = createLogger('[Xaman]');
 
 /**
  * Xaman adapter options
@@ -79,7 +84,7 @@ export class XamanAdapter implements WalletAdapter {
       // Initialize Xumm client
       this.client = new Xumm(apiKey);
 
-      console.log('[Xaman] Starting authorization flow');
+      logger.debug('Starting authorization flow');
 
       // Use standard OAuth flow (opens popup)
       /*const signInPayload: any = {
@@ -96,7 +101,7 @@ export class XamanAdapter implements WalletAdapter {
         throw authResult || new Error('Authorization failed');
       }
 
-      console.log('[Xaman] Authorization successful');
+      logger.debug('Authorization successful');
 
       // Get account info
       const account = authResult.me.account;
@@ -112,7 +117,7 @@ export class XamanAdapter implements WalletAdapter {
 
       return this.currentAccount;
     } catch (error) {
-      console.error('[Xaman] Authorization failed:', error);
+      logger.error('Authorization failed:', error);
       throw createWalletError.connectionFailed(this.name, error as Error);
     }
   }
@@ -270,18 +275,18 @@ export class XamanAdapter implements WalletAdapter {
    * Open popup window for signing or trigger QR code callback
    */
   private openSignWindow(url: string): void {
-    console.log('[Xaman] openSignWindow called with URL:', url.substring(0, 50) + '...');
-    console.log('[Xaman] onQRCode callback exists:', !!this.options.onQRCode);
+    logger.debug('openSignWindow called with URL:', url.substring(0, 50) + '...');
+    logger.debug('onQRCode callback exists:', !!this.options.onQRCode);
 
     // If QR code callback is provided, use that instead of popup
     if (this.options.onQRCode) {
-      console.log('[Xaman] Calling onQRCode callback');
+      logger.debug('Calling onQRCode callback');
       this.options.onQRCode(url);
       return;
     }
 
     // Otherwise, open popup (legacy behavior)
-    console.log('[Xaman] Opening popup window');
+    logger.debug('Opening popup window');
     const width = 500;
     const height = 600;
     const left = window.screen.width / 2 - width / 2;
