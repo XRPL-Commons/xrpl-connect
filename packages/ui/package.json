@@ -1,7 +1,29 @@
 {
   "name": "@xrpl-connect/ui",
   "version": "0.1.0",
-  "description": "Web component UI for XRPL Connect",
+  "description": "Web component UI for XRPL Connect wallet connections",
+  "author": "XRPL Connect Contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/XRPL-Commons/xrpl-connect#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/XRPL-Commons/xrpl-connect",
+    "directory": "packages/ui"
+  },
+  "bugs": {
+    "url": "https://github.com/XRPL-Commons/xrpl-connect/issues"
+  },
+  "keywords": [
+    "xrpl",
+    "wallet",
+    "web-component",
+    "ui",
+    "web3",
+    "ripple",
+    "wallet-ui",
+    "modal",
+    "qr-code"
+  ],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -14,7 +36,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "scripts": {
     "build": "tsup",
@@ -23,20 +46,13 @@
     "type-check": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@xrpl-connect/core": "workspace:*"
+    "@xrpl-connect/core": "^0.1.0"
   },
   "devDependencies": {
     "@xrpl-connect/core": "workspace:*",
     "tsup": "^8.0.1",
     "typescript": "^5.3.3"
   },
-  "keywords": [
-    "xrpl",
-    "wallet",
-    "web-component",
-    "ui"
-  ],
-  "license": "MIT",
   "dependencies": {
     "qr-code-styling": "^1.6.0-rc.1"
   }

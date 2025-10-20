@@ -1,7 +1,29 @@
 {
   "name": "@xrpl-connect/adapter-xaman",
-  "version": "0.0.1",
-  "description": "Xaman (formerly Xumm) wallet adapter for xrpl-connect",
+  "version": "0.1.0",
+  "description": "Xaman (formerly Xumm) wallet adapter for XRPL Connect - Mobile and desktop wallet support",
+  "author": "XRPL Connect Contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/XRPL-Commons/xrpl-connect#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/XRPL-Commons/xrpl-connect",
+    "directory": "packages/adapters/xaman"
+  },
+  "bugs": {
+    "url": "https://github.com/XRPL-Commons/xrpl-connect/issues"
+  },
+  "keywords": [
+    "xrpl",
+    "xaman",
+    "xumm",
+    "wallet",
+    "adapter",
+    "web3",
+    "ripple",
+    "mobile-wallet",
+    "qr-code"
+  ],
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -12,7 +34,10 @@
       "require": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -21,8 +46,6 @@
     "lint": "eslint src --ext .ts",
     "clean": "rm -rf dist"
   },
-  "keywords": ["xrpl", "xaman", "xumm", "wallet", "adapter"],
-  "license": "MIT",
   "dependencies": {
     "@xrpl-connect/core": "workspace:*",
     "xumm": "^1.8.0",

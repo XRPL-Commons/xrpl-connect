@@ -1,7 +1,31 @@
 {
   "name": "@xrpl-connect/core",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Framework-agnostic core SDK for XRPL wallet connections",
+  "author": "XRPL Connect Contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/XRPL-Commons/xrpl-connect#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/XRPL-Commons/xrpl-connect",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/XRPL-Commons/xrpl-connect/issues"
+  },
+  "keywords": [
+    "xrpl",
+    "wallet",
+    "web3",
+    "blockchain",
+    "ripple",
+    "cryptocurrency",
+    "wallet-connection",
+    "xaman",
+    "crossmark",
+    "gemwallet",
+    "walletconnect"
+  ],
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -12,7 +36,10 @@
       "require": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -21,8 +48,6 @@
     "lint": "eslint src --ext .ts",
     "clean": "rm -rf dist"
   },
-  "keywords": ["xrpl", "wallet", "web3", "blockchain"],
-  "license": "MIT",
   "dependencies": {
     "eventemitter3": "^5.0.1"
   },
