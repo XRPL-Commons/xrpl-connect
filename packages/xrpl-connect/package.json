@@ -7,7 +7,7 @@
   "homepage": "https://github.com/XRPL-Commons/xrpl-connect#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/XRPL-Commons/xrpl-connect"
+    "url": "git+https://github.com/XRPL-Commons/xrpl-connect.git"
   },
   "bugs": {
     "url": "https://github.com/XRPL-Commons/xrpl-connect/issues"
