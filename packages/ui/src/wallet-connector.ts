@@ -6,66 +6,28 @@
 import type { WalletManager } from '@xrpl-connect/core';
 import { createLogger } from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
-
-/**
- * UI Constants
- */
-/*const UI_CONSTANTS = {
-  // Sizes
-  QR_CODE_SIZE: 260,
-  LOADING_LOGO_SIZE: 80,
-  MODAL_WIDTH: 343,
-  MODAL_BORDER_RADIUS: 20,
-
-  // Timings (ms)
-  QR_RENDER_DELAY: 100,
-  COPY_FEEDBACK_DURATION: 2000,
-  ANIMATION_DURATION: 200,
-  SAFARI_CONNECT_DELAY: 0,
-  NON_SAFARI_CONNECT_DELAY: 100,
-
-  // Z-Index
-  OVERLAY_Z_INDEX: 9999,
-  LOADING_LOGO_Z_INDEX: 2,
-  LOADING_BORDER_AFTER_Z_INDEX: 1,
-
-  // Default theme values
-  DEFAULT_BG_COLOR: '#000637',
-  DEFAULT_TEXT_COLOR: '#F5F4E7',
-  DEFAULT_PRIMARY_COLOR: '#0ea5e9',
-  DEFAULT_FONT_FAMILY: "'Karla', sans-serif",
-} as const;*/
+import {
+  SIZES,
+  TIMINGS,
+  Z_INDEX,
+  DEFAULT_THEME,
+  QR_CONFIG,
+  ERROR_CODES,
+  FONT_WEIGHTS,
+  COLOR_ADJUSTMENT,
+} from './constants';
+import {
+  adjustColorBrightness,
+  isSafari,
+  isMobile,
+  isXamanQRImage,
+  delay,
+} from './utils';
 
 /**
  * Logger instance for wallet connector
  */
 const logger = createLogger('[WalletConnector]');
-
-/**
- * Calculate luminance to determine if text should be black or white
- * Based on WCAG relative luminance formula
- */
-/*function getLuminance(hex: string): number {
-  const color = hex.replace('#', '');
-  const r = parseInt(color.substring(0, 2), 16) / 255;
-  const g = parseInt(color.substring(2, 4), 16) / 255;
-  const b = parseInt(color.substring(4, 6), 16) / 255;
-
-  const [rs, gs, bs] = [r, g, b].map((c) => {
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  });
-
-  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
-}
-
-/**
- * Get text color (black or white) based on background luminance
- * Ensures WCAG contrast compliance
- */
-/*function getContrastTextColor(backgroundColor: string): string {
-  const luminance = getLuminance(backgroundColor);
-  return luminance < 0.5 ? '#ffffff' : '#000000';
-}*/
 
 export class WalletConnectorElement extends HTMLElement {
   private walletManager: WalletManager | null = null;
@@ -215,26 +177,26 @@ export class WalletConnectorElement extends HTMLElement {
 
       // Create QR code instance
       const qrCode = new QRCodeStyling({
-        width: 260,
-        height: 260,
+        width: QR_CONFIG.SIZE,
+        height: QR_CONFIG.SIZE,
         type: 'svg',
         data: uri,
         image: wallet?.icon,
-        margin: 0,
+        margin: QR_CONFIG.MARGIN,
         qrOptions: {
-          errorCorrectionLevel: 'Q',
+          errorCorrectionLevel: QR_CONFIG.ERROR_CORRECTION_LEVEL,
         },
         dotsOptions: {
-          type: 'rounded',
-          color: '#000637',
+          type: QR_CONFIG.DOT_TYPE,
+          color: QR_CONFIG.DOT_COLOR,
         },
         backgroundOptions: {
-          color: 'transparent',
+          color: QR_CONFIG.BACKGROUND_COLOR,
         },
         imageOptions: {
           crossOrigin: 'anonymous',
-          margin: 6,
-          imageSize: 0.25,
+          margin: QR_CONFIG.IMAGE_MARGIN,
+          imageSize: QR_CONFIG.IMAGE_SIZE,
         },
       });
 
@@ -297,10 +259,9 @@ export class WalletConnectorElement extends HTMLElement {
         this.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
 
         // Browser-specific delay (Safari needs immediate connection for user gesture)
-        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-        if (!isSafari) {
+        if (!isSafari()) {
           // Small delay for UI animation on non-Safari browsers
-          await new Promise((resolve) => setTimeout(resolve, 100));
+          await delay(TIMINGS.NON_SAFARI_CONNECT_DELAY);
         }
 
         await this.walletManager.connect(walletId, options);
@@ -314,10 +275,10 @@ export class WalletConnectorElement extends HTMLElement {
       let errorType: 'rejected' | 'unavailable' | 'failed' = 'failed';
 
       // Check for specific error codes
-      if (error.code === 4001 || errorMessage.toLowerCase().includes('user rejected')) {
+      if (error.code === ERROR_CODES.USER_REJECTED || errorMessage.toLowerCase().includes('user rejected')) {
         errorType = 'rejected';
         errorMessage = 'Connection request was cancelled';
-      } else if (error.code === -32002 || errorMessage.toLowerCase().includes('already pending')) {
+      } else if (error.code === ERROR_CODES.POPUP_CLOSED || errorMessage.toLowerCase().includes('already pending')) {
         errorType = 'unavailable';
         errorMessage = 'Wallet popup was closed or did not respond. Please try again.';
       } else if (errorMessage.toLowerCase().includes('not installed')) {
@@ -396,7 +357,7 @@ export class WalletConnectorElement extends HTMLElement {
         const container = this.shadow.querySelector('#qr-container');
         logger.debug('QR container found:', !!container);
         this.renderQRCode(uri);
-      }, 100);
+      }, TIMINGS.QR_RENDER_DELAY);
     } else {
       logger.warn('QR code view not active or wallet mismatch', {
         viewState: this.viewState,
@@ -420,13 +381,13 @@ export class WalletConnectorElement extends HTMLElement {
 
     try {
       // Check if URI is already a QR code image URL (Xaman provides PNG directly)
-      if (uri.includes('xumm.app/sign') && uri.includes('.png')) {
+      if (isXamanQRImage(uri)) {
         logger.debug('Using direct QR code image from Xaman');
         container.innerHTML = `
           <img
             src="${uri}"
             alt="QR Code"
-            style="width: 260px; height: 260px; border-radius: 16px; display: block;"
+            style="width: ${SIZES.QR_CODE}px; height: ${SIZES.QR_CODE}px; border-radius: 16px; display: block;"
           />
         `;
         return;
@@ -445,26 +406,26 @@ export class WalletConnectorElement extends HTMLElement {
       const wallet = this.walletManager?.wallets.find((w) => w.id === this.qrCodeData?.walletId);
 
       const qrCode = new QRCodeStyling({
-        width: 260,
-        height: 260,
+        width: QR_CONFIG.SIZE,
+        height: QR_CONFIG.SIZE,
         type: 'svg',
         data: uri,
         image: wallet?.icon,
-        margin: 0,
+        margin: QR_CONFIG.MARGIN,
         qrOptions: {
-          errorCorrectionLevel: 'Q',
+          errorCorrectionLevel: QR_CONFIG.ERROR_CORRECTION_LEVEL,
         },
         dotsOptions: {
-          type: 'rounded',
-          color: '#000637',
+          type: QR_CONFIG.DOT_TYPE,
+          color: QR_CONFIG.DOT_COLOR,
         },
         backgroundOptions: {
-          color: 'transparent',
+          color: QR_CONFIG.BACKGROUND_COLOR,
         },
         imageOptions: {
           crossOrigin: 'anonymous',
-          margin: 6,
-          imageSize: 0.25,
+          margin: QR_CONFIG.IMAGE_MARGIN,
+          imageSize: QR_CONFIG.IMAGE_SIZE,
         },
       });
 
@@ -499,10 +460,10 @@ export class WalletConnectorElement extends HTMLElement {
     }
 
     // Core theme values
-    const backgroundColor = this.getAttribute('background-color') || '#000637';
-    const textColor = this.getAttribute('text-color') || '#F5F4E7';
-    const primaryColor = this.getAttribute('primary-color') || '#0ea5e9';
-    const fontFamily = this.getAttribute('font-family') || "'Karla', sans-serif";
+    const backgroundColor = this.getAttribute('background-color') || DEFAULT_THEME.BACKGROUND_COLOR;
+    const textColor = this.getAttribute('text-color') || DEFAULT_THEME.TEXT_COLOR;
+    const primaryColor = this.getAttribute('primary-color') || DEFAULT_THEME.PRIMARY_COLOR;
+    const fontFamily = this.getAttribute('font-family') || DEFAULT_THEME.FONT_FAMILY;
     const customCSS = this.getAttribute('custom-css') || '';
 
     this.primaryWalletId = this.getAttribute('primary-wallet');
@@ -550,10 +511,10 @@ export class WalletConnectorElement extends HTMLElement {
         --bg-color: ${backgroundColor};
         --text-color: ${textColor};
         --primary-color: ${primaryColor};
-        --primary-bn-hover: ${this.adjustColor(primaryColor, 0.15)};
+        --primary-bn-hover: ${adjustColorBrightness(primaryColor, COLOR_ADJUSTMENT.HOVER_BRIGHTNESS)};
         --font-family: ${fontFamily};
-        --wallet-btn-bg: ${this.adjustColor(backgroundColor, 0.1)};
-        --wallet-btn-hover: ${this.adjustColor(backgroundColor, 0.15)};
+        --wallet-btn-bg: ${adjustColorBrightness(backgroundColor, 0.1)};
+        --wallet-btn-hover: ${adjustColorBrightness(backgroundColor, COLOR_ADJUSTMENT.HOVER_BRIGHTNESS)};
       }
 
       @keyframes heightChange {
@@ -571,11 +532,11 @@ export class WalletConnectorElement extends HTMLElement {
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 9999;
+        z-index: ${Z_INDEX.OVERLAY};
       }
 
       .overlay.fade-in {
-        animation: fadeIn 0.2s ease-out;
+        animation: fadeIn ${TIMINGS.ANIMATION_DURATION}ms ease-out;
       }
 
       @keyframes fadeIn {
@@ -586,8 +547,8 @@ export class WalletConnectorElement extends HTMLElement {
       .modal {
         background: var(--bg-color);
         color: var(--text-color);
-        border-radius: 20px;
-        width: 343px;
+        border-radius: ${SIZES.MODAL_BORDER_RADIUS}px;
+        width: ${SIZES.MODAL_WIDTH}px;
         max-width: calc(100vw - 32px);
         max-height: 85vh;
         overflow: hidden;
@@ -595,7 +556,7 @@ export class WalletConnectorElement extends HTMLElement {
         flex-direction: column;
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.1);
         border: 1px solid rgba(255, 255, 255, 0.08);
-        transition: height 200ms cubic-bezier(0.25, 0.1, 0.25, 1);
+        transition: height ${TIMINGS.ANIMATION_DURATION}ms cubic-bezier(0.25, 0.1, 0.25, 1);
       }
 
       .modal.slide-up {
@@ -611,7 +572,7 @@ export class WalletConnectorElement extends HTMLElement {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 18px 20px 16px;
+        padding: ${SIZES.HEADER_PADDING}px 20px 16px;
       }
 
       .header-with-back {
@@ -621,8 +582,8 @@ export class WalletConnectorElement extends HTMLElement {
       }
 
       .back-button {
-        width: 34px;
-        height: 34px;
+        width: ${SIZES.CLOSE_BUTTON_SIZE}px;
+        height: ${SIZES.CLOSE_BUTTON_SIZE}px;
         border-radius: 50%;
         border: none;
         background: transparent;
@@ -643,14 +604,14 @@ export class WalletConnectorElement extends HTMLElement {
 
       .title {
         font-size: 22px;
-        font-weight: 600;
+        font-weight: ${FONT_WEIGHTS.SEMIBOLD};
         letter-spacing: -0.3px;
         flex: 1;
       }
 
       .close-button {
-        width: 34px;
-        height: 34px;
+        width: ${SIZES.CLOSE_BUTTON_SIZE}px;
+        height: ${SIZES.CLOSE_BUTTON_SIZE}px;
         border-radius: 50%;
         border: none;
         background: transparent;
@@ -678,14 +639,14 @@ export class WalletConnectorElement extends HTMLElement {
 
       .primary-button {
         width: 100%;
-        padding: 16px 20px;
-        border-radius: 12px;
+        padding: ${SIZES.BUTTON_PADDING_VERTICAL}px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
+        border-radius: ${SIZES.BUTTON_BORDER_RADIUS}px;
         border: none;
         margin-bottom: 20px;
         background: var(--primary-color);
         color: white;
         font-size: 16px;
-        font-weight: 600;
+        font-weight: ${FONT_WEIGHTS.SEMIBOLD};
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -707,13 +668,13 @@ export class WalletConnectorElement extends HTMLElement {
 
       .wallet-button {
         width: 100%;
-        padding: 16px 20px;
-        border-radius: 12px;
+        padding: ${SIZES.BUTTON_PADDING_VERTICAL}px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
+        border-radius: ${SIZES.BUTTON_BORDER_RADIUS}px;
         border: none;
         background: var(--wallet-btn-bg);
         color: var(--text-color);
         font-size: 16px;
-        font-weight: 500;
+        font-weight: ${FONT_WEIGHTS.MEDIUM};
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -739,8 +700,8 @@ export class WalletConnectorElement extends HTMLElement {
 
 .qr-card {
   background: #fff;
-  border-radius: 20px;
-  padding: 28px;
+  border-radius: ${SIZES.MODAL_BORDER_RADIUS}px;
+  padding: ${SIZES.QR_CARD_PADDING}px;
   width: 100%;
   max-width: 295px;
   box-shadow: 0 10px 30px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.05);
@@ -753,13 +714,13 @@ export class WalletConnectorElement extends HTMLElement {
 
 .qr-header {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: ${FONT_WEIGHTS.SEMIBOLD};
   color: #111;
 }
 
 .qr-container {
-  width: 260px;
-  height: 260px;
+  width: ${SIZES.QR_CODE}px;
+  height: ${SIZES.QR_CODE}px;
   border-radius: 16px;
   overflow: hidden;
   display: flex;
@@ -791,7 +752,7 @@ export class WalletConnectorElement extends HTMLElement {
   border-radius: 10px;
   background: #f3f3f3;
   color: #111;
-  font-weight: 500;
+  font-weight: ${FONT_WEIGHTS.MEDIUM};
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -825,13 +786,13 @@ export class WalletConnectorElement extends HTMLElement {
 
       .deeplink-button {
         width: 100%;
-        padding: 14px 20px;
-        border-radius: 12px;
+        padding: 14px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
+        border-radius: ${SIZES.BUTTON_BORDER_RADIUS}px;
         border: none;
         background: var(--primary-color);
         color: white;
         font-size: 15px;
-        font-weight: 600;
+        font-weight: ${FONT_WEIGHTS.SEMIBOLD};
         cursor: pointer;
         transition: all 0.2s;
       }
@@ -860,10 +821,10 @@ export class WalletConnectorElement extends HTMLElement {
       }
 
       .loading-logo {
-        width: 80px;
-        height: 80px;
+        width: ${SIZES.LOADING_LOGO}px;
+        height: ${SIZES.LOADING_LOGO}px;
         border-radius: 16px;
-        z-index: 2;
+        z-index: ${Z_INDEX.LOADING_LOGO};
         position: relative;
       }
 
@@ -902,7 +863,7 @@ export class WalletConnectorElement extends HTMLElement {
   bottom: 4px;
   background: #1a1a2e; /* Match your background color */
   border-radius: 16px;
-  z-index: 1;
+  z-index: ${Z_INDEX.LOADING_BORDER_AFTER};
 }
 
 @keyframes rotate {
@@ -916,7 +877,7 @@ export class WalletConnectorElement extends HTMLElement {
         .loading-text {
         text-align: center;
         font-size: 16px;
-        font-weight: 300;
+        font-weight: ${FONT_WEIGHTS.LIGHT};
         opacity: 0.9;
       }
 
@@ -930,8 +891,8 @@ export class WalletConnectorElement extends HTMLElement {
       }
 
       .error-icon {
-        width: 80px;
-        height: 80px;
+        width: ${SIZES.ICON_LARGE}px;
+        height: ${SIZES.ICON_LARGE}px;
         border-radius: 50%;
         background: rgba(239, 68, 68, 0.1);
         display: flex;
@@ -947,13 +908,13 @@ export class WalletConnectorElement extends HTMLElement {
 
       .error-title {
         font-size: 18px;
-        font-weight: 600;
+        font-weight: ${FONT_WEIGHTS.SEMIBOLD};
         margin-bottom: 8px;
       }
 
       .error-message {
         font-size: 14px;
-        font-weight: 300;
+        font-weight: ${FONT_WEIGHTS.LIGHT};
         opacity: 0.8;
         line-height: 1.5;
       }
@@ -967,11 +928,11 @@ export class WalletConnectorElement extends HTMLElement {
 
       .error-button {
         flex: 1;
-        padding: 14px 20px;
-        border-radius: 12px;
+        padding: 14px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
+        border-radius: ${SIZES.BUTTON_BORDER_RADIUS}px;
         border: none;
         font-size: 15px;
-        font-weight: 600;
+        font-weight: ${FONT_WEIGHTS.SEMIBOLD};
         cursor: pointer;
         transition: all 0.2s;
       }
@@ -1215,7 +1176,7 @@ export class WalletConnectorElement extends HTMLElement {
           const btn = this.shadow.querySelector('#copy-button') as HTMLButtonElement;
           if (btn) {
             btn.textContent = 'Copied!';
-            setTimeout(() => (btn.textContent = 'Copy to Clipboard'), 2000);
+            setTimeout(() => (btn.textContent = 'Copy to Clipboard'), TIMINGS.COPY_FEEDBACK_DURATION);
           }
         } catch (error) {
           logger.error('Failed to copy to clipboard:', error);
@@ -1236,7 +1197,7 @@ export class WalletConnectorElement extends HTMLElement {
         }
 
         // Detect mobile and open deep link
-        if (this.isMobile()) {
+        if (isMobile()) {
           window.location.href = deepLink;
         } else {
           // On desktop, still try to open (might open desktop app if installed)
@@ -1258,32 +1219,6 @@ export class WalletConnectorElement extends HTMLElement {
     });
   }
 
-  /**
-   * Detect if user is on mobile
-   */
-  private isMobile(): boolean {
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-      navigator.userAgent
-    );
-  }
-
-  /**
-   * Adjust color brightness
-   */
-  private adjustColor(hex: string, amount: number): string {
-    const color = hex.replace('#', '');
-    const num = parseInt(color, 16);
-
-    let r = (num >> 16) + Math.round(255 * amount);
-    let g = ((num >> 8) & 0x00ff) + Math.round(255 * amount);
-    let b = (num & 0x0000ff) + Math.round(255 * amount);
-
-    r = Math.max(0, Math.min(255, r));
-    g = Math.max(0, Math.min(255, g));
-    b = Math.max(0, Math.min(255, b));
-
-    return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
-  }
 }
 
 // Register the custom element
