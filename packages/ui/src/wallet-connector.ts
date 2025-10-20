@@ -190,14 +190,14 @@ export class WalletConnectorElement extends HTMLElement {
           (walletConnectAdapter as any).options = {};
         }
         (walletConnectAdapter as any).options.onQRCode = (uri: string) => {
-          console.log('[WalletConnector] Pre-generating QR code...');
+          logger.debug('Pre-generating QR code...');
           this.preGenerateQRCode(uri);
         };
 
         // Pre-initialize with projectId and network
         await (walletConnectAdapter as any).preInitialize(projectId, network);
       } catch (error) {
-        console.warn('[WalletConnector] Failed to pre-initialize WalletConnect:', error);
+        logger.warn('Failed to pre-initialize WalletConnect:', error);
         // Silent failure - connection will initialize on demand if this fails
       }
     }
@@ -240,9 +240,9 @@ export class WalletConnectorElement extends HTMLElement {
 
       // Store the pre-generated QR code
       this.preGeneratedQRCode = qrCode;
-      console.log('[WalletConnector] QR code pre-generated successfully');
+      logger.debug('QR code pre-generated successfully');
     } catch (error) {
-      console.warn('[WalletConnector] Failed to pre-generate QR code:', error);
+      logger.warn('Failed to pre-generate QR code:', error);
       // Silent failure - QR will be generated on demand if this fails
     }
   }
@@ -252,7 +252,7 @@ export class WalletConnectorElement extends HTMLElement {
    */
   private async connectWallet(walletId: string, options?: any) {
     if (!this.walletManager) {
-      console.error('WalletManager not set');
+      logger.error('WalletManager not set');
       return;
     }
 
@@ -263,21 +263,18 @@ export class WalletConnectorElement extends HTMLElement {
         throw new Error('Wallet not found');
       }
 
-      console.log('[WalletConnector] Connecting to wallet:', walletId);
+      logger.debug('Connecting to wallet:', walletId);
 
       if (walletId === 'walletconnect') {
         // Show QR code view first for WalletConnect
-        console.log('[WalletConnector] Showing QR view for', walletId);
+        logger.debug('Showing QR view for', walletId);
         this.showQRCodeView(walletId);
 
         // Set up QR code callback
         const connectOptions = {
           ...options,
           onQRCode: (uri: string) => {
-            console.log(
-              '[WalletConnector] QR code callback received:',
-              uri.substring(0, 50) + '...'
-            );
+            logger.debug('QR code callback received:', uri.substring(0, 50) + '...');
             this.setQRCode(walletId, uri);
           },
         };
@@ -327,11 +324,11 @@ export class WalletConnectorElement extends HTMLElement {
         errorType = 'unavailable';
       }
 
-      console.log('[WalletConnector] Error type:', errorType, 'Code:', error.code);
+      logger.debug('Connection error type:', errorType, 'Code:', error.code);
 
       this.showErrorView(walletId, wallet?.name || 'Wallet', new Error(errorMessage));
       this.dispatchEvent(new CustomEvent('error', { detail: { error, walletId, errorType } }));
-      console.error('Failed to connect:', error);
+      logger.error('Failed to connect:', error);
     }
   }
 
@@ -380,10 +377,11 @@ export class WalletConnectorElement extends HTMLElement {
   }
 
   /**
-   * Update QR code with URI (called by adapters)
+   * Update QR code with URI
+   * Called by wallet adapters when QR code URI is ready
    */
   public setQRCode(walletId: string, uri: string) {
-    console.log('[WalletConnector] setQRCode called:', {
+    logger.debug('setQRCode called:', {
       walletId,
       uri: uri.substring(0, 60) + '...',
       viewState: this.viewState,
@@ -393,15 +391,14 @@ export class WalletConnectorElement extends HTMLElement {
     if (this.viewState === 'qr' && this.qrCodeData?.walletId === walletId) {
       this.qrCodeData.uri = uri;
 
-      // Wait for DOM to be ready with a slightly longer delay
       setTimeout(() => {
-        console.log('[WalletConnector] Attempting to render QR code after timeout...');
+        logger.debug('Attempting to render QR code...');
         const container = this.shadow.querySelector('#qr-container');
-        console.log('[WalletConnector] QR container found:', !!container);
+        logger.debug('QR container found:', !!container);
         this.renderQRCode(uri);
       }, 100);
     } else {
-      console.warn('[WalletConnector] QR code view not active or wallet mismatch', {
+      logger.warn('QR code view not active or wallet mismatch', {
         viewState: this.viewState,
         expectedWallet: walletId,
         currentDataWallet: this.qrCodeData?.walletId,
@@ -410,27 +407,26 @@ export class WalletConnectorElement extends HTMLElement {
   }
 
   /**
-   * Render QR code using QRCodeStyling library with modern dot-style design
+   * Render QR code using QRCodeStyling library
+   * Supports both URI strings and direct image URLs (for Xaman)
    */
   private async renderQRCode(uri: string) {
-    console.log('[WalletConnector] renderQRCode called with URI:', uri.substring(0, 60) + '...');
+    logger.debug('renderQRCode called with URI:', uri.substring(0, 60) + '...');
     const container = this.shadow.querySelector('#qr-container');
     if (!container || !uri) {
-      console.warn('[WalletConnector] No container or URI');
+      logger.warn('No container or URI for QR code rendering');
       return;
     }
 
     try {
       // Check if URI is already a QR code image URL (Xaman provides PNG directly)
       if (uri.includes('xumm.app/sign') && uri.includes('.png')) {
-        console.log('[WalletConnector] Using direct QR code image from Xaman');
+        logger.debug('Using direct QR code image from Xaman');
         container.innerHTML = `
           <img
             src="${uri}"
             alt="QR Code"
             style="width: 260px; height: 260px; border-radius: 16px; display: block;"
-            onload="console.log('[WalletConnector] QR image loaded successfully')"
-            onerror="console.error('[WalletConnector] Failed to load QR image')"
           />
         `;
         return;
@@ -438,14 +434,14 @@ export class WalletConnectorElement extends HTMLElement {
 
       // Check if we have a pre-generated QR code with matching URI
       if (this.preGeneratedQRCode && this.preGeneratedURI === uri) {
-        console.log('[WalletConnector] Using pre-generated QR code - instant render!');
+        logger.debug('Using pre-generated QR code - instant render!');
         container.innerHTML = '';
         this.preGeneratedQRCode.append(container as HTMLElement);
         return;
       }
 
       // Otherwise, generate modern QR code with qr-code-styling
-      console.log('[WalletConnector] Generating modern QR code from URI');
+      logger.debug('Generating modern QR code from URI');
       const wallet = this.walletManager?.wallets.find((w) => w.id === this.qrCodeData?.walletId);
 
       const qrCode = new QRCodeStyling({
@@ -475,9 +471,9 @@ export class WalletConnectorElement extends HTMLElement {
       // Clear container and append QR code
       container.innerHTML = '';
       qrCode.append(container as HTMLElement);
-      console.log('[WalletConnector] Modern QR code generated successfully');
+      logger.debug('Modern QR code generated successfully');
     } catch (error) {
-      console.error('[WalletConnector] Failed to generate QR code:', error);
+      logger.error('Failed to generate QR code:', error);
       container.innerHTML = `
         <div class="qr-loading" style="color: #ef4444;">
           Failed to generate QR code
@@ -1222,7 +1218,7 @@ export class WalletConnectorElement extends HTMLElement {
             setTimeout(() => (btn.textContent = 'Copy to Clipboard'), 2000);
           }
         } catch (error) {
-          console.error('Failed to copy to clipboard:', error);
+          logger.error('Failed to copy to clipboard:', error);
         }
       }
     });
