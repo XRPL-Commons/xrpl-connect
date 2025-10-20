@@ -19,22 +19,19 @@
  */
 
 // Re-export everything from core
-export * from '@xrpl-connect/core';
-
-// Re-export UI (web component will auto-register when imported)
-export * from '@xrpl-connect/ui';
+export * from '../../core';
 
 // Re-export all adapters
-export { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-export { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
-export { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
-export { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
+export { XamanAdapter } from '../../adapters/xaman';
+export { CrossmarkAdapter } from '../../adapters/crossmark';
+export { GemWalletAdapter } from '../../adapters/gemwallet';
+export { WalletConnectAdapter } from '../../adapters/walletconnect';
 
 // Convenient grouped exports for better DX
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
-import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
-import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
+import { XamanAdapter } from '../../adapters/xaman';
+import { CrossmarkAdapter } from '../../adapters/crossmark';
+import { GemWalletAdapter } from '../../adapters/gemwallet';
+import { WalletConnectAdapter } from '../../adapters/walletconnect';
 
 /**
  * Convenient object containing all wallet adapters
