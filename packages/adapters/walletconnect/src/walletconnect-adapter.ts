@@ -14,6 +14,13 @@ import type {
   SubmittedTransaction,
 } from '@xrpl-connect/core';
 import { createWalletError, STANDARD_NETWORKS, createLogger } from '@xrpl-connect/core';
+import {
+  DISCONNECT_REASONS,
+  DEFAULT_METADATA,
+  LOGGING,
+  ACCOUNT_FORMAT,
+  XRPL_NAMESPACE,
+} from './constants';
 
 /**
  * Logger instance for WalletConnect adapter
@@ -93,10 +100,10 @@ export class WalletConnectAdapter implements WalletAdapter {
           this.initializationPromise = SignClient.init({
             projectId: pid,
             metadata: this.options.metadata || {
-              name: 'XRPL Connect',
-              description: 'XRPL Wallet Connection',
-              url: typeof window !== 'undefined' ? window.location.origin : 'https://xrpl.org',
-              icons: ['https://xrpl.org/favicon.ico'],
+              name: DEFAULT_METADATA.NAME,
+              description: DEFAULT_METADATA.DESCRIPTION,
+              url: typeof window !== 'undefined' ? window.location.origin : DEFAULT_METADATA.DEFAULT_URL,
+              icons: [DEFAULT_METADATA.DEFAULT_ICON],
             },
           });
         }
@@ -109,14 +116,14 @@ export class WalletConnectAdapter implements WalletAdapter {
 
       // Start connection to generate URI (ConnectKit pattern)
       const requiredNamespaces = {
-        xrpl: {
+        [XRPL_NAMESPACE.KEY]: {
           chains: [networkInfo.walletConnectId || `xrpl:${networkInfo.id}`],
           methods: [
             XRPLMethod.SIGN_TRANSACTION,
             XRPLMethod.SIGN_TRANSACTION_FOR,
             'xrpl_signMessage',
           ],
-          events: ['chainChanged', 'accountsChanged'],
+          events: XRPL_NAMESPACE.EVENTS,
         },
       };
 
@@ -131,7 +138,7 @@ export class WalletConnectAdapter implements WalletAdapter {
       // Store the pending connection
       this.pendingConnection = { uri, approval };
 
-      logger.debug('QR code URI pre-generated:', uri.substring(0, 50) + '...');
+      logger.debug('QR code URI pre-generated:', uri.substring(0, LOGGING.URI_PREVIEW_LENGTH) + '...');
 
       if (this.options.onQRCode) {
         logger.debug('Calling onQRCode callback during pre-init');
@@ -193,10 +200,10 @@ export class WalletConnectAdapter implements WalletAdapter {
             this.client = await SignClient.init({
               projectId,
               metadata: this.options.metadata || {
-                name: 'XRPL Connect',
-                description: 'XRPL Wallet Connection',
-                url: typeof window !== 'undefined' ? window.location.origin : 'https://xrpl.org',
-                icons: ['https://xrpl.org/favicon.ico'],
+                name: DEFAULT_METADATA.NAME,
+                description: DEFAULT_METADATA.DESCRIPTION,
+                url: typeof window !== 'undefined' ? window.location.origin : DEFAULT_METADATA.DEFAULT_URL,
+                icons: [DEFAULT_METADATA.DEFAULT_ICON],
               },
             });
           }
@@ -204,14 +211,14 @@ export class WalletConnectAdapter implements WalletAdapter {
 
         // Prepare namespace for XRPL
         const requiredNamespaces = {
-          xrpl: {
+          [XRPL_NAMESPACE.KEY]: {
             chains: [network.walletConnectId || `xrpl:${network.id}`],
             methods: [
               XRPLMethod.SIGN_TRANSACTION,
               XRPLMethod.SIGN_TRANSACTION_FOR,
               'xrpl_signMessage',
             ],
-            events: ['chainChanged', 'accountsChanged'],
+            events: XRPL_NAMESPACE.EVENTS,
           },
         };
 
@@ -227,7 +234,7 @@ export class WalletConnectAdapter implements WalletAdapter {
         uri = result.uri;
         approval = result.approval;
 
-        logger.debug('Generated URI:', uri.substring(0, 50) + '...');
+        logger.debug('Generated URI:', uri.substring(0, LOGGING.URI_PREVIEW_LENGTH) + '...');
         logger.debug('onQRCode callback exists:', !!onQRCode);
 
         if (onQRCode) {
@@ -247,7 +254,7 @@ export class WalletConnectAdapter implements WalletAdapter {
 
       // Parse account (format: "xrpl:chainId:rAddress")
       const accountString = accounts[0];
-      const address = accountString.split(':')[2];
+      const address = accountString.split(':')[ACCOUNT_FORMAT.ADDRESS_INDEX];
 
       this.currentAccount = {
         address,
@@ -274,10 +281,7 @@ export class WalletConnectAdapter implements WalletAdapter {
     try {
       await this.client.disconnect({
         topic: this.session.topic,
-        reason: {
-          code: 6000,
-          message: 'User disconnected',
-        },
+        reason: DISCONNECT_REASONS.USER_DISCONNECTED,
       });
       this.cleanup();
     } catch (error) {
