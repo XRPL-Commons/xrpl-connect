@@ -4,14 +4,14 @@
   "description": "WalletConnect adapter for XRPL Connect - QR code based wallet connections",
   "author": "XRPL Connect Contributors",
   "license": "MIT",
-  "homepage": "https://github.com/your-org/xrpl-connect#readme",
+  "homepage": "https://github.com/XRPL-Commons/xrpl-connect#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/xrpl-connect",
+    "url": "https://github.com/XRPL-Commons/xrpl-connect",
     "directory": "packages/adapters/walletconnect"
   },
   "bugs": {
-    "url": "https://github.com/your-org/xrpl-connect/issues"
+    "url": "https://github.com/XRPL-Commons/xrpl-connect/issues"
   },
   "keywords": [
     "xrpl",
@@ -33,7 +33,10 @@
       "require": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
