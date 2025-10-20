@@ -1,5 +1,6 @@
 /**
  * Logging system for xrpl-connect
+ * Supports dev/prod mode with configurable log levels
  */
 
 import type { LoggerOptions } from './types';
@@ -15,14 +16,33 @@ const LOG_LEVELS: Record<LogLevel, number> = {
 };
 
 /**
+ * Detect if running in development mode
+ */
+function isDevelopment(): boolean {
+  if (typeof process !== 'undefined' && process.env?.NODE_ENV) {
+    return process.env.NODE_ENV === 'development';
+  }
+  // Fallback: check for localhost
+  if (typeof window !== 'undefined') {
+    return window.location.hostname === 'localhost' ||
+           window.location.hostname === '127.0.0.1' ||
+           window.location.hostname.includes('dev');
+  }
+  return false;
+}
+
+/**
  * Logger class for structured logging
+ * In development: logs debug, info, warn, error
+ * In production: logs only warn and error
  */
 export class Logger {
   private level: LogLevel;
   private prefix: string;
 
-  constructor(options: LoggerOptions = { level: 'warn' }) {
-    this.level = options.level;
+  constructor(options: LoggerOptions = {}) {
+    // Auto-detect level based on environment if not explicitly set
+    this.level = options.level || (isDevelopment() ? 'debug' : 'warn');
     this.prefix = options.prefix || '[xrpl-connect]';
   }
 
@@ -90,4 +110,12 @@ export class Logger {
   getLevel(): LogLevel {
     return this.level;
   }
+}
+
+/**
+ * Create a logger instance with a specific prefix
+ * Useful for creating loggers in different packages/modules
+ */
+export function createLogger(prefix: string, level?: LoggerOptions['level']): Logger {
+  return new Logger({ prefix, level });
 }

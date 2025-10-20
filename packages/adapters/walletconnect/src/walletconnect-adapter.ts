@@ -13,7 +13,12 @@ import type {
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
-import { createWalletError, STANDARD_NETWORKS } from '@xrpl-connect/core';
+import { createWalletError, STANDARD_NETWORKS, createLogger } from '@xrpl-connect/core';
+
+/**
+ * Logger instance for WalletConnect adapter
+ */
+const logger = createLogger('[WalletConnect]');
 
 /**
  * XRPL methods supported by WalletConnect
@@ -70,17 +75,16 @@ export class WalletConnectAdapter implements WalletAdapter {
     const pid = projectId || this.options.projectId;
 
     if (!pid) {
-      console.warn('[WalletConnect] Cannot pre-initialize without project ID');
+      logger.warn('Cannot pre-initialize without project ID');
       return;
     }
 
-    // If already has pending connection, skip
     if (this.pendingConnection) {
-      console.log('[WalletConnect] Already has pending connection, skipping pre-init');
+      logger.debug('Already has pending connection, skipping pre-init');
       return;
     }
 
-    console.log('[WalletConnect] Pre-initializing connection session...');
+    logger.debug('Pre-initializing connection session...');
 
     try {
       // Initialize SignClient if not already done
@@ -97,7 +101,7 @@ export class WalletConnectAdapter implements WalletAdapter {
           });
         }
         this.client = await this.initializationPromise;
-        console.log('[WalletConnect] SignClient initialized');
+        logger.debug('SignClient initialized');
       }
 
       // Determine network for pre-initialization
@@ -127,15 +131,14 @@ export class WalletConnectAdapter implements WalletAdapter {
       // Store the pending connection
       this.pendingConnection = { uri, approval };
 
-      console.log('[WalletConnect] QR code URI pre-generated:', uri.substring(0, 50) + '...');
+      logger.debug('QR code URI pre-generated:', uri.substring(0, 50) + '...');
 
-      // Call the onQRCode callback if provided
       if (this.options.onQRCode) {
-        console.log('[WalletConnect] Calling onQRCode callback during pre-init');
+        logger.debug('Calling onQRCode callback during pre-init');
         this.options.onQRCode(uri);
       }
     } catch (error) {
-      console.error('[WalletConnect] Pre-initialization failed:', error);
+      logger.error('Pre-initialization failed:', error);
       this.initializationPromise = null;
       this.pendingConnection = null;
     }
@@ -169,26 +172,24 @@ export class WalletConnectAdapter implements WalletAdapter {
 
       // Check if we have a pending connection from pre-initialization (ConnectKit pattern)
       if (this.pendingConnection) {
-        console.log('[WalletConnect] Using pre-generated connection');
+        logger.debug('Using pre-generated connection');
         uri = this.pendingConnection.uri;
         approval = this.pendingConnection.approval;
 
-        // Call QR code callback if provided (in case it wasn't called during pre-init)
         if (onQRCode) {
-          console.log('[WalletConnect] Calling onQRCode callback with pre-generated URI');
+          logger.debug('Calling onQRCode callback with pre-generated URI');
           onQRCode(uri);
         }
       } else {
-        // No pre-initialized connection, do it now
-        console.log('[WalletConnect] No pre-generated connection, creating now');
+        logger.debug('No pre-generated connection, creating now');
 
         // Initialize SignClient if needed
         if (!this.client) {
           if (this.initializationPromise) {
-            console.log('[WalletConnect] Using pre-initialized SignClient');
+            logger.debug('Using pre-initialized SignClient');
             this.client = await this.initializationPromise;
           } else {
-            console.log('[WalletConnect] Initializing SignClient');
+            logger.debug('Initializing SignClient');
             this.client = await SignClient.init({
               projectId,
               metadata: this.options.metadata || {
@@ -226,12 +227,11 @@ export class WalletConnectAdapter implements WalletAdapter {
         uri = result.uri;
         approval = result.approval;
 
-        console.log('[WalletConnect] Generated URI:', uri.substring(0, 50) + '...');
-        console.log('[WalletConnect] onQRCode callback exists:', !!onQRCode);
+        logger.debug('Generated URI:', uri.substring(0, 50) + '...');
+        logger.debug('onQRCode callback exists:', !!onQRCode);
 
-        // Call QR code callback if provided (for custom UI)
         if (onQRCode) {
-          console.log('[WalletConnect] Calling onQRCode callback');
+          logger.debug('Calling onQRCode callback');
           onQRCode(uri);
         }
       }

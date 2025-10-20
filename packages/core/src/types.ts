@@ -178,9 +178,10 @@ export interface StoredState {
 
 /**
  * Logger configuration options
+ * Level is optional - defaults to 'debug' in development, 'warn' in production
  */
 export interface LoggerOptions {
-  level: 'debug' | 'info' | 'warn' | 'error' | 'none';
+  level?: 'debug' | 'info' | 'warn' | 'error' | 'none';
   prefix?: string;
 }
 

@@ -3,6 +3,12 @@
  */
 
 import type { StorageAdapter, StoredState } from './types';
+import { createLogger } from './logger';
+
+/**
+ * Logger instance for storage
+ */
+const logger = createLogger('[Storage]');
 
 /**
  * LocalStorage-based storage adapter
@@ -17,7 +23,7 @@ export class LocalStorageAdapter implements StorageAdapter {
       }
       return window.localStorage.getItem(this.prefix + key);
     } catch (error) {
-      console.warn('[xrpl-connect] Failed to read from localStorage:', error);
+      logger.warn('Failed to read from localStorage:', error);
       return null;
     }
   }
@@ -29,7 +35,7 @@ export class LocalStorageAdapter implements StorageAdapter {
       }
       window.localStorage.setItem(this.prefix + key, value);
     } catch (error) {
-      console.warn('[xrpl-connect] Failed to write to localStorage:', error);
+      logger.warn('Failed to write to localStorage:', error);
     }
   }
 
@@ -40,7 +46,7 @@ export class LocalStorageAdapter implements StorageAdapter {
       }
       window.localStorage.removeItem(this.prefix + key);
     } catch (error) {
-      console.warn('[xrpl-connect] Failed to remove from localStorage:', error);
+      logger.warn('Failed to remove from localStorage:', error);
     }
   }
 
@@ -59,7 +65,7 @@ export class LocalStorageAdapter implements StorageAdapter {
       }
       keys.forEach((key) => window.localStorage.removeItem(key));
     } catch (error) {
-      console.warn('[xrpl-connect] Failed to clear localStorage:', error);
+      logger.warn('Failed to clear localStorage:', error);
     }
   }
 }
@@ -111,7 +117,7 @@ export class Storage {
       const serialized = JSON.stringify(state);
       await this.adapter.set(Storage.STATE_KEY, serialized);
     } catch (error) {
-      console.warn('[xrpl-connect] Failed to save state:', error);
+      logger.warn('Failed to save state:', error);
     }
   }
 
@@ -126,7 +132,7 @@ export class Storage {
       }
       return JSON.parse(serialized) as StoredState;
     } catch (error) {
-      console.warn('[xrpl-connect] Failed to load state:', error);
+      logger.warn('Failed to load state:', error);
       return null;
     }
   }
@@ -138,7 +144,7 @@ export class Storage {
     try {
       await this.adapter.remove(Storage.STATE_KEY);
     } catch (error) {
-      console.warn('[xrpl-connect] Failed to clear state:', error);
+      logger.warn('Failed to clear state:', error);
     }
   }
 
@@ -149,7 +155,7 @@ export class Storage {
     try {
       await this.adapter.clear();
     } catch (error) {
-      console.warn('[xrpl-connect] Failed to clear storage:', error);
+      logger.warn('Failed to clear storage:', error);
     }
   }
 }
