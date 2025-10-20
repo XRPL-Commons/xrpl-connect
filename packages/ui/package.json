@@ -26,7 +26,6 @@
     "@xrpl-connect/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/qrcode": "^1.5.5",
     "@xrpl-connect/core": "workspace:*",
     "tsup": "^8.0.1",
     "typescript": "^5.3.3"
@@ -39,6 +38,6 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "qrcode": "^1.5.4"
+    "qr-code-styling": "^1.6.0-rc.1"
   }
 }
