@@ -34,4 +34,4 @@ export { WalletError, createWalletError, isWalletError, getErrorMessage } from '
 export { Storage, LocalStorageAdapter, MemoryStorageAdapter } from './storage';
 
 // Logger
-export { Logger } from './logger';
+export { Logger, createLogger } from './logger';

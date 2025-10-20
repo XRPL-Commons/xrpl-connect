@@ -4,36 +4,66 @@
  */
 
 import type { WalletManager } from '@xrpl-connect/core';
+import { createLogger } from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
+
+/**
+ * UI Constants
+ */
+/*const UI_CONSTANTS = {
+  // Sizes
+  QR_CODE_SIZE: 260,
+  LOADING_LOGO_SIZE: 80,
+  MODAL_WIDTH: 343,
+  MODAL_BORDER_RADIUS: 20,
+
+  // Timings (ms)
+  QR_RENDER_DELAY: 100,
+  COPY_FEEDBACK_DURATION: 2000,
+  ANIMATION_DURATION: 200,
+  SAFARI_CONNECT_DELAY: 0,
+  NON_SAFARI_CONNECT_DELAY: 100,
+
+  // Z-Index
+  OVERLAY_Z_INDEX: 9999,
+  LOADING_LOGO_Z_INDEX: 2,
+  LOADING_BORDER_AFTER_Z_INDEX: 1,
+
+  // Default theme values
+  DEFAULT_BG_COLOR: '#000637',
+  DEFAULT_TEXT_COLOR: '#F5F4E7',
+  DEFAULT_PRIMARY_COLOR: '#0ea5e9',
+  DEFAULT_FONT_FAMILY: "'Karla', sans-serif",
+} as const;*/
+
+/**
+ * Logger instance for wallet connector
+ */
+const logger = createLogger('[WalletConnector]');
 
 /**
  * Calculate luminance to determine if text should be black or white
  * Based on WCAG relative luminance formula
  */
 /*function getLuminance(hex: string): number {
-  // Remove # if present
   const color = hex.replace('#', '');
-
-  // Convert to RGB
   const r = parseInt(color.substring(0, 2), 16) / 255;
   const g = parseInt(color.substring(2, 4), 16) / 255;
   const b = parseInt(color.substring(4, 6), 16) / 255;
 
-  // Apply gamma correction
   const [rs, gs, bs] = [r, g, b].map((c) => {
     return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
   });
 
-  // Calculate relative luminance
   return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
 }
 
 /**
  * Get text color (black or white) based on background luminance
- *
-function getTextColor(backgroundColor: string): string {
+ * Ensures WCAG contrast compliance
+ */
+/*function getContrastTextColor(backgroundColor: string): string {
   const luminance = getLuminance(backgroundColor);
-  // Use white text for dark backgrounds (luminance < 0.5)
   return luminance < 0.5 ? '#ffffff' : '#000000';
 }*/
 
@@ -146,7 +176,7 @@ export class WalletConnectorElement extends HTMLElement {
     // Check if adapter has preInitialize method
     if (typeof (walletConnectAdapter as any).preInitialize === 'function') {
       try {
-        console.log('[WalletConnector] Pre-initializing WalletConnect...');
+        logger.debug('Pre-initializing WalletConnect...');
 
         // Extract projectId from adapter's stored options
         const projectId = (walletConnectAdapter as any).options?.projectId;
