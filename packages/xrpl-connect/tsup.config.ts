@@ -20,9 +20,9 @@ export default defineConfig([
   },
   // Browser-optimized build (ESM only with Node.js built-ins externalized)
   {
-    entry: ['src/index.browser.ts'],
+    entry: { index: 'src/index.browser.ts' },
     format: ['esm'],
-    dts: { entry: 'src/index.browser.ts' },
+    dts: true,
     clean: false,
     sourcemap: true,
     splitting: false,
@@ -41,7 +41,7 @@ export default defineConfig([
       'os',
     ],
     outDir: 'dist',
-    outExtension({ format }) {
+    outExtension() {
       return {
         js: '.browser.mjs',
         dts: '.browser.d.ts',
