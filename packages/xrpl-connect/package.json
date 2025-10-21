@@ -32,9 +32,11 @@
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
+  "browser": "./dist/index.browser.mjs",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "browser": "./dist/index.browser.mjs",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
     }
