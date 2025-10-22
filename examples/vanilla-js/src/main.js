@@ -60,8 +60,6 @@ walletConnector.addEventListener('error', (e) => {
 
 // DOM Elements
 const elements = {
-  openConnector: document.getElementById('open-connector'),
-  disconnect: document.getElementById('disconnect'),
   status: document.getElementById('status'),
   connectSection: document.getElementById('connect-section'),
   accountSection: document.getElementById('account-section'),
@@ -78,20 +76,9 @@ const elements = {
   clearLog: document.getElementById('clear-log'),
 };
 
-// Open wallet connector modal
-elements.openConnector.addEventListener('click', () => {
-  walletConnector.open();
-});
-
-// Disconnect
-elements.disconnect.addEventListener('click', async () => {
-  try {
-    await walletManager.disconnect();
-    showStatus('Disconnected', 'info');
-  } catch (error) {
-    showStatus(`Disconnect failed: ${error.message}`, 'error');
-  }
-});
+// Note: Connection and disconnection are now handled by the web component button!
+// - Click "Connect Wallet" to open the wallet selection modal
+// - Click the button showing your address to disconnect
 
 // Transaction Form (Sign & Submit)
 elements.txForm.addEventListener('submit', async (e) => {

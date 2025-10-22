@@ -80,6 +80,15 @@ export class WalletConnectorElement extends HTMLElement {
     // Listen to wallet manager events
     this.walletManager.on('connect', () => {
       this.close();
+      this.render(); // Re-render to update button
+    });
+
+    this.walletManager.on('disconnect', () => {
+      this.render(); // Re-render to update button
+    });
+
+    this.walletManager.on('accountChanged', () => {
+      this.render(); // Re-render to update button with new account
     });
 
     this.render();
@@ -444,21 +453,18 @@ export class WalletConnectorElement extends HTMLElement {
   }
 
   /**
+   * Truncate address for display
+   */
+  private truncateAddress(address: string, chars: number = 6): string {
+    if (address.length <= chars * 2) return address;
+    return `${address.substring(0, chars)}...${address.substring(address.length - chars)}`;
+  }
+
+  /**
    * Render the component
    */
 
   private render() {
-    if (!this.isOpen) {
-      this.shadow.innerHTML = '';
-      return;
-    }
-
-    // Capture current modal height before re-rendering
-    const existingModal = this.shadow.querySelector('.modal') as HTMLElement;
-    if (existingModal) {
-      this.previousModalHeight = existingModal.offsetHeight;
-    }
-
     // Core theme values
     const backgroundColor = this.getAttribute('background-color') || DEFAULT_THEME.BACKGROUND_COLOR;
     const textColor = this.getAttribute('text-color') || DEFAULT_THEME.TEXT_COLOR;
@@ -466,7 +472,20 @@ export class WalletConnectorElement extends HTMLElement {
     const fontFamily = this.getAttribute('font-family') || DEFAULT_THEME.FONT_FAMILY;
     const customCSS = this.getAttribute('custom-css') || '';
 
+    // Capture current modal height before re-rendering
+    const existingModal = this.shadow.querySelector('.modal') as HTMLElement;
+    if (existingModal) {
+      this.previousModalHeight = existingModal.offsetHeight;
+    }
+
     this.primaryWalletId = this.getAttribute('primary-wallet');
+
+    // Check connection state
+    const isConnected = this.walletManager?.connected || false;
+    const currentAccount = this.walletManager?.account;
+    const buttonText = isConnected && currentAccount
+      ? this.truncateAddress(currentAccount.address, 4)
+      : 'Connect Wallet';
 
     // Wallets
     const wallets = this.walletManager?.wallets || [];
@@ -635,6 +654,23 @@ export class WalletConnectorElement extends HTMLElement {
         overflow-y: auto;
         padding: 0 24px 24px;
         transition: opacity 0.3s ease;
+      }
+
+      .connect-button {
+        padding: ${SIZES.BUTTON_PADDING_VERTICAL}px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
+        border-radius: ${SIZES.BUTTON_BORDER_RADIUS}px;
+        border: none;
+        background: var(--primary-color);
+        color: white;
+        font-size: 16px;
+        font-weight: ${FONT_WEIGHTS.SEMIBOLD};
+        cursor: pointer;
+        transition: all 0.2s;
+        font-family: var(--font-family);
+      }
+
+      .connect-button:hover {
+        background: var(--primary-bn-hover);
       }
 
       .primary-button {
@@ -959,11 +995,15 @@ export class WalletConnectorElement extends HTMLElement {
       ${customCSS}
     </style>
 
+    <button class="connect-button" id="connect-wallet-button" part="connect-button">${buttonText}</button>
+
+    ${this.isOpen ? `
     <div class="${overlayClass}" part="overlay">
       <div class="${modalClass}" part="modal">
         ${contentHTML}
       </div>
     </div>
+    ` : ''}
   `;
 
     this.attachEventListeners();
@@ -1142,6 +1182,24 @@ export class WalletConnectorElement extends HTMLElement {
    * Attach event listeners
    */
   private attachEventListeners() {
+    // Connect wallet button
+    this.shadow.querySelector('#connect-wallet-button')?.addEventListener('click', async () => {
+      const isConnected = this.walletManager?.connected || false;
+
+      if (isConnected) {
+        // Disconnect
+        try {
+          await this.walletManager?.disconnect();
+          this.render();
+        } catch (error) {
+          logger.error('Failed to disconnect:', error);
+        }
+      } else {
+        // Open modal
+        this.open();
+      }
+    });
+
     // Close button
     this.shadow.querySelector('.close-button')?.addEventListener('click', () => this.close());
 

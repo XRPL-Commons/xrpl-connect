@@ -45,6 +45,13 @@ header {
   color: white;
   padding: 2rem;
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-content {
+  flex: 1;
 }
 
 header h1 {
@@ -109,6 +116,29 @@ section h2 {
 
 .wallet-btn .icon {
   font-size: 1.5rem;
+}
+
+/* Web Component Styling */
+xrpl-wallet-connector::part(connect-button) {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.95rem;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(59, 153, 252, 0.3);
+}
+
+xrpl-wallet-connector::part(connect-button):hover {
+  box-shadow: 0 6px 16px rgba(59, 153, 252, 0.4);
+}
+
+/* Description text */
+.section-description {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+  line-height: 1.5;
 }
 
 .btn-primary {

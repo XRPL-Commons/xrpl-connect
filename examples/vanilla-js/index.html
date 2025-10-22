@@ -9,15 +9,17 @@
   <body>
     <div id="app">
       <header>
-        <h1>🔗 XRPL Connect Demo</h1>
-        <p>Framework-agnostic wallet connection toolkit for XRPL</p>
+        <div class="header-content">
+          <h1>🔗 XRPL Connect Demo</h1>
+          <p>Framework-agnostic wallet connection toolkit for XRPL</p>
+        </div>
       </header>
 
       <main>
-        <!-- Connection Section -->
+        <!-- Connection Status Section -->
         <section id="connect-section">
-          <h2>Connect Wallet</h2>
-          <button id="open-connector" class="btn-primary">Open Wallet Connector</button>
+          <h2>Connection Status</h2>
+          <p class="section-description">Click the <strong>"Connect Wallet"</strong> button above to connect or manage your wallet</p>
           <div id="status" class="status"></div>
         </section>
 
@@ -38,7 +40,7 @@
               <span id="wallet-name" class="value"></span>
             </div>
           </div>
-          <button id="disconnect" class="btn-secondary">Disconnect</button>
+          <p class="section-description">Click the button showing your address to disconnect</p>
         </section>
 
         <!-- Transaction Section -->
@@ -101,10 +103,18 @@
       </footer>
     </div>
 
-    <!-- XRPL Wallet Connector Web Component -->
+    <!-- XRPL Wallet Connector Web Component
+         Features:
+         - "Connect Wallet" button when disconnected
+         - Shows truncated address when connected (tap to disconnect)
+         - Click to open wallet selection modal
+    -->
     <xrpl-wallet-connector
       id="wallet-connector"
       background-color="#1a202c"
+      text-color="#F5F4E7"
+      primary-color="#3b99fc"
+      font-family="inherit"
       primary-wallet="xaman"
       show-help="true">
     </xrpl-wallet-connector>
