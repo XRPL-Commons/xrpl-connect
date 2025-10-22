@@ -1,6 +1,6 @@
 {
   "name": "xrpl-connect",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "The easiest way to connect XRPL wallets to your app - Framework-agnostic toolkit with plug-and-play UI",
   "author": "XRPL Connect Contributors",
   "license": "MIT",
@@ -32,11 +32,9 @@
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
-  "browser": "./dist/index.browser.mjs",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "browser": "./dist/index.browser.mjs",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
     }
@@ -48,7 +46,8 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "clean": "rm -rf dist"
+    "publish:build": "vite build -c vite.config.ts && node scripts/prepare-publish.js",
+    "clean": "rm -rf dist dist-publish"
   },
   "peerDependencies": {
     "xrpl": "^3.0.0 || ^4.0.0"
@@ -56,6 +55,7 @@
   "devDependencies": {
     "@types/node": "^20.14.0",
     "tsup": "^8.1.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vite": "^5.0.0"
   }
 }

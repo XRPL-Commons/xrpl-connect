@@ -29,7 +29,11 @@ import {
  */
 const logger = createLogger('[WalletConnector]');
 
-export class WalletConnectorElement extends HTMLElement {
+// Only define the component in browser (guard against SSR)
+let WalletConnectorElement: any = null;
+
+if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
+  class WalletConnectorElementImpl extends HTMLElement {
   private walletManager: WalletManager | null = null;
   private shadow: ShadowRoot;
   private isOpen = false;
@@ -1277,9 +1281,16 @@ export class WalletConnectorElement extends HTMLElement {
     });
   }
 
+  }
+
+  // Assign the class to the export variable
+  WalletConnectorElement = WalletConnectorElementImpl;
+
+  // Register the custom element
+  if (!customElements.get('xrpl-wallet-connector')) {
+    customElements.define('xrpl-wallet-connector', WalletConnectorElement);
+  }
 }
 
-// Register the custom element
-if (typeof window !== 'undefined' && !customElements.get('xrpl-wallet-connector')) {
-  customElements.define('xrpl-wallet-connector', WalletConnectorElement);
-}
+// Export the class (will be null on server, defined on client)
+export { WalletConnectorElement };
