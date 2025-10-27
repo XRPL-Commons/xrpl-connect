@@ -42,7 +42,10 @@ export class CrossmarkAdapter implements WalletAdapter {
    */
   async isAvailable(): Promise<boolean> {
     try {
-      return typeof window !== 'undefined' && typeof sdk !== 'undefined';
+      if (!sdk.sync.isInstalled()) {
+        return false;
+      }
+      return true;
     } catch {
       return false;
     }
