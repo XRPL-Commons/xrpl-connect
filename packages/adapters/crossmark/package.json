@@ -1,6 +1,6 @@
 {
   "name": "@xrpl-connect/adapter-crossmark",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Crossmark wallet adapter for XRPL Connect - Browser extension wallet support",
   "author": "XRPL Connect Contributors",
   "license": "MIT",

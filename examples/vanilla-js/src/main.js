@@ -74,11 +74,82 @@ const elements = {
   msgResult: document.getElementById('msg-result'),
   eventsLog: document.getElementById('events-log'),
   clearLog: document.getElementById('clear-log'),
+  currentTheme: document.getElementById('current-theme'),
+  themeButtons: document.querySelectorAll('.theme-btn'),
 };
 
 // Note: Connection and disconnection are now handled by the web component button!
 // - Click "Connect Wallet" to open the wallet selection modal
-// - Click the button showing your address to disconnect
+// - Click the button showing your address to view account details modal
+
+// Theme switching functionality
+// Shows how to dynamically change component styling via CSS variables
+const themes = {
+  dark: {
+    '--xc-background-color': '#1a202c',
+    '--xc-background-secondary': '#2d3748',
+    '--xc-background-tertiary': '#4a5568',
+    '--xc-text-color': '#F5F4E7',
+    '--xc-text-muted-color': 'rgba(245, 244, 231, 0.6)',
+    '--xc-primary-color': '#3b99fc',
+  },
+  light: {
+    '--xc-background-color': '#ffffff',
+    '--xc-background-secondary': '#f5f5f5',
+    '--xc-background-tertiary': '#eeeeee',
+    '--xc-text-color': '#111111',
+    '--xc-text-muted-color': 'rgba(17, 17, 17, 0.6)',
+    '--xc-primary-color': '#2563eb',
+  },
+  purple: {
+    '--xc-background-color': '#1e1b4b',
+    '--xc-background-secondary': '#2d2659',
+    '--xc-background-tertiary': '#3d3261',
+    '--xc-text-color': '#f3e8ff',
+    '--xc-text-muted-color': 'rgba(243, 232, 255, 0.6)',
+    '--xc-primary-color': '#a78bfa',
+  },
+};
+
+// Map theme names to display names
+const themeDisplayNames = {
+  dark: 'Dark',
+  light: 'Light',
+  purple: 'Purple',
+};
+
+// Function to apply theme
+function applyTheme(themeName) {
+  const theme = themes[themeName];
+  if (!theme) return;
+
+  // Apply CSS variables to wallet connector component
+  Object.entries(theme).forEach(([key, value]) => {
+    walletConnector.style.setProperty(key, value);
+  });
+
+  // Update button states
+  elements.themeButtons.forEach(btn => {
+    if (btn.dataset.theme === themeName) {
+      btn.classList.add('theme-btn-active');
+    } else {
+      btn.classList.remove('theme-btn-active');
+    }
+  });
+
+  // Update current theme display
+  elements.currentTheme.textContent = themeDisplayNames[themeName] || themeName;
+
+  logEvent('Theme Applied', { theme: themeName });
+}
+
+// Add event listeners to theme buttons
+elements.themeButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const themeName = btn.dataset.theme;
+    applyTheme(themeName);
+  });
+});
 
 // Transaction Form (Sign & Submit)
 elements.txForm.addEventListener('submit', async (e) => {

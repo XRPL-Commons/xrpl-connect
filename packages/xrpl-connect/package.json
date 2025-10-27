@@ -1,6 +1,6 @@
 {
   "name": "xrpl-connect",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "The easiest way to connect XRPL wallets to your app - Framework-agnostic toolkit with plug-and-play UI",
   "author": "XRPL Connect Contributors",
   "license": "MIT",
@@ -16,7 +16,6 @@
     "xrpl",
     "wallet",
     "web3",
-    "ripple",
     "xaman",
     "crossmark",
     "gemwallet",
@@ -48,6 +47,14 @@
     "dev": "tsup --watch",
     "publish:build": "vite build -c vite.config.ts && node scripts/prepare-publish.js",
     "clean": "rm -rf dist dist-publish"
+  },
+  "dependencies": {
+    "@xrpl-connect/core": "workspace:*",
+    "@xrpl-connect/ui": "workspace:*",
+    "@xrpl-connect/adapter-xaman": "workspace:*",
+    "@xrpl-connect/adapter-crossmark": "workspace:*",
+    "@xrpl-connect/adapter-gemwallet": "workspace:*",
+    "@xrpl-connect/adapter-walletconnect": "workspace:*"
   },
   "peerDependencies": {
     "xrpl": "^3.0.0 || ^4.0.0"

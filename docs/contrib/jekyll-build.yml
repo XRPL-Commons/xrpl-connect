@@ -1,0 +1,22 @@
+#
+# Jekyll build for deploying to gh-pages (called from deploy.sh)
+#
+services:
+
+  jekyll:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    image: benizar/gitbook:1.0
+    logging:
+      driver: "none"
+    ports:
+      - 4000:4000
+
+    # THIS BIT!!!1!
+    user: 1000:1000
+
+    volumes:
+      - ..:/source # Your sources will be here
+
+    command: bundle exec jekyll build
