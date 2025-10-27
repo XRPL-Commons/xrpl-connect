@@ -16,13 +16,7 @@ import {
   FONT_WEIGHTS,
   COLOR_ADJUSTMENT,
 } from './constants';
-import {
-  adjustColorBrightness,
-  isSafari,
-  isMobile,
-  isXamanQRImage,
-  delay,
-} from './utils';
+import { adjustColorBrightness, isSafari, isMobile, isXamanQRImage, delay } from './utils';
 
 /**
  * Logger instance for wallet connector
@@ -34,491 +28,587 @@ let WalletConnectorElement: any = null;
 
 if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
   class WalletConnectorElementImpl extends HTMLElement {
-  private walletManager: WalletManager | null = null;
-  private shadow: ShadowRoot;
-  private isOpen = false;
-  private isFirstOpen = true;
-  private primaryWalletId: string | null = null;
-  private viewState: 'list' | 'qr' | 'loading' | 'error' = 'list';
-  private qrCodeData: { walletId: string; uri: string } | null = null;
-  private loadingData: { walletId: string; walletName: string; walletIcon?: string } | null = null;
-  private errorData: { walletId: string; walletName: string; error: Error } | null = null;
-  private previousModalHeight: number = 0;
-  private preGeneratedQRCode: any | null = null; // Store pre-generated QR code
-  private preGeneratedURI: string | null = null; // Store the URI used for pre-generation
+    private walletManager: WalletManager | null = null;
+    private shadow: ShadowRoot;
+    private isOpen = false;
+    private isFirstOpen = true;
+    private primaryWalletId: string | null = null;
+    private viewState: 'list' | 'qr' | 'loading' | 'error' = 'list';
+    private qrCodeData: { walletId: string; uri: string } | null = null;
+    private loadingData: { walletId: string; walletName: string; walletIcon?: string } | null =
+      null;
+    private errorData: { walletId: string; walletName: string; error: Error } | null = null;
+    private previousModalHeight: number = 0;
+    private preGeneratedQRCode: any | null = null; // Store pre-generated QR code
+    private preGeneratedURI: string | null = null; // Store the URI used for pre-generation
+    private specifiedWalletIds: string[] = []; // Wallet IDs specified via 'wallets' attribute
+    private availableWallets: any[] = []; // Cache of available wallets
+    private walletAvailabilityChecked: boolean = false; // Flag to track if availability has been checked
 
-  // Observed attributes
-  static get observedAttributes() {
-    return [
-      'background-color',
-      'text-color',
-      'primary-color',
-      'font-family',
-      'custom-css',
-      'primary-wallet',
-      'show-help',
-    ];
-  }
+    // Observed attributes
+    static get observedAttributes() {
+      return [
+        'background-color',
+        'text-color',
+        'primary-color',
+        'font-family',
+        'custom-css',
+        'primary-wallet',
+        'show-help',
+        'wallets',
+      ];
+    }
 
-  constructor() {
-    super();
-    this.shadow = this.attachShadow({ mode: 'open' });
-  }
+    constructor() {
+      super();
+      this.shadow = this.attachShadow({ mode: 'open' });
+    }
 
-  connectedCallback() {
-    this.render();
-  }
-
-  attributeChangedCallback(_name: string, _oldValue: string, _newValue: string) {
-    if (this.shadow.children.length > 0) {
+    connectedCallback() {
       this.render();
     }
-  }
 
-  /**
-   * Set the WalletManager instance
-   */
-  setWalletManager(manager: WalletManager) {
-    this.walletManager = manager;
-
-    // Listen to wallet manager events
-    this.walletManager.on('connect', () => {
-      this.close();
-      this.render(); // Re-render to update button
-    });
-
-    this.walletManager.on('disconnect', () => {
-      this.render(); // Re-render to update button
-    });
-
-    this.walletManager.on('accountChanged', () => {
-      this.render(); // Re-render to update button with new account
-    });
-
-    this.render();
-  }
-
-  /**
-   * Open the modal
-   */
-  open() {
-    this.isOpen = true;
-    this.isFirstOpen = true;
-    this.render();
-    this.dispatchEvent(new CustomEvent('open'));
-
-    // Pre-initialize WalletConnect to reduce loading time
-    this.preInitializeWalletConnect();
-  }
-
-  /**
-   * Close the modal
-   */
-  close() {
-    this.isOpen = false;
-    // Reset state to wallet list view when closing
-    this.viewState = 'list';
-    this.qrCodeData = null;
-    this.loadingData = null;
-    this.errorData = null;
-    this.render();
-    this.dispatchEvent(new CustomEvent('close'));
-  }
-
-  /**
-   * Toggle the modal
-   */
-  toggle() {
-    if (this.isOpen) {
-      this.close();
-    } else {
-      this.open();
+    attributeChangedCallback(_name: string, _oldValue: string, _newValue: string) {
+      if (this.shadow.children.length > 0) {
+        this.render();
+      }
     }
-  }
 
-  /**
-   * Pre-initialize WalletConnect when modal opens to reduce loading time
-   * Based on ConnectKit's eager initialization pattern
-   */
-  private async preInitializeWalletConnect() {
-    if (!this.walletManager) return;
+    /**
+     * Set the WalletManager instance
+     */
+    setWalletManager(manager: WalletManager) {
+      this.walletManager = manager;
 
-    // Find WalletConnect adapter
-    const walletConnectAdapter = this.walletManager.wallets.find((w) => w.id === 'walletconnect');
+      // Listen to wallet manager events
+      this.walletManager.on('connect', () => {
+        this.close();
+        this.render(); // Re-render to update button
+      });
 
-    if (!walletConnectAdapter) return;
+      this.walletManager.on('disconnect', () => {
+        this.render(); // Re-render to update button
+      });
 
-    // Check if adapter has preInitialize method
-    if (typeof (walletConnectAdapter as any).preInitialize === 'function') {
+      this.walletManager.on('accountChanged', () => {
+        this.render(); // Re-render to update button with new account
+      });
+
+      this.render();
+    }
+
+    /**
+     * Parse wallet IDs from the 'wallets' attribute
+     */
+    private parseWalletAttribute(): string[] {
+      const walletsAttr = this.getAttribute('wallets') || '';
+      if (!walletsAttr) {
+        // If no wallets attribute, use all available wallets
+        return this.walletManager?.wallets.map((w) => w.id) || [];
+      }
+      // Parse comma-separated wallet IDs
+      return walletsAttr
+        .split(',')
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0);
+    }
+
+    /**
+     * Check which wallets are available
+     * Filters wallets based on 'wallets' attribute and checks isAvailable() on each
+     */
+    private async checkWalletAvailability() {
+      if (!this.walletManager || !this.walletManager.wallets.length) {
+        logger.warn('No wallet manager or wallets registered');
+        this.availableWallets = [];
+        return;
+      }
+
       try {
-        logger.debug('Pre-initializing WalletConnect...');
+        // Parse the specified wallet IDs from attribute
+        this.specifiedWalletIds = this.parseWalletAttribute();
 
-        // Extract projectId from adapter's stored options
-        const projectId = (walletConnectAdapter as any).options?.projectId;
+        logger.debug('Checking availability for wallets:', this.specifiedWalletIds);
 
-        // Pass network information if available
-        const network = (this.walletManager as any).options?.network;
+        // Get adapters for specified wallet IDs
+        const walletsToCheck = this.walletManager.wallets.filter((w) =>
+          this.specifiedWalletIds.includes(w.id)
+        );
 
-        // Store the QR generation callback in the adapter's options
-        // The adapter will call this callback during pre-initialization
-        if (!(walletConnectAdapter as any).options) {
-          (walletConnectAdapter as any).options = {};
-        }
-        (walletConnectAdapter as any).options.onQRCode = (uri: string) => {
-          logger.debug('Pre-generating QR code...');
-          this.preGenerateQRCode(uri);
-        };
+        // Check availability for each wallet in parallel
+        const availabilityChecks = await Promise.all(
+          walletsToCheck.map(async (wallet) => {
+            try {
+              const available = await wallet.isAvailable();
+              logger.debug(`Wallet ${wallet.id} availability: ${available}`);
+              return { wallet, available };
+            } catch (error) {
+              logger.warn(`Error checking availability for ${wallet.id}:`, error);
+              return { wallet, available: false };
+            }
+          })
+        );
 
-        // Pre-initialize with projectId and network
-        await (walletConnectAdapter as any).preInitialize(projectId, network);
+        // Filter to only available wallets and maintain order from specified list
+        this.availableWallets = this.specifiedWalletIds
+          .map((id) => availabilityChecks.find((check) => check.wallet.id === id)?.wallet)
+          .filter(
+            (wallet): wallet is any =>
+              (wallet !== undefined &&
+                availabilityChecks.find((c) => c.wallet.id === wallet.id)?.available) ??
+              false
+          );
+
+        logger.debug(
+          'Available wallets:',
+          this.availableWallets.map((w) => w.id)
+        );
       } catch (error) {
-        logger.warn('Failed to pre-initialize WalletConnect:', error);
-        // Silent failure - connection will initialize on demand if this fails
+        logger.error('Error checking wallet availability:', error);
+        this.availableWallets = [];
       }
     }
-  }
 
-  /**
-   * Pre-generate QR code to have it ready when user clicks WalletConnect
-   */
-  private async preGenerateQRCode(uri: string) {
-    try {
-      this.preGeneratedURI = uri;
+    /**
+     * Open the modal
+     */
+    async open() {
+      this.isOpen = true;
+      this.isFirstOpen = true;
 
-      // Get wallet icon for embedding
-      const wallet = this.walletManager?.wallets.find((w) => w.id === 'walletconnect');
-
-      // Create QR code instance
-      const qrCode = new QRCodeStyling({
-        width: QR_CONFIG.SIZE,
-        height: QR_CONFIG.SIZE,
-        type: 'svg',
-        data: uri,
-        image: wallet?.icon,
-        margin: QR_CONFIG.MARGIN,
-        qrOptions: {
-          errorCorrectionLevel: QR_CONFIG.ERROR_CORRECTION_LEVEL,
-        },
-        dotsOptions: {
-          type: QR_CONFIG.DOT_TYPE,
-          color: QR_CONFIG.DOT_COLOR,
-        },
-        backgroundOptions: {
-          color: QR_CONFIG.BACKGROUND_COLOR,
-        },
-        imageOptions: {
-          crossOrigin: 'anonymous',
-          margin: QR_CONFIG.IMAGE_MARGIN,
-          imageSize: QR_CONFIG.IMAGE_SIZE,
-        },
-      });
-
-      // Store the pre-generated QR code
-      this.preGeneratedQRCode = qrCode;
-      logger.debug('QR code pre-generated successfully');
-    } catch (error) {
-      logger.warn('Failed to pre-generate QR code:', error);
-      // Silent failure - QR will be generated on demand if this fails
-    }
-  }
-
-  /**
-   * Connect to a specific wallet
-   */
-  private async connectWallet(walletId: string, options?: any) {
-    if (!this.walletManager) {
-      logger.error('WalletManager not set');
-      return;
-    }
-
-    try {
-      // Get wallet info
-      const wallet = this.walletManager.wallets.find((w) => w.id === walletId);
-      if (!wallet) {
-        throw new Error('Wallet not found');
+      // Check wallet availability when opening modal for the first time
+      if (!this.walletAvailabilityChecked) {
+        await this.checkWalletAvailability();
+        this.walletAvailabilityChecked = true;
       }
 
-      logger.debug('Connecting to wallet:', walletId);
+      this.render();
+      this.dispatchEvent(new CustomEvent('open'));
 
-      if (walletId === 'walletconnect') {
-        // Show QR code view first for WalletConnect
-        logger.debug('Showing QR view for', walletId);
-        this.showQRCodeView(walletId);
+      // Pre-initialize WalletConnect to reduce loading time
+      this.preInitializeWalletConnect();
+    }
 
-        // Set up QR code callback
-        const connectOptions = {
-          ...options,
-          onQRCode: (uri: string) => {
-            logger.debug('QR code callback received:', uri.substring(0, 50) + '...');
-            this.setQRCode(walletId, uri);
-          },
-        };
+    /**
+     * Close the modal
+     */
+    close() {
+      this.isOpen = false;
+      // Reset state to wallet list view when closing
+      this.viewState = 'list';
+      this.qrCodeData = null;
+      this.loadingData = null;
+      this.errorData = null;
+      this.render();
+      this.dispatchEvent(new CustomEvent('close'));
+    }
 
-        this.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
-        await this.walletManager.connect(walletId, connectOptions);
-        this.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
+    /**
+     * Toggle the modal
+     */
+    toggle() {
+      if (this.isOpen) {
+        this.close();
       } else {
-        // For extension wallets, check availability first
-        const isAvailable = await wallet.isAvailable();
-
-        if (!isAvailable) {
-          // Wallet not installed - show appropriate error
-          throw new Error(`${wallet.name} is not installed. Please install the extension first.`);
-        }
-
-        // Show loading state
-        this.showLoadingView(walletId, wallet.name, wallet.icon);
-
-        this.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
-
-        // Browser-specific delay (Safari needs immediate connection for user gesture)
-        if (!isSafari()) {
-          // Small delay for UI animation on non-Safari browsers
-          await delay(TIMINGS.NON_SAFARI_CONNECT_DELAY);
-        }
-
-        await this.walletManager.connect(walletId, options);
-        this.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
+        this.open();
       }
-    } catch (error: any) {
-      const wallet = this.walletManager?.wallets.find((w) => w.id === walletId);
-
-      // Detect error type based on error code (ConnectKit pattern)
-      let errorMessage = error.message || 'An unexpected error occurred';
-      let errorType: 'rejected' | 'unavailable' | 'failed' = 'failed';
-
-      // Check for specific error codes
-      if (error.code === ERROR_CODES.USER_REJECTED || errorMessage.toLowerCase().includes('user rejected')) {
-        errorType = 'rejected';
-        errorMessage = 'Connection request was cancelled';
-      } else if (error.code === ERROR_CODES.POPUP_CLOSED || errorMessage.toLowerCase().includes('already pending')) {
-        errorType = 'unavailable';
-        errorMessage = 'Wallet popup was closed or did not respond. Please try again.';
-      } else if (errorMessage.toLowerCase().includes('not installed')) {
-        errorType = 'unavailable';
-      }
-
-      logger.debug('Connection error type:', errorType, 'Code:', error.code);
-
-      this.showErrorView(walletId, wallet?.name || 'Wallet', new Error(errorMessage));
-      this.dispatchEvent(new CustomEvent('error', { detail: { error, walletId, errorType } }));
-      logger.error('Failed to connect:', error);
     }
-  }
 
-  /**
-   * Show QR code view
-   */
-  private showQRCodeView(walletId: string, uri?: string) {
-    this.viewState = 'qr';
-    this.qrCodeData = { walletId, uri: uri || '' };
-    this.loadingData = null;
-    this.errorData = null;
-    this.render();
-  }
+    /**
+     * Pre-initialize WalletConnect when modal opens to reduce loading time
+     * Based on ConnectKit's eager initialization pattern
+     */
+    private async preInitializeWalletConnect() {
+      if (!this.walletManager) return;
 
-  /**
-   * Show loading view
-   */
-  private showLoadingView(walletId: string, walletName: string, walletIcon?: string) {
-    this.viewState = 'loading';
-    this.loadingData = { walletId, walletName, walletIcon };
-    this.qrCodeData = null;
-    this.errorData = null;
-    this.render();
-  }
+      // Find WalletConnect adapter
+      const walletConnectAdapter = this.walletManager.wallets.find((w) => w.id === 'walletconnect');
 
-  /**
-   * Show error view
-   */
-  private showErrorView(walletId: string, walletName: string, error: Error) {
-    this.viewState = 'error';
-    this.errorData = { walletId, walletName, error };
-    this.qrCodeData = null;
-    this.loadingData = null;
-    this.render();
-  }
+      if (!walletConnectAdapter) return;
 
-  /**
-   * Show wallet list view
-   */
-  private showWalletList() {
-    this.viewState = 'list';
-    this.qrCodeData = null;
-    this.loadingData = null;
-    this.errorData = null;
-    this.render();
-  }
+      // Check if adapter has preInitialize method
+      if (typeof (walletConnectAdapter as any).preInitialize === 'function') {
+        try {
+          logger.debug('Pre-initializing WalletConnect...');
 
-  /**
-   * Update QR code with URI
-   * Called by wallet adapters when QR code URI is ready
-   */
-  public setQRCode(walletId: string, uri: string) {
-    logger.debug('setQRCode called:', {
-      walletId,
-      uri: uri.substring(0, 60) + '...',
-      viewState: this.viewState,
-      qrCodeData: this.qrCodeData,
-    });
+          // Extract projectId from adapter's stored options
+          const projectId = (walletConnectAdapter as any).options?.projectId;
 
-    if (this.viewState === 'qr' && this.qrCodeData?.walletId === walletId) {
-      this.qrCodeData.uri = uri;
+          // Pass network information if available
+          const network = (this.walletManager as any).options?.network;
 
-      setTimeout(() => {
-        logger.debug('Attempting to render QR code...');
-        const container = this.shadow.querySelector('#qr-container');
-        logger.debug('QR container found:', !!container);
-        this.renderQRCode(uri);
-      }, TIMINGS.QR_RENDER_DELAY);
-    } else {
-      logger.warn('QR code view not active or wallet mismatch', {
+          // Store the QR generation callback in the adapter's options
+          // The adapter will call this callback during pre-initialization
+          if (!(walletConnectAdapter as any).options) {
+            (walletConnectAdapter as any).options = {};
+          }
+          (walletConnectAdapter as any).options.onQRCode = (uri: string) => {
+            logger.debug('Pre-generating QR code...');
+            this.preGenerateQRCode(uri);
+          };
+
+          // Pre-initialize with projectId and network
+          await (walletConnectAdapter as any).preInitialize(projectId, network);
+        } catch (error) {
+          logger.warn('Failed to pre-initialize WalletConnect:', error);
+          // Silent failure - connection will initialize on demand if this fails
+        }
+      }
+    }
+
+    /**
+     * Pre-generate QR code to have it ready when user clicks WalletConnect
+     */
+    private async preGenerateQRCode(uri: string) {
+      try {
+        this.preGeneratedURI = uri;
+
+        // Get wallet icon for embedding
+        const wallet = this.walletManager?.wallets.find((w) => w.id === 'walletconnect');
+
+        // Create QR code instance
+        const qrCode = new QRCodeStyling({
+          width: QR_CONFIG.SIZE,
+          height: QR_CONFIG.SIZE,
+          type: 'svg',
+          data: uri,
+          image: wallet?.icon,
+          margin: QR_CONFIG.MARGIN,
+          qrOptions: {
+            errorCorrectionLevel: QR_CONFIG.ERROR_CORRECTION_LEVEL,
+          },
+          dotsOptions: {
+            type: QR_CONFIG.DOT_TYPE,
+            color: QR_CONFIG.DOT_COLOR,
+          },
+          backgroundOptions: {
+            color: QR_CONFIG.BACKGROUND_COLOR,
+          },
+          imageOptions: {
+            crossOrigin: 'anonymous',
+            margin: QR_CONFIG.IMAGE_MARGIN,
+            imageSize: QR_CONFIG.IMAGE_SIZE,
+          },
+        });
+
+        // Store the pre-generated QR code
+        this.preGeneratedQRCode = qrCode;
+        logger.debug('QR code pre-generated successfully');
+      } catch (error) {
+        logger.warn('Failed to pre-generate QR code:', error);
+        // Silent failure - QR will be generated on demand if this fails
+      }
+    }
+
+    /**
+     * Connect to a specific wallet
+     */
+    private async connectWallet(walletId: string, options?: any) {
+      if (!this.walletManager) {
+        logger.error('WalletManager not set');
+        return;
+      }
+
+      try {
+        // Get wallet info
+        const wallet = this.walletManager.wallets.find((w) => w.id === walletId);
+        if (!wallet) {
+          throw new Error('Wallet not found');
+        }
+
+        logger.debug('Connecting to wallet:', walletId);
+
+        if (walletId === 'walletconnect') {
+          // Show QR code view first for WalletConnect
+          logger.debug('Showing QR view for', walletId);
+          this.showQRCodeView(walletId);
+
+          // Set up QR code callback
+          const connectOptions = {
+            ...options,
+            onQRCode: (uri: string) => {
+              logger.debug('QR code callback received:', uri.substring(0, 50) + '...');
+              this.setQRCode(walletId, uri);
+            },
+          };
+
+          this.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
+          await this.walletManager.connect(walletId, connectOptions);
+          this.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
+        } else {
+          // For extension wallets, check availability first
+          const isAvailable = await wallet.isAvailable();
+
+          if (!isAvailable) {
+            // Wallet not installed - show appropriate error
+            throw new Error(`${wallet.name} is not installed. Please install the extension first.`);
+          }
+
+          // Show loading state
+          this.showLoadingView(walletId, wallet.name, wallet.icon);
+
+          this.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
+
+          // Browser-specific delay (Safari needs immediate connection for user gesture)
+          if (!isSafari()) {
+            // Small delay for UI animation on non-Safari browsers
+            await delay(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+          }
+
+          await this.walletManager.connect(walletId, options);
+          this.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
+        }
+      } catch (error: any) {
+        const wallet = this.walletManager?.wallets.find((w) => w.id === walletId);
+
+        // Detect error type based on error code (ConnectKit pattern)
+        let errorMessage = error.message || 'An unexpected error occurred';
+        let errorType: 'rejected' | 'unavailable' | 'failed' = 'failed';
+
+        // Check for specific error codes
+        if (
+          error.code === ERROR_CODES.USER_REJECTED ||
+          errorMessage.toLowerCase().includes('user rejected')
+        ) {
+          errorType = 'rejected';
+          errorMessage = 'Connection request was cancelled';
+        } else if (
+          error.code === ERROR_CODES.POPUP_CLOSED ||
+          errorMessage.toLowerCase().includes('already pending')
+        ) {
+          errorType = 'unavailable';
+          errorMessage = 'Wallet popup was closed or did not respond. Please try again.';
+        } else if (errorMessage.toLowerCase().includes('not installed')) {
+          errorType = 'unavailable';
+        }
+
+        logger.debug('Connection error type:', errorType, 'Code:', error.code);
+
+        this.showErrorView(walletId, wallet?.name || 'Wallet', new Error(errorMessage));
+        this.dispatchEvent(new CustomEvent('error', { detail: { error, walletId, errorType } }));
+        logger.error('Failed to connect:', error);
+      }
+    }
+
+    /**
+     * Show QR code view
+     */
+    private showQRCodeView(walletId: string, uri?: string) {
+      this.viewState = 'qr';
+      this.qrCodeData = { walletId, uri: uri || '' };
+      this.loadingData = null;
+      this.errorData = null;
+      this.render();
+    }
+
+    /**
+     * Show loading view
+     */
+    private showLoadingView(walletId: string, walletName: string, walletIcon?: string) {
+      this.viewState = 'loading';
+      this.loadingData = { walletId, walletName, walletIcon };
+      this.qrCodeData = null;
+      this.errorData = null;
+      this.render();
+    }
+
+    /**
+     * Show error view
+     */
+    private showErrorView(walletId: string, walletName: string, error: Error) {
+      this.viewState = 'error';
+      this.errorData = { walletId, walletName, error };
+      this.qrCodeData = null;
+      this.loadingData = null;
+      this.render();
+    }
+
+    /**
+     * Show wallet list view
+     */
+    private showWalletList() {
+      this.viewState = 'list';
+      this.qrCodeData = null;
+      this.loadingData = null;
+      this.errorData = null;
+      this.render();
+    }
+
+    /**
+     * Update QR code with URI
+     * Called by wallet adapters when QR code URI is ready
+     */
+    public setQRCode(walletId: string, uri: string) {
+      logger.debug('setQRCode called:', {
+        walletId,
+        uri: uri.substring(0, 60) + '...',
         viewState: this.viewState,
-        expectedWallet: walletId,
-        currentDataWallet: this.qrCodeData?.walletId,
+        qrCodeData: this.qrCodeData,
       });
-    }
-  }
 
-  /**
-   * Render QR code using QRCodeStyling library
-   * Supports both URI strings and direct image URLs (for Xaman)
-   */
-  private async renderQRCode(uri: string) {
-    logger.debug('renderQRCode called with URI:', uri.substring(0, 60) + '...');
-    const container = this.shadow.querySelector('#qr-container');
-    if (!container || !uri) {
-      logger.warn('No container or URI for QR code rendering');
-      return;
+      if (this.viewState === 'qr' && this.qrCodeData?.walletId === walletId) {
+        this.qrCodeData.uri = uri;
+
+        setTimeout(() => {
+          logger.debug('Attempting to render QR code...');
+          const container = this.shadow.querySelector('#qr-container');
+          logger.debug('QR container found:', !!container);
+          this.renderQRCode(uri);
+        }, TIMINGS.QR_RENDER_DELAY);
+      } else {
+        logger.warn('QR code view not active or wallet mismatch', {
+          viewState: this.viewState,
+          expectedWallet: walletId,
+          currentDataWallet: this.qrCodeData?.walletId,
+        });
+      }
     }
 
-    try {
-      // Check if URI is already a QR code image URL (Xaman provides PNG directly)
-      if (isXamanQRImage(uri)) {
-        logger.debug('Using direct QR code image from Xaman');
-        container.innerHTML = `
+    /**
+     * Render QR code using QRCodeStyling library
+     * Supports both URI strings and direct image URLs (for Xaman)
+     */
+    private async renderQRCode(uri: string) {
+      logger.debug('renderQRCode called with URI:', uri.substring(0, 60) + '...');
+      const container = this.shadow.querySelector('#qr-container');
+      if (!container || !uri) {
+        logger.warn('No container or URI for QR code rendering');
+        return;
+      }
+
+      try {
+        // Check if URI is already a QR code image URL (Xaman provides PNG directly)
+        if (isXamanQRImage(uri)) {
+          logger.debug('Using direct QR code image from Xaman');
+          container.innerHTML = `
           <img
             src="${uri}"
             alt="QR Code"
             style="width: ${SIZES.QR_CODE}px; height: ${SIZES.QR_CODE}px; border-radius: 16px; display: block;"
           />
         `;
-        return;
-      }
+          return;
+        }
 
-      // Check if we have a pre-generated QR code with matching URI
-      if (this.preGeneratedQRCode && this.preGeneratedURI === uri) {
-        logger.debug('Using pre-generated QR code - instant render!');
+        // Check if we have a pre-generated QR code with matching URI
+        if (this.preGeneratedQRCode && this.preGeneratedURI === uri) {
+          logger.debug('Using pre-generated QR code - instant render!');
+          container.innerHTML = '';
+          this.preGeneratedQRCode.append(container as HTMLElement);
+          return;
+        }
+
+        // Otherwise, generate modern QR code with qr-code-styling
+        logger.debug('Generating modern QR code from URI');
+        const wallet = this.walletManager?.wallets.find((w) => w.id === this.qrCodeData?.walletId);
+
+        const qrCode = new QRCodeStyling({
+          width: QR_CONFIG.SIZE,
+          height: QR_CONFIG.SIZE,
+          type: 'svg',
+          data: uri,
+          image: wallet?.icon,
+          margin: QR_CONFIG.MARGIN,
+          qrOptions: {
+            errorCorrectionLevel: QR_CONFIG.ERROR_CORRECTION_LEVEL,
+          },
+          dotsOptions: {
+            type: QR_CONFIG.DOT_TYPE,
+            color: QR_CONFIG.DOT_COLOR,
+          },
+          backgroundOptions: {
+            color: QR_CONFIG.BACKGROUND_COLOR,
+          },
+          imageOptions: {
+            crossOrigin: 'anonymous',
+            margin: QR_CONFIG.IMAGE_MARGIN,
+            imageSize: QR_CONFIG.IMAGE_SIZE,
+          },
+        });
+
+        // Clear container and append QR code
         container.innerHTML = '';
-        this.preGeneratedQRCode.append(container as HTMLElement);
-        return;
-      }
-
-      // Otherwise, generate modern QR code with qr-code-styling
-      logger.debug('Generating modern QR code from URI');
-      const wallet = this.walletManager?.wallets.find((w) => w.id === this.qrCodeData?.walletId);
-
-      const qrCode = new QRCodeStyling({
-        width: QR_CONFIG.SIZE,
-        height: QR_CONFIG.SIZE,
-        type: 'svg',
-        data: uri,
-        image: wallet?.icon,
-        margin: QR_CONFIG.MARGIN,
-        qrOptions: {
-          errorCorrectionLevel: QR_CONFIG.ERROR_CORRECTION_LEVEL,
-        },
-        dotsOptions: {
-          type: QR_CONFIG.DOT_TYPE,
-          color: QR_CONFIG.DOT_COLOR,
-        },
-        backgroundOptions: {
-          color: QR_CONFIG.BACKGROUND_COLOR,
-        },
-        imageOptions: {
-          crossOrigin: 'anonymous',
-          margin: QR_CONFIG.IMAGE_MARGIN,
-          imageSize: QR_CONFIG.IMAGE_SIZE,
-        },
-      });
-
-      // Clear container and append QR code
-      container.innerHTML = '';
-      qrCode.append(container as HTMLElement);
-      logger.debug('Modern QR code generated successfully');
-    } catch (error) {
-      logger.error('Failed to generate QR code:', error);
-      container.innerHTML = `
+        qrCode.append(container as HTMLElement);
+        logger.debug('Modern QR code generated successfully');
+      } catch (error) {
+        logger.error('Failed to generate QR code:', error);
+        container.innerHTML = `
         <div class="qr-loading" style="color: #ef4444;">
           Failed to generate QR code
         </div>
       `;
-    }
-  }
-
-  /**
-   * Truncate address for display
-   */
-  private truncateAddress(address: string, chars: number = 6): string {
-    if (address.length <= chars * 2) return address;
-    return `${address.substring(0, chars)}...${address.substring(address.length - chars)}`;
-  }
-
-  /**
-   * Render the component
-   */
-
-  private render() {
-    // Core theme values
-    const backgroundColor = this.getAttribute('background-color') || DEFAULT_THEME.BACKGROUND_COLOR;
-    const textColor = this.getAttribute('text-color') || DEFAULT_THEME.TEXT_COLOR;
-    const primaryColor = this.getAttribute('primary-color') || DEFAULT_THEME.PRIMARY_COLOR;
-    const fontFamily = this.getAttribute('font-family') || DEFAULT_THEME.FONT_FAMILY;
-    const customCSS = this.getAttribute('custom-css') || '';
-
-    // Capture current modal height before re-rendering
-    const existingModal = this.shadow.querySelector('.modal') as HTMLElement;
-    if (existingModal) {
-      this.previousModalHeight = existingModal.offsetHeight;
+      }
     }
 
-    this.primaryWalletId = this.getAttribute('primary-wallet');
-
-    // Check connection state
-    const isConnected = this.walletManager?.connected || false;
-    const currentAccount = this.walletManager?.account;
-    const buttonText = isConnected && currentAccount
-      ? this.truncateAddress(currentAccount.address, 4)
-      : 'Connect Wallet';
-
-    // Wallets
-    const wallets = this.walletManager?.wallets || [];
-    const primaryWallet = this.primaryWalletId
-      ? wallets.find((w) => w.id === this.primaryWalletId)
-      : null;
-    const otherWallets = wallets.filter((w) => w.id !== this.primaryWalletId);
-
-    // Render based on view state
-    let contentHTML = '';
-    if (this.viewState === 'qr' && this.qrCodeData) {
-      contentHTML = this.renderQRView();
-    } else if (this.viewState === 'loading' && this.loadingData) {
-      contentHTML = this.renderLoadingView();
-    } else if (this.viewState === 'error' && this.errorData) {
-      contentHTML = this.renderErrorView();
-    } else {
-      contentHTML = this.renderWalletListView(primaryWallet, otherWallets);
+    /**
+     * Truncate address for display
+     */
+    private truncateAddress(address: string, chars: number = 6): string {
+      if (address.length <= chars * 2) return address;
+      return `${address.substring(0, chars)}...${address.substring(address.length - chars)}`;
     }
 
-    const overlayClass = this.isFirstOpen ? 'overlay fade-in' : 'overlay';
-    const modalClass = this.isFirstOpen ? 'modal slide-up' : 'modal';
+    /**
+     * Render the component
+     */
 
-    // Set flag to false after first render
-    if (this.isFirstOpen) {
-      this.isFirstOpen = false;
-    }
+    private render() {
+      // Core theme values
+      const backgroundColor =
+        this.getAttribute('background-color') || DEFAULT_THEME.BACKGROUND_COLOR;
+      const textColor = this.getAttribute('text-color') || DEFAULT_THEME.TEXT_COLOR;
+      const primaryColor = this.getAttribute('primary-color') || DEFAULT_THEME.PRIMARY_COLOR;
+      const fontFamily = this.getAttribute('font-family') || DEFAULT_THEME.FONT_FAMILY;
+      const customCSS = this.getAttribute('custom-css') || '';
 
-    this.shadow.innerHTML = `
+      // Capture current modal height before re-rendering
+      const existingModal = this.shadow.querySelector('.modal') as HTMLElement;
+      if (existingModal) {
+        this.previousModalHeight = existingModal.offsetHeight;
+      }
+
+      this.primaryWalletId = this.getAttribute('primary-wallet');
+
+      // Check connection state
+      const isConnected = this.walletManager?.connected || false;
+      const currentAccount = this.walletManager?.account;
+      const buttonText =
+        isConnected && currentAccount
+          ? this.truncateAddress(currentAccount.address, 4)
+          : 'Connect Wallet';
+
+      // Use available wallets if any have been checked, otherwise fallback to all wallets
+      const wallets =
+        this.walletAvailabilityChecked && this.availableWallets.length > 0
+          ? this.availableWallets
+          : this.walletManager?.wallets || [];
+
+      const primaryWallet = this.primaryWalletId
+        ? wallets.find((w) => w.id === this.primaryWalletId)
+        : null;
+      const otherWallets = wallets.filter((w) => w.id !== this.primaryWalletId);
+
+      // Render based on view state
+      let contentHTML = '';
+      if (this.viewState === 'qr' && this.qrCodeData) {
+        contentHTML = this.renderQRView();
+      } else if (this.viewState === 'loading' && this.loadingData) {
+        contentHTML = this.renderLoadingView();
+      } else if (this.viewState === 'error' && this.errorData) {
+        contentHTML = this.renderErrorView();
+      } else {
+        contentHTML = this.renderWalletListView(primaryWallet, otherWallets);
+      }
+
+      const overlayClass = this.isFirstOpen ? 'overlay fade-in' : 'overlay';
+      const modalClass = this.isFirstOpen ? 'modal slide-up' : 'modal';
+
+      // Set flag to false after first render
+      if (this.isFirstOpen) {
+        this.isFirstOpen = false;
+      }
+
+      this.shadow.innerHTML = `
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Karla:wght@300;400;600&display=swap');
 
@@ -1001,59 +1091,63 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     <button class="connect-button" id="connect-wallet-button" part="connect-button">${buttonText}</button>
 
-    ${this.isOpen ? `
+    ${
+      this.isOpen
+        ? `
     <div class="${overlayClass}" part="overlay">
       <div class="${modalClass}" part="modal">
         ${contentHTML}
       </div>
     </div>
-    ` : ''}
+    `
+        : ''
+    }
   `;
 
-    this.attachEventListeners();
+      this.attachEventListeners();
 
-    // Update modal height smoothly after render
-    requestAnimationFrame(() => {
-      this.updateModalHeight();
-    });
-  }
-
-  /**
-   * Update modal height with smooth transition
-   */
-  private updateModalHeight() {
-    const modal = this.shadow.querySelector('.modal') as HTMLElement;
-    if (!modal) return;
-
-    // Use the stored previous height
-    const oldHeight = this.previousModalHeight;
-
-    // Measure new content height (modal is currently auto)
-    const newHeight = modal.offsetHeight;
-
-    // If heights are different and we have a valid old height, animate the transition
-    if (oldHeight > 0 && newHeight > 0 && oldHeight !== newHeight) {
-      // Set old height explicitly
-      modal.style.height = `${oldHeight}px`;
-
-      // Force reflow to apply the old height
-      void modal.offsetHeight;
-
-      // Transition to new height
+      // Update modal height smoothly after render
       requestAnimationFrame(() => {
-        modal.style.height = `${newHeight}px`;
+        this.updateModalHeight();
       });
     }
 
-    // Store current height for next transition
-    this.previousModalHeight = newHeight;
-  }
+    /**
+     * Update modal height with smooth transition
+     */
+    private updateModalHeight() {
+      const modal = this.shadow.querySelector('.modal') as HTMLElement;
+      if (!modal) return;
 
-  /**
-   * Render wallet list view
-   */
-  private renderWalletListView(primaryWallet: any | null, otherWallets: any[]): string {
-    return `
+      // Use the stored previous height
+      const oldHeight = this.previousModalHeight;
+
+      // Measure new content height (modal is currently auto)
+      const newHeight = modal.offsetHeight;
+
+      // If heights are different and we have a valid old height, animate the transition
+      if (oldHeight > 0 && newHeight > 0 && oldHeight !== newHeight) {
+        // Set old height explicitly
+        modal.style.height = `${oldHeight}px`;
+
+        // Force reflow to apply the old height
+        void modal.offsetHeight;
+
+        // Transition to new height
+        requestAnimationFrame(() => {
+          modal.style.height = `${newHeight}px`;
+        });
+      }
+
+      // Store current height for next transition
+      this.previousModalHeight = newHeight;
+    }
+
+    /**
+     * Render wallet list view
+     */
+    private renderWalletListView(primaryWallet: any | null, otherWallets: any[]): string {
+      return `
       <div class="header">
         <h2 class="title">Connect Wallet</h2>
         <button class="close-button" part="close-button" aria-label="Close">×</button>
@@ -1083,17 +1177,17 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         </div>
       </div>
     `;
-  }
+    }
 
-  /**
-   * Render QR code view
-   */
-  private renderQRView(): string {
-    const wallet = this.walletManager?.wallets.find((w) => w.id === this.qrCodeData?.walletId);
-    const walletName = wallet?.name || 'Wallet';
-    //const walletIcon = wallet?.icon || '';
+    /**
+     * Render QR code view
+     */
+    private renderQRView(): string {
+      const wallet = this.walletManager?.wallets.find((w) => w.id === this.qrCodeData?.walletId);
+      const walletName = wallet?.name || 'Wallet';
+      //const walletIcon = wallet?.icon || '';
 
-    return `
+      return `
     <div class="header">
       <div class="header-with-back">
         <button class="back-button" id="back-button" aria-label="Back">←</button>
@@ -1116,16 +1210,16 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       </div>
     </div>
   `;
-  }
-  /**
-   * Render loading view
-   */
-  private renderLoadingView(): string {
-    if (!this.loadingData) return '';
+    }
+    /**
+     * Render loading view
+     */
+    private renderLoadingView(): string {
+      if (!this.loadingData) return '';
 
-    const { walletName, walletIcon } = this.loadingData;
+      const { walletName, walletIcon } = this.loadingData;
 
-    return `
+      return `
       <div class="header">
         <div class="header-with-back">
           <button class="back-button" id="loading-back-button" aria-label="Back">←</button>
@@ -1147,17 +1241,17 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         </div>
       </div>
     `;
-  }
+    }
 
-  /**
-   * Render error view
-   */
-  private renderErrorView(): string {
-    if (!this.errorData) return '';
+    /**
+     * Render error view
+     */
+    private renderErrorView(): string {
+      if (!this.errorData) return '';
 
-    const { walletName } = this.errorData;
+      const { walletName } = this.errorData;
 
-    return `
+      return `
       <div class="header">
         <h2 class="title">Connection Failed</h2>
         <button class="close-button" part="close-button" aria-label="Close">×</button>
@@ -1180,107 +1274,111 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         </div>
       </div>
     `;
-  }
+    }
 
-  /**
-   * Attach event listeners
-   */
-  private attachEventListeners() {
-    // Connect wallet button
-    this.shadow.querySelector('#connect-wallet-button')?.addEventListener('click', async () => {
-      const isConnected = this.walletManager?.connected || false;
+    /**
+     * Attach event listeners
+     */
+    private attachEventListeners() {
+      // Connect wallet button
+      this.shadow.querySelector('#connect-wallet-button')?.addEventListener('click', async () => {
+        const isConnected = this.walletManager?.connected || false;
 
-      if (isConnected) {
-        // Disconnect
-        try {
-          await this.walletManager?.disconnect();
-          this.render();
-        } catch (error) {
-          logger.error('Failed to disconnect:', error);
-        }
-      } else {
-        // Open modal
-        this.open();
-      }
-    });
-
-    // Close button
-    this.shadow.querySelector('.close-button')?.addEventListener('click', () => this.close());
-
-    // Overlay click
-    this.shadow.querySelector('.overlay')?.addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) this.close();
-    });
-
-    // Wallet buttons
-    this.shadow.querySelectorAll('[data-wallet-id]').forEach((button) => {
-      button.addEventListener('click', () => {
-        const walletId = (button as HTMLElement).dataset.walletId;
-        if (walletId) this.connectWallet(walletId);
-      });
-    });
-
-    // Back button (QR view)
-    this.shadow.querySelector('#back-button')?.addEventListener('click', () => {
-      this.showWalletList();
-    });
-
-    // Back button (Loading view)
-    this.shadow.querySelector('#loading-back-button')?.addEventListener('click', () => {
-      this.showWalletList();
-    });
-
-    // Copy button (QR view)
-    this.shadow.querySelector('#copy-button')?.addEventListener('click', async () => {
-      if (this.qrCodeData?.uri) {
-        try {
-          await navigator.clipboard.writeText(this.qrCodeData.uri);
-          const btn = this.shadow.querySelector('#copy-button') as HTMLButtonElement;
-          if (btn) {
-            btn.textContent = 'Copied!';
-            setTimeout(() => (btn.textContent = 'Copy to Clipboard'), TIMINGS.COPY_FEEDBACK_DURATION);
+        if (isConnected) {
+          // Disconnect
+          try {
+            await this.walletManager?.disconnect();
+            this.render();
+          } catch (error) {
+            logger.error('Failed to disconnect:', error);
           }
-        } catch (error) {
-          logger.error('Failed to copy to clipboard:', error);
-        }
-      }
-    });
-
-    // Deeplink button
-    this.shadow.querySelector('#deeplink-button')?.addEventListener('click', () => {
-      if (this.qrCodeData?.uri && this.qrCodeData?.walletId) {
-        const adapter = this.walletManager?.wallets.find((w) => w.id === this.qrCodeData?.walletId);
-
-        let deepLink = this.qrCodeData.uri;
-
-        // Try to get proper deep link from adapter
-        if (adapter && typeof (adapter as any).getDeepLinkURI === 'function') {
-          deepLink = (adapter as any).getDeepLinkURI(this.qrCodeData.uri);
-        }
-
-        // Detect mobile and open deep link
-        if (isMobile()) {
-          window.location.href = deepLink;
         } else {
-          // On desktop, still try to open (might open desktop app if installed)
-          window.open(deepLink, '_blank');
+          // Open modal
+          this.open();
         }
-      }
-    });
+      });
 
-    // Error retry button
-    this.shadow.querySelector('#error-retry-button')?.addEventListener('click', () => {
-      if (this.errorData?.walletId) {
-        this.connectWallet(this.errorData.walletId);
-      }
-    });
+      // Close button
+      this.shadow.querySelector('.close-button')?.addEventListener('click', () => this.close());
 
-    // Error back button
-    this.shadow.querySelector('#error-back-button')?.addEventListener('click', () => {
-      this.showWalletList();
-    });
-  }
+      // Overlay click
+      this.shadow.querySelector('.overlay')?.addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) this.close();
+      });
 
+      // Wallet buttons
+      this.shadow.querySelectorAll('[data-wallet-id]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const walletId = (button as HTMLElement).dataset.walletId;
+          if (walletId) this.connectWallet(walletId);
+        });
+      });
+
+      // Back button (QR view)
+      this.shadow.querySelector('#back-button')?.addEventListener('click', () => {
+        this.showWalletList();
+      });
+
+      // Back button (Loading view)
+      this.shadow.querySelector('#loading-back-button')?.addEventListener('click', () => {
+        this.showWalletList();
+      });
+
+      // Copy button (QR view)
+      this.shadow.querySelector('#copy-button')?.addEventListener('click', async () => {
+        if (this.qrCodeData?.uri) {
+          try {
+            await navigator.clipboard.writeText(this.qrCodeData.uri);
+            const btn = this.shadow.querySelector('#copy-button') as HTMLButtonElement;
+            if (btn) {
+              btn.textContent = 'Copied!';
+              setTimeout(
+                () => (btn.textContent = 'Copy to Clipboard'),
+                TIMINGS.COPY_FEEDBACK_DURATION
+              );
+            }
+          } catch (error) {
+            logger.error('Failed to copy to clipboard:', error);
+          }
+        }
+      });
+
+      // Deeplink button
+      this.shadow.querySelector('#deeplink-button')?.addEventListener('click', () => {
+        if (this.qrCodeData?.uri && this.qrCodeData?.walletId) {
+          const adapter = this.walletManager?.wallets.find(
+            (w) => w.id === this.qrCodeData?.walletId
+          );
+
+          let deepLink = this.qrCodeData.uri;
+
+          // Try to get proper deep link from adapter
+          if (adapter && typeof (adapter as any).getDeepLinkURI === 'function') {
+            deepLink = (adapter as any).getDeepLinkURI(this.qrCodeData.uri);
+          }
+
+          // Detect mobile and open deep link
+          if (isMobile()) {
+            window.location.href = deepLink;
+          } else {
+            // On desktop, still try to open (might open desktop app if installed)
+            window.open(deepLink, '_blank');
+          }
+        }
+      });
+
+      // Error retry button
+      this.shadow.querySelector('#error-retry-button')?.addEventListener('click', () => {
+        if (this.errorData?.walletId) {
+          this.connectWallet(this.errorData.walletId);
+        }
+      });
+
+      // Error back button
+      this.shadow.querySelector('#error-back-button')?.addEventListener('click', () => {
+        this.showWalletList();
+      });
+    }
   }
 
   // Assign the class to the export variable
