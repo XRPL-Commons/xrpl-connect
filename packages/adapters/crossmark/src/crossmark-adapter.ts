@@ -122,44 +122,23 @@ export class CrossmarkAdapter implements WalletAdapter {
    * @param transaction - The transaction to sign
    * @param submit - Whether to submit to the ledger (default: true)
    */
-  async signAndSubmit(
-    transaction: Transaction,
-    submit: boolean = true
-  ): Promise<SubmittedTransaction> {
+  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
     if (!this.currentAccount) {
       throw createWalletError.notConnected();
     }
 
     try {
-      // Ensure Account field is set
       const tx = {
         ...transaction,
         Account: transaction.Account || this.currentAccount.address,
       };
+      const signResponse = await sdk.methods.signAndSubmitAndWait(tx as any);
 
-      // Sign the transaction with Crossmark
-      const signResponse = await sdk.methods.signAndWait(tx as any);
-
-      if (!signResponse || !signResponse.response || !signResponse.response.data) {
+      if (!signResponse.response.data.resp.result.hash) {
         throw new Error('Failed to sign transaction with Crossmark');
       }
-
-      const { txBlob } = signResponse.response.data;
-
-      // If submit is true, also submit to the ledger
-      if (submit) {
-        const id = sdk.sync.submit(this.currentAccount.address, txBlob);
-        return {
-          hash: '',
-          id: id || '',
-          tx_blob: txBlob,
-        };
-      }
-
-      // Otherwise just return the signed transaction
       return {
-        hash: '',
-        tx_blob: txBlob,
+        hash: signResponse.response.data.resp.result.hash,
       };
     } catch (error) {
       if (error instanceof Error && error.message.toLowerCase().includes('reject')) {
