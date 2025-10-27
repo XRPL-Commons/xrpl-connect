@@ -48,6 +48,14 @@
     "publish:build": "vite build -c vite.config.ts && node scripts/prepare-publish.js",
     "clean": "rm -rf dist dist-publish"
   },
+  "dependencies": {
+    "@xrpl-connect/core": "workspace:*",
+    "@xrpl-connect/ui": "workspace:*",
+    "@xrpl-connect/adapter-xaman": "workspace:*",
+    "@xrpl-connect/adapter-crossmark": "workspace:*",
+    "@xrpl-connect/adapter-gemwallet": "workspace:*",
+    "@xrpl-connect/adapter-walletconnect": "workspace:*"
+  },
   "peerDependencies": {
     "xrpl": "^3.0.0 || ^4.0.0"
   },
