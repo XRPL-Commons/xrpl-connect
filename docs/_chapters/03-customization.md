@@ -1,4 +1,5 @@
 ---
+layout: post
 title: Customization
 weight: 3
 ---

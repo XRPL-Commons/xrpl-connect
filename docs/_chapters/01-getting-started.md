@@ -1,4 +1,5 @@
 ---
+layout: post
 title: Getting Started
 weight: 1
 ---

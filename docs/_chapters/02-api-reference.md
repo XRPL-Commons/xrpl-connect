@@ -1,4 +1,5 @@
 ---
+layout: post
 title: API Reference
 weight: 2
 ---

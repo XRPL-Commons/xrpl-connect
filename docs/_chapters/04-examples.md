@@ -1,4 +1,5 @@
 ---
+layout: post
 title: Examples
 weight: 4
 ---
