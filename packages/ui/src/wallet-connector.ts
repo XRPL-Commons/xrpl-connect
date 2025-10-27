@@ -66,15 +66,23 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     /**
-     * Update derived colors (like hover states) based on primary color changes
+     * Update derived colors (like hover states) based on color changes
      */
     private updateDerivedColors() {
+      const computedStyle = window.getComputedStyle(this);
       const primaryColor =
-        window.getComputedStyle(this).getPropertyValue('--xrpl-primary-color').trim() ||
-        '#0EA5E9';
+        computedStyle.getPropertyValue('--xrpl-primary-color').trim() || '#0EA5E9';
+      const backgroundColor =
+        computedStyle.getPropertyValue('--xrpl-background-color').trim() || '#000637';
 
-      const hoverColor = adjustColorBrightness(primaryColor, 0.15);
-      this.style.setProperty('--xrpl-primary-button-hover-background', hoverColor);
+      // Calculate lighter shades for hover states
+      const primaryHoverColor = adjustColorBrightness(primaryColor, 0.15);
+      const backgroundHoverColor = adjustColorBrightness(backgroundColor, 0.15);
+
+      // Apply hover colors
+      this.style.setProperty('--xrpl-primary-button-hover-background', primaryHoverColor);
+      this.style.setProperty('--xrpl-connect-button-hover-background', backgroundHoverColor);
+      this.style.setProperty('--xrpl-account-address-button-hover-color', primaryHoverColor);
     }
 
     attributeChangedCallback(_name: string, _oldValue: string, _newValue: string) {
@@ -722,7 +730,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         --xrpl-connect-button-color: var(--xrpl-text-color);
         --xrpl-connect-button-background: var(--xrpl-background-color);
         --xrpl-connect-button-border: 1px solid rgba(255, 255, 255, 0.1);
-        --xrpl-connect-button-hover-background: #1a1a3e;
+        --xrpl-connect-button-hover-background: var(--xrpl-background-color);
         --xrpl-connect-button-font-weight: 600;
 
         /* Primary Button */
@@ -738,6 +746,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         --xrpl-secondary-button-border-radius: 8px;
         --xrpl-secondary-button-font-weight: 500;
         --xrpl-secondary-button-hover-background: var(--xrpl-background-tertiary);
+
+        /* Account Address Button */
+        --xrpl-account-address-button-hover-color: var(--xrpl-primary-color);
 
         /* Modal */
         --xrpl-modal-background: var(--xrpl-background-color);
@@ -1340,7 +1351,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       .account-address-button:hover {
-        opacity: 0.8;
+        color: var(--xrpl-account-address-button-hover-color);
       }
 
       .copy-icon {
@@ -1353,6 +1364,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       .account-address-button:hover .copy-icon {
         opacity: 1;
+        color: var(--xrpl-account-address-button-hover-color);
       }
 
       .account-balance-display {
