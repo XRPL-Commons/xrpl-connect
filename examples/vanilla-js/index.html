@@ -16,6 +16,27 @@
       </header>
 
       <main>
+        <!-- Theme Customization Section -->
+        <section id="theme-section">
+          <h2>Component Theming</h2>
+          <p class="section-description">Customize the wallet connector component theme in real-time</p>
+          <div class="theme-buttons">
+            <button class="theme-btn theme-btn-active" data-theme="dark">
+              🌙 Dark Theme
+            </button>
+            <button class="theme-btn" data-theme="light">
+              ☀️ Light Theme
+            </button>
+            <button class="theme-btn" data-theme="purple">
+              🟣 Purple Theme
+            </button>
+          </div>
+          <div class="theme-info">
+            <p><strong>Current Theme:</strong> <span id="current-theme">Dark</span></p>
+            <p class="theme-description">CSS variables are applied dynamically to the <code>&lt;xrpl-wallet-connector&gt;</code> component. Try switching themes while the modal is open!</p>
+          </div>
+        </section>
+
         <!-- Connection Status Section -->
         <section id="connect-section">
           <h2>Connection Status</h2>
@@ -106,17 +127,24 @@
     <!-- XRPL Wallet Connector Web Component
          Features:
          - "Connect Wallet" button when disconnected
-         - Shows truncated address when connected (tap to disconnect)
+         - Shows account modal when connected (tap to manage account)
          - Click to open wallet selection modal
+         - Fully customizable via CSS variables (see style.css for theming)
     -->
     <xrpl-wallet-connector
       id="wallet-connector"
-      background-color="#1a202c"
-      text-color="#F5F4E7"
-      primary-color="#3b99fc"
-      font-family="inherit"
-      primary-wallet="xaman"
-      show-help="true">
+      style="
+        --xrpl-background-color: #1a202c;
+        --xrpl-background-secondary: #2d3748;
+        --xrpl-background-tertiary: #4a5568;
+        --xrpl-text-color: #F5F4E7;
+        --xrpl-text-muted-color: rgba(245, 244, 231, 0.6);
+        --xrpl-primary-color: #3b99fc;
+        --xrpl-font-family: inherit;
+        --xrpl-border-radius: 12px;
+        --xrpl-modal-box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+      "
+      primary-wallet="xaman">
     </xrpl-wallet-connector>
 
     <script type="module" src="/src/main.js"></script>

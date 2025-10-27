@@ -6,17 +6,8 @@
 import type { WalletManager } from '@xrpl-connect/core';
 import { createLogger } from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
-import {
-  SIZES,
-  TIMINGS,
-  Z_INDEX,
-  DEFAULT_THEME,
-  QR_CONFIG,
-  ERROR_CODES,
-  FONT_WEIGHTS,
-  COLOR_ADJUSTMENT,
-} from './constants';
-import { adjustColorBrightness, isSafari, isMobile, isXamanQRImage, delay } from './utils';
+import { SIZES, TIMINGS, Z_INDEX, QR_CONFIG, ERROR_CODES, FONT_WEIGHTS } from './constants';
+import { isSafari, isMobile, isXamanQRImage, delay } from './utils';
 
 /**
  * Logger instance for wallet connector
@@ -49,16 +40,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     // Observed attributes
     static get observedAttributes() {
-      return [
-        'background-color',
-        'text-color',
-        'primary-color',
-        'font-family',
-        'custom-css',
-        'primary-wallet',
-        'show-help',
-        'wallets',
-      ];
+      return ['primary-wallet', 'wallets'];
     }
 
     constructor() {
@@ -603,7 +585,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       let hash = 0;
       for (let i = 0; i < address.length; i++) {
         const char = address.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
+        hash = (hash << 5) - hash + char;
         hash = hash & hash; // Convert to 32bit integer
       }
 
@@ -622,14 +604,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
 
     private render() {
-      // Core theme values
-      const backgroundColor =
-        this.getAttribute('background-color') || DEFAULT_THEME.BACKGROUND_COLOR;
-      const textColor = this.getAttribute('text-color') || DEFAULT_THEME.TEXT_COLOR;
-      const primaryColor = this.getAttribute('primary-color') || DEFAULT_THEME.PRIMARY_COLOR;
-      const fontFamily = this.getAttribute('font-family') || DEFAULT_THEME.FONT_FAMILY;
-      const customCSS = this.getAttribute('custom-css') || '';
-
       // Capture current modal height before re-rendering
       const existingModal = this.shadow.querySelector('.modal') as HTMLElement;
       if (existingModal) {
@@ -690,13 +664,63 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       :host {
-        --bg-color: ${backgroundColor};
-        --text-color: ${textColor};
-        --primary-color: ${primaryColor};
-        --primary-bn-hover: ${adjustColorBrightness(primaryColor, COLOR_ADJUSTMENT.HOVER_BRIGHTNESS)};
-        --font-family: ${fontFamily};
-        --wallet-btn-bg: ${adjustColorBrightness(backgroundColor, 0.1)};
-        --wallet-btn-hover: ${adjustColorBrightness(backgroundColor, COLOR_ADJUSTMENT.HOVER_BRIGHTNESS)};
+        /* Defaults for CSS variables - can be overridden via style attribute or CSS */
+        /* General */
+        --xrpl-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        --xrpl-border-radius: 12px;
+        --xrpl-overlay-background: rgba(0, 0, 0, 0.7);
+        --xrpl-overlay-backdrop-filter: blur(0px);
+
+        /* Colors */
+        --xrpl-primary-color: #0EA5E9;
+        --xrpl-background-color: #000637;
+        --xrpl-text-color: #F5F4E7;
+        --xrpl-text-muted-color: rgba(245, 244, 231, 0.6);
+        --xrpl-background-secondary: #1a1a3e;
+        --xrpl-background-tertiary: #242452;
+
+        /* Connect Button */
+        --xrpl-connect-button-font-size: 16px;
+        --xrpl-connect-button-border-radius: 8px;
+        --xrpl-connect-button-color: var(--xrpl-text-color);
+        --xrpl-connect-button-background: var(--xrpl-background-color);
+        --xrpl-connect-button-border: 1px solid rgba(255, 255, 255, 0.1);
+        --xrpl-connect-button-hover-background: #1a1a3e;
+        --xrpl-connect-button-font-weight: 600;
+
+        /* Primary Button */
+        --xrpl-primary-button-color: #ffffff;
+        --xrpl-primary-button-background: var(--xrpl-primary-color);
+        --xrpl-primary-button-border-radius: 8px;
+        --xrpl-primary-button-font-weight: 600;
+        --xrpl-primary-button-hover-background: #0284C7;
+
+        /* Secondary Button */
+        --xrpl-secondary-button-color: var(--xrpl-text-color);
+        --xrpl-secondary-button-background: var(--xrpl-background-secondary);
+        --xrpl-secondary-button-border-radius: 8px;
+        --xrpl-secondary-button-font-weight: 500;
+        --xrpl-secondary-button-hover-background: var(--xrpl-background-tertiary);
+
+        /* Modal */
+        --xrpl-modal-background: var(--xrpl-background-color);
+        --xrpl-modal-border-radius: 12px;
+        --xrpl-modal-box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+
+        /* Miscellaneous */
+        --xrpl-focus-color: var(--xrpl-primary-color);
+        --xrpl-danger-color: #ef4444;
+        --xrpl-success-color: #10b981;
+        --xrpl-warning-color: #f59e0b;
+
+        /* Internal aliases */
+        --bg-color: var(--xrpl-background-color);
+        --text-color: var(--xrpl-text-color);
+        --primary-color: var(--xrpl-primary-color);
+        --primary-bn-hover: #0284C7;
+        --font-family: var(--xrpl-font-family);
+        --wallet-btn-bg: var(--xrpl-background-secondary);
+        --wallet-btn-hover: var(--xrpl-background-tertiary);
       }
 
       @keyframes heightChange {
@@ -710,7 +734,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         left: 0;
         width: 100%;
         height: 100%;
-        background: rgba(0, 0, 0, 0.7);
+        background: var(--xrpl-overlay-background);
+        backdrop-filter: var(--xrpl-overlay-backdrop-filter);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -727,16 +752,16 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       .modal {
-        background: var(--bg-color);
-        color: var(--text-color);
-        border-radius: ${SIZES.MODAL_BORDER_RADIUS}px;
+        background: var(--xrpl-modal-background);
+        color: var(--xrpl-text-color);
+        border-radius: var(--xrpl-modal-border-radius);
         width: ${SIZES.MODAL_WIDTH}px;
         max-width: calc(100vw - 32px);
         max-height: 85vh;
         overflow: hidden;
         display: flex;
         flex-direction: column;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.1);
+        box-shadow: var(--xrpl-modal-box-shadow);
         border: 1px solid rgba(255, 255, 255, 0.08);
         transition: height ${TIMINGS.ANIMATION_DURATION}ms cubic-bezier(0.25, 0.1, 0.25, 1);
       }
@@ -821,31 +846,31 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       .connect-button {
         padding: ${SIZES.BUTTON_PADDING_VERTICAL}px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
-        border-radius: ${SIZES.BUTTON_BORDER_RADIUS}px;
-        border: none;
-        background: var(--primary-color);
-        color: white;
-        font-size: 16px;
-        font-weight: ${FONT_WEIGHTS.SEMIBOLD};
+        border-radius: var(--xrpl-connect-button-border-radius);
+        border: var(--xrpl-connect-button-border);
+        background: var(--xrpl-connect-button-background);
+        color: var(--xrpl-connect-button-color);
+        font-size: var(--xrpl-connect-button-font-size);
+        font-weight: var(--xrpl-connect-button-font-weight);
         cursor: pointer;
         transition: all 0.2s;
-        font-family: var(--font-family);
+        font-family: var(--xrpl-font-family);
       }
 
       .connect-button:hover {
-        background: var(--primary-bn-hover);
+        background: var(--xrpl-connect-button-hover-background);
       }
 
       .primary-button {
         width: 100%;
         padding: ${SIZES.BUTTON_PADDING_VERTICAL}px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
-        border-radius: ${SIZES.BUTTON_BORDER_RADIUS}px;
+        border-radius: var(--xrpl-primary-button-border-radius);
         border: none;
         margin-bottom: 20px;
-        background: var(--primary-color);
-        color: white;
+        background: var(--xrpl-primary-button-background);
+        color: var(--xrpl-primary-button-color);
         font-size: 16px;
-        font-weight: ${FONT_WEIGHTS.SEMIBOLD};
+        font-weight: var(--xrpl-primary-button-font-weight);
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -855,8 +880,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       .primary-button:hover {
-          background: var(--primary-bn-hover);
-
+          background: var(--xrpl-primary-button-hover-background);
       }
 
       .wallet-list {
@@ -868,12 +892,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       .wallet-button {
         width: 100%;
         padding: ${SIZES.BUTTON_PADDING_VERTICAL}px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
-        border-radius: ${SIZES.BUTTON_BORDER_RADIUS}px;
+        border-radius: var(--xrpl-secondary-button-border-radius);
         border: none;
-        background: var(--wallet-btn-bg);
-        color: var(--text-color);
+        background: var(--xrpl-secondary-button-background);
+        color: var(--xrpl-secondary-button-color);
         font-size: 16px;
-        font-weight: ${FONT_WEIGHTS.MEDIUM};
+        font-weight: var(--xrpl-secondary-button-font-weight);
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -882,7 +906,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       .wallet-button:hover {
-        background: var(--wallet-btn-hover);
+        background: var(--xrpl-secondary-button-hover-background);
       }
 
       .wallet-button img {
@@ -1162,7 +1186,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         left: 0;
         width: 100%;
         height: 100%;
-        background: rgba(0, 0, 0, 0.7);
+        background: var(--xrpl-overlay-background);
+        backdrop-filter: var(--xrpl-overlay-backdrop-filter);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1171,13 +1196,13 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       .account-modal {
-        background: var(--bg-color);
-        color: var(--text-color);
-        border-radius: ${SIZES.MODAL_BORDER_RADIUS}px;
+        background: var(--xrpl-modal-background);
+        color: var(--xrpl-text-color);
+        border-radius: var(--xrpl-modal-border-radius);
         width: 100%;
         max-width: 280px;
         padding: 0;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.1);
+        box-shadow: var(--xrpl-modal-box-shadow);
         border: 1px solid rgba(255, 255, 255, 0.08);
         animation: slideUp 0.3s ease-out;
         overflow: hidden;
@@ -1309,15 +1334,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       .account-disconnect-button {
         width: 100%;
         padding: 12px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
-        border-radius: ${SIZES.BUTTON_BORDER_RADIUS}px;
+        border-radius: var(--xrpl-secondary-button-border-radius);
         border: none;
-        background: var(--wallet-btn-bg);
-        color: var(--text-color);
+        background: var(--xrpl-secondary-button-background);
+        color: var(--xrpl-secondary-button-color);
         font-size: 14px;
-        font-weight: ${FONT_WEIGHTS.SEMIBOLD};
+        font-weight: var(--xrpl-secondary-button-font-weight);
         cursor: pointer;
         transition: all 0.2s;
-        font-family: var(--font-family);
+        font-family: var(--xrpl-font-family);
         margin-top: 16px;
         display: flex;
         align-items: center;
@@ -1326,7 +1351,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       .account-disconnect-button:hover {
-        background: var(--wallet-btn-hover);
+        background: var(--xrpl-secondary-button-hover-background);
       }
 
       .disconnect-icon {
@@ -1343,8 +1368,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       .account-disconnect-button:hover .disconnect-icon path {
         fill: #ef4444;
       }
-
-      ${customCSS}
     </style>
 
     <button class="connect-button" id="connect-wallet-button" part="connect-button">${buttonText}</button>
@@ -1361,11 +1384,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         : ''
     }
 
-    ${
-      this.accountModalOpen
-        ? this.renderAccountModal()
-        : ''
-    }
+    ${this.accountModalOpen ? this.renderAccountModal() : ''}
   `;
 
       this.attachEventListeners();
@@ -1580,12 +1599,16 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
                 </svg>
               </button>
 
-              ${this.accountBalance ? `
+              ${
+                this.accountBalance
+                  ? `
                 <div class="account-balance-display">
                   <span class="account-balance-value">${this.accountBalance}</span>
                   <span class="account-balance-unit">XRP</span>
                 </div>
-              ` : ''}
+              `
+                  : ''
+              }
             </div>
 
             <button class="account-disconnect-button" id="account-modal-disconnect">
