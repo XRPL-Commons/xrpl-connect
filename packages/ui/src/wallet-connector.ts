@@ -185,6 +185,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.isOpen = true;
       this.isFirstOpen = true;
 
+      // Prevent body scroll when modal is open
+      document.body.style.overflow = 'hidden';
+
       // Check wallet availability when opening modal for the first time
       if (!this.walletAvailabilityChecked) {
         await this.checkWalletAvailability();
@@ -203,6 +206,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     close() {
       this.isOpen = false;
+
+      // Restore body scroll when modal is closed
+      document.body.style.overflow = '';
+
       // Reset state to wallet list view when closing
       this.viewState = 'list';
       this.qrCodeData = null;
@@ -688,6 +695,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         color: var(--text-color);
       }
 
+      html, body {
+        overflow-y: overlay;
+      }
+
       :host {
         /* Defaults for CSS variables - can be overridden via style attribute or CSS */
         /* General */
@@ -865,9 +876,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       .content {
         flex: 1;
-        overflow-y: auto;
+        overflow-y: hidden;
         padding: 0 24px 24px;
         transition: opacity 0.3s ease;
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+
+      .content::-webkit-scrollbar {
+        display: none;
       }
 
       .connect-button {
