@@ -7,7 +7,7 @@ import type { WalletManager } from '@xrpl-connect/core';
 import { createLogger } from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
 import { SIZES, TIMINGS, Z_INDEX, QR_CONFIG, ERROR_CODES, FONT_WEIGHTS } from './constants';
-import { isSafari, isMobile, isXamanQRImage, delay } from './utils';
+import { isSafari, isMobile, isXamanQRImage, delay, adjustColorBrightness } from './utils';
 
 /**
  * Logger instance for wallet connector
@@ -50,6 +50,31 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     connectedCallback() {
       this.render();
+
+      // Update derived colors on initial load
+      requestAnimationFrame(() => this.updateDerivedColors());
+
+      // Observe style attribute changes for CSS variable updates
+      const styleObserver = new MutationObserver(() => {
+        this.updateDerivedColors();
+      });
+
+      styleObserver.observe(this, {
+        attributes: true,
+        attributeFilter: ['style'],
+      });
+    }
+
+    /**
+     * Update derived colors (like hover states) based on primary color changes
+     */
+    private updateDerivedColors() {
+      const primaryColor =
+        window.getComputedStyle(this).getPropertyValue('--xrpl-primary-color').trim() ||
+        '#0EA5E9';
+
+      const hoverColor = adjustColorBrightness(primaryColor, 0.15);
+      this.style.setProperty('--xrpl-primary-button-hover-background', hoverColor);
     }
 
     attributeChangedCallback(_name: string, _oldValue: string, _newValue: string) {
@@ -678,6 +703,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         --xrpl-text-muted-color: rgba(245, 244, 231, 0.6);
         --xrpl-background-secondary: #1a1a3e;
         --xrpl-background-tertiary: #242452;
+        --xrpl-loading-border-color: #0EA5E9;
 
         /* Connect Button */
         --xrpl-connect-button-font-size: 16px;
@@ -693,7 +719,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         --xrpl-primary-button-background: var(--xrpl-primary-color);
         --xrpl-primary-button-border-radius: 8px;
         --xrpl-primary-button-font-weight: 600;
-        --xrpl-primary-button-hover-background: #0284C7;
+        --xrpl-primary-button-hover-background: var(--xrpl-primary-color);
 
         /* Secondary Button */
         --xrpl-secondary-button-color: var(--xrpl-text-color);
@@ -717,7 +743,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         --bg-color: var(--xrpl-background-color);
         --text-color: var(--xrpl-text-color);
         --primary-color: var(--xrpl-primary-color);
-        --primary-bn-hover: #0284C7;
+        --primary-bn-hover: var(--xrpl-primary-button-hover-background);
         --font-family: var(--xrpl-font-family);
         --wallet-btn-bg: var(--xrpl-background-secondary);
         --wallet-btn-hover: var(--xrpl-background-tertiary);
@@ -1069,10 +1095,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
   width: 200%;
   height: 200%;
   background: conic-gradient(
-    transparent 0deg 90deg, 
-    #007bff 90deg 180deg,  /* Blue color, adjust as needed */
-    transparent 180deg 270deg, 
-    #007bff 270deg 360deg
+    transparent 0deg 90deg,
+    var(--xrpl-loading-border-color) 90deg 180deg,
+    transparent 180deg 270deg,
+    var(--xrpl-loading-border-color) 270deg 360deg
   );
   animation: rotate 2s linear infinite;
 }
@@ -1084,7 +1110,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
   left: 4px;
   right: 4px;
   bottom: 4px;
-  background: #1a1a2e; /* Match your background color */
+  background: var(--xrpl-background-color);
   border-radius: 16px;
   z-index: ${Z_INDEX.LOADING_BORDER_AFTER};
 }
@@ -1511,7 +1537,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         <button class="close-button" part="close-button" aria-label="Close">×</button>
       </div>
 
-      <div class="content">
+      <div class="content loading-content">
         <div class="loading-view">
           <div class="loading-logo-container">
             ${walletIcon ? `<img src="${walletIcon}" alt="${walletName}" class="loading-logo">` : ''}
