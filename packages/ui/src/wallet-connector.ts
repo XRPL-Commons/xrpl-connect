@@ -71,18 +71,18 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private updateDerivedColors() {
       const computedStyle = window.getComputedStyle(this);
       const primaryColor =
-        computedStyle.getPropertyValue('--xrpl-primary-color').trim() || '#0EA5E9';
+        computedStyle.getPropertyValue('--xc-primary-color').trim() || '#0EA5E9';
       const backgroundColor =
-        computedStyle.getPropertyValue('--xrpl-background-color').trim() || '#000637';
+        computedStyle.getPropertyValue('--xc-background-color').trim() || '#000637';
 
       // Calculate lighter shades for hover states
       const primaryHoverColor = adjustColorBrightness(primaryColor, 0.15);
       const backgroundHoverColor = adjustColorBrightness(backgroundColor, 0.15);
 
       // Apply hover colors
-      this.style.setProperty('--xrpl-primary-button-hover-background', primaryHoverColor);
-      this.style.setProperty('--xrpl-connect-button-hover-background', backgroundHoverColor);
-      this.style.setProperty('--xrpl-account-address-button-hover-color', primaryHoverColor);
+      this.style.setProperty('--xc-primary-button-hover-background', primaryHoverColor);
+      this.style.setProperty('--xc-connect-button-hover-background', backgroundHoverColor);
+      this.style.setProperty('--xc-account-address-button-hover-color', primaryHoverColor);
     }
 
     attributeChangedCallback(_name: string, _oldValue: string, _newValue: string) {
@@ -710,65 +710,65 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       :host {
         /* Defaults for CSS variables - can be overridden via style attribute or CSS */
         /* General */
-        --xrpl-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        --xrpl-border-radius: 12px;
-        --xrpl-overlay-background: rgba(0, 0, 0, 0.7);
-        --xrpl-overlay-backdrop-filter: blur(0px);
+        --xc-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        --xc-border-radius: 12px;
+        --xc-overlay-background: rgba(0, 0, 0, 0.7);
+        --xc-overlay-backdrop-filter: blur(0px);
 
         /* Colors */
-        --xrpl-primary-color: #0EA5E9;
-        --xrpl-background-color: #000637;
-        --xrpl-text-color: #F5F4E7;
-        --xrpl-text-muted-color: rgba(245, 244, 231, 0.6);
-        --xrpl-background-secondary: #1a1a3e;
-        --xrpl-background-tertiary: #242452;
-        --xrpl-loading-border-color: #0EA5E9;
+        --xc-primary-color: #0EA5E9;
+        --xc-background-color: #000637;
+        --xc-text-color: #F5F4E7;
+        --xc-text-muted-color: rgba(245, 244, 231, 0.6);
+        --xc-background-secondary: #1a1a3e;
+        --xc-background-tertiary: #242452;
+        --xc-loading-border-color: #0EA5E9;
 
         /* Connect Button */
-        --xrpl-connect-button-font-size: 16px;
-        --xrpl-connect-button-border-radius: 8px;
-        --xrpl-connect-button-color: var(--xrpl-text-color);
-        --xrpl-connect-button-background: var(--xrpl-background-color);
-        --xrpl-connect-button-border: 1px solid rgba(255, 255, 255, 0.1);
-        --xrpl-connect-button-hover-background: var(--xrpl-background-color);
-        --xrpl-connect-button-font-weight: 600;
+        --xc-connect-button-font-size: 16px;
+        --xc-connect-button-border-radius: 8px;
+        --xc-connect-button-color: var(--xc-text-color);
+        --xc-connect-button-background: var(--xc-background-color);
+        --xc-connect-button-border: 1px solid rgba(255, 255, 255, 0.1);
+        --xc-connect-button-hover-background: var(--xc-background-color);
+        --xc-connect-button-font-weight: 600;
 
         /* Primary Button */
-        --xrpl-primary-button-color: #ffffff;
-        --xrpl-primary-button-background: var(--xrpl-primary-color);
-        --xrpl-primary-button-border-radius: 8px;
-        --xrpl-primary-button-font-weight: 600;
-        --xrpl-primary-button-hover-background: var(--xrpl-primary-color);
+        --xc-primary-button-color: #ffffff;
+        --xc-primary-button-background: var(--xc-primary-color);
+        --xc-primary-button-border-radius: 8px;
+        --xc-primary-button-font-weight: 600;
+        --xc-primary-button-hover-background: var(--xc-primary-color);
 
         /* Secondary Button */
-        --xrpl-secondary-button-color: var(--xrpl-text-color);
-        --xrpl-secondary-button-background: var(--xrpl-background-secondary);
-        --xrpl-secondary-button-border-radius: 8px;
-        --xrpl-secondary-button-font-weight: 500;
-        --xrpl-secondary-button-hover-background: var(--xrpl-background-tertiary);
+        --xc-secondary-button-color: var(--xc-text-color);
+        --xc-secondary-button-background: var(--xc-background-secondary);
+        --xc-secondary-button-border-radius: 8px;
+        --xc-secondary-button-font-weight: 500;
+        --xc-secondary-button-hover-background: var(--xc-background-tertiary);
 
         /* Account Address Button */
-        --xrpl-account-address-button-hover-color: var(--xrpl-primary-color);
+        --xc-account-address-button-hover-color: var(--xc-primary-color);
 
         /* Modal */
-        --xrpl-modal-background: var(--xrpl-background-color);
-        --xrpl-modal-border-radius: 12px;
-        --xrpl-modal-box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        --xc-modal-background: var(--xc-background-color);
+        --xc-modal-border-radius: 12px;
+        --xc-modal-box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
 
         /* Miscellaneous */
-        --xrpl-focus-color: var(--xrpl-primary-color);
-        --xrpl-danger-color: #ef4444;
-        --xrpl-success-color: #10b981;
-        --xrpl-warning-color: #f59e0b;
+        --xc-focus-color: var(--xc-primary-color);
+        --xc-danger-color: #ef4444;
+        --xc-success-color: #10b981;
+        --xc-warning-color: #f59e0b;
 
         /* Internal aliases */
-        --bg-color: var(--xrpl-background-color);
-        --text-color: var(--xrpl-text-color);
-        --primary-color: var(--xrpl-primary-color);
-        --primary-bn-hover: var(--xrpl-primary-button-hover-background);
-        --font-family: var(--xrpl-font-family);
-        --wallet-btn-bg: var(--xrpl-background-secondary);
-        --wallet-btn-hover: var(--xrpl-background-tertiary);
+        --bg-color: var(--xc-background-color);
+        --text-color: var(--xc-text-color);
+        --primary-color: var(--xc-primary-color);
+        --primary-bn-hover: var(--xc-primary-button-hover-background);
+        --font-family: var(--xc-font-family);
+        --wallet-btn-bg: var(--xc-background-secondary);
+        --wallet-btn-hover: var(--xc-background-tertiary);
       }
 
       @keyframes heightChange {
@@ -782,8 +782,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         left: 0;
         width: 100%;
         height: 100%;
-        background: var(--xrpl-overlay-background);
-        backdrop-filter: var(--xrpl-overlay-backdrop-filter);
+        background: var(--xc-overlay-background);
+        backdrop-filter: var(--xc-overlay-backdrop-filter);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -800,16 +800,16 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       .modal {
-        background: var(--xrpl-modal-background);
-        color: var(--xrpl-text-color);
-        border-radius: var(--xrpl-modal-border-radius);
+        background: var(--xc-modal-background);
+        color: var(--xc-text-color);
+        border-radius: var(--xc-modal-border-radius);
         width: ${SIZES.MODAL_WIDTH}px;
         max-width: calc(100vw - 32px);
         max-height: 85vh;
         overflow: hidden;
         display: flex;
         flex-direction: column;
-        box-shadow: var(--xrpl-modal-box-shadow);
+        box-shadow: var(--xc-modal-box-shadow);
         border: 1px solid rgba(255, 255, 255, 0.08);
         transition: height ${TIMINGS.ANIMATION_DURATION}ms cubic-bezier(0.25, 0.1, 0.25, 1);
       }
@@ -900,31 +900,31 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       .connect-button {
         padding: ${SIZES.BUTTON_PADDING_VERTICAL}px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
-        border-radius: var(--xrpl-connect-button-border-radius);
-        border: var(--xrpl-connect-button-border);
-        background: var(--xrpl-connect-button-background);
-        color: var(--xrpl-connect-button-color);
-        font-size: var(--xrpl-connect-button-font-size);
-        font-weight: var(--xrpl-connect-button-font-weight);
+        border-radius: var(--xc-connect-button-border-radius);
+        border: var(--xc-connect-button-border);
+        background: var(--xc-connect-button-background);
+        color: var(--xc-connect-button-color);
+        font-size: var(--xc-connect-button-font-size);
+        font-weight: var(--xc-connect-button-font-weight);
         cursor: pointer;
         transition: all 0.2s;
-        font-family: var(--xrpl-font-family);
+        font-family: var(--xc-font-family);
       }
 
       .connect-button:hover {
-        background: var(--xrpl-connect-button-hover-background);
+        background: var(--xc-connect-button-hover-background);
       }
 
       .primary-button {
         width: 100%;
         padding: ${SIZES.BUTTON_PADDING_VERTICAL}px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
-        border-radius: var(--xrpl-primary-button-border-radius);
+        border-radius: var(--xc-primary-button-border-radius);
         border: none;
         margin-bottom: 20px;
-        background: var(--xrpl-primary-button-background);
-        color: var(--xrpl-primary-button-color);
+        background: var(--xc-primary-button-background);
+        color: var(--xc-primary-button-color);
         font-size: 16px;
-        font-weight: var(--xrpl-primary-button-font-weight);
+        font-weight: var(--xc-primary-button-font-weight);
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -934,7 +934,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       .primary-button:hover {
-          background: var(--xrpl-primary-button-hover-background);
+          background: var(--xc-primary-button-hover-background);
       }
 
       .wallet-list {
@@ -946,12 +946,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       .wallet-button {
         width: 100%;
         padding: ${SIZES.BUTTON_PADDING_VERTICAL}px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
-        border-radius: var(--xrpl-secondary-button-border-radius);
+        border-radius: var(--xc-secondary-button-border-radius);
         border: none;
-        background: var(--xrpl-secondary-button-background);
-        color: var(--xrpl-secondary-button-color);
+        background: var(--xc-secondary-button-background);
+        color: var(--xc-secondary-button-color);
         font-size: 16px;
-        font-weight: var(--xrpl-secondary-button-font-weight);
+        font-weight: var(--xc-secondary-button-font-weight);
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -960,7 +960,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       .wallet-button:hover {
-        background: var(--xrpl-secondary-button-hover-background);
+        background: var(--xc-secondary-button-hover-background);
       }
 
       .wallet-button img {
@@ -1124,9 +1124,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
   height: 200%;
   background: conic-gradient(
     transparent 0deg 90deg,
-    var(--xrpl-loading-border-color) 90deg 180deg,
+    var(--xc-loading-border-color) 90deg 180deg,
     transparent 180deg 270deg,
-    var(--xrpl-loading-border-color) 270deg 360deg
+    var(--xc-loading-border-color) 270deg 360deg
   );
   animation: rotate 2s linear infinite;
 }
@@ -1138,7 +1138,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
   left: 4px;
   right: 4px;
   bottom: 4px;
-  background: var(--xrpl-background-color);
+  background: var(--xc-background-color);
   border-radius: 16px;
   z-index: ${Z_INDEX.LOADING_BORDER_AFTER};
 }
@@ -1240,8 +1240,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         left: 0;
         width: 100%;
         height: 100%;
-        background: var(--xrpl-overlay-background);
-        backdrop-filter: var(--xrpl-overlay-backdrop-filter);
+        background: var(--xc-overlay-background);
+        backdrop-filter: var(--xc-overlay-backdrop-filter);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1250,13 +1250,13 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       .account-modal {
-        background: var(--xrpl-modal-background);
-        color: var(--xrpl-text-color);
-        border-radius: var(--xrpl-modal-border-radius);
+        background: var(--xc-modal-background);
+        color: var(--xc-text-color);
+        border-radius: var(--xc-modal-border-radius);
         width: 100%;
         max-width: 280px;
         padding: 0;
-        box-shadow: var(--xrpl-modal-box-shadow);
+        box-shadow: var(--xc-modal-box-shadow);
         border: 1px solid rgba(255, 255, 255, 0.08);
         animation: slideUp 0.3s ease-out;
         overflow: hidden;
@@ -1351,7 +1351,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       .account-address-button:hover {
-        color: var(--xrpl-account-address-button-hover-color);
+        color: var(--xc-account-address-button-hover-color);
       }
 
       .copy-icon {
@@ -1364,7 +1364,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       .account-address-button:hover .copy-icon {
         opacity: 1;
-        color: var(--xrpl-account-address-button-hover-color);
+        color: var(--xc-account-address-button-hover-color);
       }
 
       .account-balance-display {
@@ -1389,15 +1389,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       .account-disconnect-button {
         width: 100%;
         padding: 12px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
-        border-radius: var(--xrpl-secondary-button-border-radius);
+        border-radius: var(--xc-secondary-button-border-radius);
         border: none;
-        background: var(--xrpl-secondary-button-background);
-        color: var(--xrpl-secondary-button-color);
+        background: var(--xc-secondary-button-background);
+        color: var(--xc-secondary-button-color);
         font-size: 14px;
-        font-weight: var(--xrpl-secondary-button-font-weight);
+        font-weight: var(--xc-secondary-button-font-weight);
         cursor: pointer;
         transition: all 0.2s;
-        font-family: var(--xrpl-font-family);
+        font-family: var(--xc-font-family);
         margin-top: 16px;
         display: flex;
         align-items: center;
@@ -1406,7 +1406,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       .account-disconnect-button:hover {
-        background: var(--xrpl-secondary-button-hover-background);
+        background: var(--xc-secondary-button-hover-background);
       }
 
       .disconnect-icon {

@@ -55,9 +55,11 @@ A Web Component is a reusable, encapsulated HTML element built using the Web Com
   <body>
     <xrpl-wallet-connector
       primary-wallet="xaman"
-      primary-color="#0EA5E9"
-      background-color="#000637"
-      text-color="#F5F4E7"
+      style="
+        --xrpl-primary-color: #0EA5E9;
+        --xrpl-background-color: #000637;
+        --xrpl-text-color: #F5F4E7;
+      "
     ></xrpl-wallet-connector>
   </body>
 </html>
@@ -65,17 +67,14 @@ A Web Component is a reusable, encapsulated HTML element built using the Web Com
 
 ### HTML Attributes
 
-All attributes are optional and control the appearance and behavior of the component:
+All attributes are optional and control the behavior of the component:
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `background-color` | string (hex) | `#000637` | Modal background color |
-| `text-color` | string (hex) | `#F5F4E7` | Primary text color |
-| `primary-color` | string (hex) | `#0EA5E9` | Primary button and accent color |
-| `font-family` | string | `Karla, sans-serif` | Font family for all text |
 | `primary-wallet` | string | - | Wallet ID to display first (e.g., `'xaman'`) |
-| `show-help` | boolean | `false` | Show help/information text |
-| `custom-css` | string | - | Additional CSS rules to inject into Shadow DOM |
+| `wallets` | string | - | Comma-separated list of wallet IDs to include (e.g., `'xaman,crossmark,walletconnect'`) |
+
+All styling is controlled exclusively via CSS variables (see [Customization](./CUSTOMIZATION.md) guide).
 
 ### JavaScript API
 
@@ -317,17 +316,32 @@ Shows error message and recovery options.
 
 ## Customization
 
+The component is fully customizable using CSS variables. See the [Customization Guide](./CUSTOMIZATION.md) for comprehensive documentation.
+
 ### Theme Colors
 
-Control the appearance via HTML attributes:
+Control the appearance via CSS variables:
 
 ```html
 <xrpl-wallet-connector
-  background-color="#1a1a2e"
-  text-color="#eaeaea"
-  primary-color="#00d4ff"
-  font-family="'Inter', sans-serif"
+  style="
+    --xrpl-background-color: #1a1a2e;
+    --xrpl-text-color: #eaeaea;
+    --xrpl-primary-color: #00d4ff;
+    --xrpl-font-family: 'Inter', sans-serif;
+  "
 ></xrpl-wallet-connector>
+```
+
+Or define variables in your stylesheet:
+
+```css
+:root {
+  --xrpl-background-color: #1a1a2e;
+  --xrpl-text-color: #eaeaea;
+  --xrpl-primary-color: #00d4ff;
+  --xrpl-font-family: 'Inter', sans-serif;
+}
 ```
 
 ### Primary Wallet
@@ -338,17 +352,12 @@ Make a wallet appear first (useful for default choice):
 <xrpl-wallet-connector primary-wallet="xaman"></xrpl-wallet-connector>
 ```
 
-### Custom CSS
+### Wallet Selection
 
-Inject additional CSS rules into the Shadow DOM:
+Specify which wallets to include:
 
 ```html
-<xrpl-wallet-connector
-  custom-css="
-    .wallet-card:hover { transform: scale(1.05); }
-    .modal-overlay { backdrop-filter: blur(5px); }
-  "
-></xrpl-wallet-connector>
+<xrpl-wallet-connector wallets="xaman,crossmark,walletconnect"></xrpl-wallet-connector>
 ```
 
 ---
@@ -768,24 +777,29 @@ connector.addEventListener('connected', (e) => {
 
 ### Styles Not Applying
 
-**Problem**: Custom colors (background-color, primary-color) don't change appearance.
+**Problem**: CSS variable colors don't change appearance.
 
 **Solutions**:
-1. Ensure attribute names use hyphens (e.g., `background-color`, not `backgroundColor`)
-2. Use valid hex colors (e.g., `#0EA5E9`, not `blue`)
-3. Set attributes on the element before calling `setWalletManager()`
+1. Ensure variable names use the `--xrpl-` prefix (e.g., `--xrpl-primary-color`)
+2. Use valid hex colors or CSS color values (e.g., `#0EA5E9`, not `blue`)
+3. Set variables via `style` attribute or CSS before the component renders
 
 ```html
 <!-- Correct -->
 <xrpl-wallet-connector
-  background-color="#000637"
-  text-color="#F5F4E7"
+  style="
+    --xrpl-background-color: #000637;
+    --xrpl-text-color: #F5F4E7;
+  "
 ></xrpl-wallet-connector>
 
-<!-- Incorrect -->
-<xrpl-wallet-connector
-  backgroundColor="#000637"
-></xrpl-wallet-connector>
+<!-- Also correct (in stylesheet) -->
+<style>
+  xrpl-wallet-connector {
+    --xrpl-background-color: #000637;
+    --xrpl-text-color: #F5F4E7;
+  }
+</style>
 ```
 
 ---
@@ -815,25 +829,58 @@ If your app previously used a button-only approach, the modal component provides
 </button>
 ```
 
+### From HTML Attributes to CSS Variables
+
+Previous versions used HTML attributes for styling. The component now uses CSS variables exclusively for better flexibility and theming:
+
+**Old approach (no longer supported)**:
+```html
+<xrpl-wallet-connector
+  background-color="#000637"
+  text-color="#F5F4E7"
+  primary-color="#0EA5E9"
+></xrpl-wallet-connector>
+```
+
+**New approach (CSS variables)**:
+```html
+<xrpl-wallet-connector
+  style="
+    --xrpl-background-color: #000637;
+    --xrpl-text-color: #F5F4E7;
+    --xrpl-primary-color: #0EA5E9;
+  "
+></xrpl-wallet-connector>
+```
+
+Benefits of CSS variables:
+- **Dynamic theming** - Change colors at runtime without re-rendering
+- **Cascading** - Define variables once in CSS, apply everywhere
+- **Better performance** - No JavaScript parsing of color values
+- **Advanced features** - Support for gradients and complex values
+- **Auto-derived colors** - Hover states automatically calculated from base colors
+
 ---
 
 ## Best Practices
 
-1. **Set WalletManager After DOM Ready**: Ensure the component exists in the DOM before calling `setWalletManager()`
+1. **Use CSS Variables for Theming**: Define theme colors in your stylesheet or inline styles for consistency across your app
 
-2. **Listen to Events Early**: Add event listeners immediately after setting up the component
+2. **Set WalletManager After DOM Ready**: Ensure the component exists in the DOM before calling `setWalletManager()`
 
-3. **Handle All Event Types**: Listen to `connected`, `error`, and `connecting` for a complete flow
+3. **Listen to Events Early**: Add event listeners immediately after setting up the component
 
-4. **Close Modal on Success**: Use the `close()` method or auto-close on successful connection
+4. **Handle All Event Types**: Listen to `connected`, `error`, and `connecting` for a complete flow
 
-5. **Persist Connection**: Use `autoConnect: true` in WalletManager to remember the user's wallet
+5. **Close Modal on Success**: Use the `close()` method or auto-close on successful connection
 
-6. **Show Network Info**: Display the connected network to the user from `walletManager.account.network`
+6. **Persist Connection**: Use `autoConnect: true` in WalletManager to remember the user's wallet
 
-7. **Graceful Error Handling**: Catch and display errors rather than letting them silently fail
+7. **Show Network Info**: Display the connected network to the user from `walletManager.account.network`
 
-8. **Test Mobile UX**: Test QR code scanning on actual mobile devices
+8. **Graceful Error Handling**: Catch and display errors rather than letting them silently fail
+
+9. **Test Mobile UX**: Test QR code scanning on actual mobile devices
 
 ---
 
@@ -841,7 +888,7 @@ If your app previously used a button-only approach, the modal component provides
 
 The component is designed to be self-contained, but you can extend it by:
 
-1. **CSS Customization**: Use `custom-css` attribute to inject additional rules
+1. **CSS Customization**: Use CSS variables to customize colors, sizing, and other visual properties (see [Customization Guide](./CUSTOMIZATION.md))
 2. **Wrapping in Framework Components**: Create React/Vue wrappers if needed
 3. **Custom Adapters**: Create custom wallet adapters for additional wallet support
 4. **Event Monitoring**: Listen to all events and send to analytics

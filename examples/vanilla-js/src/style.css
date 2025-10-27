@@ -18,37 +18,37 @@
 
   /* XRPL Wallet Connector Component Variables */
   /* These can be overridden per instance using the style attribute */
-  --xrpl-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --xrpl-border-radius: 12px;
-  --xrpl-overlay-background: rgba(0, 0, 0, 0.7);
-  --xrpl-overlay-backdrop-filter: blur(0px);
+  --xc-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --xc-border-radius: 12px;
+  --xc-overlay-background: rgba(0, 0, 0, 0.7);
+  --xc-overlay-backdrop-filter: blur(0px);
 
   /* Colors */
-  --xrpl-primary-color: #3b99fc;
-  --xrpl-background-color: #1a202c;
-  --xrpl-background-secondary: #2d3748;
-  --xrpl-background-tertiary: #4a5568;
-  --xrpl-text-color: #F5F4E7;
-  --xrpl-text-muted-color: rgba(245, 244, 231, 0.6);
+  --xc-primary-color: #3b99fc;
+  --xc-background-color: #1a202c;
+  --xc-background-secondary: #2d3748;
+  --xc-background-tertiary: #4a5568;
+  --xc-text-color: #F5F4E7;
+  --xc-text-muted-color: rgba(245, 244, 231, 0.6);
 
   /* Status colors */
-  --xrpl-danger-color: #ef4444;
-  --xrpl-success-color: #10b981;
-  --xrpl-warning-color: #f59e0b;
-  --xrpl-focus-color: #3b99fc;
+  --xc-danger-color: #ef4444;
+  --xc-success-color: #10b981;
+  --xc-warning-color: #f59e0b;
+  --xc-focus-color: #3b99fc;
 
   /* Button styles */
-  --xrpl-connect-button-border-radius: 8px;
-  --xrpl-connect-button-font-size: 16px;
-  --xrpl-connect-button-font-weight: 600;
-  --xrpl-primary-button-border-radius: 8px;
-  --xrpl-primary-button-font-weight: 600;
-  --xrpl-secondary-button-border-radius: 8px;
-  --xrpl-secondary-button-font-weight: 500;
+  --xc-connect-button-border-radius: 8px;
+  --xc-connect-button-font-size: 16px;
+  --xc-connect-button-font-weight: 600;
+  --xc-primary-button-border-radius: 8px;
+  --xc-primary-button-font-weight: 600;
+  --xc-secondary-button-border-radius: 8px;
+  --xc-secondary-button-font-weight: 500;
 
   /* Modal */
-  --xrpl-modal-border-radius: 12px;
-  --xrpl-modal-box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  --xc-modal-border-radius: 12px;
+  --xc-modal-box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
 }
 
 * {
