@@ -1,0 +1,16 @@
+#docker run --rm -it --mount type=bind,source=${PWD},target=/srv/jekyll -p 127.0.0.1:4000:4000 jekyll/jekyll:pages jekyll serve
+services:
+  jekyll_site:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    image: benizar/gitbook:1.0
+    #command: ["jekyll", "serve", "--watch", "--draft"]
+    command: jekyll serve --watch --draft --incremental --config _config.yml --host 0.0.0.0 --verbose
+    ports:
+      - "4000:4000"
+    volumes:
+      - ${PWD}:/srv/jekyll
+    # THIS BIT!!!1!
+    #user: "1000:1000"
+
