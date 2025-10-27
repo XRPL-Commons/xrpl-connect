@@ -44,6 +44,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private specifiedWalletIds: string[] = []; // Wallet IDs specified via 'wallets' attribute
     private availableWallets: any[] = []; // Cache of available wallets
     private walletAvailabilityChecked: boolean = false; // Flag to track if availability has been checked
+    private accountModalOpen: boolean = false; // Track if account details modal is open
+    private accountBalance: string | null = null; // Cached account balance
 
     // Observed attributes
     static get observedAttributes() {
@@ -212,6 +214,50 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       } else {
         this.open();
       }
+    }
+
+    /**
+     * Open the account details modal
+     */
+    private openAccountModal() {
+      this.accountModalOpen = true;
+      this.render();
+    }
+
+    /**
+     * Close the account details modal
+     */
+    private closeAccountModal() {
+      this.accountModalOpen = false;
+      this.render();
+    }
+
+    /**
+     * Disconnect wallet from the account modal
+     */
+    private async disconnectFromAccountModal() {
+      try {
+        await this.walletManager?.disconnect();
+        this.closeAccountModal();
+        this.render();
+      } catch (error) {
+        logger.error('Failed to disconnect:', error);
+      }
+    }
+
+    /**
+     * Set the account balance to display in the account modal
+     */
+    setAccountBalance(balance: string) {
+      this.accountBalance = balance;
+      this.render();
+    }
+
+    /**
+     * Get the current account balance
+     */
+    getAccountBalance(): string | null {
+      return this.accountBalance;
     }
 
     /**
@@ -546,6 +592,29 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private truncateAddress(address: string, chars: number = 6): string {
       if (address.length <= chars * 2) return address;
       return `${address.substring(0, chars)}...${address.substring(address.length - chars)}`;
+    }
+
+    /**
+     * Generate a deterministic gradient from wallet address
+     * Creates a unique color pair based on the address hash
+     */
+    private generateGradientFromAddress(address: string): { color1: string; color2: string } {
+      // Simple hash function to convert address to number
+      let hash = 0;
+      for (let i = 0; i < address.length; i++) {
+        const char = address.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+      }
+
+      // Generate two colors from the hash
+      const hue1 = Math.abs(hash % 360);
+      const hue2 = (hue1 + 60) % 360; // Offset by 60 degrees for contrast
+
+      const color1 = `hsl(${hue1}, 70%, 55%)`;
+      const color2 = `hsl(${hue2}, 70%, 55%)`;
+
+      return { color1, color2 };
     }
 
     /**
@@ -1086,6 +1155,195 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         background: var(--wallet-btn-hover);
       }
 
+      /* Account Modal Styles */
+      .account-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: ${Z_INDEX.OVERLAY};
+        animation: fadeIn ${TIMINGS.ANIMATION_DURATION}ms ease-out;
+      }
+
+      .account-modal {
+        background: var(--bg-color);
+        color: var(--text-color);
+        border-radius: ${SIZES.MODAL_BORDER_RADIUS}px;
+        width: 100%;
+        max-width: 280px;
+        padding: 0;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        animation: slideUp 0.3s ease-out;
+        overflow: hidden;
+      }
+
+      .account-modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px 20px;
+        background: rgba(255, 255, 255, 0.02);
+        position: relative;
+      }
+
+      .account-modal-title {
+        font-size: 16px;
+        font-weight: ${FONT_WEIGHTS.SEMIBOLD};
+        letter-spacing: -0.3px;
+        flex: 1;
+        text-align: center;
+      }
+
+      .account-modal-close {
+        position: absolute;
+        right: 8px;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: none;
+        background: transparent;
+        color: var(--text-color);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        opacity: 0.6;
+        transition: all 0.2s;
+        flex-shrink: 0;
+      }
+
+      .account-modal-close:hover {
+        opacity: 1;
+        background: var(--wallet-btn-bg);
+      }
+
+      .account-modal-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 40px 24px 32px;
+        gap: 0;
+        text-align: center;
+      }
+
+      .account-avatar-container {
+        width: 100px;
+        height: 100px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        margin-bottom: 28px;
+        flex-shrink: 0;
+      }
+
+      .account-info-section {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+
+      .account-address-button {
+        background: none;
+        border: none;
+        color: var(--text-color);
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: ${FONT_WEIGHTS.SEMIBOLD};
+        font-family: var(--font-family);
+        padding: 0;
+        transition: opacity 0.2s;
+        letter-spacing: 0.3px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        justify-content: center;
+      }
+
+      .account-address-button:hover {
+        opacity: 0.8;
+      }
+
+      .copy-icon {
+        width: 20px;
+        height: 20px;
+        opacity: 0.5;
+        transition: opacity 0.2s ease;
+        flex-shrink: 0;
+      }
+
+      .account-address-button:hover .copy-icon {
+        opacity: 1;
+      }
+
+      .account-balance-display {
+        display: flex;
+        align-items: baseline;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .account-balance-value {
+        font-size: 28px;
+        font-weight: ${FONT_WEIGHTS.SEMIBOLD};
+        color: var(--primary-color);
+      }
+
+      .account-balance-unit {
+        font-size: 14px;
+        font-weight: ${FONT_WEIGHTS.MEDIUM};
+        opacity: 0.8;
+      }
+
+      .account-disconnect-button {
+        width: 100%;
+        padding: 12px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
+        border-radius: ${SIZES.BUTTON_BORDER_RADIUS}px;
+        border: none;
+        background: var(--wallet-btn-bg);
+        color: var(--text-color);
+        font-size: 14px;
+        font-weight: ${FONT_WEIGHTS.SEMIBOLD};
+        cursor: pointer;
+        transition: all 0.2s;
+        font-family: var(--font-family);
+        margin-top: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .account-disconnect-button:hover {
+        background: var(--wallet-btn-hover);
+      }
+
+      .disconnect-icon {
+        width: 15px;
+        height: 14px;
+        transition: opacity 0.2s ease;
+        flex-shrink: 0;
+      }
+
+      .account-disconnect-button:hover .disconnect-icon {
+        opacity: 1;
+      }
+
+      .account-disconnect-button:hover .disconnect-icon path {
+        fill: #ef4444;
+      }
+
       ${customCSS}
     </style>
 
@@ -1100,6 +1358,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       </div>
     </div>
     `
+        : ''
+    }
+
+    ${
+      this.accountModalOpen
+        ? this.renderAccountModal()
         : ''
     }
   `;
@@ -1277,6 +1541,80 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     /**
+     * Render account details modal
+     */
+    private renderAccountModal(): string {
+      const account = this.walletManager?.account;
+
+      if (!account) return '';
+
+      const truncatedAddress = this.truncateAddress(account.address, 6);
+      const { color1, color2 } = this.generateGradientFromAddress(account.address);
+
+      return `
+      <div id="account-modal-overlay" class="account-modal-overlay">
+        <div class="account-modal">
+          <div class="account-modal-header">
+            <h2 class="account-modal-title">Connected</h2>
+            <button class="account-modal-close" id="account-modal-close" aria-label="Close">×</button>
+          </div>
+
+          <div class="account-modal-content">
+            <div class="account-avatar-container" style="background: linear-gradient(135deg, ${color1}, ${color2});">
+            </div>
+
+            <div class="account-info-section">
+              <button class="account-address-button" id="copy-account-address" title="Click to copy full address">
+                <span>${truncatedAddress}</span>
+                <svg
+                  aria-hidden="true"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="copy-icon"
+                >
+                  <path d="M14 9.5V7C14 5.89543 13.1046 5 12 5H7C5.89543 5 5 5.89543 5 7V12C5 13.1046 5.89543 14 7 14H9.5" stroke="currentColor" stroke-width="2"></path>
+                  <rect x="10" y="10" width="9" height="9" rx="2" stroke="currentColor" stroke-width="2"></rect>
+                </svg>
+              </button>
+
+              ${this.accountBalance ? `
+                <div class="account-balance-display">
+                  <span class="account-balance-value">${this.accountBalance}</span>
+                  <span class="account-balance-unit">XRP</span>
+                </div>
+              ` : ''}
+            </div>
+
+            <button class="account-disconnect-button" id="account-modal-disconnect">
+              <svg
+                aria-hidden="true"
+                width="15"
+                height="14"
+                viewBox="0 0 15 14"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                class="disconnect-icon"
+              >
+                <path
+                  fill-rule="evenodd"
+                  clip-rule="evenodd"
+                  d="M4 0C1.79086 0 0 1.79086 0 4V10C0 12.2091 1.79086 14 4 14H6C6.55228 14 7 13.5523 7 13C7 12.4477 6.55228 12 6 12H4C2.89543 12 2 11.1046 2 10V4C2 2.89543 2.89543 2 4 2H6C6.55228 2 7 1.55228 7 1C7 0.447715 6.55228 0 6 0H4ZM11.7071 3.29289C11.3166 2.90237 10.6834 2.90237 10.2929 3.29289C9.90237 3.68342 9.90237 4.31658 10.2929 4.70711L11.5858 6H9.5H6C5.44772 6 5 6.44772 5 7C5 7.55228 5.44772 8 6 8H9.5H11.5858L10.2929 9.29289C9.90237 9.68342 9.90237 10.3166 10.2929 10.7071C10.6834 11.0976 11.3166 11.0976 11.7071 10.7071L14.7071 7.70711C15.0976 7.31658 15.0976 6.68342 14.7071 6.29289L11.7071 3.29289Z"
+                  fill="currentColor"
+                  fill-opacity="0.4"
+                ></path>
+              </svg>
+              <span>Disconnect</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    }
+
+    /**
      * Attach event listeners
      */
     private attachEventListeners() {
@@ -1285,16 +1623,46 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         const isConnected = this.walletManager?.connected || false;
 
         if (isConnected) {
-          // Disconnect
-          try {
-            await this.walletManager?.disconnect();
-            this.render();
-          } catch (error) {
-            logger.error('Failed to disconnect:', error);
-          }
+          // Open account details modal
+          this.openAccountModal();
         } else {
-          // Open modal
+          // Open connection modal
           this.open();
+        }
+      });
+
+      // Account modal close button
+      this.shadow.querySelector('#account-modal-close')?.addEventListener('click', () => {
+        this.closeAccountModal();
+      });
+
+      // Account modal disconnect button
+      this.shadow.querySelector('#account-modal-disconnect')?.addEventListener('click', () => {
+        this.disconnectFromAccountModal();
+      });
+
+      // Account modal overlay click
+      this.shadow.querySelector('#account-modal-overlay')?.addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) {
+          this.closeAccountModal();
+        }
+      });
+
+      // Copy account address button
+      this.shadow.querySelector('#copy-account-address')?.addEventListener('click', async () => {
+        const address = this.walletManager?.account?.address;
+        if (address) {
+          try {
+            await navigator.clipboard.writeText(address);
+            const btn = this.shadow.querySelector('#copy-account-address') as HTMLButtonElement;
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<span>Copied!</span>';
+            setTimeout(() => {
+              if (btn) btn.innerHTML = originalHTML;
+            }, TIMINGS.COPY_FEEDBACK_DURATION);
+          } catch (error) {
+            logger.error('Failed to copy address:', error);
+          }
         }
       });
 
