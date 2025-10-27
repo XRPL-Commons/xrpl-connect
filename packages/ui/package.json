@@ -1,6 +1,6 @@
 {
   "name": "@xrpl-connect/ui",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Web component UI for XRPL Connect wallet connections",
   "author": "XRPL Connect Contributors",
   "license": "MIT",

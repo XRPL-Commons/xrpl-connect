@@ -1,6 +1,6 @@
 {
   "name": "xrpl-connect",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "The easiest way to connect XRPL wallets to your app - Framework-agnostic toolkit with plug-and-play UI",
   "author": "XRPL Connect Contributors",
   "license": "MIT",
@@ -16,7 +16,6 @@
     "xrpl",
     "wallet",
     "web3",
-    "ripple",
     "xaman",
     "crossmark",
     "gemwallet",
