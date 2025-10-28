@@ -1,4 +1,4 @@
-# XRPL Connect
+# XRPL-Connect
 
 A framework-agnostic wallet connection toolkit for the XRP Ledger
 
@@ -53,7 +53,7 @@ const signed = await walletManager.signAndSubmit({
 
 ## What's Included
 
-The complete XRPL Connect package includes:
+The complete XRPL-Connect package includes:
 
 - **Core** (`@xrpl-connect/core`) - Wallet management, event system, state persistence
 - **UI** (`@xrpl-connect/ui`) - Beautiful web component with wallet selection and account modal
@@ -61,14 +61,14 @@ The complete XRPL Connect package includes:
 
 ## Documentation
 
-- [Getting Started](/guide/getting-started) - Complete introduction to XRPL Connect
+- [Getting Started](/guide/getting-started) - Complete introduction to XRPL-Connect
 - [API Reference](/guide/api-reference) - Full API documentation
 - [Customization](/guide/customization) - CSS variables customization guide
 - [Examples](/guide/examples) - Real-world examples and theme showcases
 
 ## Architecture
 
-XRPL Connect uses a modular, adapter-based architecture:
+XRPL-Connect uses a modular, adapter-based architecture:
 
 ```
 Your Application

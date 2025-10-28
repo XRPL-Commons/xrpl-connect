@@ -1,6 +1,6 @@
 # React
 
-Integrate XRPL Connect into your React application with hooks.
+Integrate XRPL-Connect into your React application with hooks.
 
 ## Installation
 
@@ -10,7 +10,7 @@ npm install xrpl-connect xrpl
 
 ## Basic Setup
 
-Here's a minimal React component using XRPL Connect:
+Here's a minimal React component using XRPL-Connect:
 
 ```jsx
 import { useEffect, useRef, useState } from 'react';
@@ -338,7 +338,7 @@ function WalletError({ error }) {
 
 ## TypeScript Support
 
-XRPL Connect has full TypeScript support:
+XRPL-Connect has full TypeScript support:
 
 ```typescript
 import { useEffect, useRef, useState } from 'react';

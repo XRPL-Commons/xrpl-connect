@@ -1,0 +1,67 @@
+/* Custom Font Configuration */
+
+:root {
+  /* Use Plus Jakarta Sans for body text */
+  --vp-font-family-base: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Use Unbounded for code/mono (can adjust if preferred) */
+  --vp-font-family-mono: 'Fira Code', 'Courier New', monospace;
+}
+
+/* Apply Unbounded to all headings */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: 'Unbounded', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Adjust heading levels */
+h1 {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+h2 {
+  font-weight: 700;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+}
+
+/* Ensure body text uses Plus Jakarta Sans */
+body,
+p,
+span,
+a,
+li,
+td {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* VitePress specific elements */
+.VPNavBar,
+.VPSidebar,
+.VPContent {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Button text */
+button,
+.button {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Code blocks - keep monospace */
+code,
+pre {
+  font-family: 'Fira Code', 'Courier New', monospace;
+}

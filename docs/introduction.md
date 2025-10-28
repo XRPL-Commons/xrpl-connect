@@ -1,10 +1,10 @@
-# Introduction to XRPL Connect
+# Introduction to XRPL-Connect
 
-XRPL Connect is a comprehensive, framework-agnostic wallet connection toolkit for the XRP Ledger. It provides developers with everything needed to add secure wallet connectivity to their applications through a modern, modular architecture.
+XRPL-Connect is a comprehensive, framework-agnostic wallet connection toolkit for the XRP Ledger. It provides developers with everything needed to add secure wallet connectivity to their applications through a modern, modular architecture.
 
-## What is XRPL Connect?
+## What is XRPL-Connect?
 
-XRPL Connect is a complete solution for integrating wallet functionality into web applications built on the XRP Ledger. It includes:
+XRPL-Connect is a complete solution for integrating wallet functionality into web applications built on the XRP Ledger. It includes:
 
 - **Web Component UI** - Beautiful, customizable `<xrpl-wallet-connector>` component for wallet selection and account management
 - **Wallet Manager** - Central event-driven system for managing wallet connections and transactions
@@ -13,9 +13,9 @@ XRPL Connect is a complete solution for integrating wallet functionality into we
 - **TypeScript Ready** - Full type definitions for a great developer experience
 - **Production Ready** - Used in production applications across the XRPL ecosystem
 
-## Why Use XRPL Connect?
+## Why Use XRPL-Connect?
 
-Building wallet connectivity from scratch is complex. XRPL Connect abstracts away the complexity of:
+Building wallet connectivity from scratch is complex. XRPL-Connect abstracts away the complexity of:
 
 - **Multi-wallet support** - Manage multiple wallet adapters with a single API
 - **Connection state** - Automatic session persistence and reconnection
@@ -51,7 +51,7 @@ Support for mobile wallets through WalletConnect. Works seamlessly on desktop an
 
 ## Architecture Overview
 
-XRPL Connect uses a modular, adapter-based architecture that separates concerns and makes it easy to extend:
+XRPL-Connect uses a modular, adapter-based architecture that separates concerns and makes it easy to extend:
 
 ```
 Your Application
@@ -92,7 +92,7 @@ Choose the appropriate network when initializing the WalletManager.
 
 ## What's Included
 
-The XRPL Connect package includes:
+The XRPL-Connect package includes:
 
 - **Core Library** - WalletManager, event system, and state management
 - **Web Component** - Beautiful UI component for wallet connection
@@ -105,7 +105,7 @@ The XRPL Connect package includes:
 Ready to get started? Here's the recommended learning path:
 
 1. **[Concepts](/concepts)** - Understand the key concepts (WalletManager, adapters, web components)
-2. **[Try It Out](/try-it-out)** - See XRPL Connect in action with the interactive demo
+2. **[Try It Out](/try-it-out)** - See XRPL-Connect in action with the interactive demo
 3. **[Getting Started](/guide/getting-started)** - Install and get your API keys
 4. **Framework Guides** - Follow the guide for your specific framework:
    - [Vanilla JS](/guide/frameworks/vanilla-js)

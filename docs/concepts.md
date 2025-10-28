@@ -1,10 +1,10 @@
 # Core Concepts
 
-XRPL Connect is built on a few key concepts that work together to provide a seamless wallet integration experience. Understanding these concepts will help you use XRPL Connect effectively.
+XRPL-Connect is built on a few key concepts that work together to provide a seamless wallet integration experience. Understanding these concepts will help you use XRPL-Connect effectively.
 
 ## WalletManager
 
-The **WalletManager** is the central orchestrator of XRPL Connect. It manages wallet connections, handles events, maintains state, and provides methods for signing transactions.
+The **WalletManager** is the central orchestrator of XRPL-Connect. It manages wallet connections, handles events, maintains state, and provides methods for signing transactions.
 
 ### What It Does
 
@@ -285,7 +285,7 @@ Both WalletManager and the Web Component emit events that you can listen to:
 
 ## State Management
 
-XRPL Connect automatically manages connection state:
+XRPL-Connect automatically manages connection state:
 
 - **Persistence** - Saves connection in localStorage
 - **Auto-reconnect** - Reconnects on page reload if user was previously connected

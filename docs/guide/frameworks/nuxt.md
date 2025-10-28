@@ -1,6 +1,6 @@
 # Nuxt 3
 
-Integrate XRPL Connect into your Nuxt 3 application with the Composition API.
+Integrate XRPL-Connect into your Nuxt 3 application with the Composition API.
 
 ## Installation
 
@@ -328,7 +328,7 @@ definePageMeta({
 
 ## Pinia Store Integration
 
-For larger apps, use Pinia with XRPL Connect:
+For larger apps, use Pinia with XRPL-Connect:
 
 ```typescript
 // stores/wallet.ts
@@ -575,7 +575,7 @@ NUXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id
 <!-- pages/wallet.vue -->
 <template>
   <div class="wallet-container">
-    <h1>XRPL Connect Demo</h1>
+    <h1>XRPL-Connect Demo</h1>
 
     <ClientOnly>
       <xrpl-wallet-connector ref="connectorRef" primary-wallet="xaman" />

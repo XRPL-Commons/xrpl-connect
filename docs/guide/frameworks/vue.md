@@ -1,6 +1,6 @@
 # Vue 3
 
-Integrate XRPL Connect into your Vue 3 application with the Composition API.
+Integrate XRPL-Connect into your Vue 3 application with the Composition API.
 
 ## Installation
 
@@ -10,7 +10,7 @@ npm install xrpl-connect xrpl
 
 ## Basic Setup
 
-Here's a minimal Vue component using XRPL Connect:
+Here's a minimal Vue component using XRPL-Connect:
 
 ```vue
 <template>
@@ -472,7 +472,7 @@ const networkColor = computed(() => {
 
 5. **Memory Management** - Clean up listeners on component unmount
 
-6. **State Persistence** - Leverage XRPL Connect's built-in persistence
+6. **State Persistence** - Leverage XRPL-Connect's built-in persistence
 
 7. **Computed for Derived State** - Use computed properties instead of methods
 

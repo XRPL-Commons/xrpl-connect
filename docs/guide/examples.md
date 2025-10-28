@@ -11,7 +11,7 @@ Complete example with wallet connection and transaction signing:
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>XRPL Connect Example</title>
+  <title>XRPL-Connect Example</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -47,7 +47,7 @@ Complete example with wallet connection and transaction signing:
 <body>
   <div class="container">
     <div class="card">
-      <h1>XRPL Connect Example</h1>
+      <h1>XRPL-Connect Example</h1>
       <xrpl-wallet-connector id="wallet-connector"></xrpl-wallet-connector>
     </div>
 
@@ -214,7 +214,7 @@ function App() {
 
   return (
     <div style={{ padding: '2rem' }}>
-      <h1>XRPL Connect React Example</h1>
+      <h1>XRPL-Connect React Example</h1>
 
       <xrpl-wallet-connector ref={connectorRef} />
 
@@ -243,7 +243,7 @@ export default App;
 ```vue
 <template>
   <div style="padding: 2rem">
-    <h1>XRPL Connect Vue 3 Example</h1>
+    <h1>XRPL-Connect Vue 3 Example</h1>
 
     <xrpl-wallet-connector ref="connectorRef" />
 

@@ -1,6 +1,6 @@
 # Customization Guide
 
-Learn how to customize the XRPL Connect wallet component to match your application's design and branding.
+Learn how to customize the XRPL-Connect wallet component to match your application's design and branding.
 
 ## Overview
 

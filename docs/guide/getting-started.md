@@ -1,6 +1,6 @@
 # Getting Started
 
-Get up and running with XRPL Connect in minutes.
+Get up and running with XRPL-Connect in minutes.
 
 ## Installation
 
@@ -32,7 +32,7 @@ The `xrpl-connect` package includes:
 
 ## Get Your API Keys
 
-To use XRPL Connect, you'll need API keys for the wallet adapters you plan to use.
+To use XRPL-Connect, you'll need API keys for the wallet adapters you plan to use.
 
 ### Xaman API Key
 

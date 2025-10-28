@@ -1,6 +1,6 @@
 # Next.js
 
-Integrate XRPL Connect into your Next.js application with the App Router.
+Integrate XRPL-Connect into your Next.js application with the App Router.
 
 ## Installation
 

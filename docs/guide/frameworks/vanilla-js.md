@@ -1,6 +1,6 @@
 # Vanilla JavaScript
 
-Integrate XRPL Connect into your Vanilla JavaScript application.
+Integrate XRPL-Connect into your Vanilla JavaScript application.
 
 ## Basic Setup
 
@@ -10,7 +10,7 @@ Here's a complete example with a single HTML file:
 <!DOCTYPE html>
 <html>
 <head>
-  <title>XRPL Connect Example</title>
+  <title>XRPL-Connect Example</title>
   <style>
     body {
       font-family: system-ui, -apple-system, sans-serif;
@@ -28,7 +28,7 @@ Here's a complete example with a single HTML file:
   </style>
 </head>
 <body>
-  <h1>XRPL Connect Demo</h1>
+  <h1>XRPL-Connect Demo</h1>
   <xrpl-wallet-connector id="wallet-connector"></xrpl-wallet-connector>
 
   <div id="account-info">

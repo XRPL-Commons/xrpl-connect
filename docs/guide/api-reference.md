@@ -1,6 +1,6 @@
 # API Reference
 
-Complete documentation for all XRPL Connect APIs.
+Complete documentation for all XRPL-Connect APIs.
 
 ## WalletManager
 
