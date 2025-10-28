@@ -1,3 +1,7 @@
+---
+description: Integrate XRPL-Connect into your React application using hooks and best practices.
+---
+
 # React
 
 Integrate XRPL-Connect into your React application with hooks.

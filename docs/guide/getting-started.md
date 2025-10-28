@@ -1,3 +1,7 @@
+---
+description: Install XRPL-Connect, get your API keys, and set up basic wallet connections in minutes.
+---
+
 # Getting Started
 
 Get up and running with XRPL-Connect in minutes.

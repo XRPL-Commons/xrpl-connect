@@ -1,3 +1,7 @@
+---
+description: Learn the key concepts behind XRPL-Connect including WalletManager, adapters, events, and web components.
+---
+
 # Core Concepts
 
 XRPL-Connect is built on a few key concepts that work together to provide a seamless wallet integration experience. Understanding these concepts will help you use XRPL-Connect effectively.

@@ -1,3 +1,7 @@
+---
+description: Integrate XRPL-Connect into your Nuxt 3 application using the Composition API.
+---
+
 # Nuxt 3
 
 Integrate XRPL-Connect into your Nuxt 3 application with the Composition API.

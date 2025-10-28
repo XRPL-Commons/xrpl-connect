@@ -1,6 +1,7 @@
 import { h } from 'vue'
 import type { Theme } from 'vitepress'
 import DefaultTheme from 'vitepress/theme'
+import CopyOrDownloadAsMarkdownButtons from 'vitepress-plugin-llms/vitepress-components/CopyOrDownloadAsMarkdownButtons.vue'
 import './custom.css'
 
 let componentImported = false
@@ -11,6 +12,9 @@ export default {
     return h(DefaultTheme.Layout, null, {})
   },
   async enhanceApp({ app }) {
+    // Register CopyOrDownloadAsMarkdownButtons component
+    app.component('CopyOrDownloadAsMarkdownButtons', CopyOrDownloadAsMarkdownButtons)
+
     // Only import web components on client side
     if (typeof window !== 'undefined' && !componentImported) {
       try {

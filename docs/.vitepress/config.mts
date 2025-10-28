@@ -1,4 +1,6 @@
 import { defineConfig } from 'vitepress';
+import llmstxt from 'vitepress-plugin-llms';
+import { copyOrDownloadAsMarkdownButtons } from 'vitepress-plugin-llms';
 
 export default defineConfig({
   title: ' ',
@@ -98,6 +100,18 @@ export default defineConfig({
 
   markdown: {
     lineNumbers: true,
+    config(md) {
+      md.use(copyOrDownloadAsMarkdownButtons);
+    },
+  },
+
+  vite: {
+    plugins: [
+      llmstxt({
+        generateLLMsFullTxt: true,
+        ignoreFiles: [],
+      }),
+    ],
   },
 
   srcExclude: ['**/README.md', 'assets/**'],

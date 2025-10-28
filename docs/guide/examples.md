@@ -1,3 +1,7 @@
+---
+description: Real-world examples and pre-built theme configurations for implementing XRPL-Connect.
+---
+
 # Examples
 
 Real-world examples and pre-built theme configurations.
