@@ -1,3 +1,7 @@
+---
+description: Complete API reference documentation for WalletManager, adapters, and all XRPL-Connect components.
+---
+
 # API Reference
 
 Complete documentation for all XRPL-Connect APIs.

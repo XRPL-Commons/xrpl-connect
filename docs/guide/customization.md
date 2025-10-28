@@ -1,3 +1,7 @@
+---
+description: Customize the XRPL-Connect wallet component colors, styling, and appearance with CSS variables and themes.
+---
+
 # Customization Guide
 
 Learn how to customize the XRPL-Connect wallet component to match your application's design and branding.

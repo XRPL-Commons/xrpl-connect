@@ -1,3 +1,7 @@
+---
+description: Integrate XRPL-Connect into your Next.js application using the App Router and best practices.
+---
+
 # Next.js
 
 Integrate XRPL-Connect into your Next.js application with the App Router.

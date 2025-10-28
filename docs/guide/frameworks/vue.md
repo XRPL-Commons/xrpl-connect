@@ -1,3 +1,7 @@
+---
+description: Integrate XRPL-Connect into your Vue 3 application using the Composition API.
+---
+
 # Vue 3
 
 Integrate XRPL-Connect into your Vue 3 application with the Composition API.

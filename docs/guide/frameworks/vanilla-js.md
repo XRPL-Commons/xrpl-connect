@@ -1,3 +1,7 @@
+---
+description: Integrate XRPL-Connect into your Vanilla JavaScript application with simple examples.
+---
+
 # Vanilla JavaScript
 
 Integrate XRPL-Connect into your Vanilla JavaScript application.
