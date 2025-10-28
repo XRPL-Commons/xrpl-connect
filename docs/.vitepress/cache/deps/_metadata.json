@@ -1,0 +1,97 @@
+{
+  "hash": "34c5076e",
+  "configHash": "9dbcade8",
+  "lockfileHash": "95376675",
+  "browserHash": "b0190faa",
+  "optimized": {
+    "vue": {
+      "src": "../../../../node_modules/.pnpm/vue@3.5.22_typescript@5.9.3/node_modules/vue/dist/vue.runtime.esm-bundler.js",
+      "file": "vue.js",
+      "fileHash": "8a0a4653",
+      "needsInterop": false
+    },
+    "vitepress > @vue/devtools-api": {
+      "src": "../../../../node_modules/.pnpm/@vue+devtools-api@7.7.7/node_modules/@vue/devtools-api/dist/index.js",
+      "file": "vitepress___@vue_devtools-api.js",
+      "fileHash": "f3b1eb87",
+      "needsInterop": false
+    },
+    "vitepress > @vueuse/core": {
+      "src": "../../../../node_modules/.pnpm/@vueuse+core@12.8.2_typescript@5.9.3/node_modules/@vueuse/core/index.mjs",
+      "file": "vitepress___@vueuse_core.js",
+      "fileHash": "5e8bf123",
+      "needsInterop": false
+    },
+    "vitepress > @vueuse/integrations/useFocusTrap": {
+      "src": "../../../../node_modules/.pnpm/@vueuse+integrations@12.8.2_focus-trap@7.6.6_idb-keyval@6.2.2_qrcode@1.5.3_typescript@5.9.3/node_modules/@vueuse/integrations/useFocusTrap.mjs",
+      "file": "vitepress___@vueuse_integrations_useFocusTrap.js",
+      "fileHash": "c40f58b9",
+      "needsInterop": false
+    },
+    "vitepress > mark.js/src/vanilla.js": {
+      "src": "../../../../node_modules/.pnpm/mark.js@8.11.1/node_modules/mark.js/src/vanilla.js",
+      "file": "vitepress___mark__js_src_vanilla__js.js",
+      "fileHash": "b2eb9b74",
+      "needsInterop": false
+    },
+    "vitepress > minisearch": {
+      "src": "../../../../node_modules/.pnpm/minisearch@7.2.0/node_modules/minisearch/dist/es/index.js",
+      "file": "vitepress___minisearch.js",
+      "fileHash": "f2d4af4b",
+      "needsInterop": false
+    },
+    "@crossmarkio/sdk": {
+      "src": "../../../../node_modules/.pnpm/@crossmarkio+sdk@0.4.0_bufferutil@4.0.9_utf-8-validate@5.0.10/node_modules/@crossmarkio/sdk/pack/umd/index.js",
+      "file": "@crossmarkio_sdk.js",
+      "fileHash": "a239cecf",
+      "needsInterop": true
+    },
+    "@walletconnect/sign-client": {
+      "src": "../../../../node_modules/.pnpm/@walletconnect+sign-client@2.22.3_bufferutil@4.0.9_typescript@5.9.3_utf-8-validate@5.0.10_zod@3.22.4/node_modules/@walletconnect/sign-client/dist/index.js",
+      "file": "@walletconnect_sign-client.js",
+      "fileHash": "093b33b6",
+      "needsInterop": false
+    },
+    "qr-code-styling": {
+      "src": "../../../../node_modules/.pnpm/qr-code-styling@1.9.2/node_modules/qr-code-styling/lib/qr-code-styling.js",
+      "file": "qr-code-styling.js",
+      "fileHash": "949f92ea",
+      "needsInterop": true
+    },
+    "@gemwallet/api": {
+      "src": "../../../../node_modules/.pnpm/@gemwallet+api@3.8.0/node_modules/@gemwallet/api/index.js",
+      "file": "@gemwallet_api.js",
+      "fileHash": "bdd999c9",
+      "needsInterop": true
+    },
+    "xumm": {
+      "src": "../../../../node_modules/.pnpm/xumm@1.8.0/node_modules/xumm/dist/index.js",
+      "file": "xumm.js",
+      "fileHash": "e987db13",
+      "needsInterop": true
+    },
+    "eventemitter3": {
+      "src": "../../../../node_modules/.pnpm/eventemitter3@5.0.1/node_modules/eventemitter3/index.mjs",
+      "file": "eventemitter3.js",
+      "fileHash": "e429450e",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "chunk-SUT7UOZ3": {
+      "file": "chunk-SUT7UOZ3.js"
+    },
+    "chunk-B4YH5ZTW": {
+      "file": "chunk-B4YH5ZTW.js"
+    },
+    "chunk-FV5UCLW4": {
+      "file": "chunk-FV5UCLW4.js"
+    },
+    "chunk-QVXSELCD": {
+      "file": "chunk-QVXSELCD.js"
+    },
+    "chunk-V46ELZXU": {
+      "file": "chunk-V46ELZXU.js"
+    }
+  }
+}

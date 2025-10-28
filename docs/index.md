@@ -1,7 +1,3 @@
----
-layout: home
----
-
 # XRPL Connect
 
 A framework-agnostic wallet connection toolkit for the XRP Ledger
@@ -65,10 +61,10 @@ The complete XRPL Connect package includes:
 
 ## Documentation
 
-- [Getting Started](chapters/01-getting-started.html) - Complete introduction to XRPL Connect
-- [API Reference](chapters/02-api-reference.html) - Full API documentation
-- [Customization](chapters/03-customization.html) - CSS variables customization guide
-- [Examples](chapters/04-examples.html) - Real-world examples and theme showcases
+- [Getting Started](/guide/getting-started) - Complete introduction to XRPL Connect
+- [API Reference](/guide/api-reference) - Full API documentation
+- [Customization](/guide/customization) - CSS variables customization guide
+- [Examples](/guide/examples) - Real-world examples and theme showcases
 
 ## Architecture
 

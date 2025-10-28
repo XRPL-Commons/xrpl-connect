@@ -1,0 +1,18 @@
+{
+  "name": "@xrpl-connect/docs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "XRPL Connect Documentation",
+  "scripts": {
+    "dev": "vitepress dev .",
+    "build": "vitepress build .",
+    "preview": "vitepress preview ."
+  },
+  "dependencies": {
+    "xrpl-connect": "workspace:*"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.4",
+    "vue": "^3.5.22"
+  }
+}
