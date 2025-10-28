@@ -7,7 +7,6 @@
           <xrpl-wallet-connector
             id="theme-preview"
             :style="computedStyles"
-            wallets="xaman,crossmark"
             primary-wallet="xaman"
           ></xrpl-wallet-connector>
 
@@ -30,11 +29,7 @@
             <h4>General</h4>
             <div class="control-group">
               <label>Font Family</label>
-              <input
-                v-model="variables['--xc-font-family']"
-                type="text"
-                class="input-text"
-              />
+              <input v-model="variables['--xc-font-family']" type="text" class="input-text" />
             </div>
             <div class="control-group">
               <label>Border Radius</label>
@@ -54,16 +49,8 @@
               <div v-for="(value, key) in colorVariables" :key="key" class="color-control">
                 <label>{{ formatLabel(key) }}</label>
                 <div class="color-input-group">
-                  <input
-                    v-model="variables[key]"
-                    type="color"
-                    class="color-picker"
-                  />
-                  <input
-                    v-model="variables[key]"
-                    type="text"
-                    class="color-value"
-                  />
+                  <input v-model="variables[key]" type="color" class="color-picker" />
+                  <input v-model="variables[key]" type="text" class="color-value" />
                 </div>
               </div>
             </div>
@@ -153,11 +140,7 @@
             </div>
             <div class="control-group">
               <label>Box Shadow</label>
-              <input
-                v-model="variables['--xc-modal-box-shadow']"
-                type="text"
-                class="input-text"
-              />
+              <input v-model="variables['--xc-modal-box-shadow']" type="text" class="input-text" />
             </div>
           </section>
 
@@ -198,8 +181,16 @@
         </div>
         <div class="modal-footer">
           <button class="copy-btn" @click="copyToClipboard">
-            <svg v-if="!copied" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+            <svg
+              v-if="!copied"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+              ></path>
               <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
             </svg>
             <span v-if="!copied">Copy Code</span>
@@ -338,17 +329,22 @@ onMounted(async () => {
   background: var(--vp-c-bg-soft);
   border-radius: 12px;
   border: 1px solid var(--vp-c-divider);
+
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+
   width: 100%;
   min-height: 500px;
+  text-align: center;
 }
 
 #theme-preview {
   width: 100%;
-  max-width: 300px;
+  max-width: 320px;
+  display: flex;
+  justify-content: center;
 }
 
 .code-btn-preview {

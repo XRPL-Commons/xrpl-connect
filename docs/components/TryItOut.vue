@@ -5,7 +5,6 @@
         <xrpl-wallet-connector
           id="demo-connector"
           :style="computedStyles"
-          wallets="xaman,crossmark"
           primary-wallet="xaman"
         ></xrpl-wallet-connector>
       </div>
