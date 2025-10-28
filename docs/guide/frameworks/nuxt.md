@@ -15,7 +15,7 @@ Create a composable for wallet management:
 ```typescript
 // composables/useWallet.ts
 import { ref, onMounted } from 'vue';
-import { WalletManager } from 'xrpl-connect';
+import { WalletManager,XamanAdapter;CrossmarkAdapter } from 'xrpl-connect';
 import type { Account, WalletError, WalletAdapter } from 'xrpl-connect';
 
 interface UseWalletOptions {
@@ -88,9 +88,7 @@ Create a Nuxt plugin to provide wallet globally:
 ```typescript
 // plugins/wallet.client.ts
 import { defineNuxtPlugin } from '#app';
-import { WalletManager } from 'xrpl-connect';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+import { WalletManager,XamanAdapter;CrossmarkAdapter } from 'xrpl-connect';
 import type { Account, WalletError } from 'xrpl-connect';
 
 declare module '#app' {
@@ -333,8 +331,7 @@ For larger apps, use Pinia with XRPL-Connect:
 ```typescript
 // stores/wallet.ts
 import { defineStore } from 'pinia';
-import { WalletManager } from 'xrpl-connect';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { WalletManager, XamanAdapter,} from 'xrpl-connect';
 import type { Account, WalletError } from 'xrpl-connect';
 
 export const useWalletStore = defineStore('wallet', () => {
@@ -398,7 +395,7 @@ Use in a page:
 ```vue
 <script setup lang="ts">
 import { useWalletStore } from '~/stores/wallet';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { XamanAdapter } from 'xrpl-connect';
 
 const wallet = useWalletStore();
 const config = useRuntimeConfig();

@@ -40,9 +40,7 @@ Here's a complete example with a single HTML file:
   </div>
 
   <script type="module">
-    import { WalletManager } from 'xrpl-connect';
-    import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-    import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+    import { WalletManager,XamanAdapter,CrossmarkAdapter } from 'xrpl-connect';
 
     // Initialize WalletManager
     const walletManager = new WalletManager({
@@ -192,11 +190,8 @@ const { connected, account, wallet } = walletManager;
 Give users choice by supporting multiple wallets:
 
 ```javascript
-import { WalletManager } from 'xrpl-connect';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
-import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
-import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
+import { WalletManager,XamanAdapter,WalletConnectAdapter,GemWalletAdapter;CrossmarkAdapter } from 'xrpl-connect';
+
 
 const walletManager = new WalletManager({
   adapters: [
@@ -321,8 +316,7 @@ connector.close();
 If you want to add TypeScript:
 
 ```typescript
-import { WalletManager, Account, WalletError } from 'xrpl-connect';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { WalletManager, Account, WalletError, XamanAdapter} from 'xrpl-connect';
 
 const walletManager: WalletManager = new WalletManager({
   adapters: [new XamanAdapter({ apiKey: 'YOUR_API_KEY' })],

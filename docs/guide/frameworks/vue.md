@@ -32,9 +32,7 @@ Here's a minimal Vue component using XRPL-Connect:
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { WalletManager } from 'xrpl-connect';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+import { WalletManager,XamanAdapter,CrossmarkAdapter } from 'xrpl-connect';
 
 const connectorRef = ref(null);
 const walletManager = ref(null);
@@ -168,7 +166,7 @@ Usage:
 
 <script setup>
 import { useWallet } from '@/composables/useWallet';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { XamanAdapter } from 'xrpl-connect';
 
 const { connectorRef, connected, disconnect } = useWallet({
   adapters: [new XamanAdapter({ apiKey: 'YOUR_API_KEY' })],
@@ -291,7 +289,7 @@ Usage in App.vue:
 ```vue
 <script setup>
 import { provideWallet } from '@/composables/useWalletState';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { XamanAdapter } from 'xrpl-connect';
 
 provideWallet([new XamanAdapter({ apiKey: 'YOUR_API_KEY' })]);
 </script>

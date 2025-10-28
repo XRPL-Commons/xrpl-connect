@@ -73,9 +73,7 @@ Complete example with wallet connection and transaction signing:
   </div>
 
   <script type="module">
-    import { WalletManager } from 'xrpl-connect';
-    import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-    import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+    import { WalletManager,XamanAdapter,CrossmarkAdapter } from 'xrpl-connect';
 
     const walletManager = new WalletManager({
       adapters: [
@@ -153,9 +151,7 @@ Complete example with wallet connection and transaction signing:
 
 ```jsx
 import { useEffect, useRef, useState } from 'react';
-import { WalletManager } from 'xrpl-connect';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+import { WalletManager,XamanAdapter,CrossmarkAdapter} from 'xrpl-connect';
 
 function App() {
   const connectorRef = useRef(null);
@@ -263,9 +259,7 @@ export default App;
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { WalletManager } from 'xrpl-connect';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+import { WalletManager,XamanAdapter,CrossmarkAdapter } from 'xrpl-connect';
 
 const connectorRef = ref(null);
 const account = ref(null);

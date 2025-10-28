@@ -14,9 +14,7 @@ Here's a minimal React component using XRPL-Connect:
 
 ```jsx
 import { useEffect, useRef, useState } from 'react';
-import { WalletManager } from 'xrpl-connect';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+import { WalletManager,XamanAdapter,CrossmarkAdapter } from 'xrpl-connect';
 
 function WalletConnector() {
   const connectorRef = useRef(null);
@@ -166,7 +164,7 @@ Then use it in your component:
 
 ```jsx
 import useWalletManager from './useWalletManager';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { XamanAdapter } from 'xrpl-connect';
 
 function App() {
   const { account, connected, connectorRef, disconnect } = useWalletManager([
@@ -289,8 +287,7 @@ export function useWallet() {
 Usage:
 
 ```jsx
-import { WalletProvider, useWallet } from './WalletContext';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { WalletProvider, useWallet,XamanAdapter } from './WalletContext';
 
 function App() {
   return (
@@ -342,8 +339,7 @@ XRPL-Connect has full TypeScript support:
 
 ```typescript
 import { useEffect, useRef, useState } from 'react';
-import { WalletManager, Account, WalletError } from 'xrpl-connect';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { WalletManager, Account, WalletError, XamanAdapter} from 'xrpl-connect';
 
 interface WalletState {
   walletManager: WalletManager | null;

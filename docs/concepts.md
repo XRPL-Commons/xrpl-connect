@@ -78,7 +78,7 @@ The adapter handles:
 Connect to Xaman (formerly Xumm) - the most popular XRPL wallet.
 
 ```javascript
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { XamanAdapter } from 'xrpl-connect';
 
 const adapter = new XamanAdapter({
   apiKey: 'YOUR_API_KEY',        // Get from https://apps.xumm.dev
@@ -92,7 +92,7 @@ const adapter = new XamanAdapter({
 Connect to Crossmark - a secure browser extension for XRPL.
 
 ```javascript
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+import { CrossmarkAdapter } from 'xrpl-connect';
 
 const adapter = new CrossmarkAdapter();
 ```
@@ -103,7 +103,7 @@ const adapter = new CrossmarkAdapter();
 Connect to GemWallet - a privacy-focused XRPL wallet.
 
 ```javascript
-import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
+import { GemWalletAdapter } from 'xrpl-connect';
 
 const adapter = new GemWalletAdapter();
 ```
@@ -114,7 +114,7 @@ const adapter = new GemWalletAdapter();
 Connect to any wallet using the WalletConnect protocol. Great for mobile wallets.
 
 ```javascript
-import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
+import { WalletConnectAdapter } from 'xrpl-connect';
 
 const adapter = new WalletConnectAdapter({
   projectId: 'YOUR_PROJECT_ID',  // Get from https://cloud.walletconnect.com

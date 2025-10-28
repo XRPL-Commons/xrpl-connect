@@ -170,7 +170,7 @@ Built-in adapters for popular XRPL wallets.
 ### Xaman Adapter
 
 ```typescript
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { XamanAdapter } from 'xrpl-connect';
 
 const adapter = new XamanAdapter({
   apiKey: 'YOUR_API_KEY', // Get from https://apps.xumm.dev/
@@ -185,7 +185,7 @@ const adapter = new XamanAdapter({
 ### Crossmark Adapter
 
 ```typescript
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+import { CrossmarkAdapter } from 'xrpl-connect';
 
 const adapter = new CrossmarkAdapter();
 ```
@@ -197,7 +197,7 @@ const adapter = new CrossmarkAdapter();
 ### GemWallet Adapter
 
 ```typescript
-import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
+import { GemWalletAdapter } from 'xrpl-connect';
 
 const adapter = new GemWalletAdapter();
 ```
@@ -209,7 +209,7 @@ const adapter = new GemWalletAdapter();
 ### WalletConnect Adapter
 
 ```typescript
-import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
+import { WalletConnectAdapter } from 'xrpl-connect';
 
 const adapter = new WalletConnectAdapter({
   projectId: 'YOUR_PROJECT_ID', // Get from https://cloud.walletconnect.com

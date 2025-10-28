@@ -1,14 +1,14 @@
 import { defineConfig } from 'vitepress';
 
 export default defineConfig({
-  title: 'XRPL-Connect',
+  title: ' ',
   description: 'A framework-agnostic wallet connection toolkit for the XRP Ledger',
 
   lang: 'en-US',
   base: '/xrpl-connect/',
 
   head: [
-    ['link', { rel: 'icon', href: '/xrpl-connect/favicon.ico' }],
+    ['link', { rel: 'icon', type: 'image/png', href: '/xrpl-connect/favicon.png' }],
     ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
     ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
     [
@@ -21,14 +21,13 @@ export default defineConfig({
   ],
 
   themeConfig: {
-    logo: '/logo.svg',
+    logo: '/commons_ligth_logo.png',
 
     nav: [
-      { text: 'Home', link: '/' },
       {
         text: 'Documentation',
         items: [
-          { text: 'Introduction', link: '/introduction' },
+          { text: 'Introduction', link: '/' },
           { text: 'Getting Started', link: '/guide/getting-started' },
           { text: 'API Reference', link: '/guide/api-reference' },
         ],
@@ -41,7 +40,12 @@ export default defineConfig({
             text: 'Contributing',
             link: 'https://github.com/XRPL-Commons/xrpl-connect/blob/main/CONTRIBUTING.md',
           },
+          { text: 'XRPL Commons', link: 'https://www.xrpl-commons.org' },
         ],
+      },
+      {
+        text: 'v0.3.0',
+        link: 'https://github.com/XRPL-Commons/xrpl-connect/releases',
       },
     ],
 
@@ -49,7 +53,6 @@ export default defineConfig({
       {
         text: 'Start Here',
         items: [
-          { text: 'Introduction', link: '/introduction' },
           { text: 'Try It Out', link: '/try-it-out' },
           { text: 'Concepts', link: '/concepts' },
         ],
@@ -65,7 +68,7 @@ export default defineConfig({
           { text: 'React', link: '/guide/frameworks/react' },
           { text: 'Vue 3', link: '/guide/frameworks/vue' },
           { text: 'Next.js', link: '/guide/frameworks/next' },
-          { text: 'Nuxt 3', link: '/guide/frameworks/nuxt' },
+          { text: 'Nuxt', link: '/guide/frameworks/nuxt' },
         ],
       },
       {

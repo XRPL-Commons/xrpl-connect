@@ -1,80 +1,63 @@
-# XRPL-Connect
+# Introduction to XRPL-Connect
 
-A framework-agnostic wallet connection toolkit for the XRP Ledger
+XRPL-Connect is a comprehensive, framework-agnostic wallet connection toolkit for the XRP Ledger. It provides developers with everything needed to add secure wallet connectivity to their applications through a modern, modular architecture.
 
-## Features
+## What is XRPL-Connect?
 
-- **Framework Agnostic** - Works seamlessly with Vanilla JS, React, Vue, and any other framework
-- **Multiple Wallets** - Support for Xaman, Crossmark, GemWallet, and WalletConnect
-- **Modular Architecture** - Install only what you need
-- **Type Safe** - Full TypeScript support with comprehensive type definitions
-- **Event Driven** - Reactive architecture for connection state changes
-- **Persistent Sessions** - Auto-reconnect with localStorage support
-- **Developer Friendly** - Simple API, extensive documentation, great DX
+XRPL-Connect is a complete solution for integrating wallet functionality into web applications built on the XRP Ledger. It includes:
 
-## Quick Start
+- **Web Component UI** - Beautiful, customizable `<xrpl-wallet-connector>` component for wallet selection and account management
+- **Wallet Manager** - Central event-driven system for managing wallet connections and transactions
+- **Multiple Wallet Support** - Built-in adapters for Xaman, Crossmark, GemWallet, and WalletConnect
+- **Framework Agnostic** - Works seamlessly with Vanilla JS, React, Vue, Next.js, Nuxt, and any modern web framework
+- **TypeScript Ready** - Full type definitions for a great developer experience
+- **Production Ready** - Used in production applications across the XRPL ecosystem
 
-### Installation
+## Why Use XRPL-Connect?
 
-```bash
-npm install xrpl-connect xrpl
-```
+Building wallet connectivity from scratch is complex. XRPL-Connect abstracts away the complexity of:
 
-### Basic Usage
+- **Multi-wallet support** - Manage multiple wallet adapters with a single API
+- **Connection state** - Automatic session persistence and reconnection
+- **Event handling** - Reactive architecture for responding to wallet changes
+- **Error handling** - Comprehensive error codes and recovery strategies
+- **UX/UI** - Beautiful, accessible components out of the box
+- **Transaction signing** - Unified API for signing and submitting transactions
 
-```html
-<xrpl-wallet-connector id="wallet-connector"></xrpl-wallet-connector>
-```
+## Key Features
 
-```javascript
-import { WalletManager } from 'xrpl-connect';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+### 🎨 Fully Customizable
+Customize colors, fonts, and styling using CSS variables without touching HTML or JavaScript. Create themes that match your brand perfectly.
 
-const walletManager = new WalletManager({
-  adapters: [new XamanAdapter({ apiKey: 'YOUR_API_KEY' })],
-  network: 'testnet',
-  autoConnect: true,
-});
+### 🔌 Multiple Wallets
+Support for all major XRP Ledger wallets including Xaman, Crossmark, GemWallet, and WalletConnect. Give users choice without increasing complexity.
 
-const connector = document.getElementById('wallet-connector');
-connector.setWalletManager(walletManager);
+### ⚡ Framework Agnostic
+Works with any JavaScript framework or vanilla JavaScript. Use the same wallet manager across your entire tech stack.
 
-walletManager.on('connect', (account) => {
-  console.log('Connected:', account.address);
-});
+### 🔒 Secure by Design
+- No private key handling - all signing happens in the wallet
+- Automatic session management
+- Built-in error recovery
 
-const signed = await walletManager.signAndSubmit({
-  TransactionType: 'Payment',
-  Account: walletManager.account.address,
-  Destination: 'rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT',
-  Amount: '1000000',
-});
-```
+### 📱 Mobile Ready
+Support for mobile wallets through WalletConnect. Works seamlessly on desktop and mobile browsers.
 
-## What's Included
+### 🎯 Developer Friendly
+- Simple, intuitive API
+- Comprehensive documentation
+- TypeScript support
+- Extensive examples
 
-The complete XRPL-Connect package includes:
+## Architecture Overview
 
-- **Core** (`@xrpl-connect/core`) - Wallet management, event system, state persistence
-- **UI** (`@xrpl-connect/ui`) - Beautiful web component with wallet selection and account modal
-- **Adapters** - Built-in support for multiple wallets
-
-## Documentation
-
-- [Getting Started](/guide/getting-started) - Complete introduction to XRPL-Connect
-- [API Reference](/guide/api-reference) - Full API documentation
-- [Customization](/guide/customization) - CSS variables customization guide
-- [Examples](/guide/examples) - Real-world examples and theme showcases
-
-## Architecture
-
-XRPL-Connect uses a modular, adapter-based architecture:
+XRPL-Connect uses a modular, adapter-based architecture that separates concerns and makes it easy to extend:
 
 ```
 Your Application
-        ↓
+       ↓
 ┌─────────────────────────────┐
-│   @xrpl-connect/core        │
+│   xrpl-connect/core        │
 │   ┌───────────────────────┐ │
 │   │  WalletManager        │ │
 │   │  - Event system       │ │
@@ -91,28 +74,55 @@ Your Application
 └────────────┘  └──────────────┘  └────────┘  └────────────┘
 ```
 
-Each wallet is represented by an adapter that implements a standard interface, making it easy to add new wallets or create custom adapters.
+## How It Works
 
-## Contributing
+1. **Initialize WalletManager** - Create an instance with your desired wallet adapters
+2. **Attach to Component** - Connect the WalletManager to the `<xrpl-wallet-connector>` web component
+3. **Listen to Events** - Respond to connection, disconnection, and error events
+4. **Sign Transactions** - Use the unified API to sign and submit transactions
+5. **Handle State** - Access connection state and account information reactively
 
-Contributions are welcome! We're looking for help with:
+## Supported Networks
 
-- New wallet adapters
-- Framework-specific integrations
-- Documentation improvements
-- Bug fixes and feature requests
-- Testing and quality assurance
+- **Mainnet** - XRP Ledger production network
+- **Testnet** - XRP Ledger testing network
+- **Devnet** - XRP Ledger development network
 
-See our [Contributing Guide](https://github.com/XRPL-Commons/xrpl-connect/blob/main/CONTRIBUTING.md) for details.
+Choose the appropriate network when initializing the WalletManager.
+
+## What's Included
+
+The XRPL-Connect package includes:
+
+- **Core Library** - WalletManager, event system, and state management
+- **Web Component** - Beautiful UI component for wallet connection
+- **Adapters** - Pre-built integrations for major wallets
+- **TypeScript Definitions** - Full type safety and IDE support
+- **Documentation** - Complete guides and API reference
+
+## Next Steps
+
+Ready to get started? Here's the recommended learning path:
+
+1. **[Concepts](/concepts)** - Understand the key concepts (WalletManager, adapters, web components)
+2. **[Try It Out](/try-it-out)** - See XRPL-Connect in action with the interactive demo
+3. **[Getting Started](/guide/getting-started)** - Install and get your API keys
+4. **Framework Guides** - Follow the guide for your specific framework:
+   - [Vanilla JS](/guide/frameworks/vanilla-js)
+   - [React](/guide/frameworks/react)
+   - [Vue](/guide/frameworks/vue)
+   - [Next.js](/guide/frameworks/next)
+   - [Nuxt](/guide/frameworks/nuxt)
+5. **[Customization](/guide/customization)** - Style the component to match your design
+6. **[API Reference](/guide/api-reference)** - Deep dive into the complete API
+
+## Community & Support
+
+- **GitHub** - [XRPL-Commons/xrpl-connect](https://github.com/XRPL-Commons/xrpl-connect)
+- **Issues** - Report bugs or request features on GitHub
+- **Discussions** - Ask questions and share ideas
+- **XRP Ledger Community** - Join the broader XRP Ledger community
 
 ## License
 
-MIT License - see the [LICENSE](https://github.com/XRPL-Commons/xrpl-connect/blob/main/LICENSE) file for details.
-
-## Acknowledgments
-
-Inspired by:
-- [RainbowKit](https://www.rainbowkit.com/) - Ethereum wallet connection
-- [Solana Wallet Adapter](https://github.com/solana-labs/wallet-adapter) - Solana wallet standard
-
-Built for the XRPL community
+MIT License - See the [LICENSE](https://github.com/XRPL-Commons/xrpl-connect/blob/main/LICENSE) file for details.

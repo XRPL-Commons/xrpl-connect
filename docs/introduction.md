@@ -57,7 +57,7 @@ XRPL-Connect uses a modular, adapter-based architecture that separates concerns 
 Your Application
        ↓
 ┌─────────────────────────────┐
-│   @xrpl-connect/core        │
+│   xrpl-connect/core        │
 │   ┌───────────────────────┐ │
 │   │  WalletManager        │ │
 │   │  - Event system       │ │

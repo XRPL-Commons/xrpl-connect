@@ -17,9 +17,7 @@ Create a client component for wallet functionality:
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { WalletManager } from 'xrpl-connect';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+import { WalletManager,XamanAdapter,CrossmarkAdapter } from 'xrpl-connect';
 import type { Account, WalletError } from 'xrpl-connect';
 
 export default function WalletConnector() {
@@ -195,7 +193,7 @@ Usage:
 'use client';
 
 import { useWallet } from '@/hooks/useWallet';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { XamanAdapter } from 'xrpl-connect';
 
 export default function Home() {
   const { account, connected, connectorRef, disconnect } = useWallet({
@@ -223,8 +221,7 @@ Create a provider for global wallet state:
 
 import { createContext, useContext, ReactNode } from 'react';
 import { useWallet } from '@/hooks/useWallet';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+import { XamanAdapte,CrossmarkAdapter } from 'xrpl-connect';
 import type { Account, WalletManager, WalletError } from 'xrpl-connect';
 
 interface WalletContextType {
