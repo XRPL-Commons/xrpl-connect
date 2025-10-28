@@ -1,236 +1,210 @@
 <template>
   <div class="theme-builder">
-    <div class="container">
-      <div class="builder-layout">
-        <!-- Controls Panel -->
-        <div class="controls-panel">
-          <div class="presets">
-            <h3>Presets</h3>
-            <div class="preset-buttons">
-              <button
-                class="preset-btn"
-                :class="{ active: currentPreset === 'dark' }"
-                @click="loadPreset('dark')"
-              >
-                Dark
-              </button>
-              <button
-                class="preset-btn"
-                :class="{ active: currentPreset === 'light' }"
-                @click="loadPreset('light')"
-              >
-                Light
-              </button>
-              <button
-                class="preset-btn"
-                :class="{ active: currentPreset === 'custom' }"
-                @click="currentPreset = 'custom'"
-              >
-                Custom
-              </button>
+    <div class="builder-layout">
+      <!-- Preview Panel (Left) -->
+      <div class="preview-section">
+        <div class="preview-card">
+          <xrpl-wallet-connector
+            id="theme-preview"
+            :style="computedStyles"
+            wallets="xaman,crossmark"
+            primary-wallet="xaman"
+          ></xrpl-wallet-connector>
+
+          <!-- CSS Code Button at Bottom Left -->
+          <button class="code-btn-preview" @click="showCodeModal = true" title="View CSS code">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="16 18 22 12 16 6"></polyline>
+              <polyline points="8 6 2 12 8 18"></polyline>
+            </svg>
+            <span>CSS</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Controls Sidebar (Right - VitePress style) -->
+      <aside class="controls-sidebar">
+        <div class="sidebar-container">
+          <!-- General Section -->
+          <section class="control-section">
+            <h4>General</h4>
+            <div class="control-group">
+              <label>Font Family</label>
+              <input
+                v-model="variables['--xc-font-family']"
+                type="text"
+                class="input-text"
+              />
             </div>
-          </div>
+            <div class="control-group">
+              <label>Border Radius</label>
+              <input
+                v-model="variables['--xc-border-radius']"
+                type="text"
+                class="input-text"
+                placeholder="12px"
+              />
+            </div>
+          </section>
 
-          <div class="controls-sections">
-            <!-- General Section -->
-            <section class="control-section">
-              <h4>General</h4>
-              <div class="control-group">
-                <label>Font Family</label>
-                <input
-                  v-model="variables['--xc-font-family']"
-                  type="text"
-                  class="input-text"
-                  @change="currentPreset = 'custom'"
-                />
-              </div>
-              <div class="control-group">
-                <label>Border Radius</label>
-                <input
-                  v-model="variables['--xc-border-radius']"
-                  type="text"
-                  class="input-text"
-                  placeholder="12px"
-                  @change="currentPreset = 'custom'"
-                />
-              </div>
-            </section>
-
-            <!-- Colors Section -->
-            <section class="control-section">
-              <h4>Colors</h4>
-              <div class="color-grid">
-                <div v-for="(value, key) in colorVariables" :key="key" class="color-control">
-                  <label>{{ formatLabel(key) }}</label>
-                  <div class="color-input-group">
-                    <input
-                      v-model="variables[key]"
-                      type="color"
-                      class="color-picker"
-                      @change="currentPreset = 'custom'"
-                    />
-                    <input
-                      v-model="variables[key]"
-                      type="text"
-                      class="color-value"
-                      @change="currentPreset = 'custom'"
-                    />
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <!-- Button Section -->
-            <section class="control-section">
-              <h4>Connect Button</h4>
-              <div class="control-group">
-                <label>Border Radius</label>
-                <input
-                  v-model="variables['--xc-connect-button-border-radius']"
-                  type="text"
-                  class="input-text"
-                  @change="currentPreset = 'custom'"
-                />
-              </div>
-              <div class="control-group">
-                <label>Font Size</label>
-                <input
-                  v-model="variables['--xc-connect-button-font-size']"
-                  type="text"
-                  class="input-text"
-                  @change="currentPreset = 'custom'"
-                />
-              </div>
-              <div class="control-group">
-                <label>Font Weight</label>
-                <input
-                  v-model="variables['--xc-connect-button-font-weight']"
-                  type="text"
-                  class="input-text"
-                  @change="currentPreset = 'custom'"
-                />
-              </div>
-            </section>
-
-            <!-- Primary Button -->
-            <section class="control-section">
-              <h4>Primary Button</h4>
-              <div class="control-group">
-                <label>Border Radius</label>
-                <input
-                  v-model="variables['--xc-primary-button-border-radius']"
-                  type="text"
-                  class="input-text"
-                  @change="currentPreset = 'custom'"
-                />
-              </div>
-              <div class="control-group">
-                <label>Font Weight</label>
-                <input
-                  v-model="variables['--xc-primary-button-font-weight']"
-                  type="text"
-                  class="input-text"
-                  @change="currentPreset = 'custom'"
-                />
-              </div>
-            </section>
-
-            <!-- Secondary Button -->
-            <section class="control-section">
-              <h4>Secondary Button</h4>
-              <div class="control-group">
-                <label>Border Radius</label>
-                <input
-                  v-model="variables['--xc-secondary-button-border-radius']"
-                  type="text"
-                  class="input-text"
-                  @change="currentPreset = 'custom'"
-                />
-              </div>
-              <div class="control-group">
-                <label>Font Weight</label>
-                <input
-                  v-model="variables['--xc-secondary-button-font-weight']"
-                  type="text"
-                  class="input-text"
-                  @change="currentPreset = 'custom'"
-                />
-              </div>
-            </section>
-
-            <!-- Modal Section -->
-            <section class="control-section">
-              <h4>Modal</h4>
-              <div class="control-group">
-                <label>Border Radius</label>
-                <input
-                  v-model="variables['--xc-modal-border-radius']"
-                  type="text"
-                  class="input-text"
-                  @change="currentPreset = 'custom'"
-                />
-              </div>
-              <div class="control-group">
-                <label>Box Shadow</label>
-                <input
-                  v-model="variables['--xc-modal-box-shadow']"
-                  type="text"
-                  class="input-text"
-                  @change="currentPreset = 'custom'"
-                />
-              </div>
-            </section>
-
-            <!-- Loading Section -->
-            <section class="control-section">
-              <h4>Loading</h4>
-              <div class="control-group">
-                <label>Border Color</label>
+          <!-- Colors Section -->
+          <section class="control-section">
+            <h4>Colors</h4>
+            <div class="color-grid">
+              <div v-for="(value, key) in colorVariables" :key="key" class="color-control">
+                <label>{{ formatLabel(key) }}</label>
                 <div class="color-input-group">
                   <input
-                    v-model="variables['--xc-loading-border-color']"
+                    v-model="variables[key]"
                     type="color"
                     class="color-picker"
-                    @change="currentPreset = 'custom'"
                   />
                   <input
-                    v-model="variables['--xc-loading-border-color']"
+                    v-model="variables[key]"
                     type="text"
                     class="color-value"
-                    @change="currentPreset = 'custom'"
                   />
                 </div>
               </div>
-            </section>
+            </div>
+          </section>
+
+          <!-- Button Section -->
+          <section class="control-section">
+            <h4>Connect Button</h4>
+            <div class="control-group">
+              <label>Border Radius</label>
+              <input
+                v-model="variables['--xc-connect-button-border-radius']"
+                type="text"
+                class="input-text"
+              />
+            </div>
+            <div class="control-group">
+              <label>Font Size</label>
+              <input
+                v-model="variables['--xc-connect-button-font-size']"
+                type="text"
+                class="input-text"
+              />
+            </div>
+            <div class="control-group">
+              <label>Font Weight</label>
+              <input
+                v-model="variables['--xc-connect-button-font-weight']"
+                type="text"
+                class="input-text"
+              />
+            </div>
+          </section>
+
+          <!-- Primary Button -->
+          <section class="control-section">
+            <h4>Primary Button</h4>
+            <div class="control-group">
+              <label>Border Radius</label>
+              <input
+                v-model="variables['--xc-primary-button-border-radius']"
+                type="text"
+                class="input-text"
+              />
+            </div>
+            <div class="control-group">
+              <label>Font Weight</label>
+              <input
+                v-model="variables['--xc-primary-button-font-weight']"
+                type="text"
+                class="input-text"
+              />
+            </div>
+          </section>
+
+          <!-- Secondary Button -->
+          <section class="control-section">
+            <h4>Secondary Button</h4>
+            <div class="control-group">
+              <label>Border Radius</label>
+              <input
+                v-model="variables['--xc-secondary-button-border-radius']"
+                type="text"
+                class="input-text"
+              />
+            </div>
+            <div class="control-group">
+              <label>Font Weight</label>
+              <input
+                v-model="variables['--xc-secondary-button-font-weight']"
+                type="text"
+                class="input-text"
+              />
+            </div>
+          </section>
+
+          <!-- Modal Section -->
+          <section class="control-section">
+            <h4>Modal</h4>
+            <div class="control-group">
+              <label>Border Radius</label>
+              <input
+                v-model="variables['--xc-modal-border-radius']"
+                type="text"
+                class="input-text"
+              />
+            </div>
+            <div class="control-group">
+              <label>Box Shadow</label>
+              <input
+                v-model="variables['--xc-modal-box-shadow']"
+                type="text"
+                class="input-text"
+              />
+            </div>
+          </section>
+
+          <!-- Loading Section -->
+          <section class="control-section">
+            <h4>Loading</h4>
+            <div class="control-group">
+              <label>Border Color</label>
+              <div class="color-input-group">
+                <input
+                  v-model="variables['--xc-loading-border-color']"
+                  type="color"
+                  class="color-picker"
+                />
+                <input
+                  v-model="variables['--xc-loading-border-color']"
+                  type="text"
+                  class="color-value"
+                />
+              </div>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Code Modal -->
+    <div v-if="showCodeModal" class="modal-overlay" @click="showCodeModal = false">
+      <div class="modal-content" @click.stop>
+        <div class="modal-header">
+          <h3>CSS Variables</h3>
+          <button class="close-btn" @click="showCodeModal = false">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="code-output">
+            <pre><code>{{ generatedCSS }}</code></pre>
           </div>
         </div>
-
-        <!-- Preview Panel -->
-        <div class="preview-panel">
-          <div class="preview-card">
-            <h3>Live Preview</h3>
-            <div class="preview-content">
-              <xrpl-wallet-connector
-                id="theme-preview"
-                :style="computedStyles"
-                wallets="xaman,crossmark"
-                primary-wallet="xaman"
-              ></xrpl-wallet-connector>
-            </div>
-          </div>
-
-          <!-- Output Section -->
-          <div class="output-card">
-            <div class="output-header">
-              <h3>CSS Variables</h3>
-              <button class="copy-btn" @click="copyToClipboard">
-                {{ copied ? '✓ Copied!' : 'Copy Code' }}
-              </button>
-            </div>
-            <div class="output-code">
-              <pre><code>{{ generatedCSS }}</code></pre>
-            </div>
-          </div>
+        <div class="modal-footer">
+          <button class="copy-btn" @click="copyToClipboard">
+            <svg v-if="!copied" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+              <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+            </svg>
+            <span v-if="!copied">Copy Code</span>
+            <span v-else class="copied-text">✓ Copied!</span>
+          </button>
         </div>
       </div>
     </div>
@@ -238,53 +212,15 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted } from 'vue'
-import { useWallet } from '../.vitepress/composables/useWallet'
+import { ref, computed, reactive, onMounted } from 'vue';
+import { useWallet } from '../.vitepress/composables/useWallet';
 
-const currentPreset = ref('light')
-const copied = ref(false)
+const copied = ref(false);
+const showCodeModal = ref(false);
 
-const { getWalletManager } = useWallet()
+const { getWalletManager } = useWallet();
 
-const darkPreset = {
-  '--xc-font-family': 'Inter, system-ui, sans-serif',
-  '--xc-border-radius': '12px',
-  '--xc-overlay-background': 'rgba(0, 0, 0, 0.7)',
-  '--xc-overlay-backdrop-filter': 'blur(0px)',
-  '--xc-primary-color': '#0EA5E9',
-  '--xc-background-color': '#000637',
-  '--xc-background-secondary': '#1a1a3e',
-  '--xc-background-tertiary': '#242452',
-  '--xc-text-color': '#F5F4E7',
-  '--xc-text-muted-color': 'rgba(245, 244, 231, 0.6)',
-  '--xc-danger-color': '#ef4444',
-  '--xc-success-color': '#10b981',
-  '--xc-warning-color': '#f59e0b',
-  '--xc-focus-color': '#0EA5E9',
-  '--xc-connect-button-border-radius': '8px',
-  '--xc-connect-button-font-size': '16px',
-  '--xc-connect-button-font-weight': '600',
-  '--xc-connect-button-color': '#F5F4E7',
-  '--xc-connect-button-background': '#000637',
-  '--xc-connect-button-border': '1px solid rgba(255, 255, 255, 0.1)',
-  '--xc-connect-button-hover-background': '#1a1a3e',
-  '--xc-primary-button-border-radius': '8px',
-  '--xc-primary-button-font-weight': '600',
-  '--xc-primary-button-color': '#ffffff',
-  '--xc-primary-button-background': '#0EA5E9',
-  '--xc-primary-button-hover-background': '#0284C7',
-  '--xc-secondary-button-border-radius': '8px',
-  '--xc-secondary-button-font-weight': '500',
-  '--xc-secondary-button-color': '#F5F4E7',
-  '--xc-secondary-button-background': '#1a1a3e',
-  '--xc-secondary-button-hover-background': '#242452',
-  '--xc-loading-border-color': '#0EA5E9',
-  '--xc-modal-background': '#000637',
-  '--xc-modal-border-radius': '12px',
-  '--xc-modal-box-shadow': '0 10px 40px rgba(0, 0, 0, 0.2)'
-}
-
-const lightPreset = {
+const defaultVariables = {
   '--xc-font-family': 'Inter, system-ui, sans-serif',
   '--xc-border-radius': '12px',
   '--xc-overlay-background': 'rgba(0, 0, 0, 0.5)',
@@ -302,27 +238,17 @@ const lightPreset = {
   '--xc-connect-button-border-radius': '8px',
   '--xc-connect-button-font-size': '16px',
   '--xc-connect-button-font-weight': '600',
-  '--xc-connect-button-color': '#111111',
-  '--xc-connect-button-background': '#F6F4EF',
-  '--xc-connect-button-border': '1px solid #E5DED5',
-  '--xc-connect-button-hover-background': '#EDE9E0',
   '--xc-primary-button-border-radius': '8px',
   '--xc-primary-button-font-weight': '600',
-  '--xc-primary-button-color': '#ffffff',
-  '--xc-primary-button-background': '#3b82f6',
-  '--xc-primary-button-hover-background': '#2563eb',
   '--xc-secondary-button-border-radius': '8px',
   '--xc-secondary-button-font-weight': '500',
-  '--xc-secondary-button-color': '#111111',
-  '--xc-secondary-button-background': '#EDE9E0',
-  '--xc-secondary-button-hover-background': '#E5DED5',
   '--xc-loading-border-color': '#3b82f6',
   '--xc-modal-background': '#F6F4EF',
   '--xc-modal-border-radius': '12px',
-  '--xc-modal-box-shadow': '0 10px 40px rgba(0, 0, 0, 0.1)'
-}
+  '--xc-modal-box-shadow': '0 10px 40px rgba(0, 0, 0, 0.1)',
+};
 
-const variables = reactive({ ...lightPreset })
+const variables = reactive({ ...defaultVariables });
 
 const colorVariables = computed(() => {
   return Object.fromEntries(
@@ -338,155 +264,158 @@ const colorVariables = computed(() => {
         '--xc-success-color',
         '--xc-warning-color',
         '--xc-focus-color',
-        '--xc-loading-border-color'
+        '--xc-loading-border-color',
       ].includes(key)
     )
-  )
-})
+  );
+});
 
 const computedStyles = computed(() => {
   return Object.entries(variables)
     .map(([key, value]) => `${key}: ${value}`)
-    .join('; ')
-})
+    .join('; ');
+});
 
 const generatedCSS = computed(() => {
   const lines = Object.entries(variables)
     .map(([key, value]) => `  ${key}: ${value};`)
-    .join('\n')
-  return `xrpl-wallet-connector {\n${lines}\n}`
-})
+    .join('\n');
+  return `xrpl-wallet-connector {\n${lines}\n}`;
+});
 
 const formatLabel = (key) => {
   return key
     .replace('--xc-', '')
     .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-}
-
-const loadPreset = (preset) => {
-  currentPreset.value = preset
-  const presetData = preset === 'dark' ? darkPreset : lightPreset
-  Object.assign(variables, presetData)
-}
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
 
 const copyToClipboard = async () => {
-  await navigator.clipboard.writeText(generatedCSS.value)
-  copied.value = true
+  await navigator.clipboard.writeText(generatedCSS.value);
+  copied.value = true;
   setTimeout(() => {
-    copied.value = false
-  }, 2000)
-}
+    copied.value = false;
+  }, 2000);
+};
 
 onMounted(async () => {
   try {
-    const walletManager = await getWalletManager()
+    const walletManager = await getWalletManager();
 
     // Set wallet manager on preview connector
-    const connector = document.getElementById('theme-preview')
+    const connector = document.getElementById('theme-preview');
     if (connector && walletManager) {
-      connector.setWalletManager(walletManager)
+      connector.setWalletManager(walletManager);
     }
   } catch (err) {
-    console.error('Failed to initialize wallet for theme builder:', err)
+    console.error('Failed to initialize wallet for theme builder:', err);
   }
-})
+});
 </script>
 
 <style scoped>
 .theme-builder {
-  padding: 2rem 0;
-}
-
-.container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 1rem;
+  margin: 0;
+  padding: 32px;
 }
 
 .builder-layout {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2rem;
-}
-
-.controls-panel {
   display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+  gap: 32px;
+  max-width: 100%;
 }
 
-.presets {
-  padding: 1rem;
+.preview-section {
+  flex: 1;
+  min-width: 400px;
+  display: flex;
+}
+
+.preview-card {
+  position: relative;
+  padding: 2rem;
   background: var(--vp-c-bg-soft);
   border-radius: 12px;
   border: 1px solid var(--vp-c-divider);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 500px;
 }
 
-.presets h3 {
-  margin: 0 0 1rem 0;
-  font-size: 0.875rem;
-  text-transform: uppercase;
-  color: var(--vp-c-text-2);
-  font-weight: 600;
+#theme-preview {
+  width: 100%;
+  max-width: 300px;
 }
 
-.preset-buttons {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+.code-btn-preview {
+  position: absolute;
+  bottom: 1.5rem;
+  left: 1.5rem;
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
-}
-
-.preset-btn {
   padding: 0.75rem 1rem;
   border: 1px solid var(--vp-c-divider);
   border-radius: 6px;
   background: var(--vp-c-bg);
   color: var(--vp-c-text-1);
   cursor: pointer;
-  font-weight: 500;
   font-size: 0.875rem;
+  font-weight: 500;
   transition: all 0.2s;
 }
 
-.preset-btn:hover {
-  border-color: var(--vp-c-brand);
-}
-
-.preset-btn.active {
+.code-btn-preview:hover {
   border-color: var(--vp-c-brand);
   background: var(--vp-c-brand);
   color: white;
 }
 
-.controls-sections {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  max-height: 70vh;
-  overflow-y: auto;
-  padding-right: 1rem;
+.code-btn-preview svg {
+  width: 16px;
+  height: 16px;
 }
 
-.controls-sections::-webkit-scrollbar {
+/* VitePress-style Sidebar */
+.controls-sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.5rem;
+  max-height: calc(100vh - 200px);
+}
+
+.controls-sidebar::-webkit-scrollbar {
   width: 6px;
 }
 
-.controls-sections::-webkit-scrollbar-track {
+.controls-sidebar::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.controls-sections::-webkit-scrollbar-thumb {
+.controls-sidebar::-webkit-scrollbar-thumb {
   background: var(--vp-c-divider);
   border-radius: 3px;
 }
 
+.controls-sidebar::-webkit-scrollbar-thumb:hover {
+  background: var(--vp-c-text-2);
+}
+
+.sidebar-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding-right: 0.5rem;
+}
+
 .control-section {
-  padding: 1rem;
-  background: var(--vp-c-bg-soft);
-  border-radius: 12px;
-  border: 1px solid var(--vp-c-divider);
+  padding: 0;
 }
 
 .control-section h4 {
@@ -495,6 +424,7 @@ onMounted(async () => {
   text-transform: uppercase;
   color: var(--vp-c-text-2);
   font-weight: 600;
+  letter-spacing: 0.05em;
 }
 
 .control-group {
@@ -522,6 +452,7 @@ onMounted(async () => {
   color: var(--vp-c-text-1);
   font-size: 0.875rem;
   font-family: monospace;
+  transition: all 0.2s;
 }
 
 .input-text:focus {
@@ -560,6 +491,11 @@ onMounted(async () => {
   border: 1px solid var(--vp-c-divider);
   border-radius: 6px;
   cursor: pointer;
+  flex-shrink: 0;
+}
+
+.color-picker:hover {
+  border-color: var(--vp-c-brand);
 }
 
 .color-value {
@@ -571,6 +507,7 @@ onMounted(async () => {
   color: var(--vp-c-text-1);
   font-size: 0.875rem;
   font-family: monospace;
+  transition: all 0.2s;
 }
 
 .color-value:focus {
@@ -579,56 +516,111 @@ onMounted(async () => {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
-.preview-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.preview-card,
-.output-card {
-  padding: 1.5rem;
-  background: var(--vp-c-bg-soft);
-  border-radius: 12px;
-  border: 1px solid var(--vp-c-divider);
-}
-
-.preview-card h3,
-.output-card h3 {
-  margin: 0 0 1rem 0;
-  font-size: 1rem;
-  font-weight: 600;
-}
-
-.preview-content {
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 300px;
-  background: var(--vp-c-bg);
-  border-radius: 8px;
+  z-index: 1000;
   padding: 1rem;
-  border: 1px dashed var(--vp-c-divider);
 }
 
-.output-header {
+.modal-content {
+  background: var(--vp-c-bg);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  max-width: 600px;
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--vp-c-divider);
+}
+
+.modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--vp-c-divider);
 }
 
-.output-header h3 {
+.modal-header h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.125rem;
   font-weight: 600;
 }
 
+.close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--vp-c-text-2);
+  cursor: pointer;
+  font-size: 1.5rem;
+  transition: color 0.2s;
+}
+
+.close-btn:hover {
+  color: var(--vp-c-text-1);
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+.code-output {
+  background: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  overflow-x: auto;
+  padding: 1rem;
+}
+
+.code-output pre {
+  margin: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.code-output code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  font-family: monospace;
+  color: var(--vp-c-text-1);
+  word-break: break-word;
+}
+
+.modal-footer {
+  padding: 1.5rem;
+  border-top: 1px solid var(--vp-c-divider);
+  display: flex;
+  justify-content: flex-end;
+}
+
 .copy-btn {
-  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
   border: 1px solid var(--vp-c-divider);
   border-radius: 6px;
-  background: var(--vp-c-bg);
+  background: var(--vp-c-bg-soft);
   color: var(--vp-c-text-1);
   cursor: pointer;
   font-weight: 500;
@@ -638,55 +630,61 @@ onMounted(async () => {
 
 .copy-btn:hover {
   border-color: var(--vp-c-brand);
-  background: var(--vp-c-brand-light);
+  background: var(--vp-c-brand);
+  color: white;
 }
 
-.output-code {
-  background: var(--vp-c-bg);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
-  overflow-x: auto;
-  padding: 1rem;
-  max-height: 400px;
-  overflow-y: auto;
+.copy-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
-.output-code pre {
-  margin: 0;
-  background: transparent;
-  padding: 0;
+.copied-text {
+  color: #10b981;
 }
 
-.output-code code {
-  background: transparent;
-  padding: 0;
-  font-size: 0.875rem;
-  line-height: 1.6;
-  font-family: monospace;
-  color: var(--vp-c-text-1);
+@media (max-width: 1440px) {
+  .builder-layout {
+    gap: 16px;
+    padding: 24px;
+  }
+
+  .controls-sidebar {
+    width: 240px;
+  }
 }
 
 @media (max-width: 1024px) {
-  .builder-layout {
-    grid-template-columns: 1fr;
+  .theme-builder {
+    margin: 0;
   }
 
-  .controls-sections {
-    max-height: none;
+  .builder-layout {
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .preview-section {
+    min-width: auto;
+  }
+
+  .controls-sidebar {
+    width: 100%;
   }
 }
 
 @media (max-width: 768px) {
-  .preset-buttons {
-    grid-template-columns: 1fr;
-  }
-
   .color-input-group {
     flex-direction: column;
   }
 
   .color-picker {
     width: 100%;
+  }
+
+  .modal-content {
+    max-width: 95vw;
+    max-height: 90vh;
   }
 }
 </style>

@@ -16,13 +16,10 @@ export default defineConfig({
 
     nav: [
       { text: 'Home', link: '/' },
-      { text: 'Try It Out', link: '/try-it-out' },
-      { text: 'Customize', link: '/customize' },
       { text: 'Documentation', items: [
+        { text: 'Introduction', link: '/introduction' },
         { text: 'Getting Started', link: '/guide/getting-started' },
         { text: 'API Reference', link: '/guide/api-reference' },
-        { text: 'Customization Guide', link: '/guide/customization' },
-        { text: 'Examples', link: '/guide/examples' },
       ]},
       {
         text: 'Links',
@@ -35,24 +32,40 @@ export default defineConfig({
 
     sidebar: [
       {
+        text: 'Start Here',
+        items: [
+          { text: 'Introduction', link: '/introduction' },
+          { text: 'Try It Out', link: '/try-it-out' },
+          { text: 'Concepts', link: '/concepts' },
+        ]
+      },
+      {
         text: 'Getting Started',
         items: [
-          { text: 'Try It Out', link: '/try-it-out' },
-          { text: 'Getting Started', link: '/guide/getting-started' },
+          { text: 'Installation & Setup', link: '/guide/getting-started' },
         ]
       },
       {
-        text: 'Interactive Tools',
+        text: 'Framework Integration',
         items: [
-          { text: 'Theme Customizer', link: '/customize' },
+          { text: 'Vanilla JavaScript', link: '/guide/frameworks/vanilla-js' },
+          { text: 'React', link: '/guide/frameworks/react' },
+          { text: 'Vue 3', link: '/guide/frameworks/vue' },
+          { text: 'Next.js', link: '/guide/frameworks/next' },
+          { text: 'Nuxt 3', link: '/guide/frameworks/nuxt' },
         ]
       },
       {
-        text: 'Documentation',
+        text: 'Customization',
+        items: [
+          { text: 'Customization Guide', link: '/guide/customization' },
+          { text: 'Interactive Builder', link: '/customization-builder' },
+        ]
+      },
+      {
+        text: 'Reference',
         items: [
           { text: 'API Reference', link: '/guide/api-reference' },
-          { text: 'Customization Guide', link: '/guide/customization' },
-          { text: 'Examples', link: '/guide/examples' },
         ]
       }
     ],
