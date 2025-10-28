@@ -4,89 +4,177 @@ description: Learn how to create and integrate new wallet adapters into XRPL-Con
 
 # Creating Wallet Adapters
 
-This guide explains how to create a new wallet adapter to integrate your wallet into XRPL-Connect. Whether you're building a new wallet or want to add support for an existing one, this guide will walk you through the process.
+This guide walks you through creating a new wallet adapter and integrating it into XRPL-Connect. We'll follow the same process the core adapters (Xaman, Crossmark, GemWallet, WalletConnect) use.
 
-## Understanding Adapters
+## Overview
 
-An **adapter** is the bridge between XRPL-Connect and your wallet. It handles:
+An **adapter** is a package that implements the `WalletAdapter` interface, bridging XRPL-Connect with your wallet implementation. The adapter handles:
 
-- **Connection management** - Establishing connections to your wallet
-- **Account retrieval** - Getting the connected account information
-- **Transaction signing** - Signing transactions with your wallet
-- **Message signing** - Signing messages for verification
-- **Event handling** - Broadcasting connection state changes
-- **Disconnection** - Properly cleaning up connections
+- Connection management
+- Account retrieval
+- Transaction signing
+- Message signing
+- Event handling
+- Error handling
 
-## Architecture Overview
+## Repository Structure
+
+The XRPL-Connect monorepo is organized as follows:
 
 ```
-XRPL-Connect WalletManager
-        ↓
-    Adapter Interface
-        ↓
-Your Wallet Implementation
-        ↓
-Wallet Extension/App
+xrpl-connect/
+├── packages/
+│   ├── core/                    # WalletManager and interfaces
+│   ├── ui/                      # Web component
+│   ├── adapters/                # All wallet adapters
+│   │   ├── xaman/              # Xaman adapter (reference)
+│   │   ├── crossmark/           # Crossmark adapter (reference)
+│   │   ├── gemwallet/           # GemWallet adapter (reference)
+│   │   ├── walletconnect/       # WalletConnect adapter (reference)
+│   │   └── README.md            # Adapter documentation
+│   └── xrpl-connect/            # Meta package (exports all adapters)
+└── docs/                        # Documentation (this file)
 ```
 
-## Adapter Interface
+## Step 1: Fork and Clone
 
-Every adapter must implement the `WalletAdapter` interface. Here's the complete interface:
+1. Fork the repository at [github.com/XRPL-Commons/xrpl-connect](https://github.com/XRPL-Commons/xrpl-connect)
+2. Clone your fork:
+
+```bash
+git clone https://github.com/YOUR_USERNAME/xrpl-connect.git
+cd xrpl-connect
+pnpm install
+```
+
+## Step 2: Create Your Adapter Package
+
+### 2.1 Create Directory Structure
+
+Navigate to the adapters folder and create a new directory for your wallet:
+
+```bash
+mkdir packages/adapters/my-wallet
+cd packages/adapters/my-wallet
+```
+
+### 2.2 Create Files
+
+Create the basic file structure:
+
+```
+packages/adapters/my-wallet/
+├── src/
+│   ├── index.ts                 # Exports
+│   ├── my-wallet-adapter.ts     # Main adapter class
+│   └── types.ts                 # Types (if needed)
+├── package.json
+├── tsconfig.json
+├── tsup.config.ts
+└── README.md
+```
+
+### 2.3 Setup package.json
+
+Use the Xaman adapter as a template. Replace `my-wallet` and `MyWallet` with your wallet name:
+
+```json
+{
+  "name": "@xrpl-connect/adapter-my-wallet",
+  "version": "0.3.0",
+  "description": "My Wallet adapter for XRPL Connect",
+  "author": "Your Name",
+  "license": "MIT",
+  "homepage": "https://github.com/XRPL-Commons/xrpl-connect#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/XRPL-Commons/xrpl-connect",
+    "directory": "packages/adapters/my-wallet"
+  },
+  "bugs": {
+    "url": "https://github.com/XRPL-Commons/xrpl-connect/issues"
+  },
+  "keywords": ["xrpl", "my-wallet", "wallet", "adapter", "web3"],
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@xrpl-connect/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "xrpl": "^3.0.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsup": "^8.1.0",
+    "typescript": "^5.5.0",
+    "vitest": "^1.6.0"
+  }
+}
+```
+
+### 2.4 Copy Config Files
+
+Copy `tsconfig.json` and `tsup.config.ts` from an existing adapter (e.g., xaman):
+
+```bash
+# From the xrpl-connect root
+cp packages/adapters/xaman/tsconfig.json packages/adapters/my-wallet/
+cp packages/adapters/xaman/tsup.config.ts packages/adapters/my-wallet/
+```
+
+## Step 3: Implement Your Adapter
+
+### 3.1 Understand the Interface
+
+First, check the `WalletAdapter` interface in `packages/core/src/types.ts`. Your adapter must implement:
 
 ```typescript
 interface WalletAdapter {
-  // Metadata
   name: string;
   icon: string;
-  isAvailable: () => boolean;
-
-  // Connection
+  isAvailable(): boolean;
   connect(options?: ConnectOptions): Promise<void>;
   disconnect(): Promise<void>;
-
-  // Account
   getAccount(): Promise<Account | null>;
-
-  // Signing
   signTransaction(transaction: Transaction): Promise<SignResult>;
   signMessage(message: string): Promise<SignResult>;
-
-  // Events
-  on(event: 'connect' | 'disconnect' | 'accountChange' | 'error', listener: (data?: any) => void): void;
+  on(
+    event: 'connect' | 'disconnect' | 'accountChange' | 'error',
+    listener: (data?: any) => void
+  ): void;
   off(event: string, listener: (data?: any) => void): void;
 }
 ```
 
-### Type Definitions
+### 3.2 Create the Adapter Class
+
+Create `src/my-wallet-adapter.ts`:
 
 ```typescript
-interface Account {
-  address: string;
-  publicKey: string;
-}
-
-interface SignResult {
-  signature: string;
-  signedTransaction?: string;
-}
-
-interface Transaction {
-  Account?: string;
-  TransactionType: string;
-  [key: string]: any;
-}
-
-interface ConnectOptions {
-  autoConnect?: boolean;
-}
-```
-
-## Step-by-Step Implementation
-
-### Step 1: Create Your Adapter Class
-
-```typescript
-import { WalletAdapter } from '@xrpl-connect/core';
+import {
+  WalletAdapter,
+  Account,
+  SignResult,
+  Transaction,
+  ConnectOptions,
+} from '@xrpl-connect/core';
 
 export class MyWalletAdapter implements WalletAdapter {
   name = 'My Wallet';
@@ -96,30 +184,41 @@ export class MyWalletAdapter implements WalletAdapter {
   private account: Account | null = null;
   private listeners: Map<string, Set<Function>> = new Map();
 
+  isAvailable(): boolean {
+    // Check if wallet is available in the browser environment
+    // Example: return typeof (window as any).myWallet !== 'undefined';
+    if (typeof window === 'undefined') return false;
+    return typeof (window as any).myWallet !== 'undefined';
+  }
+
   async connect(options?: ConnectOptions): Promise<void> {
     try {
-      // Initialize connection to your wallet
-      // This might involve checking if wallet is installed,
-      // requesting user permission, etc.
-
-      if (typeof window === 'undefined') {
-        throw new Error('Wallet adapter requires browser environment');
-      }
-
-      // Example: Check if wallet is available
       if (!this.isAvailable()) {
         throw new Error('My Wallet is not installed');
       }
 
-      // Example: Request connection from wallet
-      const accounts = await this.requestConnection();
+      // Request connection from your wallet
+      const accounts = await (window as any).myWallet.connect();
+
+      if (!accounts || accounts.length === 0) {
+        throw new Error('No accounts available');
+      }
+
+      // Get account details
+      const address = accounts[0];
+      const publicKey = await (window as any).myWallet.getPublicKey(address);
 
       this.account = {
-        address: accounts[0],
-        publicKey: await this.getPublicKey(accounts[0])
+        address,
+        publicKey,
       };
 
       this.connected = true;
+
+      // Setup wallet event listeners
+      this.setupWalletListeners();
+
+      // Emit connect event
       this.emit('connect', { account: this.account });
     } catch (error) {
       this.emit('error', error);
@@ -129,7 +228,10 @@ export class MyWalletAdapter implements WalletAdapter {
 
   async disconnect(): Promise<void> {
     try {
-      // Clean up connection
+      if (typeof (window as any).myWallet?.disconnect === 'function') {
+        await (window as any).myWallet.disconnect();
+      }
+
       this.connected = false;
       this.account = null;
       this.emit('disconnect');
@@ -143,25 +245,24 @@ export class MyWalletAdapter implements WalletAdapter {
     return this.account;
   }
 
-  isAvailable(): boolean {
-    // Check if wallet is available in the current environment
-    // Example: return typeof (window as any).myWallet !== 'undefined';
-    return false;
-  }
-
   async signTransaction(transaction: Transaction): Promise<SignResult> {
     if (!this.connected || !this.account) {
-      throw new Error('Not connected to wallet');
+      throw new Error('Wallet not connected');
     }
 
     try {
-      // Sign transaction with your wallet
-      // The exact implementation depends on your wallet's API
-      const signedTx = await this.requestSignature(transaction);
+      // Add account to transaction if not present
+      const tx = { ...transaction };
+      if (!tx.Account) {
+        tx.Account = this.account.address;
+      }
+
+      // Sign with your wallet
+      const result = await (window as any).myWallet.signTransaction(tx);
 
       return {
-        signature: signedTx.signature,
-        signedTransaction: signedTx.signedTransaction
+        signature: result.signature,
+        signedTransaction: result.signedTransaction,
       };
     } catch (error) {
       this.emit('error', error);
@@ -171,15 +272,14 @@ export class MyWalletAdapter implements WalletAdapter {
 
   async signMessage(message: string): Promise<SignResult> {
     if (!this.connected || !this.account) {
-      throw new Error('Not connected to wallet');
+      throw new Error('Wallet not connected');
     }
 
     try {
-      // Sign message with your wallet
-      const signature = await this.requestMessageSignature(message);
+      const result = await (window as any).myWallet.signMessage(message);
 
       return {
-        signature
+        signature: result.signature,
       };
     } catch (error) {
       this.emit('error', error);
@@ -200,138 +300,16 @@ export class MyWalletAdapter implements WalletAdapter {
     }
   }
 
-  private emit(event: string, data?: any): void {
-    if (this.listeners.has(event)) {
-      this.listeners.get(event)!.forEach(listener => listener(data));
-    }
-  }
-
-  // Private helper methods for your specific wallet integration
-  private async requestConnection(): Promise<string[]> {
-    // Implement wallet-specific connection logic
-    throw new Error('Not implemented');
-  }
-
-  private async getPublicKey(address: string): Promise<string> {
-    // Implement logic to get public key for address
-    throw new Error('Not implemented');
-  }
-
-  private async requestSignature(transaction: Transaction): Promise<any> {
-    // Implement wallet-specific signing logic
-    throw new Error('Not implemented');
-  }
-
-  private async requestMessageSignature(message: string): Promise<string> {
-    // Implement wallet-specific message signing logic
-    throw new Error('Not implemented');
-  }
-}
-```
-
-### Step 2: Handle Wallet Events
-
-Your wallet probably emits events when the user connects, disconnects, or changes accounts. Make sure to listen to these events and propagate them:
-
-```typescript
-private setupWalletListeners(): void {
-  if (typeof window === 'undefined') return;
-
-  const wallet = (window as any).myWallet;
-
-  // Listen to wallet disconnect
-  wallet.on('disconnect', () => {
-    this.connected = false;
-    this.account = null;
-    this.emit('disconnect');
-  });
-
-  // Listen to account changes
-  wallet.on('accountChange', (newAddress: string) => {
-    this.account = {
-      address: newAddress,
-      publicKey: this.account?.publicKey || ''
-    };
-    this.emit('accountChange', { account: this.account });
-  });
-
-  // Listen to network changes
-  wallet.on('networkChange', (network: string) => {
-    this.emit('networkChange', { network });
-  });
-}
-```
-
-### Step 3: Handle Errors Gracefully
-
-```typescript
-private handleError(error: Error, context: string): void {
-  console.error(`MyWallet error in ${context}:`, error);
-
-  this.emit('error', {
-    code: error.name,
-    message: error.message,
-    context
-  });
-}
-```
-
-## Example: Integration with a Browser Extension
-
-If your wallet is a browser extension, here's how to implement it:
-
-```typescript
-export class ExtensionWalletAdapter implements WalletAdapter {
-  name = 'Extension Wallet';
-  icon = 'https://example.com/icon.png';
-
-  private connected = false;
-  private account: Account | null = null;
-  private listeners: Map<string, Set<Function>> = new Map();
-
-  isAvailable(): boolean {
-    return typeof (window as any).extensionWallet !== 'undefined';
-  }
-
-  async connect(): Promise<void> {
-    if (!this.isAvailable()) {
-      throw new Error('Extension Wallet not found. Please install it.');
-    }
-
-    const extensionWallet = (window as any).extensionWallet;
-
-    try {
-      // Request connection permission from extension
-      const accounts = await extensionWallet.connect();
-
-      if (!accounts || accounts.length === 0) {
-        throw new Error('No accounts available');
-      }
-
-      this.account = {
-        address: accounts[0],
-        publicKey: await extensionWallet.getPublicKey(accounts[0])
-      };
-
-      this.connected = true;
-      this.setupWalletListeners();
-      this.emit('connect', { account: this.account });
-    } catch (error) {
-      this.emit('error', error);
-      throw error;
-    }
-  }
-
   private setupWalletListeners(): void {
-    const extensionWallet = (window as any).extensionWallet;
+    const wallet = (window as any).myWallet;
 
-    extensionWallet.on('disconnect', () => {
+    wallet.on('disconnect', () => {
       this.connected = false;
       this.account = null;
       this.emit('disconnect');
     });
 
-    extensionWallet.on('accountChange', (accounts: string[]) => {
+    wallet.on('accountChange', (accounts: string[]) => {
       if (accounts.length === 0) {
         this.connected = false;
         this.account = null;
@@ -339,135 +317,36 @@ export class ExtensionWalletAdapter implements WalletAdapter {
       } else {
         this.account = {
           address: accounts[0],
-          publicKey: this.account?.publicKey || ''
+          publicKey: this.account?.publicKey || '',
         };
         this.emit('accountChange', { account: this.account });
       }
     });
   }
 
-  // ... rest of implementation
-}
-```
-
-## Using Your Adapter
-
-Once your adapter is implemented, users can integrate it with XRPL-Connect:
-
-```typescript
-import { WalletManager } from '@xrpl-connect/core';
-import { MyWalletAdapter } from './adapters/MyWalletAdapter';
-
-const walletManager = new WalletManager({
-  adapters: [
-    new MyWalletAdapter(),
-    // ... other adapters
-  ],
-  network: 'mainnet'
-});
-
-// Connect to wallet
-await walletManager.connect();
-
-// Get connected account
-const account = await walletManager.getAccount();
-
-// Sign transaction
-const result = await walletManager.signTransaction({
-  Account: account.address,
-  TransactionType: 'Payment',
-  Destination: 'rN7n7otQDd6FczFgLdSqtcsAUxDkw6fzRH',
-  Amount: '1000000'
-});
-```
-
-## Best Practices
-
-### 1. Handle Connection States Properly
-
-```typescript
-// Always check connection before operations
-async signTransaction(transaction: Transaction): Promise<SignResult> {
-  if (!this.connected) {
-    throw new Error('Wallet not connected');
-  }
-  // ... signing logic
-}
-```
-
-### 2. Implement Auto-reconnect
-
-```typescript
-async connect(options?: ConnectOptions): Promise<void> {
-  if (options?.autoConnect && this.hasStoredConnection()) {
-    // Attempt silent reconnection
-    const stored = this.getStoredConnection();
-    // ... reconnect logic
-  }
-  // ... normal connection flow
-}
-
-private hasStoredConnection(): boolean {
-  // Check localStorage or sessionStorage
-  return !!localStorage.getItem(`${this.name}_connected`);
-}
-```
-
-### 3. Handle Network Switching
-
-```typescript
-async switchNetwork(network: 'mainnet' | 'testnet' | 'devnet'): Promise<void> {
-  const wallet = (window as any).myWallet;
-
-  try {
-    await wallet.switchNetwork(network);
-    this.emit('networkChange', { network });
-  } catch (error) {
-    this.emit('error', { message: 'Failed to switch network' });
-    throw error;
+  private emit(event: string, data?: any): void {
+    if (this.listeners.has(event)) {
+      this.listeners.get(event)!.forEach((listener) => listener(data));
+    }
   }
 }
 ```
 
-### 4. Validate Transactions Before Signing
+### 3.3 Create Export File
+
+Create `src/index.ts`:
 
 ```typescript
-private validateTransaction(transaction: Transaction): void {
-  if (!transaction.Account) {
-    throw new Error('Transaction must have Account field');
-  }
-
-  if (!transaction.TransactionType) {
-    throw new Error('Transaction must have TransactionType');
-  }
-
-  // Add more validation as needed
-}
+export { MyWalletAdapter } from './my-wallet-adapter';
 ```
 
-### 5. Implement Timeout Handling
+## Step 4: Test Your Adapter
 
-```typescript
-private async withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number = 30000
-): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error('Operation timeout')), timeoutMs)
-    )
-  ]);
-}
-```
-
-## Testing Your Adapter
-
-Create tests to verify your adapter works correctly:
+Create a test file `src/my-wallet-adapter.test.ts`:
 
 ```typescript
 import { describe, it, expect, beforeEach } from 'vitest';
-import { MyWalletAdapter } from './MyWalletAdapter';
+import { MyWalletAdapter } from './my-wallet-adapter';
 
 describe('MyWalletAdapter', () => {
   let adapter: MyWalletAdapter;
@@ -476,121 +355,252 @@ describe('MyWalletAdapter', () => {
     adapter = new MyWalletAdapter();
   });
 
-  it('should detect wallet availability', () => {
-    expect(adapter.isAvailable()).toBe(false); // Update based on test environment
+  it('should have correct metadata', () => {
+    expect(adapter.name).toBe('My Wallet');
+    expect(adapter.icon).toBeTruthy();
   });
 
-  it('should throw error when connecting to unavailable wallet', async () => {
-    await expect(adapter.connect()).rejects.toThrow();
+  it('should handle unavailable wallet', async () => {
+    expect(adapter.isAvailable()).toBe(false); // In test environment
   });
 
-  it('should emit events when connection changes', async () => {
+  it('should emit events on connection', async () => {
     const listener = vi.fn();
     adapter.on('connect', listener);
 
-    // Trigger connection somehow
+    // Test connection logic
     // expect(listener).toHaveBeenCalled();
   });
 });
 ```
 
-## Publishing Your Adapter
+Run tests:
 
-### 1. Package Structure
-
-```
-my-wallet-adapter/
-├── src/
-│   ├── index.ts
-│   └── MyWalletAdapter.ts
-├── tests/
-│   └── MyWalletAdapter.test.ts
-├── package.json
-├── README.md
-└── tsconfig.json
+```bash
+pnpm --filter @xrpl-connect/adapter-my-wallet test
 ```
 
-### 2. Package.json
+## Step 5: Update the Meta Package
+
+Edit `packages/xrpl-connect/package.json` and add your adapter to dependencies:
 
 ```json
 {
-  "name": "@xrpl-connect/my-wallet-adapter",
-  "version": "1.0.0",
-  "description": "My Wallet adapter for XRPL-Connect",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "peerDependencies": {
-    "@xrpl-connect/core": "^0.3.0"
-  },
-  "devDependencies": {
-    "@xrpl-connect/core": "^0.3.0"
+  "dependencies": {
+    "@xrpl-connect/core": "workspace:*",
+    "@xrpl-connect/ui": "workspace:*",
+    "@xrpl-connect/adapter-xaman": "workspace:*",
+    "@xrpl-connect/adapter-crossmark": "workspace:*",
+    "@xrpl-connect/adapter-gemwallet": "workspace:*",
+    "@xrpl-connect/adapter-walletconnect": "workspace:*",
+    "@xrpl-connect/adapter-my-wallet": "workspace:*"
   }
 }
 ```
 
-### 3. Export Your Adapter
+Edit `packages/xrpl-connect/src/index.ts`:
 
 ```typescript
-// src/index.ts
-export { MyWalletAdapter } from './MyWalletAdapter';
+export * from '@xrpl-connect/core';
+export * from '@xrpl-connect/ui';
+
+// Re-export all adapters
+export { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+export { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+export { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
+export { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
+export { MyWalletAdapter } from '@xrpl-connect/adapter-my-wallet';
+
+// Convenient grouped exports
+import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
+import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
+import { MyWalletAdapter } from '@xrpl-connect/adapter-my-wallet';
+
+export const Adapters = {
+  Xaman: XamanAdapter,
+  Crossmark: CrossmarkAdapter,
+  GemWallet: GemWalletAdapter,
+  WalletConnect: WalletConnectAdapter,
+  MyWallet: MyWalletAdapter,
+};
 ```
 
-## Contributing Back to XRPL-Connect
+Also update `packages/xrpl-connect/src/index.browser.ts` with the same changes.
 
-If you'd like to have your adapter included in the official XRPL-Connect ecosystem:
+## Step 6: Update the Vanilla JS Example
 
-1. **Fork the repository** - Clone the XRPL-Connect repository
-2. **Create an adapter package** - Follow the structure above
-3. **Add comprehensive tests** - Ensure good test coverage
-4. **Submit a pull request** - Include documentation and examples
-5. **Get review and feedback** - The maintainers will review your implementation
+Edit `docs/guide/frameworks/vanilla-js.md` to show your adapter in action:
 
-### Pull Request Checklist
+```typescript
+import { WalletManager, MyWalletAdapter, XamanAdapter } from 'xrpl-connect';
+
+const walletManager = new WalletManager({
+  adapters: [new MyWalletAdapter(), new XamanAdapter({ apiKey: 'YOUR_API_KEY' })],
+  network: 'testnet',
+  autoConnect: true,
+});
+```
+
+Or using the `Adapters` object:
+
+```typescript
+import { WalletManager, Adapters } from 'xrpl-connect';
+
+const walletManager = new WalletManager({
+  adapters: [new Adapters.MyWallet(), new Adapters.Xaman({ apiKey: 'YOUR_API_KEY' })],
+  network: 'testnet',
+});
+```
+
+## Step 7: Build and Test Locally
+
+Build your adapter:
+
+```bash
+pnpm --filter @xrpl-connect/adapter-my-wallet build
+```
+
+Build the entire project:
+
+```bash
+pnpm build
+```
+
+Test locally with the example:
+
+```bash
+pnpm docs:dev
+```
+
+Navigate to the vanilla JS example and verify your adapter works.
+
+## Step 8: Update Documentation
+
+Add a section to `docs/guide/frameworks/vanilla-js.md` or create a dedicated page:
+
+```markdown
+### My Wallet
+
+To use My Wallet adapter:
+
+1. Install xrpl-connect
+2. Create your wallet manager with MyWalletAdapter
+3. Pass it to the web component
+
+\`\`\`typescript
+import { WalletManager, MyWalletAdapter } from 'xrpl-connect';
+
+const walletManager = new WalletManager({
+adapters: [new MyWalletAdapter()],
+network: 'mainnet'
+});
+\`\`\`
+```
+
+## Step 9: Submit a Pull Request
+
+1. Commit your changes:
+
+```bash
+git add .
+git commit -m "feat: add My Wallet adapter"
+```
+
+2. Push to your fork:
+
+```bash
+git push origin feat/add-my-wallet-adapter
+```
+
+3. Create a pull request on GitHub
+
+### PR Checklist
 
 - [ ] Adapter implements complete `WalletAdapter` interface
-- [ ] All error cases are handled properly
-- [ ] Event system is properly implemented
-- [ ] Tests have good coverage (80%+)
-- [ ] Documentation is clear and complete
-- [ ] Example usage is provided
-- [ ] No breaking changes to existing code
+- [ ] All methods handle errors gracefully
+- [ ] Event system works correctly (connect, disconnect, accountChange, error)
+- [ ] Tests written with good coverage
+- [ ] Documentation updated with example usage
+- [ ] package.json properly configured
+- [ ] Build passes (`pnpm build`)
+- [ ] Vanilla JS example updated to show your adapter
+
+## Common Patterns
+
+### Auto-reconnect on Load
+
+```typescript
+async connect(options?: ConnectOptions): Promise<void> {
+  if (options?.autoConnect && this.hasStoredSession()) {
+    // Silent reconnection
+    const session = this.getStoredSession();
+    // ... reconnect logic
+  }
+  // ... normal connection flow
+}
+
+private hasStoredSession(): boolean {
+  return !!localStorage.getItem(`myWallet_session`);
+}
+```
+
+### Handle Network Switching
+
+```typescript
+async switchNetwork(network: 'mainnet' | 'testnet' | 'devnet'): Promise<void> {
+  const wallet = (window as any).myWallet;
+  await wallet.switchNetwork(network);
+  this.emit('networkChange', { network });
+}
+```
+
+### Timeout for Operations
+
+```typescript
+private withTimeout<T>(promise: Promise<T>, ms = 30000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error('Operation timeout')), ms)
+    ),
+  ]);
+}
+```
 
 ## Troubleshooting
 
-### Connection Issues
+### "Wallet not found" error
 
-**Problem**: Adapter can't connect to wallet
+- Ensure your wallet is installed/available
 - Check `isAvailable()` returns `true`
-- Verify wallet is installed in the browser
-- Check browser console for errors
-- Ensure wallet permissions are granted
+- Verify wallet is initialized before calling `connect()`
 
-### Signing Issues
+### Connection drops unexpectedly
 
-**Problem**: Transaction signing fails
-- Verify transaction format is correct
-- Check account has sufficient balance
-- Ensure wallet is still connected
-- Check transaction validation logic
+- Verify wallet event listeners are set up in `setupWalletListeners()`
+- Ensure `off()` method properly removes listeners
+- Check for memory leaks in event listener management
 
-### Event Handling
+### Signing fails
 
-**Problem**: Events not firing
-- Verify listeners are registered with `on()`
-- Check that `emit()` is being called
-- Ensure wallet events are being listened to
-- Check for event listener memory leaks
+- Verify account is properly set before signing
+- Check transaction object format
+- Ensure wallet has necessary permissions
+- Handle wallet-specific signing requirements
 
 ## Resources
 
+- [XRPL Documentation](https://xrpl.org)
 - [XRPL Transaction Types](https://xrpl.org/transaction-types.html)
-- [XRPL Signing](https://xrpl.org/sign-and-submit-transactions.html)
-- [Wallet Integration Standards](https://xrpl.org/connect-your-wallet.html)
+- [Existing Adapters](https://github.com/XRPL-Commons/xrpl-connect/tree/main/packages/adapters)
+- [GitHub Issues](https://github.com/XRPL-Commons/xrpl-connect/issues)
 
 ## Support
 
-Have questions about creating an adapter?
+Have questions?
 
-- **GitHub Issues** - [XRPL-Commons/xrpl-connect/issues](https://github.com/XRPL-Commons/xrpl-connect/issues)
-- **Discussions** - Start a discussion in the repository
-- **Community** - Reach out to the XRPL community
+- Open an issue on [GitHub](https://github.com/XRPL-Commons/xrpl-connect/issues)
+- Check existing adapter implementations for reference
+- Join the XRPL community discussions
