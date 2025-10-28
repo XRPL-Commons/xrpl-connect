@@ -74,6 +74,13 @@ export default defineConfig({
         ],
       },
       {
+        text: 'Advanced',
+        items: [
+          { text: 'Creating Wallet Adapters', link: '/guide/adapter-integration' },
+          { text: 'Examples', link: '/guide/examples' },
+        ],
+      },
+      {
         text: 'Customization',
         items: [
           { text: 'Customization Guide', link: '/guide/customization' },
