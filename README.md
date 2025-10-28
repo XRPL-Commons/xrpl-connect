@@ -5,6 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue)](https://www.typescriptlang.org/)
 
+[DOCS](https://xrpl-commons.github.io/xrpl-connect/)
+
 ## ✨ Features
 
 - **Framework Agnostic** - Works with Vanilla JS, React, Vue, and any other framework
@@ -27,14 +29,14 @@ The `xrpl-connect` package includes everything you need:
 
 If you need a smaller bundle size, individual packages are also available:
 
-| Package | Description |
-|---------|-------------|
-| [@xrpl-connect/core](./packages/core) | Core SDK and wallet manager |
-| [@xrpl-connect/ui](./packages/ui) | Web component UI |
-| [@xrpl-connect/adapter-xaman](./packages/adapters/xaman) | Xaman wallet adapter |
-| [@xrpl-connect/adapter-crossmark](./packages/adapters/crossmark) | Crossmark wallet adapter |
-| [@xrpl-connect/adapter-gemwallet](./packages/adapters/gemwallet) | GemWallet adapter |
-| [@xrpl-connect/adapter-walletconnect](./packages/adapters/walletconnect) | WalletConnect adapter |
+| Package                                                                  | Description                 |
+| ------------------------------------------------------------------------ | --------------------------- |
+| [@xrpl-connect/core](./packages/core)                                    | Core SDK and wallet manager |
+| [@xrpl-connect/ui](./packages/ui)                                        | Web component UI            |
+| [@xrpl-connect/adapter-xaman](./packages/adapters/xaman)                 | Xaman wallet adapter        |
+| [@xrpl-connect/adapter-crossmark](./packages/adapters/crossmark)         | Crossmark wallet adapter    |
+| [@xrpl-connect/adapter-gemwallet](./packages/adapters/gemwallet)         | GemWallet adapter           |
+| [@xrpl-connect/adapter-walletconnect](./packages/adapters/walletconnect) | WalletConnect adapter       |
 
 ## 🚀 Quick Start
 
@@ -51,27 +53,23 @@ That's it! Everything you need in one package.
 The easiest way to use XRPL Connect is with the plug-and-play web component:
 
 **HTML:**
+
 ```html
 <!-- Add the web component to your HTML -->
 <button id="connect-btn">Connect Wallet</button>
 
-<xrpl-wallet-connector
-  id="wallet-connector"
-  background-color="#1a202c"
-  primary-wallet="xaman">
+<xrpl-wallet-connector id="wallet-connector" background-color="#1a202c" primary-wallet="xaman">
 </xrpl-wallet-connector>
 ```
 
 **JavaScript:**
+
 ```javascript
 import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
 
 // Initialize wallet manager
 const walletManager = new WalletManager({
-  adapters: [
-    new XamanAdapter(),
-    new CrossmarkAdapter(),
-  ],
+  adapters: [new XamanAdapter(), new CrossmarkAdapter()],
   network: 'testnet',
   autoConnect: true,
 });
@@ -175,6 +173,7 @@ MIT License - see the [LICENSE](./LICENSE) file for details
 ## 🙏 Acknowledgments
 
 Inspired by:
+
 - [RainbowKit](https://www.rainbowkit.com/) - Ethereum wallet connection
 - [Solana Wallet Adapter](https://github.com/solana-labs/wallet-adapter) - Solana wallet standard
 
