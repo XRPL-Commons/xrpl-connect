@@ -4,6 +4,8 @@ description: A framework-agnostic wallet connection toolkit for the XRP Ledger w
 
 # Introduction to XRPL-Connect
 
+<DownloadLLMsFullDoc />
+
 XRPL-Connect is a comprehensive, framework-agnostic wallet connection toolkit for the XRP Ledger. It provides developers with everything needed to add secure wallet connectivity to their applications through a modern, modular architecture.
 
 ## What is XRPL-Connect?
