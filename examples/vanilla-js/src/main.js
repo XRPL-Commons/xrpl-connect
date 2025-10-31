@@ -14,7 +14,20 @@ const WALLETCONNECT_PROJECT_ID = '32798b46e13dfb0049706a524cf132d6'; // Get from
 const walletManager = new WalletManager({
   adapters: [
     new XamanAdapter({ apiKey: XAMAN_API_KEY }),
-    new WalletConnectAdapter({ projectId: WALLETCONNECT_PROJECT_ID }),
+    // WalletConnect with modal enabled for mobile deeplinks
+    new WalletConnectAdapter({
+      projectId: WALLETCONNECT_PROJECT_ID,
+      // Enable modal for mobile devices (automatic deeplinks)
+      useModal: true,
+      modalMode: 'mobile-only', // 'mobile-only' | 'always' | 'never'
+      themeMode: 'dark', // 'dark' | 'light'
+      metadata: {
+        name: 'XRPL Connect Demo',
+        description: 'Framework-agnostic wallet connection toolkit',
+        url: window.location.origin,
+        icons: ['https://xrpl.org/favicon.ico'],
+      },
+    }),
     new CrossmarkAdapter(),
     new GemWalletAdapter(),
   ],

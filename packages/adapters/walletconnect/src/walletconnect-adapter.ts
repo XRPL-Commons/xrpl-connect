@@ -3,6 +3,7 @@
  */
 
 import SignClient from '@walletconnect/sign-client';
+import { WalletConnectModal } from '@walletconnect/modal';
 import type { SignClientTypes, SessionTypes } from '@walletconnect/types';
 import type {
   WalletAdapter,
@@ -21,6 +22,15 @@ import {
   ACCOUNT_FORMAT,
   XRPL_NAMESPACE,
 } from './constants';
+
+/**
+ * Utility function to detect if user is on mobile device
+ */
+function isMobile(): boolean {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent
+  );
+}
 
 /**
  * Logger instance for WalletConnect adapter
@@ -43,6 +53,11 @@ export interface WalletConnectAdapterOptions {
   metadata?: SignClientTypes.Metadata; // App metadata
   onQRCode?: (uri: string) => void; // Callback for QR code URI
   onDeepLink?: (uri: string) => string; // Transform URI for deep linking
+
+  // Modal options
+  useModal?: boolean; // Enable WalletConnect modal instead of custom QR (default: false)
+  modalMode?: 'mobile-only' | 'always' | 'never'; // When to show modal (default: 'mobile-only')
+  themeMode?: 'dark' | 'light'; // Modal theme (default: 'dark')
 }
 
 /**
@@ -61,6 +76,7 @@ export class WalletConnectAdapter implements WalletAdapter {
   private options: WalletConnectAdapterOptions;
   private initializationPromise: Promise<SignClient> | null = null;
   private pendingConnection: { uri: string; approval: () => Promise<SessionTypes.Struct> } | null = null;
+  private modal: WalletConnectModal | null = null;
 
   constructor(options: WalletConnectAdapterOptions = {}) {
     this.options = options;
@@ -71,6 +87,43 @@ export class WalletConnectAdapter implements WalletAdapter {
    */
   async isAvailable(): Promise<boolean> {
     return true;
+  }
+
+  /**
+   * Initialize WalletConnect modal
+   * This provides the official WalletConnect UI with 300+ wallets and automatic deeplinks
+   */
+  private async initializeModal(projectId: string): Promise<void> {
+    if (this.modal) {
+      return; // Already initialized
+    }
+
+    logger.debug('Initializing WalletConnect modal...');
+
+    try {
+      this.modal = new WalletConnectModal({
+        projectId,
+        // Configure which chains to show (XRPL)
+        chains: ['xrpl:0', 'xrpl:1'], // mainnet, testnet
+
+        // Theme configuration
+        themeMode: this.options.themeMode || 'dark',
+        themeVariables: {
+          '--wcm-z-index': '2147483647', // Ensure modal appears on top of everything
+        },
+
+        // Enable wallet explorer with 300+ wallets
+        enableExplorer: true,
+
+        // Optionally promote specific wallets (if XRPL wallets are in WC registry)
+        explorerRecommendedWalletIds: undefined,
+      });
+
+      logger.debug('WalletConnect modal initialized successfully');
+    } catch (error) {
+      logger.error('Failed to initialize WalletConnect modal:', error);
+      throw error;
+    }
   }
 
   /**
@@ -168,83 +221,123 @@ export class WalletConnectAdapter implements WalletAdapter {
 
     // Merge runtime options with constructor options (runtime takes precedence)
     const onQRCode = (options as any)?.onQRCode || this.options.onQRCode;
-    // const onDeepLink = (options as any)?.onDeepLink || this.options.onDeepLink;
+    const useModal = this.options.useModal ?? false;
+    const modalMode = this.options.modalMode ?? 'mobile-only';
+
+    // Determine if we should use modal
+    const shouldUseModal =
+      useModal && (modalMode === 'always' || (modalMode === 'mobile-only' && isMobile()));
 
     try {
       // Determine network
       const network = this.resolveNetwork(options?.network);
 
-      let uri: string;
-      let approval: () => Promise<SessionTypes.Struct>;
-
-      // Check if we have a pending connection from pre-initialization (ConnectKit pattern)
-      if (this.pendingConnection) {
-        logger.debug('Using pre-generated connection');
-        uri = this.pendingConnection.uri;
-        approval = this.pendingConnection.approval;
-
-        if (onQRCode) {
-          logger.debug('Calling onQRCode callback with pre-generated URI');
-          onQRCode(uri);
-        }
-      } else {
-        logger.debug('No pre-generated connection, creating now');
-
-        // Initialize SignClient if needed
-        if (!this.client) {
-          if (this.initializationPromise) {
-            logger.debug('Using pre-initialized SignClient');
-            this.client = await this.initializationPromise;
-          } else {
-            logger.debug('Initializing SignClient');
-            this.client = await SignClient.init({
-              projectId,
-              metadata: this.options.metadata || {
-                name: DEFAULT_METADATA.NAME,
-                description: DEFAULT_METADATA.DESCRIPTION,
-                url: typeof window !== 'undefined' ? window.location.origin : DEFAULT_METADATA.DEFAULT_URL,
-                icons: [DEFAULT_METADATA.DEFAULT_ICON],
-              },
-            });
-          }
-        }
-
-        // Prepare namespace for XRPL
-        const requiredNamespaces = {
-          [XRPL_NAMESPACE.KEY]: {
-            chains: [network.walletConnectId || `xrpl:${network.id}`],
-            methods: [
-              XRPLMethod.SIGN_TRANSACTION,
-              XRPLMethod.SIGN_TRANSACTION_FOR,
-              'xrpl_signMessage',
-            ],
-            events: XRPL_NAMESPACE.EVENTS,
-          },
-        };
-
-        // Connect and get URI
-        const result = await this.client.connect({
-          requiredNamespaces,
-        });
-
-        if (!result.uri) {
-          throw new Error('Failed to generate WalletConnect URI');
-        }
-
-        uri = result.uri;
-        approval = result.approval;
-
-        logger.debug('Generated URI:', uri.substring(0, LOGGING.URI_PREVIEW_LENGTH) + '...');
-        logger.debug('onQRCode callback exists:', !!onQRCode);
-
-        if (onQRCode) {
-          logger.debug('Calling onQRCode callback');
-          onQRCode(uri);
+      // Initialize SignClient if needed
+      if (!this.client) {
+        if (this.initializationPromise) {
+          logger.debug('Using pre-initialized SignClient');
+          this.client = await this.initializationPromise;
+        } else {
+          logger.debug('Initializing SignClient');
+          this.client = await SignClient.init({
+            projectId,
+            metadata: this.options.metadata || {
+              name: DEFAULT_METADATA.NAME,
+              description: DEFAULT_METADATA.DESCRIPTION,
+              url: typeof window !== 'undefined' ? window.location.origin : DEFAULT_METADATA.DEFAULT_URL,
+              icons: [DEFAULT_METADATA.DEFAULT_ICON],
+            },
+          });
         }
       }
 
-      // Wait for approval
-      this.session = await approval();
+      // Prepare namespace for XRPL
+      const requiredNamespaces = {
+        [XRPL_NAMESPACE.KEY]: {
+          chains: [network.walletConnectId || `xrpl:${network.id}`],
+          methods: [
+            XRPLMethod.SIGN_TRANSACTION,
+            XRPLMethod.SIGN_TRANSACTION_FOR,
+            'xrpl_signMessage',
+          ],
+          events: XRPL_NAMESPACE.EVENTS,
+        },
+      };
+
+      let session: SessionTypes.Struct;
+
+      if (shouldUseModal) {
+        // ===== MODAL FLOW (Mobile deeplinks) =====
+        logger.debug('Using WalletConnect modal for connection (mobile deeplink mode)');
+
+        // Initialize modal
+        await this.initializeModal(projectId);
+
+        // Connect and get URI
+        const { uri, approval } = await this.client.connect({
+          requiredNamespaces,
+        });
+
+        if (uri && this.modal) {
+          // Open modal with the URI - modal handles deeplinks automatically
+          this.modal.openModal({ uri });
+          logger.debug('WalletConnect modal opened with URI');
+        }
+
+        // Wait for user to connect via modal
+        session = await approval();
+
+        // Close modal after successful connection
+        if (this.modal) {
+          this.modal.closeModal();
+          logger.debug('WalletConnect modal closed');
+        }
+      } else {
+        // ===== CUSTOM QR FLOW (Desktop or opt-out) =====
+        logger.debug('Using custom QR code for connection (desktop mode)');
+
+        let uri: string;
+        let approval: () => Promise<SessionTypes.Struct>;
+
+        // Check if we have a pending connection from pre-initialization
+        if (this.pendingConnection) {
+          logger.debug('Using pre-generated connection');
+          uri = this.pendingConnection.uri;
+          approval = this.pendingConnection.approval;
+
+          if (onQRCode) {
+            logger.debug('Calling onQRCode callback with pre-generated URI');
+            onQRCode(uri);
+          }
+        } else {
+          logger.debug('No pre-generated connection, creating now');
+
+          // Connect and get URI
+          const result = await this.client.connect({
+            requiredNamespaces,
+          });
+
+          if (!result.uri) {
+            throw new Error('Failed to generate WalletConnect URI');
+          }
+
+          uri = result.uri;
+          approval = result.approval;
+
+          logger.debug('Generated URI:', uri.substring(0, LOGGING.URI_PREVIEW_LENGTH) + '...');
+
+          if (onQRCode) {
+            logger.debug('Calling onQRCode callback');
+            onQRCode(uri);
+          }
+        }
+
+        // Wait for approval
+        session = await approval();
+      }
+
+      // Store session
+      this.session = session;
 
       // Extract account info from session
       const accounts = this.session.namespaces.xrpl?.accounts || [];
@@ -266,6 +359,10 @@ export class WalletConnectAdapter implements WalletAdapter {
 
       return this.currentAccount;
     } catch (error) {
+      // Close modal on error
+      if (this.modal) {
+        this.modal.closeModal();
+      }
       throw createWalletError.connectionFailed(this.name, error as Error);
     }
   }
@@ -407,6 +504,12 @@ export class WalletConnectAdapter implements WalletAdapter {
    * Cleanup adapter state
    */
   private cleanup(): void {
+    // Close and cleanup modal
+    if (this.modal) {
+      this.modal.closeModal();
+      this.modal = null;
+    }
+
     this.client = null;
     this.session = null;
     this.currentAccount = null;
