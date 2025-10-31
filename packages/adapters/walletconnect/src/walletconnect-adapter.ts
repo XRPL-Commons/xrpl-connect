@@ -109,7 +109,9 @@ export class WalletConnectAdapter implements WalletAdapter {
         // Theme configuration
         themeMode: this.options.themeMode || 'dark',
         themeVariables: {
-          '--wcm-z-index': '2147483647', // Ensure modal appears on top of everything
+          // Maximum z-index to ensure WalletConnect modal appears on top of custom modal
+          // Custom modal uses z-index: 9999, WC modal uses max possible value
+          '--wcm-z-index': '2147483647',
         },
 
         // Enable wallet explorer with 300+ wallets

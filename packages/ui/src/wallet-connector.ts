@@ -399,13 +399,24 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
             // ===== USE MODAL (Mobile deeplink mode) =====
             logger.debug('Using WalletConnect modal (mobile deeplink mode)');
 
-            // Close our custom modal since WC modal will handle UI
-            this.close();
+            // IMPORTANT: Keep our custom modal open in the background
+            // The WalletConnect modal will appear on top, creating a layered effect
+            // This gives users the impression they're still in the connection flow
 
-            // Connect directly - modal will open automatically
+            // Show loading state first (with spinning animation like Xaman)
+            this.showLoadingView(walletId, wallet.name, wallet.icon);
+
             this.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
+
+            // Small delay to show the loading animation before WC modal appears
+            await delay(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+
+            // Connect - WalletConnect modal will open on top of our loading view
             await this.walletManager.connect(walletId, options);
             this.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
+
+            // Close our modal after successful connection
+            this.close();
           } else {
             // ===== USE CUSTOM QR (Desktop mode) =====
             logger.debug('Using custom QR code (desktop mode)');
