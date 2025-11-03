@@ -49,20 +49,47 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     connectedCallback() {
-      this.render();
+      this.init();
+    }
 
-      // Update derived colors on initial load
-      requestAnimationFrame(() => this.updateDerivedColors());
+    private async init() {
+      try {
+        console.log('INIT');
+        await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // Observe style attribute changes for CSS variable updates
-      const styleObserver = new MutationObserver(() => {
-        this.updateDerivedColors();
-      });
+        if (this.listAdapters().includes('xaman')) {
+          console.log('Checking Xaman state...');
+          const xamanAdapter: any = this.walletManager?.adapters?.get('xaman');
 
-      styleObserver.observe(this, {
-        attributes: true,
-        attributeFilter: ['style'],
-      });
+          // Check if there's an existing authenticated session
+          const account = await xamanAdapter.checkXamanState();
+          console.log('Xaman state:', account);
+
+          if (account) {
+            console.log('Found existing Xaman session, auto-connecting...');
+            // Set the account on the wallet manager to mark as connected
+            if (this.walletManager && !this.walletManager.connected) {
+              await this.walletManager.connect('xaman');
+            }
+          }
+        }
+
+        console.log('RENDERING');
+        this.render();
+
+        requestAnimationFrame(() => this.updateDerivedColors());
+        // Observe style attribute changes for CSS variable updates
+        const styleObserver = new MutationObserver(() => {
+          this.updateDerivedColors();
+        });
+
+        styleObserver.observe(this, {
+          attributes: true,
+          attributeFilter: ['style'],
+        });
+      } catch (err) {
+        console.error('Failed to check Xaman state:', err);
+      }
     }
 
     /**
@@ -70,8 +97,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     private updateDerivedColors() {
       const computedStyle = window.getComputedStyle(this);
-      const primaryColor =
-        computedStyle.getPropertyValue('--xc-primary-color').trim() || '#0EA5E9';
+      const primaryColor = computedStyle.getPropertyValue('--xc-primary-color').trim() || '#0EA5E9';
       const backgroundColor =
         computedStyle.getPropertyValue('--xc-background-color').trim() || '#000637';
 
@@ -128,6 +154,20 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         .split(',')
         .map((id) => id.trim())
         .filter((id) => id.length > 0);
+    }
+
+    private listAdapters(): string[] {
+      const returnArray: string[] = [];
+      console.log(this);
+      console.log(this.walletManager);
+      console.log(this.walletManager?.wallets);
+      if (!this.walletManager?.wallets) return returnArray;
+
+      for (const adapter of Object.values(this.walletManager.wallets)) {
+        returnArray.push(adapter.id);
+      }
+
+      return returnArray;
     }
 
     /**
