@@ -39,10 +39,11 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
   private isOpen = false;
   private isFirstOpen = true;
   private primaryWalletId: string | null = null;
-  private viewState: 'list' | 'qr' | 'loading' | 'error' = 'list';
+  private viewState: 'list' | 'qr' | 'loading' | 'error' | 'account-selection' = 'list';
   private qrCodeData: { walletId: string; uri: string } | null = null;
   private loadingData: { walletId: string; walletName: string; walletIcon?: string } | null = null;
   private errorData: { walletId: string; walletName: string; error: Error } | null = null;
+  private accountSelectionData: { walletId: string; walletName: string; walletIcon?: string; accounts: Array<{ address: string; publicKey: string; path: string; index: number }> } | null = null;
   private previousModalHeight: number = 0;
   private preGeneratedQRCode: any | null = null; // Store pre-generated QR code
   private preGeneratedURI: string | null = null; // Store the URI used for pre-generation
@@ -257,6 +258,29 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
         await this.walletManager.connect(walletId, connectOptions);
         this.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
+      } else if (walletId === 'ledger') {
+        // For Ledger, show account selection first
+        const isAvailable = await wallet.isAvailable();
+
+        if (!isAvailable) {
+          throw new Error(`${wallet.name} is not supported in this browser. Please use Chrome, Edge, or Opera.`);
+        }
+
+        // Show loading while fetching accounts
+        this.showLoadingView(walletId, wallet.name, wallet.icon);
+
+        // Small delay for UI
+        if (!isSafari()) {
+          await delay(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+        }
+
+        // Fetch accounts from Ledger
+        logger.debug('Fetching Ledger accounts...');
+        const accounts = await (wallet as any).getAccounts(5, 0);
+        logger.debug('Fetched accounts:', accounts);
+
+        // Show account selection view
+        this.showAccountSelectionView(walletId, wallet.name, wallet.icon, accounts);
       } else {
         // For extension wallets, check availability first
         const isAvailable = await wallet.isAvailable();
@@ -307,6 +331,94 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
   }
 
   /**
+   * Connect with selected Ledger account
+   */
+  private async connectWithLedgerAccount(accountIndex: number) {
+    if (!this.walletManager || !this.accountSelectionData) return;
+
+    const { walletId, walletName, walletIcon } = this.accountSelectionData;
+
+    try {
+      // Show loading state
+      this.showLoadingView(walletId, walletName, walletIcon);
+
+      // Small delay for UI
+      if (!isSafari()) {
+        await delay(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+      }
+
+      logger.debug('Connecting to Ledger with account index:', accountIndex);
+      this.dispatchEvent(new CustomEvent('connecting', { detail: { walletId, accountIndex } }));
+
+      // Connect with selected account index
+      await this.walletManager.connect(walletId, { accountIndex });
+
+      this.dispatchEvent(new CustomEvent('connected', { detail: { walletId, accountIndex } }));
+    } catch (error: any) {
+      // Handle error - show error view
+      let errorMessage = error.message || 'An unexpected error occurred';
+      let errorType: 'rejected' | 'unavailable' | 'failed' = 'failed';
+
+      if (error.code === ERROR_CODES.USER_REJECTED || errorMessage.toLowerCase().includes('user rejected')) {
+        errorType = 'rejected';
+        errorMessage = 'Connection request was cancelled';
+      }
+
+      logger.debug('Connection error type:', errorType, 'Code:', error.code);
+      this.showErrorView(walletId, walletName, new Error(errorMessage));
+      this.dispatchEvent(new CustomEvent('error', { detail: { error, walletId, errorType } }));
+      logger.error('Failed to connect:', error);
+    }
+  }
+
+  /**
+   * Connect with a custom derivation path for Ledger
+   */
+  private async connectWithCustomDerivationPath(derivationPath: string) {
+    if (!this.walletManager || !this.accountSelectionData) return;
+
+    const { walletId, walletName, walletIcon } = this.accountSelectionData;
+
+    try {
+      // Validate derivation path format
+      const pathRegex = /^44'\/144'\/\d+'\/\d+\/\d+$/;
+      if (!pathRegex.test(derivationPath)) {
+        throw new Error('Invalid derivation path format. Expected format: 44\'/144\'/0\'/0/0');
+      }
+
+      // Show loading state
+      this.showLoadingView(walletId, walletName, walletIcon);
+
+      // Small delay for UI
+      if (!isSafari()) {
+        await delay(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+      }
+
+      logger.debug('Connecting to Ledger with custom derivation path:', derivationPath);
+      this.dispatchEvent(new CustomEvent('connecting', { detail: { walletId, derivationPath } }));
+
+      // Connect with custom derivation path
+      await this.walletManager.connect(walletId, { derivationPath });
+
+      this.dispatchEvent(new CustomEvent('connected', { detail: { walletId, derivationPath } }));
+    } catch (error: any) {
+      // Handle error - show error view
+      let errorMessage = error.message || 'An unexpected error occurred';
+      let errorType: 'rejected' | 'unavailable' | 'failed' = 'failed';
+
+      if (error.code === ERROR_CODES.USER_REJECTED || errorMessage.toLowerCase().includes('user rejected')) {
+        errorType = 'rejected';
+        errorMessage = 'Connection request was cancelled';
+      }
+
+      logger.debug('Connection error type:', errorType, 'Code:', error.code);
+      this.showErrorView(walletId, walletName, new Error(errorMessage));
+      this.dispatchEvent(new CustomEvent('error', { detail: { error, walletId, errorType } }));
+      logger.error('Failed to connect:', error);
+    }
+  }
+
+  /**
    * Show QR code view
    */
   private showQRCodeView(walletId: string, uri?: string) {
@@ -344,6 +456,19 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
    */
   private showWalletList() {
     this.viewState = 'list';
+    this.qrCodeData = null;
+    this.loadingData = null;
+    this.errorData = null;
+    this.accountSelectionData = null;
+    this.render();
+  }
+
+  /**
+   * Show account selection view
+   */
+  private showAccountSelectionView(walletId: string, walletName: string, walletIcon: string | undefined, accounts: Array<{ address: string; publicKey: string; path: string; index: number }>) {
+    this.viewState = 'account-selection';
+    this.accountSelectionData = { walletId, walletName, walletIcon, accounts };
     this.qrCodeData = null;
     this.loadingData = null;
     this.errorData = null;
@@ -506,6 +631,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       contentHTML = this.renderLoadingView();
     } else if (this.viewState === 'error' && this.errorData) {
       contentHTML = this.renderErrorView();
+    } else if (this.viewState === 'account-selection' && this.accountSelectionData) {
+      contentHTML = this.renderAccountSelectionView();
     } else {
       contentHTML = this.renderWalletListView(primaryWallet, otherWallets);
     }
@@ -996,6 +1123,144 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         background: var(--wallet-btn-hover);
       }
 
+      /* Account Selection Styles */
+      .account-selection-view {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+        padding: 20px 0;
+      }
+
+      .account-selection-wallet-icon {
+        width: ${SIZES.ICON_LARGE}px;
+        height: ${SIZES.ICON_LARGE}px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .wallet-icon-small {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        border-radius: 12px;
+      }
+
+      .account-selection-description {
+        text-align: center;
+        font-size: 14px;
+        font-weight: ${FONT_WEIGHTS.LIGHT};
+        opacity: 0.8;
+        line-height: 1.5;
+        margin: 0;
+      }
+
+      .account-list {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .account-button {
+        width: 100%;
+        padding: 16px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
+        border-radius: ${SIZES.BUTTON_BORDER_RADIUS}px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        background: var(--wallet-btn-bg);
+        color: var(--text-color);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        transition: all 0.2s;
+      }
+
+      .account-button:hover {
+        background: var(--wallet-btn-hover);
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      .account-info {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        text-align: left;
+        width: 100%;
+      }
+
+      .account-address {
+        font-size: 15px;
+        font-weight: ${FONT_WEIGHTS.SEMIBOLD};
+      }
+
+      .account-address-value {
+        font-size: 13px;
+        font-weight: ${FONT_WEIGHTS.LIGHT};
+        opacity: 0.7;
+        font-family: monospace;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .custom-path-section {
+        margin-top: 24px;
+        padding-top: 24px;
+        border-top: 1px solid rgba(0, 0, 0, 0.1);
+        width: 100%;
+      }
+
+      .custom-path-label {
+        font-size: 14px;
+        font-weight: ${FONT_WEIGHTS.MEDIUM};
+        margin-bottom: 12px;
+        color: var(--text-color);
+      }
+
+      .custom-path-input {
+        width: 100%;
+        padding: 12px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
+        border-radius: ${SIZES.BUTTON_BORDER_RADIUS}px;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        background: var(--wallet-btn-bg);
+        color: var(--text-color);
+        font-size: 14px;
+        font-family: monospace;
+        margin-bottom: 12px;
+        box-sizing: border-box;
+      }
+
+      .custom-path-input:focus {
+        outline: none;
+        border-color: var(--primary-color, #007bff);
+        box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+      }
+
+      .custom-path-button {
+        width: 100%;
+        padding: 14px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
+        border-radius: ${SIZES.BUTTON_BORDER_RADIUS}px;
+        border: none;
+        background: var(--primary-color, #007bff);
+        color: white;
+        font-size: 15px;
+        font-weight: ${FONT_WEIGHTS.SEMIBOLD};
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .custom-path-button:hover {
+        background: var(--primary-color-hover, #0056b3);
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      }
+
+      .custom-path-button:active {
+        transform: translateY(0);
+      }
+
       ${customCSS}
     </style>
 
@@ -1155,7 +1420,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
   private renderErrorView(): string {
     if (!this.errorData) return '';
 
-    const { walletName } = this.errorData;
+    const { walletName, error } = this.errorData;
 
     return `
       <div class="header">
@@ -1168,6 +1433,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           <div class="error-icon">⚠</div>
           <div class="error-text">
             <div class="error-title">Failed to connect to ${walletName}</div>
+            <div class="error-message">${error.message}</div>
           </div>
           <div class="error-buttons">
             <button class="error-button error-button-secondary" id="error-back-button">
@@ -1175,6 +1441,65 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
             </button>
             <button class="error-button error-button-primary" id="error-retry-button">
               Try Again
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Render account selection view for Ledger
+   */
+  private renderAccountSelectionView(): string {
+    if (!this.accountSelectionData) return '';
+
+    const { walletName, walletIcon, accounts } = this.accountSelectionData;
+
+    const accountButtons = accounts
+      .map(
+        (account) => `
+        <button class="account-button" data-account-index="${account.index}">
+          <div class="account-info">
+            <div class="account-address">Account ${account.index}</div>
+            <div class="account-address-value">${account.address}</div>
+          </div>
+        </button>
+      `
+      )
+      .join('');
+
+    return `
+      <div class="header">
+        <div class="header-with-back">
+          <button class="back-button" id="account-selection-back-button" aria-label="Back">←</button>
+          <h2 class="title">Select Account</h2>
+        </div>
+        <button class="close-button" part="close-button" aria-label="Close">×</button>
+      </div>
+
+      <div class="content">
+        <div class="account-selection-view">
+          ${walletIcon ? `
+          <div class="account-selection-wallet-icon">
+            <img src="${walletIcon}" alt="${walletName}" class="wallet-icon-small">
+          </div>
+          ` : ''}
+          <p class="account-selection-description">Select which account to connect from your ${walletName}</p>
+          <div class="account-list">
+            ${accountButtons}
+          </div>
+          <div class="custom-path-section">
+            <p class="custom-path-label">Or enter a custom derivation path:</p>
+            <input
+              type="text"
+              id="custom-derivation-path"
+              class="custom-path-input"
+              placeholder="44'/144'/0'/0/0"
+              value=""
+            />
+            <button class="custom-path-button" id="custom-path-connect-button">
+              Connect with Custom Path
             </button>
           </div>
         </div>
@@ -1278,6 +1603,30 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     // Error back button
     this.shadow.querySelector('#error-back-button')?.addEventListener('click', () => {
       this.showWalletList();
+    });
+
+    // Account selection back button
+    this.shadow.querySelector('#account-selection-back-button')?.addEventListener('click', () => {
+      this.showWalletList();
+    });
+
+    // Account selection buttons
+    this.shadow.querySelectorAll('.account-button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const accountIndex = parseInt((button as HTMLElement).dataset.accountIndex || '0', 10);
+        logger.debug('Account selected:', accountIndex);
+        this.connectWithLedgerAccount(accountIndex);
+      });
+    });
+
+    // Custom derivation path button
+    this.shadow.querySelector('#custom-path-connect-button')?.addEventListener('click', () => {
+      const input = this.shadow.querySelector('#custom-derivation-path') as HTMLInputElement;
+      if (input && input.value.trim()) {
+        const derivationPath = input.value.trim();
+        logger.debug('Custom derivation path entered:', derivationPath);
+        this.connectWithCustomDerivationPath(derivationPath);
+      }
     });
   }
 

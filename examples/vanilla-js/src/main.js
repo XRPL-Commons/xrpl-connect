@@ -4,6 +4,7 @@ import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
 import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
 import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
+import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
 import { WalletConnectorElement } from '@xrpl-connect/ui';
 
 // Configuration - ADD YOUR API KEYS HERE
@@ -17,6 +18,7 @@ const walletManager = new WalletManager({
     new WalletConnectAdapter({ projectId: WALLETCONNECT_PROJECT_ID }),
     new CrossmarkAdapter(),
     new GemWalletAdapter(),
+    new LedgerAdapter(),
   ],
   network: 'testnet',
   autoConnect: true,
