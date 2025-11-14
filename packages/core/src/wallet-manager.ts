@@ -24,7 +24,7 @@ import { TIME } from './constants';
  * Main class for managing wallet connections
  */
 export class WalletManager extends EventEmitter<WalletEvent> {
-  private adapters: Map<string, WalletAdapter> = new Map();
+  adapters: Map<string, WalletAdapter> = new Map();
   private currentAdapter: WalletAdapter | null = null;
   private currentAccount: AccountInfo | null = null;
   private storage: Storage;
@@ -75,7 +75,6 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     const age = Date.now() - state.timestamp;
     return age < TIME.STATE_MAX_AGE;
   }
-
 
   /**
    * Connect to a wallet
@@ -189,7 +188,10 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * @param submit - Whether to submit the transaction to the ledger (default: true)
    * @returns SubmittedTransaction with hash and optional submission details
    */
-  async signAndSubmit(transaction: Transaction, submit: boolean = true): Promise<SubmittedTransaction> {
+  async signAndSubmit(
+    transaction: Transaction,
+    submit: boolean = true
+  ): Promise<SubmittedTransaction> {
     if (!this.currentAdapter) {
       throw createWalletError.notConnected();
     }
@@ -198,10 +200,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
 
     try {
       const result = await this.currentAdapter.signAndSubmit(transaction, submit);
-      this.logger.info(
-        `Transaction ${submit ? 'submitted' : 'signed'}`,
-        result.hash || result.id
-      );
+      this.logger.info(`Transaction ${submit ? 'submitted' : 'signed'}`, result.hash || result.id);
       return result;
     } catch (error) {
       this.logger.error(`Failed to ${submit ? 'submit' : 'sign'} transaction:`, error);

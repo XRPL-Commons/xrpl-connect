@@ -4,7 +4,7 @@ import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
 import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
 import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
-import { WalletConnectorElement } from '@xrpl-connect/ui';
+import '@xrpl-connect/ui'; // Register the web component
 
 // Configuration - ADD YOUR API KEYS HERE
 const XAMAN_API_KEY = '15ba80a8-cba2-4789-a45b-c6a850d9d91b'; // Get from https://apps.xumm.dev/
@@ -14,7 +14,20 @@ const WALLETCONNECT_PROJECT_ID = '32798b46e13dfb0049706a524cf132d6'; // Get from
 const walletManager = new WalletManager({
   adapters: [
     new XamanAdapter({ apiKey: XAMAN_API_KEY }),
-    new WalletConnectAdapter({ projectId: WALLETCONNECT_PROJECT_ID }),
+    // WalletConnect with modal enabled for mobile deeplinks
+    new WalletConnectAdapter({
+      projectId: WALLETCONNECT_PROJECT_ID,
+      // Enable modal for mobile devices (automatic deeplinks)
+      useModal: true,
+      modalMode: 'mobile-only', // 'mobile-only' | 'always' | 'never'
+      themeMode: 'dark', // 'dark' | 'light'
+      metadata: {
+        name: 'XRPL Connect Demo',
+        description: 'Framework-agnostic wallet connection toolkit',
+        url: window.location.origin,
+        icons: ['https://xrpl.org/favicon.ico'],
+      },
+    }),
     new CrossmarkAdapter(),
     new GemWalletAdapter(),
   ],
@@ -56,6 +69,18 @@ walletConnector.addEventListener('connected', (e) => {
 walletConnector.addEventListener('error', (e) => {
   showStatus(`Connection failed: ${e.detail.error.message}`, 'error');
   logEvent('Connection Error', e.detail);
+});
+
+// Listen for Xaman transaction completion (mobile return flow)
+walletConnector.addEventListener('xaman-transaction-complete', (e) => {
+  const { signed, txid } = e.detail;
+  if (signed) {
+    showStatus(`Transaction signed successfully! TX: ${txid}`, 'success');
+    logEvent('Xaman Transaction Signed (Mobile Return)', e.detail);
+  } else {
+    showStatus('Transaction rejected by user', 'error');
+    logEvent('Xaman Transaction Rejected (Mobile Return)', e.detail);
+  }
 });
 
 // DOM Elements
@@ -129,7 +154,7 @@ function applyTheme(themeName) {
   });
 
   // Update button states
-  elements.themeButtons.forEach(btn => {
+  elements.themeButtons.forEach((btn) => {
     if (btn.dataset.theme === themeName) {
       btn.classList.add('theme-btn-active');
     } else {
@@ -144,7 +169,7 @@ function applyTheme(themeName) {
 }
 
 // Add event listeners to theme buttons
-elements.themeButtons.forEach(btn => {
+elements.themeButtons.forEach((btn) => {
   btn.addEventListener('click', () => {
     const themeName = btn.dataset.theme;
     applyTheme(themeName);
@@ -178,7 +203,7 @@ elements.txForm.addEventListener('submit', async (e) => {
         <p><strong>Hash:</strong> ${result.hash || 'Pending'}</p>
         ${result.id ? `<p><strong>ID:</strong> ${result.id}</p>` : ''}
         ${result.tx_blob ? `<p><strong>Blob:</strong> <code>${result.tx_blob.substring(0, 50)}...</code></p>` : ''}
-        <p class="info">✅ Transaction has been signed and submitted to the ledger</p>
+        <p class="info"> Transaction has been signed and submitted to the ledger</p>
       </div>
     `;
 

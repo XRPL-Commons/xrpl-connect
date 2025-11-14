@@ -70,8 +70,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     private updateDerivedColors() {
       const computedStyle = window.getComputedStyle(this);
-      const primaryColor =
-        computedStyle.getPropertyValue('--xc-primary-color').trim() || '#0EA5E9';
+      const primaryColor = computedStyle.getPropertyValue('--xc-primary-color').trim() || '#0EA5E9';
       const backgroundColor =
         computedStyle.getPropertyValue('--xc-background-color').trim() || '#000637';
 
@@ -112,6 +111,33 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       });
 
       this.render();
+
+      // Check for existing Xaman session after a short delay
+      this.checkXamanStateOnInit();
+    }
+
+    /**
+     * Check for existing Xaman authentication on page load
+     */
+    private async checkXamanStateOnInit() {
+      try {
+        if (this.listAdapters().includes('xaman')) {
+          const xamanAdapter: any = this.walletManager?.adapters?.get('xaman');
+
+          if (!xamanAdapter) {
+            return;
+          }
+
+          const account = await xamanAdapter.checkXamanState();
+          if (account) {
+            if (this.walletManager && !this.walletManager.connected) {
+              await this.walletManager.connect('xaman');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to check Xaman state:', err);
+      }
     }
 
     /**
@@ -128,6 +154,17 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         .split(',')
         .map((id) => id.trim())
         .filter((id) => id.length > 0);
+    }
+
+    private listAdapters(): string[] {
+      const returnArray: string[] = [];
+      if (!this.walletManager?.wallets) return returnArray;
+
+      for (const adapter of Object.values(this.walletManager.wallets)) {
+        returnArray.push(adapter.id);
+      }
+
+      return returnArray;
     }
 
     /**
@@ -387,22 +424,56 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         logger.debug('Connecting to wallet:', walletId);
 
         if (walletId === 'walletconnect') {
-          // Show QR code view first for WalletConnect
-          logger.debug('Showing QR view for', walletId);
-          this.showQRCodeView(walletId);
+          // Check if wallet adapter supports modal
+          const wcAdapter = wallet as any;
+          const useModal = wcAdapter.options?.useModal ?? false;
+          const modalMode = wcAdapter.options?.modalMode ?? 'mobile-only';
 
-          // Set up QR code callback
-          const connectOptions = {
-            ...options,
-            onQRCode: (uri: string) => {
-              logger.debug('QR code callback received:', uri.substring(0, 50) + '...');
-              this.setQRCode(walletId, uri);
-            },
-          };
+          const shouldUseModal =
+            useModal && (modalMode === 'always' || (modalMode === 'mobile-only' && isMobile()));
 
-          this.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
-          await this.walletManager.connect(walletId, connectOptions);
-          this.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
+          if (shouldUseModal) {
+            // ===== USE MODAL (Mobile deeplink mode) =====
+            logger.debug('Using WalletConnect modal (mobile deeplink mode)');
+
+            // IMPORTANT: Keep our custom modal open in the background
+            // The WalletConnect modal will appear on top, creating a layered effect
+            // This gives users the impression they're still in the connection flow
+
+            // Show loading state first (with spinning animation like Xaman)
+            this.showLoadingView(walletId, wallet.name, wallet.icon);
+
+            this.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
+
+            // Small delay to show the loading animation before WC modal appears
+            await delay(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+
+            // Connect - WalletConnect modal will open on top of our loading view
+            await this.walletManager.connect(walletId, options);
+            this.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
+
+            // Close our modal after successful connection
+            this.close();
+          } else {
+            // ===== USE CUSTOM QR (Desktop mode) =====
+            logger.debug('Using custom QR code (desktop mode)');
+
+            // Show QR code view first for WalletConnect
+            this.showQRCodeView(walletId);
+
+            // Set up QR code callback
+            const connectOptions = {
+              ...options,
+              onQRCode: (uri: string) => {
+                logger.debug('QR code callback received:', uri.substring(0, 50) + '...');
+                this.setQRCode(walletId, uri);
+              },
+            };
+
+            this.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
+            await this.walletManager.connect(walletId, connectOptions);
+            this.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
+          }
         } else {
           // For extension wallets, check availability first
           const isAvailable = await wallet.isAvailable();
@@ -769,6 +840,19 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         --font-family: var(--xc-font-family);
         --wallet-btn-bg: var(--xc-background-secondary);
         --wallet-btn-hover: var(--xc-background-tertiary);
+      }
+
+      /* WalletConnect Modal Overrides */
+      /* These styles ensure the WalletConnect modal appears correctly and matches your theme */
+      wcm-modal,
+      w3m-modal {
+        /* Ensure modal appears on top of everything */
+        --wcm-z-index: 2147483647 !important;
+        --w3m-z-index: 2147483647 !important;
+
+        /* Match your app's theme (optional) */
+        --wcm-accent-color: var(--xc-primary-color) !important;
+        --wcm-background-color: var(--xc-background-color) !important;
       }
 
       @keyframes heightChange {
