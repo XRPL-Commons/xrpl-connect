@@ -207,27 +207,9 @@ export class XamanAdapter implements WalletAdapter {
     }
 
     try {
-      // Prepare payload options with optional return URL
-      const payloadOptions: any = {};
-      if (this.options.returnUrl) {
-        // Use Xaman's {id} replacement variable to pass payload UUID via URL
-        const returnUrlWithId = this.options.returnUrl.includes('?')
-          ? `${this.options.returnUrl}&payloadId={id}`
-          : `${this.options.returnUrl}?payloadId={id}`;
-
-        payloadOptions.options = {
-          return_url: {
-            web: returnUrlWithId,
-          },
-        };
-      }
-
       // Create and subscribe to payload
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload: any = await this.client.payload?.createAndSubscribe(
-        transaction as any,
-        payloadOptions.options
-      );
+      const payload: any = await this.client.payload?.createAndSubscribe(transaction as any);
 
       if (!payload) {
         throw new Error('Failed to create payload');
