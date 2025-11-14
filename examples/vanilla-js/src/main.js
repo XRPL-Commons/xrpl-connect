@@ -6,6 +6,8 @@ import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
 import { WalletConnectorElement } from '@xrpl-connect/ui';
+import '@xrpl-connect/ui'; // Register the web component
+
 
 // Configuration - ADD YOUR API KEYS HERE
 const XAMAN_API_KEY = '15ba80a8-cba2-4789-a45b-c6a850d9d91b'; // Get from https://apps.xumm.dev/
@@ -15,7 +17,20 @@ const WALLETCONNECT_PROJECT_ID = '32798b46e13dfb0049706a524cf132d6'; // Get from
 const walletManager = new WalletManager({
   adapters: [
     new XamanAdapter({ apiKey: XAMAN_API_KEY }),
-    new WalletConnectAdapter({ projectId: WALLETCONNECT_PROJECT_ID }),
+    // WalletConnect with modal enabled for mobile deeplinks
+    new WalletConnectAdapter({
+      projectId: WALLETCONNECT_PROJECT_ID,
+      // Enable modal for mobile devices (automatic deeplinks)
+      useModal: true,
+      modalMode: 'mobile-only', // 'mobile-only' | 'always' | 'never'
+      themeMode: 'dark', // 'dark' | 'light'
+      metadata: {
+        name: 'XRPL Connect Demo',
+        description: 'Framework-agnostic wallet connection toolkit',
+        url: window.location.origin,
+        icons: ['https://xrpl.org/favicon.ico'],
+      },
+    }),
     new CrossmarkAdapter(),
     new GemWalletAdapter(),
     new LedgerAdapter(),
@@ -60,6 +75,18 @@ walletConnector.addEventListener('error', (e) => {
   logEvent('Connection Error', e.detail);
 });
 
+// Listen for Xaman transaction completion (mobile return flow)
+walletConnector.addEventListener('xaman-transaction-complete', (e) => {
+  const { signed, txid } = e.detail;
+  if (signed) {
+    showStatus(`Transaction signed successfully! TX: ${txid}`, 'success');
+    logEvent('Xaman Transaction Signed (Mobile Return)', e.detail);
+  } else {
+    showStatus('Transaction rejected by user', 'error');
+    logEvent('Xaman Transaction Rejected (Mobile Return)', e.detail);
+  }
+});
+
 // DOM Elements
 const elements = {
   status: document.getElementById('status'),
@@ -76,11 +103,82 @@ const elements = {
   msgResult: document.getElementById('msg-result'),
   eventsLog: document.getElementById('events-log'),
   clearLog: document.getElementById('clear-log'),
+  currentTheme: document.getElementById('current-theme'),
+  themeButtons: document.querySelectorAll('.theme-btn'),
 };
 
 // Note: Connection and disconnection are now handled by the web component button!
 // - Click "Connect Wallet" to open the wallet selection modal
-// - Click the button showing your address to disconnect
+// - Click the button showing your address to view account details modal
+
+// Theme switching functionality
+// Shows how to dynamically change component styling via CSS variables
+const themes = {
+  dark: {
+    '--xc-background-color': '#1a202c',
+    '--xc-background-secondary': '#2d3748',
+    '--xc-background-tertiary': '#4a5568',
+    '--xc-text-color': '#F5F4E7',
+    '--xc-text-muted-color': 'rgba(245, 244, 231, 0.6)',
+    '--xc-primary-color': '#3b99fc',
+  },
+  light: {
+    '--xc-background-color': '#ffffff',
+    '--xc-background-secondary': '#f5f5f5',
+    '--xc-background-tertiary': '#eeeeee',
+    '--xc-text-color': '#111111',
+    '--xc-text-muted-color': 'rgba(17, 17, 17, 0.6)',
+    '--xc-primary-color': '#2563eb',
+  },
+  purple: {
+    '--xc-background-color': '#1e1b4b',
+    '--xc-background-secondary': '#2d2659',
+    '--xc-background-tertiary': '#3d3261',
+    '--xc-text-color': '#f3e8ff',
+    '--xc-text-muted-color': 'rgba(243, 232, 255, 0.6)',
+    '--xc-primary-color': '#a78bfa',
+  },
+};
+
+// Map theme names to display names
+const themeDisplayNames = {
+  dark: 'Dark',
+  light: 'Light',
+  purple: 'Purple',
+};
+
+// Function to apply theme
+function applyTheme(themeName) {
+  const theme = themes[themeName];
+  if (!theme) return;
+
+  // Apply CSS variables to wallet connector component
+  Object.entries(theme).forEach(([key, value]) => {
+    walletConnector.style.setProperty(key, value);
+  });
+
+  // Update button states
+  elements.themeButtons.forEach((btn) => {
+    if (btn.dataset.theme === themeName) {
+      btn.classList.add('theme-btn-active');
+    } else {
+      btn.classList.remove('theme-btn-active');
+    }
+  });
+
+  // Update current theme display
+  elements.currentTheme.textContent = themeDisplayNames[themeName] || themeName;
+
+  logEvent('Theme Applied', { theme: themeName });
+}
+
+// Add event listeners to theme buttons
+elements.themeButtons.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const themeName = btn.dataset.theme;
+    applyTheme(themeName);
+  });
+});
 
 // Transaction Form (Sign & Submit)
 elements.txForm.addEventListener('submit', async (e) => {
@@ -109,7 +207,7 @@ elements.txForm.addEventListener('submit', async (e) => {
         <p><strong>Hash:</strong> ${result.hash || 'Pending'}</p>
         ${result.id ? `<p><strong>ID:</strong> ${result.id}</p>` : ''}
         ${result.tx_blob ? `<p><strong>Blob:</strong> <code>${result.tx_blob.substring(0, 50)}...</code></p>` : ''}
-        <p class="info">✅ Transaction has been signed and submitted to the ledger</p>
+        <p class="info"> Transaction has been signed and submitted to the ledger</p>
       </div>
     `;
 
