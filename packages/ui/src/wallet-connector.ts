@@ -70,8 +70,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     private updateDerivedColors() {
       const computedStyle = window.getComputedStyle(this);
-      const primaryColor =
-        computedStyle.getPropertyValue('--xc-primary-color').trim() || '#0EA5E9';
+      const primaryColor = computedStyle.getPropertyValue('--xc-primary-color').trim() || '#0EA5E9';
       const backgroundColor =
         computedStyle.getPropertyValue('--xc-background-color').trim() || '#000637';
 
@@ -112,6 +111,33 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       });
 
       this.render();
+
+      // Check for existing Xaman session after a short delay
+      this.checkXamanStateOnInit();
+    }
+
+    /**
+     * Check for existing Xaman authentication on page load
+     */
+    private async checkXamanStateOnInit() {
+      try {
+        if (this.listAdapters().includes('xaman')) {
+          const xamanAdapter: any = this.walletManager?.adapters?.get('xaman');
+
+          if (!xamanAdapter) {
+            return;
+          }
+
+          const account = await xamanAdapter.checkXamanState();
+          if (account) {
+            if (this.walletManager && !this.walletManager.connected) {
+              await this.walletManager.connect('xaman');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to check Xaman state:', err);
+      }
     }
 
     /**
@@ -128,6 +154,17 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         .split(',')
         .map((id) => id.trim())
         .filter((id) => id.length > 0);
+    }
+
+    private listAdapters(): string[] {
+      const returnArray: string[] = [];
+      if (!this.walletManager?.wallets) return returnArray;
+
+      for (const adapter of Object.values(this.walletManager.wallets)) {
+        returnArray.push(adapter.id);
+      }
+
+      return returnArray;
     }
 
     /**
