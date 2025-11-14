@@ -3,7 +3,7 @@
  */
 
 import { Xumm } from 'xumm';
-import type {
+import {
   WalletAdapter,
   AccountInfo,
   ConnectOptions,
@@ -11,6 +11,7 @@ import type {
   Transaction,
   SignedMessage,
   SubmittedTransaction,
+  STANDARD_NETWORKS,
 } from '@xrpl-connect/core';
 import { createWalletError, createLogger } from '@xrpl-connect/core';
 
@@ -26,6 +27,7 @@ export interface XamanAdapterOptions {
   apiKey?: string; // Xumm API key (can also be provided in connect options)
   onQRCode?: (uri: string) => void; // Callback for QR code URI
   onDeepLink?: (uri: string) => string; // Transform URI for deep linking
+  returnUrl?: string; // URL to return to after signing on mobile (appends ?payloadId=xxx). If not provided, keeps listening in background
 }
 
 /**
@@ -51,6 +53,53 @@ export class XamanAdapter implements WalletAdapter {
    */
   async isAvailable(): Promise<boolean> {
     return true;
+  }
+
+  async checkXamanState(options?: ConnectOptions): Promise<AccountInfo | null> {
+    const apiKey = options?.apiKey || this.options.apiKey;
+    let network = options?.network;
+
+    if (!apiKey) {
+      throw createWalletError.connectionFailed(
+        this.name,
+        new Error(
+          'API key is required for Xaman. Please provide it in connect options or adapter constructor.'
+        )
+      );
+    }
+
+    this.client = new Xumm(apiKey);
+    const address = await this.client.user.account;
+
+    if (!address) {
+      this.client.logout();
+      return null;
+    }
+
+    // Resolve network if not provided
+    let resolvedNetwork: NetworkInfo;
+    if (network) {
+      resolvedNetwork = this.resolveNetwork(network);
+    } else {
+      const xamanNetwork = await this.client.user.networkType;
+      if (!xamanNetwork) {
+        throw createWalletError.connectionFailed(
+          this.name,
+          new Error(
+            'Unable to determine network from Xaman. Make sure the API key and network are correct.'
+          )
+        );
+      }
+      resolvedNetwork = this.parseNetwork(xamanNetwork);
+    }
+
+    this.currentAccount = {
+      address,
+      publicKey: undefined, // Xaman doesn't expose public key
+      network: resolvedNetwork,
+    };
+
+    return this.currentAccount;
   }
 
   /**
@@ -81,32 +130,23 @@ export class XamanAdapter implements WalletAdapter {
     }
 
     try {
-      // Initialize Xumm client
       this.client = new Xumm(apiKey);
-
       logger.debug('Starting authorization flow');
 
-      // Use standard OAuth flow (opens popup)
-      /*const signInPayload: any = {
-        txjson: {
-          TransactionType: 'SignIn',
-          SignIn: 'true',
-        },
-      };
-      /*const a = await this.client.payload?.create(signInPayload, true);
-      console.log(a);*/
       const authResult = await this.client.authorize();
+      logger.debug('Authorization result:', {
+        hasResult: !!authResult,
+        isError: authResult instanceof Error,
+        hasMe: authResult && !(authResult instanceof Error) ? !!authResult.me : false,
+      });
 
       if (!authResult || authResult instanceof Error) {
         throw authResult || new Error('Authorization failed');
       }
 
-      logger.debug('Authorization successful');
+      logger.debug('Authorization successful', { account: authResult.me?.account });
 
-      // Get account info
       const account = authResult.me.account;
-
-      // Determine network from endpoint
       const network: NetworkInfo = this.parseNetwork(authResult.me.networkEndpoint || '');
 
       this.currentAccount = {
@@ -169,7 +209,7 @@ export class XamanAdapter implements WalletAdapter {
     try {
       // Create and subscribe to payload
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload = await this.client.payload?.createAndSubscribe(transaction as any);
+      const payload: any = await this.client.payload?.createAndSubscribe(transaction as any);
 
       if (!payload) {
         throw new Error('Failed to create payload');
@@ -213,7 +253,8 @@ export class XamanAdapter implements WalletAdapter {
       const messageStr = typeof message === 'string' ? message : new TextDecoder().decode(message);
 
       // Use SignIn payload type for message signing
-      const payload = await this.client.payload?.create({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: any = await this.client.payload?.create({
         TransactionType: 'SignIn',
       });
 
@@ -373,5 +414,25 @@ export class XamanAdapter implements WalletAdapter {
   private cleanup(): void {
     this.client = null;
     this.currentAccount = null;
+    // Don't clear pending payload on disconnect - it might still be needed
+  }
+
+  /**
+   * Resolve network configuration
+   */
+  private resolveNetwork(config?: ConnectOptions['network']): NetworkInfo {
+    if (!config) {
+      return STANDARD_NETWORKS.mainnet;
+    }
+
+    if (typeof config === 'string') {
+      const network = STANDARD_NETWORKS[config];
+      if (!network) {
+        throw createWalletError.unknown(`Unknown network: ${config}`);
+      }
+      return network;
+    }
+
+    return config;
   }
 }

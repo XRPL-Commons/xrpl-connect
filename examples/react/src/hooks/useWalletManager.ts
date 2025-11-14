@@ -70,11 +70,13 @@ export function useWalletManager() {
       const account = manager.account;
       const wallet = manager.wallet;
 
-      setAccountInfo({
-        address: account.address,
-        network: `${account.network.name} (${account.network.id})`,
-        walletName: wallet.name,
-      });
+      if (account && wallet) {
+        setAccountInfo({
+          address: account.address,
+          network: `${account.network.name} (${account.network.id})`,
+          walletName: wallet.name,
+        });
+      }
     } else {
       setAccountInfo(null);
     }

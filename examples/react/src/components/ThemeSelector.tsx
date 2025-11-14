@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-import type { WalletConnectorElement } from '@xrpl-connect/ui';
 import type { Theme, ThemeColors } from '../types';
 import { useWallet } from '../context/WalletContext';
 
@@ -39,13 +38,13 @@ const THEME_LABELS: Record<Theme, string> = {
 export function ThemeSelector() {
   const [currentTheme, setCurrentTheme] = useState<Theme>('dark');
   const { addEvent } = useWallet();
-  const walletConnectorRef = useRef<WalletConnectorElement | null>(null);
+  const walletConnectorRef = useRef<HTMLElement | null>(null);
 
   // Get reference to the wallet connector element
   useEffect(() => {
     walletConnectorRef.current = document.getElementById(
       'wallet-connector'
-    ) as WalletConnectorElement | null;
+    );
   }, []);
 
   const handleThemeChange = (theme: Theme) => {

@@ -1,10 +1,9 @@
 import { useEffect, useRef } from 'react';
-import type { WalletConnectorElement } from '@xrpl-connect/ui';
 import type { WalletManager } from '@xrpl-connect/core';
 import { useWallet } from '../context/WalletContext';
 
 export function useWalletConnector(walletManager: WalletManager | null) {
-  const walletConnectorRef = useRef<WalletConnectorElement | null>(null);
+  const walletConnectorRef = useRef<HTMLElement | null>(null);
   const { addEvent, showStatus } = useWallet();
 
   useEffect(() => {
@@ -19,9 +18,9 @@ export function useWalletConnector(walletManager: WalletManager | null) {
 
       if (
         walletConnectorRef.current &&
-        typeof walletConnectorRef.current.setWalletManager === 'function'
+        typeof (walletConnectorRef.current as any).setWalletManager === 'function'
       ) {
-        walletConnectorRef.current.setWalletManager(walletManager);
+        (walletConnectorRef.current as any).setWalletManager(walletManager);
 
         // Listen to connector events
         const handleConnecting = (e: any) => {

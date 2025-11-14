@@ -1,26 +1,27 @@
 {
-  "name": "@xrpl-connect/adapter-walletconnect",
+  "name": "@xrpl-connect/adapter-ledger",
   "version": "0.4.0",
-  "description": "WalletConnect adapter for XRPL Connect - QR code based wallet connections",
+  "description": "Ledger hardware wallet adapter for XRPL Connect",
   "author": "XRPL Connect Contributors",
   "license": "MIT",
   "homepage": "https://github.com/XRPL-Commons/xrpl-connect#readme",
   "repository": {
     "type": "git",
     "url": "https://github.com/XRPL-Commons/xrpl-connect",
-    "directory": "packages/adapters/walletconnect"
+    "directory": "packages/adapters/ledger"
   },
   "bugs": {
     "url": "https://github.com/XRPL-Commons/xrpl-connect/issues"
   },
   "keywords": [
     "xrpl",
-    "walletconnect",
+    "ledger",
     "wallet",
     "adapter",
     "web3",
-    "qr-code",
-    "reown"
+    "ripple",
+    "hardware-wallet",
+    "ledger-nano"
   ],
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -46,10 +47,12 @@
   },
   "dependencies": {
     "@xrpl-connect/core": "workspace:*",
-    "@walletconnect/sign-client": "^2.16.0",
-    "@walletconnect/types": "^2.16.0",
-    "@walletconnect/utils": "^2.16.0",
-    "@walletconnect/modal": "^2.7.0"
+    "@ledgerhq/hw-app-xrp": "^6.28.0",
+    "@ledgerhq/hw-transport": "^6.28.0",
+    "@ledgerhq/hw-transport-webhid": "^6.28.0",
+    "@ledgerhq/hw-transport-webusb": "^6.28.0",
+    "@ledgerhq/errors": "^6.16.0",
+    "buffer": "^6.0.3"
   },
   "peerDependencies": {
     "xrpl": "^3.0.0 || ^4.0.0"
