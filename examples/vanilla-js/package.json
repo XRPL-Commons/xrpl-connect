@@ -9,15 +9,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@xrpl-connect/core": "workspace:*",
-    "@xrpl-connect/adapter-xaman": "workspace:*",
-    "@xrpl-connect/adapter-walletconnect": "workspace:*",
     "@xrpl-connect/adapter-crossmark": "workspace:*",
     "@xrpl-connect/adapter-gemwallet": "workspace:*",
+    "@xrpl-connect/adapter-ledger": "workspace:*",
+    "@xrpl-connect/adapter-walletconnect": "workspace:*",
+    "@xrpl-connect/adapter-xaman": "workspace:*",
+    "@xrpl-connect/core": "workspace:*",
     "@xrpl-connect/ui": "workspace:*",
     "xrpl": "^4.0.0"
   },
   "devDependencies": {
-    "vite": "^7.1.7"
+    "buffer": "^6.0.3",
+    "vite": "^7.1.7",
+    "vite-plugin-node-polyfills": "^0.24.0"
   }
 }

@@ -1,13 +1,40 @@
 import { defineConfig } from 'vite';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 export default defineConfig({
+  plugins: [
+    nodePolyfills({
+      // Enable polyfills for Buffer and other Node.js globals
+      globals: {
+        Buffer: true,
+        global: true,
+        process: true,
+      },
+      // Enable polyfills for specific Node.js modules
+      protocolImports: true,
+    }),
+  ],
   server: {
-    host: '0.0.0.0', // Listen on all network interfaces
-    port: 5173,
-    allowedHosts: [
-      '2dded3b3fea8.ngrok-free.app',  // Your specific ngrok host
-      '.ngrok-free.app',               // Allow all ngrok free hosts
-      '.ngrok.io',                     // Allow all ngrok paid hosts
+    port: 5170,
+    fs: {
+      // Allow serving files from workspace packages
+      allow: ['..', '../..'],
+    },
+  },
+  optimizeDeps: {
+    // Force Vite to not pre-bundle workspace packages so changes are reflected immediately
+    exclude: [
+      '@xrpl-connect/adapter-ledger',
+      '@xrpl-connect/core',
+      '@xrpl-connect/ui',
     ],
+  },
+  build: {
+    rollupOptions: {
+      external: [
+        // Don't try to bundle polyfill shims in production build
+        /^vite-plugin-node-polyfills\//,
+      ],
+    },
   },
 });

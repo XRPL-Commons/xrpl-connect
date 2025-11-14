@@ -4,7 +4,10 @@ import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
 import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
 import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
+import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
+import { WalletConnectorElement } from '@xrpl-connect/ui';
 import '@xrpl-connect/ui'; // Register the web component
+
 
 // Configuration - ADD YOUR API KEYS HERE
 const XAMAN_API_KEY = '15ba80a8-cba2-4789-a45b-c6a850d9d91b'; // Get from https://apps.xumm.dev/
@@ -30,6 +33,7 @@ const walletManager = new WalletManager({
     }),
     new CrossmarkAdapter(),
     new GemWalletAdapter(),
+    new LedgerAdapter(),
   ],
   network: 'testnet',
   autoConnect: true,

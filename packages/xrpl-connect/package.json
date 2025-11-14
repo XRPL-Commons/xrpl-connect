@@ -20,6 +20,7 @@
     "crossmark",
     "gemwallet",
     "walletconnect",
+    "ledger",
     "wallet-adapter",
     "wallet-connection",
     "web-component",
@@ -49,20 +50,26 @@
     "clean": "rm -rf dist dist-publish"
   },
   "dependencies": {
-    "@xrpl-connect/core": "workspace:*",
-    "@xrpl-connect/ui": "workspace:*",
-    "@xrpl-connect/adapter-xaman": "workspace:*",
     "@xrpl-connect/adapter-crossmark": "workspace:*",
     "@xrpl-connect/adapter-gemwallet": "workspace:*",
-    "@xrpl-connect/adapter-walletconnect": "workspace:*"
+    "@xrpl-connect/adapter-ledger": "workspace:*",
+    "@xrpl-connect/adapter-walletconnect": "workspace:*",
+    "@xrpl-connect/adapter-xaman": "workspace:*",
+    "@xrpl-connect/core": "workspace:*",
+    "@xrpl-connect/ui": "workspace:*"
   },
   "peerDependencies": {
     "xrpl": "^3.0.0 || ^4.0.0"
   },
   "devDependencies": {
+    "@rollup/plugin-inject": "^5.0.5",
     "@types/node": "^20.14.0",
+    "buffer": "^6.0.3",
+    "global": "^4.4.0",
+    "process": "^0.11.10",
     "tsup": "^8.1.0",
     "typescript": "^5.5.0",
-    "vite": "^5.0.0"
+    "vite": "^5.0.0",
+    "vite-plugin-node-polyfills": "^0.24.0"
   }
 }

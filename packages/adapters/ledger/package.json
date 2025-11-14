@@ -1,0 +1,66 @@
+{
+  "name": "@xrpl-connect/adapter-ledger",
+  "version": "0.1.0",
+  "description": "Ledger hardware wallet adapter for XRPL Connect",
+  "author": "XRPL Connect Contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/XRPL-Commons/xrpl-connect#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/XRPL-Commons/xrpl-connect",
+    "directory": "packages/adapters/ledger"
+  },
+  "bugs": {
+    "url": "https://github.com/XRPL-Commons/xrpl-connect/issues"
+  },
+  "keywords": [
+    "xrpl",
+    "ledger",
+    "wallet",
+    "adapter",
+    "web3",
+    "ripple",
+    "hardware-wallet",
+    "ledger-nano"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@xrpl-connect/core": "workspace:*",
+    "@ledgerhq/hw-app-xrp": "^6.28.0",
+    "@ledgerhq/hw-transport": "^6.28.0",
+    "@ledgerhq/hw-transport-webhid": "^6.28.0",
+    "@ledgerhq/hw-transport-webusb": "^6.28.0",
+    "@ledgerhq/errors": "^6.16.0",
+    "buffer": "^6.0.3"
+  },
+  "peerDependencies": {
+    "xrpl": "^3.0.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsup": "^8.1.0",
+    "typescript": "^5.5.0",
+    "vitest": "^1.6.0"
+  }
+}
