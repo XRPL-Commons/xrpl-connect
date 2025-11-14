@@ -45,8 +45,8 @@ importers:
   docs:
     dependencies:
       xrpl-connect:
-        specifier: ^0.3.0
-        version: 0.3.0
+        specifier: ^0.4.0
+        version: 0.4.0
     devDependencies:
       vitepress:
         specifier: ^1.6.4
@@ -3935,8 +3935,8 @@ packages:
       utf-8-validate:
         optional: true
 
-  xrpl-connect@0.3.0:
-    resolution: {integrity: sha512-VXDPERib6qhhGGzhE+6Q4Q0z9JkS+nBd+f0scSfSHGqxpj4WcjntRWM1W2H6eYNrVn67RxwAYeEfnkiEYNtELA==}
+  xrpl-connect@0.4.0:
+    resolution: {integrity: sha512-fsHsu/QrCSgFG1cOamRM/9Z/lRwIoKg9U4vPqHr+dOd6bAo4C2Ho+BsB7V6QB7Jzj9eOULcITxeaZExtENNB0g==}
 
   xrpl-secret-numbers@0.3.5:
     resolution: {integrity: sha512-5W2Ijp4nFpplEJ4IEK8JNAnRN9+3/+8BdBQ0hOZ3bZfa/+K9c9GNdN5fHDkKoECJN3nzXNcj6/Ejg7wUQDtRnQ==}
@@ -8135,7 +8135,7 @@ snapshots:
       bufferutil: 4.0.9
       utf-8-validate: 5.0.10
 
-  xrpl-connect@0.3.0: {}
+  xrpl-connect@0.4.0: {}
 
   xrpl-secret-numbers@0.3.5(bufferutil@4.0.9)(utf-8-validate@5.0.10):
     dependencies:
