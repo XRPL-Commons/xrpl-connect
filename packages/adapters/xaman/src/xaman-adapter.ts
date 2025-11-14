@@ -130,14 +130,10 @@ export class XamanAdapter implements WalletAdapter {
     }
 
     try {
-      // Initialize Xumm client (handles both desktop popup and mobile PKCE automatically)
       this.client = new Xumm(apiKey);
-
       logger.debug('Starting authorization flow');
 
-      // Xumm SDK automatically detects mobile and uses PKCE when needed
       const authResult = await this.client.authorize();
-
       logger.debug('Authorization result:', {
         hasResult: !!authResult,
         isError: authResult instanceof Error,
@@ -150,10 +146,7 @@ export class XamanAdapter implements WalletAdapter {
 
       logger.debug('Authorization successful', { account: authResult.me?.account });
 
-      // Get account info
       const account = authResult.me.account;
-
-      // Determine network from endpoint
       const network: NetworkInfo = this.parseNetwork(authResult.me.networkEndpoint || '');
 
       this.currentAccount = {
@@ -161,16 +154,6 @@ export class XamanAdapter implements WalletAdapter {
         publicKey: undefined, // Xaman doesn't expose public key in authorize response
         network,
       };
-
-      // Clean up OAuth params from URL if present
-      const urlParams = new URLSearchParams(window.location.search);
-      if (
-        urlParams.has('authorization_code') ||
-        urlParams.has('code') ||
-        urlParams.has('access_token')
-      ) {
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
 
       return this.currentAccount;
     } catch (error) {
