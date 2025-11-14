@@ -1,6 +1,6 @@
 {
   "name": "@xrpl-connect/adapter-ledger",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "description": "Ledger hardware wallet adapter for XRPL Connect",
   "author": "XRPL Connect Contributors",
   "license": "MIT",

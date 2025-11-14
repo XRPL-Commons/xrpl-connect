@@ -20,16 +20,17 @@ export function TransactionForm() {
         Account: walletManager.account.address,
         Destination: destination,
         Amount: amount,
-      };
+      } as any;
 
       const txResult = await walletManager.signAndSubmit(transaction);
 
+      const txBlob = (txResult as any).tx_blob;
       setResult(`
         <div class="success">
           <h3>Transaction Submitted!</h3>
-          <p><strong>Hash:</strong> ${txResult.hash || 'Pending'}</p>
-          ${txResult.id ? `<p><strong>ID:</strong> ${txResult.id}</p>` : ''}
-          ${txResult.tx_blob ? `<p><strong>Blob:</strong> <code>${txResult.tx_blob.substring(0, 50)}...</code></p>` : ''}
+          <p><strong>Hash:</strong> ${(txResult as any).hash || 'Pending'}</p>
+          ${(txResult as any).id ? `<p><strong>ID:</strong> ${(txResult as any).id}</p>` : ''}
+          ${txBlob ? `<p><strong>Blob:</strong> <code>${txBlob.substring(0, 50)}...</code></p>` : ''}
           <p class="info">✅ Transaction has been signed and submitted to the ledger</p>
         </div>
       `);
