@@ -49,47 +49,20 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     connectedCallback() {
-      this.init();
-    }
+      this.render();
 
-    private async init() {
-      try {
-        console.log('INIT');
-        await new Promise((resolve) => setTimeout(resolve, 500));
+      // Update derived colors on initial load
+      requestAnimationFrame(() => this.updateDerivedColors());
 
-        if (this.listAdapters().includes('xaman')) {
-          console.log('Checking Xaman state...');
-          const xamanAdapter: any = this.walletManager?.adapters?.get('xaman');
+      // Observe style attribute changes for CSS variable updates
+      const styleObserver = new MutationObserver(() => {
+        this.updateDerivedColors();
+      });
 
-          // Check if there's an existing authenticated session
-          const account = await xamanAdapter.checkXamanState();
-          console.log('Xaman state:', account);
-
-          if (account) {
-            console.log('Found existing Xaman session, auto-connecting...');
-            // Set the account on the wallet manager to mark as connected
-            if (this.walletManager && !this.walletManager.connected) {
-              await this.walletManager.connect('xaman');
-            }
-          }
-        }
-
-        console.log('RENDERING');
-        this.render();
-
-        requestAnimationFrame(() => this.updateDerivedColors());
-        // Observe style attribute changes for CSS variable updates
-        const styleObserver = new MutationObserver(() => {
-          this.updateDerivedColors();
-        });
-
-        styleObserver.observe(this, {
-          attributes: true,
-          attributeFilter: ['style'],
-        });
-      } catch (err) {
-        console.error('Failed to check Xaman state:', err);
-      }
+      styleObserver.observe(this, {
+        attributes: true,
+        attributeFilter: ['style'],
+      });
     }
 
     /**
@@ -138,6 +111,33 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       });
 
       this.render();
+
+      // Check for existing Xaman session after a short delay
+      this.checkXamanStateOnInit();
+    }
+
+    /**
+     * Check for existing Xaman authentication on page load
+     */
+    private async checkXamanStateOnInit() {
+      try {
+        if (this.listAdapters().includes('xaman')) {
+          const xamanAdapter: any = this.walletManager?.adapters?.get('xaman');
+
+          if (!xamanAdapter) {
+            return;
+          }
+
+          const account = await xamanAdapter.checkXamanState();
+          if (account) {
+            if (this.walletManager && !this.walletManager.connected) {
+              await this.walletManager.connect('xaman');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to check Xaman state:', err);
+      }
     }
 
     /**
@@ -158,9 +158,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     private listAdapters(): string[] {
       const returnArray: string[] = [];
-      console.log(this);
-      console.log(this.walletManager);
-      console.log(this.walletManager?.wallets);
       if (!this.walletManager?.wallets) return returnArray;
 
       for (const adapter of Object.values(this.walletManager.wallets)) {
