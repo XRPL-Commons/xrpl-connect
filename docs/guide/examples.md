@@ -6,6 +6,21 @@ description: Real-world examples and pre-built theme configurations for implemen
 
 Real-world examples and pre-built theme configurations.
 
+## Live React Example
+
+We now have a comprehensive React example application that demonstrates all features of XRPL-Connect, including:
+
+- Multiple wallet adapter support (Xaman, WalletConnect, Crossmark, GemWallet, Ledger)
+- Custom React hooks for wallet management
+- Transaction and message signing
+- Dynamic theme customization
+- Real-time event logging
+- Proper TypeScript integration with web components
+
+**Check out the full example:** [`examples/react/`](https://github.com/XRPL-Commons/xrpl-connect/tree/main/examples/react)
+
+The example includes detailed setup instructions, best practices for React integration, and demonstrates how to properly handle web component lifecycle in React applications.
+
 ## Vanilla JavaScript Example
 
 Complete example with wallet connection and transaction signing:
@@ -77,12 +92,13 @@ Complete example with wallet connection and transaction signing:
   </div>
 
   <script type="module">
-    import { WalletManager,XamanAdapter,CrossmarkAdapter } from 'xrpl-connect';
+    import { WalletManager, XamanAdapter, CrossmarkAdapter, LedgerAdapter } from 'xrpl-connect';
 
     const walletManager = new WalletManager({
       adapters: [
         new XamanAdapter({ apiKey: 'YOUR_API_KEY' }),
         new CrossmarkAdapter(),
+        new LedgerAdapter(), // Hardware wallet support
       ],
       network: 'testnet',
       autoConnect: true,
@@ -153,9 +169,11 @@ Complete example with wallet connection and transaction signing:
 
 ## React Example
 
+> **Note:** For a complete, production-ready React example with all features, see the [React example application](https://github.com/XRPL-Commons/xrpl-connect/tree/main/examples/react).
+
 ```jsx
 import { useEffect, useRef, useState } from 'react';
-import { WalletManager,XamanAdapter,CrossmarkAdapter} from 'xrpl-connect';
+import { WalletManager, XamanAdapter, CrossmarkAdapter, LedgerAdapter } from 'xrpl-connect';
 
 function App() {
   const connectorRef = useRef(null);
@@ -168,6 +186,7 @@ function App() {
       adapters: [
         new XamanAdapter({ apiKey: 'YOUR_API_KEY' }),
         new CrossmarkAdapter(),
+        new LedgerAdapter(), // Hardware wallet support
       ],
       network: 'testnet',
       autoConnect: true,
@@ -263,7 +282,7 @@ export default App;
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { WalletManager,XamanAdapter,CrossmarkAdapter } from 'xrpl-connect';
+import { WalletManager, XamanAdapter, CrossmarkAdapter, LedgerAdapter } from 'xrpl-connect';
 
 const connectorRef = ref(null);
 const account = ref(null);
@@ -275,6 +294,7 @@ onMounted(() => {
     adapters: [
       new XamanAdapter({ apiKey: 'YOUR_API_KEY' }),
       new CrossmarkAdapter(),
+      new LedgerAdapter(), // Hardware wallet support
     ],
     network: 'testnet',
     autoConnect: true,
@@ -382,6 +402,95 @@ Define themes globally for consistent application-wide styling:
   --xc-text-color: #f3e8ff;
 }
 ```
+
+## Ledger Hardware Wallet Example
+
+Complete example integrating Ledger hardware wallet:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>XRPL-Connect Ledger Example</title>
+</head>
+<body>
+  <div class="container">
+    <h1>Ledger Hardware Wallet Demo</h1>
+    <xrpl-wallet-connector id="wallet-connector"></xrpl-wallet-connector>
+
+    <div id="device-status"></div>
+    <div id="account-info"></div>
+  </div>
+
+  <script type="module">
+    import { WalletManager, LedgerAdapter, LedgerDeviceState } from 'xrpl-connect';
+
+    const ledgerAdapter = new LedgerAdapter({
+      accountIndex: 0, // First account (44'/144'/0'/0/0)
+      timeout: 60000,  // 60 seconds for user to confirm
+    });
+
+    const walletManager = new WalletManager({
+      adapters: [ledgerAdapter],
+      network: 'testnet',
+    });
+
+    const connector = document.getElementById('wallet-connector');
+    connector.setWalletManager(walletManager);
+
+    // Check device status before connecting
+    const statusDiv = document.getElementById('device-status');
+
+    ledgerAdapter.getDeviceState().then(state => {
+      switch (state) {
+        case LedgerDeviceState.NOT_CONNECTED:
+          statusDiv.innerHTML = '<p>⚠️ Please connect your Ledger device via USB</p>';
+          break;
+        case LedgerDeviceState.LOCKED:
+          statusDiv.innerHTML = '<p>🔒 Please unlock your Ledger device</p>';
+          break;
+        case LedgerDeviceState.APP_NOT_OPEN:
+          statusDiv.innerHTML = '<p>📱 Please open the XRP app on your Ledger</p>';
+          break;
+        case LedgerDeviceState.READY:
+          statusDiv.innerHTML = '<p>✅ Ledger is ready to connect!</p>';
+          break;
+      }
+    });
+
+    walletManager.on('connect', (account) => {
+      document.getElementById('account-info').innerHTML = `
+        <h2>✅ Connected to Ledger</h2>
+        <p><strong>Address:</strong> ${account.address}</p>
+        <p><strong>Path:</strong> 44'/144'/0'/0/0</p>
+      `;
+    });
+
+    // Sign transaction with hardware confirmation
+    async function signTransaction() {
+      try {
+        const result = await walletManager.signAndSubmit({
+          TransactionType: 'Payment',
+          Account: walletManager.account.address,
+          Destination: 'rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT',
+          Amount: '1000000',
+        });
+        console.log('Transaction signed on device:', result.hash);
+      } catch (error) {
+        console.error('User rejected on device or error:', error);
+      }
+    }
+  </script>
+</body>
+</html>
+```
+
+**Important Notes for Ledger:**
+- Requires Chrome, Edge, or Opera browser (WebHID/WebUSB support)
+- Must be served over HTTPS (localhost is OK for development)
+- Close Ledger Live application before connecting
+- User must physically confirm transactions on the device
+- Private keys never leave the hardware device
 
 ## Common Use Cases
 
