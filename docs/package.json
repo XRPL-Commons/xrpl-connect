@@ -1,6 +1,6 @@
 {
   "name": "@xrpl-connect/docs",
-  "version": "1.0.0",
+  "version": "0.4.0",
   "private": true,
   "description": "XRPL Connect Documentation",
   "scripts": {
@@ -9,7 +9,7 @@
     "preview": "vitepress preview ."
   },
   "dependencies": {
-    "xrpl-connect": "^0.3.0"
+    "xrpl-connect": "^0.4.0"
   },
   "devDependencies": {
     "vitepress": "^1.6.4",

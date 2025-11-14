@@ -5,8 +5,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue)](https://www.typescriptlang.org/)
 
-[DOCS](https://xrpl-commons.github.io/xrpl-connect/)
-
 ## ✨ Features
 
 - **Framework Agnostic** - Works with Vanilla JS, React, Vue, and any other framework
@@ -25,18 +23,9 @@ The `xrpl-connect` package includes everything you need:
 - **UI**: Beautiful pre-built web component with QR codes and wallet selection
 - **Adapters**: All XRPL wallet adapters (Xaman, Crossmark, GemWallet, WalletConnect)
 
-### For Advanced Users (Tree-shaking)
+## Documentation
 
-If you need a smaller bundle size, individual packages are also available:
-
-| Package                                                                  | Description                 |
-| ------------------------------------------------------------------------ | --------------------------- |
-| [@xrpl-connect/core](./packages/core)                                    | Core SDK and wallet manager |
-| [@xrpl-connect/ui](./packages/ui)                                        | Web component UI            |
-| [@xrpl-connect/adapter-xaman](./packages/adapters/xaman)                 | Xaman wallet adapter        |
-| [@xrpl-connect/adapter-crossmark](./packages/adapters/crossmark)         | Crossmark wallet adapter    |
-| [@xrpl-connect/adapter-gemwallet](./packages/adapters/gemwallet)         | GemWallet adapter           |
-| [@xrpl-connect/adapter-walletconnect](./packages/adapters/walletconnect) | WalletConnect adapter       |
+Please read the documentation here [DOCS](https://xrpl-commons.github.io/xrpl-connect/) as it is way more detailed than the README.
 
 ## 🚀 Quick Start
 
@@ -164,7 +153,7 @@ pnpm dev
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](./CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+Contributions are welcome! Please read our [Contributing Guide](./docs/guide/adapter-integration.md) for details on our code of conduct and the process for submitting pull requests.
 
 ## 📄 License
 
@@ -175,6 +164,7 @@ MIT License - see the [LICENSE](./LICENSE) file for details
 Inspired by:
 
 - [RainbowKit](https://www.rainbowkit.com/) - Ethereum wallet connection
+- [ConnectKit](https://github.com/family/connectkit) - Ethereum wallet connection kit
 - [Solana Wallet Adapter](https://github.com/solana-labs/wallet-adapter) - Solana wallet standard
 
 Built for the XRPL community with ❤️
