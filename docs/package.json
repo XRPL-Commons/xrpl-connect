@@ -9,6 +9,7 @@
     "preview": "vitepress preview ."
   },
   "dependencies": {
+    "xrpl": "^4.4.2",
     "xrpl-connect": "^0.4.0"
   },
   "devDependencies": {
