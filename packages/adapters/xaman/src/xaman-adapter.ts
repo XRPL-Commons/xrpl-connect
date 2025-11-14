@@ -58,7 +58,6 @@ export class XamanAdapter implements WalletAdapter {
   async checkXamanState(options?: ConnectOptions): Promise<AccountInfo | null> {
     const apiKey = options?.apiKey || this.options.apiKey;
     let network = options?.network;
-    console.log({ apiKey, network });
 
     if (!apiKey) {
       throw createWalletError.connectionFailed(
@@ -70,11 +69,7 @@ export class XamanAdapter implements WalletAdapter {
     }
 
     this.client = new Xumm(apiKey);
-    console.log(this.client);
-
-    console.log('gettingAddress');
     const address = await this.client.user.account;
-    console.log('address: ', address);
 
     if (!address) {
       this.client.logout();
