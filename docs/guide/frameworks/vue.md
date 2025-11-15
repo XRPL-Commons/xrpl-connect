@@ -21,11 +21,12 @@ Here's a minimal Vue component using XRPL-Connect:
   <div>
     <xrpl-wallet-connector ref="connectorRef" primary-wallet="xaman" />
 
-    <div v-if="error" style="color: red; margin-top: 20px">
-      Error: {{ error }}
-    </div>
+    <div v-if="error" style="color: red; margin-top: 20px">Error: {{ error }}</div>
 
-    <div v-if="account" style="margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px">
+    <div
+      v-if="account"
+      style="margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px"
+    >
       <h3>Connected Account</h3>
       <p><strong>Address:</strong> {{ account.address }}</p>
       <p><strong>Network:</strong> {{ account.network.name }}</p>
@@ -36,7 +37,7 @@ Here's a minimal Vue component using XRPL-Connect:
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { WalletManager,XamanAdapter,CrossmarkAdapter } from 'xrpl-connect';
+import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
 
 const connectorRef = ref(null);
 const walletManager = ref(null);
@@ -46,10 +47,7 @@ const error = ref(null);
 onMounted(() => {
   // Initialize WalletManager
   const manager = new WalletManager({
-    adapters: [
-      new XamanAdapter({ apiKey: 'YOUR_API_KEY' }),
-      new CrossmarkAdapter(),
-    ],
+    adapters: [new XamanAdapter({ apiKey: 'YOUR_API_KEY' }), new CrossmarkAdapter()],
     network: 'testnet',
     autoConnect: true,
   });
@@ -198,7 +196,9 @@ import { ref } from 'vue';
 import { useWallet } from '@/composables/useWallet';
 
 const { walletManager, connected } = useWallet({
-  adapters: [/* your adapters */],
+  adapters: [
+    /* your adapters */
+  ],
 });
 
 const loading = ref(false);
@@ -326,9 +326,7 @@ Sign messages with Vue:
   <form @submit.prevent="handleSignMessage">
     <input v-model="message" placeholder="Message to sign" />
     <button type="submit">Sign Message</button>
-    <p v-if="signature" style="word-break: break-all">
-      Signature: {{ signature }}
-    </p>
+    <p v-if="signature" style="word-break: break-all">Signature: {{ signature }}</p>
   </form>
 </template>
 
@@ -337,7 +335,9 @@ import { ref } from 'vue';
 import { useWallet } from '@/composables/useWallet';
 
 const { walletManager, connected } = useWallet({
-  adapters: [/* your adapters */],
+  adapters: [
+    /* your adapters */
+  ],
 });
 
 const message = ref('');
@@ -366,7 +366,9 @@ import { watch } from 'vue';
 import { useWallet } from '@/composables/useWallet';
 
 const { account, connected, error } = useWallet({
-  adapters: [/* your adapters */],
+  adapters: [
+    /* your adapters */
+  ],
 });
 
 // Watch for connection changes
@@ -437,7 +439,9 @@ import { computed } from 'vue';
 import { useWallet } from '@/composables/useWallet';
 
 const { account, walletManager } = useWallet({
-  adapters: [/* your adapters */],
+  adapters: [
+    /* your adapters */
+  ],
 });
 
 const shortAddress = computed(() => {

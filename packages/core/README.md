@@ -29,14 +29,11 @@ import { WalletManager } from '@xrpl-connect/core';
 import { XamanAdapter, CrossmarkAdapter } from '@xrpl-connect/adapters';
 
 const walletManager = new WalletManager({
-  adapters: [
-    new XamanAdapter({ apiKey: 'YOUR_API_KEY' }),
-    new CrossmarkAdapter()
-  ],
+  adapters: [new XamanAdapter({ apiKey: 'YOUR_API_KEY' }), new CrossmarkAdapter()],
   network: 'mainnet',
   autoConnect: true,
   storage: new LocalStorageAdapter(),
-  logger: { level: 'debug' }
+  logger: { level: 'debug' },
 });
 ```
 
@@ -44,15 +41,15 @@ const walletManager = new WalletManager({
 
 ```typescript
 interface WalletManagerOptions {
-  adapters: WalletAdapter[];              // Array of wallet adapters to register
-  network?: NetworkConfig | string;       // Default network ('mainnet', 'testnet', 'devnet')
-  autoConnect?: boolean;                  // Attempt to reconnect from stored state
-  storage?: StorageAdapter;               // Custom storage implementation (defaults to LocalStorageAdapter)
-  logger?: LoggerOptions;                 // Logging configuration
+  adapters: WalletAdapter[]; // Array of wallet adapters to register
+  network?: NetworkConfig | string; // Default network ('mainnet', 'testnet', 'devnet')
+  autoConnect?: boolean; // Attempt to reconnect from stored state
+  storage?: StorageAdapter; // Custom storage implementation (defaults to LocalStorageAdapter)
+  logger?: LoggerOptions; // Logging configuration
 }
 
 interface LoggerOptions {
-  level?: 'debug' | 'info' | 'warn' | 'error' | 'none';  // Log level (default: 'info')
+  level?: 'debug' | 'info' | 'warn' | 'error' | 'none'; // Log level (default: 'info')
 }
 ```
 
@@ -67,6 +64,7 @@ interface LoggerOptions {
 Initiates connection to a specific wallet adapter.
 
 **Parameters**:
+
 - `walletId` (string): The ID of the wallet to connect (e.g., 'xaman', 'crossmark', 'gemwallet', 'walletconnect')
 - `options` (optional): Wallet-specific options (e.g., `{ apiKey: 'key' }` for Xaman)
 
@@ -75,10 +73,11 @@ Initiates connection to a specific wallet adapter.
 **Throws**: `WalletError` with specific error codes on failure
 
 **Example**:
+
 ```typescript
 try {
   const account = await walletManager.connect('xaman', {
-    apiKey: process.env.XUMM_API_KEY
+    apiKey: process.env.XUMM_API_KEY,
   });
   console.log('Connected to:', account.address);
 } catch (error) {
@@ -95,6 +94,7 @@ try {
 Disconnects from the currently connected wallet and clears stored connection state.
 
 **Example**:
+
 ```typescript
 await walletManager.disconnect();
 console.log('Disconnected');
@@ -113,6 +113,7 @@ Reconnects to the previously connected wallet using stored state.
 **Throws**: `WalletError` if reconnection fails or no previous connection exists
 
 **Example**:
+
 ```typescript
 const account = await walletManager.reconnect();
 ```
@@ -128,10 +129,12 @@ const account = await walletManager.reconnect();
 Signs a transaction and optionally submits it to the network.
 
 **Parameters**:
+
 - `transaction` (Transaction): An XRPL transaction object
 - `submit` (boolean, optional): If `true`, automatically submit after signing. Default: `false`
 
 **Returns**:
+
 - `SignedTransaction` if `submit=false` (contains `tx_blob`, `signature`, etc.)
 - `SubmittedTransaction` if `submit=true` (contains `hash`, `id`, etc.)
 
@@ -140,6 +143,7 @@ Signs a transaction and optionally submits it to the network.
 **Requires**: Active connection (`walletManager.connected === true`)
 
 **Example**:
+
 ```typescript
 const txn = {
   TransactionType: 'Payment',
@@ -147,7 +151,7 @@ const txn = {
   Destination: 'rN7n7otQDd6FczFgLdkqsL...',
   Amount: '1000000',
   Fee: '12',
-  Sequence: 1
+  Sequence: 1,
 };
 
 // Sign only
@@ -168,6 +172,7 @@ console.log('Transaction hash:', submitted.hash);
 Signs an arbitrary message (not a transaction).
 
 **Parameters**:
+
 - `message` (string | Uint8Array): The message to sign
 
 **Returns**: `SignedMessage` containing the signature, message, and public key
@@ -175,6 +180,7 @@ Signs an arbitrary message (not a transaction).
 **Throws**: `WalletError` with `SIGN_FAILED` or `SIGN_REJECTED` error codes
 
 **Example**:
+
 ```typescript
 const message = 'Sign this message to authenticate';
 const signed = await walletManager.signMessage(message);
@@ -193,9 +199,10 @@ Returns a filtered list of available (installed/accessible) wallets.
 **Returns**: Array of `WalletAdapter` objects whose `isAvailable()` method returns `true`
 
 **Example**:
+
 ```typescript
 const available = await walletManager.getAvailableWallets();
-available.forEach(wallet => {
+available.forEach((wallet) => {
   console.log(`${wallet.name} (${wallet.id})`);
 });
 ```
@@ -225,15 +232,17 @@ if (walletManager.connected) {
 The current connected account, or `null` if disconnected.
 
 **Type**:
+
 ```typescript
 interface AccountInfo {
-  address: string;              // XRPL address (format: rXXXXXXXXXXXXXXXXXXXXXXX)
-  publicKey?: string;           // Optional: account public key
-  network: NetworkInfo;         // Connected network details
+  address: string; // XRPL address (format: rXXXXXXXXXXXXXXXXXXXXXXX)
+  publicKey?: string; // Optional: account public key
+  network: NetworkInfo; // Connected network details
 }
 ```
 
 **Example**:
+
 ```typescript
 if (walletManager.account) {
   console.log('Connected to:', walletManager.account.address);
@@ -260,7 +269,7 @@ if (walletManager.wallet) {
 All registered adapters (both available and unavailable).
 
 ```typescript
-walletManager.wallets.forEach(adapter => {
+walletManager.wallets.forEach((adapter) => {
   console.log(`${adapter.name} - Available: ${adapter.isAvailable()}`);
 });
 ```
@@ -349,12 +358,12 @@ walletManager.on('error', (error: WalletError) => {
 
 ```typescript
 interface NetworkInfo {
-  id: string;                   // Unique network identifier ('mainnet', 'testnet', 'devnet', custom ID)
-  name: string;                 // Display name (e.g., 'Mainnet')
-  wss: string;                  // WebSocket endpoint URL
-  rpc?: string;                 // Optional HTTP RPC endpoint
-  walletConnectId?: string;     // Optional WalletConnect network ID (e.g., 'xrpl:0')
-  chainId?: number;             // Optional chain ID
+  id: string; // Unique network identifier ('mainnet', 'testnet', 'devnet', custom ID)
+  name: string; // Display name (e.g., 'Mainnet')
+  wss: string; // WebSocket endpoint URL
+  rpc?: string; // Optional HTTP RPC endpoint
+  walletConnectId?: string; // Optional WalletConnect network ID (e.g., 'xrpl:0')
+  chainId?: number; // Optional chain ID
 }
 ```
 
@@ -368,10 +377,10 @@ Result from `signAndSubmit(txn, false)`:
 
 ```typescript
 interface SignedTransaction {
-  hash: string;                 // Transaction hash
-  tx_blob?: string;             // Signed transaction blob
-  signature?: string;           // Transaction signature
-  [key: string]: unknown;       // Additional wallet-specific fields
+  hash: string; // Transaction hash
+  tx_blob?: string; // Signed transaction blob
+  signature?: string; // Transaction signature
+  [key: string]: unknown; // Additional wallet-specific fields
 }
 ```
 
@@ -383,9 +392,9 @@ Result from `signAndSubmit(txn, true)`:
 
 ```typescript
 interface SubmittedTransaction {
-  hash: string;                 // Transaction hash
-  id?: string;                  // Optional transaction ID
-  [key: string]: unknown;       // Additional submission response data
+  hash: string; // Transaction hash
+  id?: string; // Optional transaction ID
+  [key: string]: unknown; // Additional submission response data
 }
 ```
 
@@ -397,9 +406,9 @@ Result from `signMessage()`:
 
 ```typescript
 interface SignedMessage {
-  message: string;              // Original message
-  signature: string;            // Signature hex string
-  publicKey: string;            // Public key of signing account
+  message: string; // Original message
+  signature: string; // Signature hex string
+  publicKey: string; // Public key of signing account
 }
 ```
 
@@ -413,9 +422,9 @@ All errors thrown by WalletManager are instances of `WalletError`.
 
 ```typescript
 class WalletError extends Error {
-  code: WalletErrorCode;        // Specific error code
-  walletId?: string;            // ID of the wallet where error occurred
-  originalError?: Error;        // Original error from adapter/wallet
+  code: WalletErrorCode; // Specific error code
+  walletId?: string; // ID of the wallet where error occurred
+  originalError?: Error; // Original error from adapter/wallet
 }
 
 enum WalletErrorCode {
@@ -431,7 +440,7 @@ enum WalletErrorCode {
   NOT_CONNECTED = 'NOT_CONNECTED',
   ALREADY_CONNECTED = 'ALREADY_CONNECTED',
   UNSUPPORTED_METHOD = 'UNSUPPORTED_METHOD',
-  UNKNOWN_ERROR = 'UNKNOWN_ERROR'
+  UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
 ```
 
@@ -551,6 +560,7 @@ const manager = new WalletManager({
 ```
 
 **Log Levels**:
+
 - `debug`: Verbose output, including adapter calls
 - `info`: General information messages
 - `warn`: Warning messages
@@ -583,6 +593,7 @@ const devnetManager = new WalletManager({
 ```
 
 **Available Networks**:
+
 - `mainnet`: Production XRPL network
 - `testnet`: XRP Ledger testnet
 - `devnet`: XRP Ledger devnet
@@ -667,12 +678,9 @@ import { WalletManager, STANDARD_NETWORKS } from '@xrpl-connect/core';
 import { XamanAdapter, CrossmarkAdapter } from '@xrpl-connect/adapters';
 
 const walletManager = new WalletManager({
-  adapters: [
-    new XamanAdapter({ apiKey: process.env.XUMM_API_KEY }),
-    new CrossmarkAdapter()
-  ],
+  adapters: [new XamanAdapter({ apiKey: process.env.XUMM_API_KEY }), new CrossmarkAdapter()],
   network: STANDARD_NETWORKS.mainnet,
-  autoConnect: true
+  autoConnect: true,
 });
 ```
 
@@ -681,7 +689,7 @@ const walletManager = new WalletManager({
 ```typescript
 try {
   const account = await walletManager.connect('xaman', {
-    apiKey: process.env.XUMM_API_KEY
+    apiKey: process.env.XUMM_API_KEY,
   });
   console.log('Connected:', account.address);
 } catch (error) {
@@ -698,7 +706,7 @@ const txn = {
   Destination: 'rN7n7...',
   Amount: '1000000',
   Fee: '12',
-  Sequence: 1
+  Sequence: 1,
 };
 
 try {

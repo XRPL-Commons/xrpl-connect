@@ -42,9 +42,7 @@ export function ThemeSelector() {
 
   // Get reference to the wallet connector element
   useEffect(() => {
-    walletConnectorRef.current = document.getElementById(
-      'wallet-connector'
-    );
+    walletConnectorRef.current = document.getElementById('wallet-connector');
   }, []);
 
   const handleThemeChange = (theme: Theme) => {
@@ -87,9 +85,8 @@ export function ThemeSelector() {
           </span>
         </p>
         <p className="theme-description">
-          CSS variables are applied dynamically to the{' '}
-          <code>&lt;xrpl-wallet-connector&gt;</code> component. Try switching themes while
-          the modal is open!
+          CSS variables are applied dynamically to the <code>&lt;xrpl-wallet-connector&gt;</code>{' '}
+          component. Try switching themes while the modal is open!
         </p>
       </div>
     </section>

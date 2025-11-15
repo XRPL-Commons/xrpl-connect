@@ -39,12 +39,14 @@ export function WalletConnector() {
     <xrpl-wallet-connector
       ref={walletConnectorRef}
       id="wallet-connector"
-      style={{
-        ...THEMES[currentTheme],
-        '--xc-font-family': 'inherit',
-        '--xc-border-radius': '12px',
-        '--xc-modal-box-shadow': '0 10px 40px rgba(0, 0, 0, 0.3)',
-      } as any}
+      style={
+        {
+          ...THEMES[currentTheme],
+          '--xc-font-family': 'inherit',
+          '--xc-border-radius': '12px',
+          '--xc-modal-box-shadow': '0 10px 40px rgba(0, 0, 0, 0.3)',
+        } as any
+      }
       primary-wallet="xaman"
     />
   );

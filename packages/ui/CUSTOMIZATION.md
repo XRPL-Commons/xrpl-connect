@@ -31,7 +31,7 @@ Core color variables used throughout the component.
 ```css
 xrpl-wallet-connector {
   /* Primary accent color (used for highlights, important elements) */
-  --xc-primary-color: #0EA5E9;
+  --xc-primary-color: #0ea5e9;
 
   /* Background colors */
   --xc-background-color: #000637;
@@ -39,14 +39,14 @@ xrpl-wallet-connector {
   --xc-background-tertiary: #242452;
 
   /* Text colors */
-  --xc-text-color: #F5F4E7;
+  --xc-text-color: #f5f4e7;
   --xc-text-muted-color: rgba(245, 244, 231, 0.6);
 
   /* Status colors */
-  --xc-danger-color: #ef4444;      /* For destructive actions */
-  --xc-success-color: #10b981;     /* For success states */
-  --xc-warning-color: #f59e0b;     /* For warnings */
-  --xc-focus-color: #0EA5E9;       /* For focused elements */
+  --xc-danger-color: #ef4444; /* For destructive actions */
+  --xc-success-color: #10b981; /* For success states */
+  --xc-warning-color: #f59e0b; /* For warnings */
+  --xc-focus-color: #0ea5e9; /* For focused elements */
 }
 ```
 
@@ -62,7 +62,7 @@ xrpl-wallet-connector {
   --xc-connect-button-font-weight: 600;
 
   /* Default state */
-  --xc-connect-button-color: #F5F4E7;
+  --xc-connect-button-color: #f5f4e7;
   --xc-connect-button-background: #000637;
   --xc-connect-button-border: 1px solid rgba(255, 255, 255, 0.1);
 
@@ -83,10 +83,10 @@ xrpl-wallet-connector {
 
   /* Default state */
   --xc-primary-button-color: #ffffff;
-  --xc-primary-button-background: #0EA5E9;
+  --xc-primary-button-background: #0ea5e9;
 
   /* Hover state (automatically calculated as darker shade of primary color) */
-  --xc-primary-button-hover-background: #0284C7;
+  --xc-primary-button-hover-background: #0284c7;
 }
 ```
 
@@ -103,7 +103,7 @@ xrpl-wallet-connector {
   --xc-secondary-button-font-weight: 500;
 
   /* Default state */
-  --xc-secondary-button-color: #F5F4E7;
+  --xc-secondary-button-color: #f5f4e7;
   --xc-secondary-button-background: #1a1a3e;
 
   /* Hover state */
@@ -123,7 +123,7 @@ xrpl-wallet-connector {
   --xc-connect-button-font-weight: 600;
 
   /* Default state */
-  --xc-connect-button-color: #F5F4E7;
+  --xc-connect-button-color: #f5f4e7;
   --xc-connect-button-background: #000637;
   --xc-connect-button-border: 1px solid rgba(255, 255, 255, 0.1);
 
@@ -141,7 +141,7 @@ Style the account address button shown in the account details modal.
 ```css
 xrpl-wallet-connector {
   /* Hover state color (automatically calculated as lighter shade of primary color) */
-  --xc-account-address-button-hover-color: #0EA5E9;
+  --xc-account-address-button-hover-color: #0ea5e9;
 }
 ```
 
@@ -154,7 +154,7 @@ Customize the loading spinner appearance.
 ```css
 xrpl-wallet-connector {
   /* Loading spinner border color */
-  --xc-loading-border-color: #0EA5E9;
+  --xc-loading-border-color: #0ea5e9;
 }
 ```
 
@@ -238,7 +238,7 @@ Define variables globally in your CSS file for consistent theming across your ap
 ```css
 :root {
   /* General */
-  --xc-font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  --xc-font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   --xc-border-radius: 10px;
 
   /* Colors */
@@ -299,8 +299,8 @@ Child elements inherit CSS variables from the parent, allowing for powerful them
 ```css
 /* All components on the page inherit these variables */
 body {
-  --xc-primary-color: #0EA5E9;
-  --xc-font-family: "Helvetica Neue", Arial, sans-serif;
+  --xc-primary-color: #0ea5e9;
+  --xc-font-family: 'Helvetica Neue', Arial, sans-serif;
 }
 
 /* Override for a specific section */
@@ -328,6 +328,7 @@ body {
 ## Accessibility Considerations
 
 When customizing colors, ensure:
+
 - Text color has sufficient contrast against backgrounds (WCAG AA: 4.5:1 for normal text)
 - Status colors (danger, success, warning) are not the only way to convey information
 - Focus colors are clearly visible (use `--xc-focus-color` for proper focus states)

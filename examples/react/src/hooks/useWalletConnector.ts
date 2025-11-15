@@ -14,7 +14,7 @@ export function useWalletConnector(walletManager: WalletManager | null) {
       await customElements.whenDefined('xrpl-wallet-connector');
 
       // Small delay to ensure the element is fully initialized
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       if (
         walletConnectorRef.current &&

@@ -25,7 +25,7 @@ The **WalletManager** is the central orchestrator of XRPL-Connect. It manages wa
 const walletManager = new WalletManager({
   adapters: [new XamanAdapter({ apiKey: 'YOUR_API_KEY' })],
   network: 'testnet',
-  autoConnect: true,  // Auto-reconnect to previous session
+  autoConnect: true, // Auto-reconnect to previous session
 });
 
 // 2. Listen to events
@@ -42,12 +42,12 @@ await walletManager.disconnect();
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `connected` | `boolean` | Whether a wallet is currently connected |
-| `account` | `Account \| null` | Currently connected account info |
-| `wallet` | `Wallet \| null` | Currently connected wallet adapter |
-| `adapters` | `WalletAdapter[]` | Array of available wallet adapters |
+| Property    | Type              | Description                             |
+| ----------- | ----------------- | --------------------------------------- |
+| `connected` | `boolean`         | Whether a wallet is currently connected |
+| `account`   | `Account \| null` | Currently connected account info        |
+| `wallet`    | `Wallet \| null`  | Currently connected wallet adapter      |
+| `adapters`  | `WalletAdapter[]` | Array of available wallet adapters      |
 
 ### Key Methods
 
@@ -70,6 +70,7 @@ Your App → WalletManager → Adapter → Wallet (Xaman/Crossmark/etc)
 ```
 
 The adapter handles:
+
 - **Wallet detection** - Checking if the wallet is installed/available
 - **Connection** - Initiating connection to the wallet
 - **Communication** - Sending requests to the wallet and receiving responses
@@ -79,20 +80,22 @@ The adapter handles:
 ### Built-in Adapters
 
 #### Xaman Adapter
+
 Connect to Xaman (formerly Xumm) - the most popular XRPL wallet.
 
 ```javascript
 import { XamanAdapter } from 'xrpl-connect';
 
 const adapter = new XamanAdapter({
-  apiKey: 'YOUR_API_KEY',        // Get from https://apps.xumm.dev
-  apiSecret: 'YOUR_API_SECRET',  // Optional
+  apiKey: 'YOUR_API_KEY', // Get from https://apps.xumm.dev
+  apiSecret: 'YOUR_API_SECRET', // Optional
 });
 ```
 
 **Features:** Transaction signing, message signing, QR codes, push notifications
 
 #### Crossmark Adapter
+
 Connect to Crossmark - a secure browser extension for XRPL.
 
 ```javascript
@@ -104,6 +107,7 @@ const adapter = new CrossmarkAdapter();
 **Features:** Transaction signing, message signing, no API keys required
 
 #### GemWallet Adapter
+
 Connect to GemWallet - a privacy-focused XRPL wallet.
 
 ```javascript
@@ -115,13 +119,14 @@ const adapter = new GemWalletAdapter();
 **Features:** Transaction signing, message signing, no API keys required
 
 #### WalletConnect Adapter
+
 Connect to any wallet using the WalletConnect protocol. Great for mobile wallets.
 
 ```javascript
 import { WalletConnectAdapter } from 'xrpl-connect';
 
 const adapter = new WalletConnectAdapter({
-  projectId: 'YOUR_PROJECT_ID',  // Get from https://cloud.walletconnect.com
+  projectId: 'YOUR_PROJECT_ID', // Get from https://cloud.walletconnect.com
 });
 ```
 
@@ -216,10 +221,10 @@ Use CSS variables to customize the component's appearance:
 
 ### Attributes
 
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `primary-wallet` | string | Wallet to feature first in the list (e.g., "xaman") |
-| `wallets` | string | Comma-separated list of wallet IDs to show (e.g., "xaman,crossmark") |
+| Attribute        | Type   | Description                                                          |
+| ---------------- | ------ | -------------------------------------------------------------------- |
+| `primary-wallet` | string | Wallet to feature first in the list (e.g., "xaman")                  |
+| `wallets`        | string | Comma-separated list of wallet IDs to show (e.g., "xaman,crossmark") |
 
 ## How They Work Together
 
