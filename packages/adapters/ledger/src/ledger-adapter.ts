@@ -393,11 +393,7 @@ export class LedgerAdapter implements WalletAdapter {
     }
 
     if (browserSupport.webUSB) {
-      try {
-        return await TransportWebUSB.create();
-      } catch (error) {
-        throw error;
-      }
+      return await TransportWebUSB.create();
     }
 
     if (!this.preferWebHID && browserSupport.webUSB) {
