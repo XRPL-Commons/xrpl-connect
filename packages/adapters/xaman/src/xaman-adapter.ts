@@ -30,6 +30,10 @@ export interface XamanAdapterOptions {
   returnUrl?: string; // URL to return to after signing on mobile (appends ?payloadId=xxx). If not provided, keeps listening in background
 }
 
+export type XamanConnectOptions = {
+  apiKey?: string;
+}
+
 /**
  * Xaman wallet adapter implementation
  */
@@ -55,7 +59,7 @@ export class XamanAdapter implements WalletAdapter {
     return true;
   }
 
-  async checkXamanState(options?: ConnectOptions): Promise<AccountInfo | null> {
+  async checkXamanState(options?: ConnectOptions<XamanConnectOptions>): Promise<AccountInfo | null> {
     const apiKey = options?.apiKey || this.options.apiKey;
     let network = options?.network;
 
@@ -105,7 +109,7 @@ export class XamanAdapter implements WalletAdapter {
   /**
    * Connect to Xaman wallet
    */
-  async connect(options?: ConnectOptions): Promise<AccountInfo> {
+  async connect(options?: ConnectOptions<XamanConnectOptions>): Promise<AccountInfo> {
     const apiKey = options?.apiKey || this.options.apiKey;
 
     if (!apiKey) {
