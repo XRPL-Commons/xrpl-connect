@@ -19,7 +19,10 @@ export default defineConfig({
       '@xrpl-connect/adapter-xaman': resolve(__dirname, '../adapters/xaman/src/index.ts'),
       '@xrpl-connect/adapter-crossmark': resolve(__dirname, '../adapters/crossmark/src/index.ts'),
       '@xrpl-connect/adapter-gemwallet': resolve(__dirname, '../adapters/gemwallet/src/index.ts'),
-      '@xrpl-connect/adapter-walletconnect': resolve(__dirname, '../adapters/walletconnect/src/index.ts'),
+      '@xrpl-connect/adapter-walletconnect': resolve(
+        __dirname,
+        '../adapters/walletconnect/src/index.ts'
+      ),
     },
   },
   build: {

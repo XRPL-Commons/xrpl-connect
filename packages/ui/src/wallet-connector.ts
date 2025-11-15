@@ -26,9 +26,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private primaryWalletId: string | null = null;
     private viewState: 'list' | 'qr' | 'loading' | 'error' | 'account-selection' = 'list';
     private qrCodeData: { walletId: string; uri: string } | null = null;
-    private loadingData: { walletId: string; walletName: string; walletIcon?: string } | null = null;
+    private loadingData: { walletId: string; walletName: string; walletIcon?: string } | null =
+      null;
     private errorData: { walletId: string; walletName: string; error: Error } | null = null;
-    private accountSelectionData: { walletId: string; walletName: string; walletIcon?: string; accounts: Array<{ address: string; publicKey: string; path: string; index: number }> } | null = null;
+    private accountSelectionData: {
+      walletId: string;
+      walletName: string;
+      walletIcon?: string;
+      accounts: Array<{ address: string; publicKey: string; path: string; index: number }>;
+    } | null = null;
     private previousModalHeight: number = 0;
     private preGeneratedQRCode: any | null = null; // Store pre-generated QR code
     private preGeneratedURI: string | null = null; // Store the URI used for pre-generation
@@ -480,7 +486,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           const isAvailable = await wallet.isAvailable();
 
           if (!isAvailable) {
-            throw new Error(`${wallet.name} is not supported in this browser. Please use Chrome, Edge, or Opera.`);
+            throw new Error(
+              `${wallet.name} is not supported in this browser. Please use Chrome, Edge, or Opera.`
+            );
           }
 
           // Show loading while fetching accounts
@@ -582,7 +590,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         let errorMessage = error.message || 'An unexpected error occurred';
         let errorType: 'rejected' | 'unavailable' | 'failed' = 'failed';
 
-        if (error.code === ERROR_CODES.USER_REJECTED || errorMessage.toLowerCase().includes('user rejected')) {
+        if (
+          error.code === ERROR_CODES.USER_REJECTED ||
+          errorMessage.toLowerCase().includes('user rejected')
+        ) {
           errorType = 'rejected';
           errorMessage = 'Connection request was cancelled';
         }
@@ -606,7 +617,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         // Validate derivation path format
         const pathRegex = /^44'\/144'\/\d+'\/\d+\/\d+$/;
         if (!pathRegex.test(derivationPath)) {
-          throw new Error('Invalid derivation path format. Expected format: 44\'/144\'/0\'/0/0');
+          throw new Error("Invalid derivation path format. Expected format: 44'/144'/0'/0/0");
         }
 
         // Show loading state
@@ -629,7 +640,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         let errorMessage = error.message || 'An unexpected error occurred';
         let errorType: 'rejected' | 'unavailable' | 'failed' = 'failed';
 
-        if (error.code === ERROR_CODES.USER_REJECTED || errorMessage.toLowerCase().includes('user rejected')) {
+        if (
+          error.code === ERROR_CODES.USER_REJECTED ||
+          errorMessage.toLowerCase().includes('user rejected')
+        ) {
           errorType = 'rejected';
           errorMessage = 'Connection request was cancelled';
         }
@@ -692,7 +706,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     /**
      * Show account selection view
      */
-    private showAccountSelectionView(walletId: string, walletName: string, walletIcon: string | undefined, accounts: Array<{ address: string; publicKey: string; path: string; index: number }>) {
+    private showAccountSelectionView(
+      walletId: string,
+      walletName: string,
+      walletIcon: string | undefined,
+      accounts: Array<{ address: string; publicKey: string; path: string; index: number }>
+    ) {
       this.viewState = 'account-selection';
       this.accountSelectionData = { walletId, walletName, walletIcon, accounts };
       this.qrCodeData = null;
@@ -1999,11 +2018,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       <div class="content">
         <div class="account-selection-view">
-          ${walletIcon ? `
+          ${
+            walletIcon
+              ? `
           <div class="account-selection-wallet-icon">
             <img src="${walletIcon}" alt="${walletName}" class="wallet-icon-small">
           </div>
-          ` : ''}
+          `
+              : ''
+          }
           <p class="account-selection-description">Select which account to connect from your ${walletName}</p>
           <div class="account-list">
             ${accountButtons}
