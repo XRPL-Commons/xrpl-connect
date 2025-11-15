@@ -62,6 +62,7 @@ export interface WalletConnectAdapterOptions {
 
 export type WalletConnectConnectOptions = {
   projectId?: string;
+  onQRCode?: (uri: string) => void;
 }
 
 /**
@@ -226,7 +227,7 @@ export class WalletConnectAdapter implements WalletAdapter {
     }
 
     // Merge runtime options with constructor options (runtime takes precedence)
-    const onQRCode = (options as any)?.onQRCode || this.options.onQRCode;
+    const onQRCode = options?.onQRCode || this.options.onQRCode;
     const useModal = this.options.useModal ?? false;
     const modalMode = this.options.modalMode ?? 'mobile-only';
 
