@@ -60,6 +60,11 @@ export interface WalletConnectAdapterOptions {
   themeMode?: 'dark' | 'light'; // Modal theme (default: 'dark')
 }
 
+export type WalletConnectConnectOptions = {
+  projectId?: string;
+  onQRCode?: (uri: string) => void;
+}
+
 /**
  * WalletConnect adapter implementation using Sign Client v2
  */
@@ -209,7 +214,7 @@ export class WalletConnectAdapter implements WalletAdapter {
   /**
    * Connect to WalletConnect
    */
-  async connect(options?: ConnectOptions): Promise<AccountInfo> {
+  async connect(options?: ConnectOptions<WalletConnectConnectOptions>): Promise<AccountInfo> {
     const projectId = options?.projectId || this.options.projectId;
 
     if (!projectId) {
@@ -222,7 +227,7 @@ export class WalletConnectAdapter implements WalletAdapter {
     }
 
     // Merge runtime options with constructor options (runtime takes precedence)
-    const onQRCode = (options as any)?.onQRCode || this.options.onQRCode;
+    const onQRCode = options?.onQRCode || this.options.onQRCode;
     const useModal = this.options.useModal ?? false;
     const modalMode = this.options.modalMode ?? 'mobile-only';
 

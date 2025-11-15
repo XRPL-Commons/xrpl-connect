@@ -33,6 +33,11 @@ export interface LedgerAdapterOptions {
   preferWebHID?: boolean;
 }
 
+export type LedgerConnectOptions = {
+  derivationPath?: string;
+  accountIndex?: number;
+}
+
 /**
  * Ledger device connection states
  */

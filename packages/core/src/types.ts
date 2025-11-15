@@ -92,13 +92,10 @@ export interface SubmittedTransaction {
 /**
  * Options for connecting to a wallet
  */
-export interface ConnectOptions {
+export type ConnectOptions<WalletSpecificOptions extends Record<string, unknown> = {}> = {
   network?: NetworkConfig; // Preferred network
-  projectId?: string; // For WalletConnect
-  apiKey?: string; // For Xaman
   autoReconnect?: boolean; // Auto-reconnect on page load
-  [key: string]: unknown; // Allow additional wallet-specific options
-}
+} & WalletSpecificOptions;
 
 /**
  * Events that adapters can emit
