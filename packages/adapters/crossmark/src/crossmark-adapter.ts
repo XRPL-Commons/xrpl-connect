@@ -17,6 +17,7 @@ import { createWalletError, STANDARD_NETWORKS } from '@xrpl-connect/core';
 /**
  * Crossmark adapter options
  */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface CrossmarkAdapterOptions {
   // Currently no specific options needed for Crossmark
 }
