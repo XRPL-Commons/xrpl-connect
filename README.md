@@ -3,6 +3,7 @@
 > A framework-agnostic wallet connection toolkit for the XRP Ledger
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![npm version](https://img.shields.io/npm/v/xrpl-connect.svg)](https://www.npmjs.com/package/xrpl-connect)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue)](https://www.typescriptlang.org/)
 
 ## ✨ Features
