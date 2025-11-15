@@ -1,5 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { useWallet } from '../context/WalletContext';
+import { Transaction } from '@xrpl-connect/core';
 
 export function TransactionForm() {
   const { walletManager, isConnected, addEvent } = useWallet();
@@ -15,21 +16,21 @@ export function TransactionForm() {
     try {
       setResult('<div class="loading">Signing and submitting transaction...</div>');
 
-      const transaction = {
+      const transaction: Transaction = {
         TransactionType: 'Payment',
         Account: walletManager.account.address,
         Destination: destination,
         Amount: amount,
-      } as any;
+      };
 
       const txResult = await walletManager.signAndSubmit(transaction);
 
-      const txBlob = (txResult as any).tx_blob;
+      const txBlob = txResult.tx_blob as string | undefined;
       setResult(`
         <div class="success">
           <h3>Transaction Submitted!</h3>
-          <p><strong>Hash:</strong> ${(txResult as any).hash || 'Pending'}</p>
-          ${(txResult as any).id ? `<p><strong>ID:</strong> ${(txResult as any).id}</p>` : ''}
+          <p><strong>Hash:</strong> ${txResult.hash || 'Pending'}</p>
+          ${txResult.id ? `<p><strong>ID:</strong> ${txResult.id}</p>` : ''}
           ${txBlob ? `<p><strong>Blob:</strong> <code>${txBlob.substring(0, 50)}...</code></p>` : ''}
           <p class="info">✅ Transaction has been signed and submitted to the ledger</p>
         </div>

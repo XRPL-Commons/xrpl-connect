@@ -421,7 +421,7 @@ export class WalletConnectAdapter implements WalletAdapter {
 
     try {
       // Ensure Account field is set
-      const tx = {
+      const tx: Transaction = {
         ...transaction,
         Account: transaction.Account || this.currentAccount.address,
       };
