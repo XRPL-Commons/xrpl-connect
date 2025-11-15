@@ -27,11 +27,13 @@ export interface XamanAdapterOptions {
   apiKey?: string; // Xumm API key (can also be provided in connect options)
   onQRCode?: (uri: string) => void; // Callback for QR code URI
   onDeepLink?: (uri: string) => string; // Transform URI for deep linking
-  returnUrl?: string; // URL to return to after signing on mobile (appends ?payloadId=xxx). If not provided, keeps listening in background
+  // returnUrl?: string; // URL to return to after signing on mobile (appends ?payloadId=xxx). If not provided, keeps listening in background
 }
 
 export type XamanConnectOptions = {
   apiKey?: string;
+  onQRCode?: (uri: string) => void;
+  onDeepLink?: (uri: string) => string;
 }
 
 /**
@@ -122,8 +124,8 @@ export class XamanAdapter implements WalletAdapter {
     }
 
     // Merge runtime options with constructor options (runtime takes precedence)
-    const onQRCode = (options as any)?.onQRCode || this.options.onQRCode;
-    const onDeepLink = (options as any)?.onDeepLink || this.options.onDeepLink;
+    const onQRCode = options?.onQRCode || this.options.onQRCode;
+    const onDeepLink = options?.onDeepLink || this.options.onDeepLink;
 
     // Temporarily store callbacks for use in openSignWindow
     if (onQRCode) {
