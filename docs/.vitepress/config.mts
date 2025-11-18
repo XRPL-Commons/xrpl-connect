@@ -69,7 +69,6 @@ export default defineConfig({
           { text: 'Vanilla JavaScript', link: '/guide/frameworks/vanilla-js' },
           { text: 'React', link: '/guide/frameworks/react' },
           { text: 'Vue 3', link: '/guide/frameworks/vue' },
-          { text: 'Next.js', link: '/guide/frameworks/next' },
           { text: 'Nuxt', link: '/guide/frameworks/nuxt' },
         ],
       },
