@@ -92,6 +92,7 @@ export interface SubmittedTransaction {
 /**
  * Options for connecting to a wallet
  */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export type ConnectOptions<WalletSpecificOptions extends Record<string, unknown> = {}> = {
   network?: NetworkConfig; // Preferred network
   autoReconnect?: boolean; // Auto-reconnect on page load

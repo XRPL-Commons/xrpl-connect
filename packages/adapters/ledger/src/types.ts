@@ -36,7 +36,7 @@ export interface LedgerAdapterOptions {
 export type LedgerConnectOptions = {
   derivationPath?: string;
   accountIndex?: number;
-}
+};
 
 /**
  * Ledger device connection states

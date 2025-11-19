@@ -18,21 +18,21 @@ const walletManager = new WalletManager(options: WalletManagerConfig)
 
 #### Config Options
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `adapters` | `WalletAdapter[]` | Array of wallet adapters |
-| `network` | `'mainnet' \| 'testnet' \| 'devnet'` | XRPL network to connect to |
-| `autoConnect` | `boolean` | Auto-reconnect on initialization |
-| `logger` | `Logger` | Logger instance for debugging |
+| Property      | Type                                 | Description                      |
+| ------------- | ------------------------------------ | -------------------------------- |
+| `adapters`    | `WalletAdapter[]`                    | Array of wallet adapters         |
+| `network`     | `'mainnet' \| 'testnet' \| 'devnet'` | XRPL network to connect to       |
+| `autoConnect` | `boolean`                            | Auto-reconnect on initialization |
+| `logger`      | `Logger`                             | Logger instance for debugging    |
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `connected` | `boolean` | Whether a wallet is currently connected |
-| `account` | `Account \| null` | Currently connected account |
-| `wallet` | `Wallet \| null` | Currently connected wallet |
-| `adapters` | `WalletAdapter[]` | List of available adapters |
+| Property    | Type              | Description                             |
+| ----------- | ----------------- | --------------------------------------- |
+| `connected` | `boolean`         | Whether a wallet is currently connected |
+| `account`   | `Account \| null` | Currently connected account             |
+| `wallet`    | `Wallet \| null`  | Currently connected wallet              |
+| `adapters`  | `WalletAdapter[]` | List of available adapters              |
 
 ### Methods
 
@@ -104,10 +104,10 @@ Beautiful UI component for wallet connection.
 
 ### Attributes
 
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `primary-wallet` | `string` | Wallet ID to feature/highlight |
-| `wallets` | `string` | Comma-separated list of wallet IDs |
+| Attribute        | Type     | Description                        |
+| ---------------- | -------- | ---------------------------------- |
+| `primary-wallet` | `string` | Wallet ID to feature/highlight     |
+| `wallets`        | `string` | Comma-separated list of wallet IDs |
 
 ### Methods
 
@@ -341,13 +341,13 @@ walletManager.on('networkChange', (network: Network) => {
 
 ### Error Codes
 
-| Code | Description | Handling |
-|------|-------------|----------|
-| `WALLET_NOT_FOUND` | Wallet is not installed or not available | Notify user to install wallet |
-| `CONNECTION_FAILED` | Failed to connect to wallet | Retry connection or try different wallet |
-| `SIGN_FAILED` | Failed to sign transaction | User rejected or wallet error |
-| `INVALID_PARAMS` | Invalid transaction parameters | Check transaction format |
-| `NETWORK_ERROR` | Network communication failed | Check connection and retry |
+| Code                | Description                              | Handling                                 |
+| ------------------- | ---------------------------------------- | ---------------------------------------- |
+| `WALLET_NOT_FOUND`  | Wallet is not installed or not available | Notify user to install wallet            |
+| `CONNECTION_FAILED` | Failed to connect to wallet              | Retry connection or try different wallet |
+| `SIGN_FAILED`       | Failed to sign transaction               | User rejected or wallet error            |
+| `INVALID_PARAMS`    | Invalid transaction parameters           | Check transaction format                 |
+| `NETWORK_ERROR`     | Network communication failed             | Check connection and retry               |
 
 ### Error Example
 

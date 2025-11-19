@@ -27,8 +27,8 @@ function AppContent() {
         <section id="connect-section">
           <h2>Connection Status</h2>
           <p className="section-description">
-            Click the <strong>"Connect Wallet"</strong> button above to connect or manage
-            your wallet
+            Click the <strong>"Connect Wallet"</strong> button above to connect or manage your
+            wallet
           </p>
           {statusMessage && (
             <div className={`status-${statusMessage.type}`}>{statusMessage.message}</div>

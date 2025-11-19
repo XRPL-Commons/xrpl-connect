@@ -24,9 +24,7 @@ export function AccountInfo() {
           <span className="value">{accountInfo.walletName}</span>
         </div>
       </div>
-      <p className="section-description">
-        Click the button showing your address to disconnect
-      </p>
+      <p className="section-description">Click the button showing your address to disconnect</p>
     </section>
   );
 }
