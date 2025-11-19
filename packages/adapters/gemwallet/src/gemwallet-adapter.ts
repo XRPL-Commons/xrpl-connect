@@ -23,6 +23,7 @@ import { createWalletError, STANDARD_NETWORKS } from '@xrpl-connect/core';
 /**
  * GemWallet adapter options
  */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface GemWalletAdapterOptions {
   // Currently no specific options needed for GemWallet
 }
@@ -129,7 +130,7 @@ export class GemWalletAdapter implements WalletAdapter {
 
     try {
       // Ensure Account field is set
-      const tx = {
+      const tx: Transaction = {
         ...transaction,
         Account: transaction.Account || this.currentAccount.address,
       };
@@ -137,7 +138,7 @@ export class GemWalletAdapter implements WalletAdapter {
       if (submit) {
         // Use submitTransaction which autofills, signs, AND submits
         const submitResponse = await submitTransaction({
-          transaction: tx as any,
+          transaction: tx,
         });
 
         if (!submitResponse.result || !submitResponse.result.hash) {
@@ -152,7 +153,7 @@ export class GemWalletAdapter implements WalletAdapter {
       } else {
         // Just sign the transaction without submitting
         const signResponse = await signTransaction({
-          transaction: tx as any,
+          transaction: tx,
         });
 
         if (!signResponse.result) {
