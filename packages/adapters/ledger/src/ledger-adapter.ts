@@ -18,7 +18,7 @@ import type {
 } from '@xrpl-connect/core';
 import { createWalletError, STANDARD_NETWORKS } from '@xrpl-connect/core';
 
-import type { LedgerAdapterOptions } from './types';
+import type { LedgerAdapterOptions, LedgerConnectOptions } from './types';
 import { LedgerDeviceState } from './types';
 import { parseLedgerError, isBrowserSupported, formatLedgerError } from './errors';
 
@@ -83,7 +83,7 @@ export class LedgerAdapter implements WalletAdapter {
   /**
    * Connect to Ledger device
    */
-  async connect(options?: ConnectOptions): Promise<AccountInfo> {
+  async connect(options?: ConnectOptions<LedgerConnectOptions>): Promise<AccountInfo> {
     try {
       const browserSupport = isBrowserSupported();
       if (!browserSupport.supported) {
@@ -193,17 +193,17 @@ export class LedgerAdapter implements WalletAdapter {
       await client.connect();
 
       try {
-        const tx = {
+        const tx: Transaction = {
           ...transaction,
           Account: transaction.Account || this.currentAccount.address,
         };
 
-        const prepared = await client.autofill(tx as any);
+        const prepared = await client.autofill(tx);
 
         // Prepare transaction for signing - remove fields that shouldn't be in the signing blob
-        const txForSigning = { ...prepared };
-        delete (txForSigning as any).TxnSignature;
-        delete (txForSigning as any).Signers;
+        const txForSigning: Transaction = { ...prepared };
+        delete txForSigning.TxnSignature;
+        delete txForSigning.Signers;
 
         // Check if this is a multisig transaction
         const isMultisig = txForSigning.SigningPubKey === '';
@@ -231,12 +231,12 @@ export class LedgerAdapter implements WalletAdapter {
         }
 
         // Build the signed transaction blob with signature
-        const signedTx = {
+        const signedTx: Transaction = {
           ...txForSigning,
           TxnSignature: signature.toUpperCase(),
         };
 
-        const tx_blob = encode(signedTx as any);
+        const tx_blob = encode(signedTx);
 
         // If submit is false, just return the signed transaction
         if (!submit) {
