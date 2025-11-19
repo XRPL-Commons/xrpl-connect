@@ -574,7 +574,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.dispatchEvent(new CustomEvent('connecting', { detail: { walletId, accountIndex } }));
 
         // Connect with selected account index
-        await this.walletManager.connect(walletId, { accountIndex });
+        await this.walletManager.connect(walletId, { accountIndex } as any); // Custom options for Ledger
 
         this.dispatchEvent(new CustomEvent('connected', { detail: { walletId, accountIndex } }));
       } catch (error: any) {
@@ -621,7 +621,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.dispatchEvent(new CustomEvent('connecting', { detail: { walletId, derivationPath } }));
 
         // Connect with custom derivation path
-        await this.walletManager.connect(walletId, { derivationPath });
+        await this.walletManager.connect(walletId, { derivationPath } as any); // Custom options for Ledger
 
         this.dispatchEvent(new CustomEvent('connected', { detail: { walletId, derivationPath } }));
       } catch (error: any) {

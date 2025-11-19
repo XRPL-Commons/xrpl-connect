@@ -1,6 +1,13 @@
 packages:
-  - 'packages/*'
-  - 'packages/adapters/*'
-  - 'examples/*'
-  - 'apps/*'
-  - 'docs'
+  - packages/*
+  - packages/adapters/*
+  - examples/*
+  - apps/*
+  - docs
+
+onlyBuiltDependencies:
+  - bufferutil
+  - es5-ext
+  - esbuild
+  - tiny-secp256k1
+  - utf-8-validate
