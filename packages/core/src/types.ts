@@ -2,7 +2,7 @@
  * Core types and interfaces for xrpl-connect
  */
 
-import type { Transaction as XRPLTransaction } from 'xrpl';
+import type { SubmittableTransaction as XRPLTransaction } from 'xrpl';
 
 /**
  * Network information

@@ -12,7 +12,7 @@ export function parseLedgerError(error: unknown): {
   message: string;
 } {
   if (error && typeof error === 'object') {
-    const err = error as any;
+    const err = error;
 
     if ('statusCode' in err) {
       const statusCode = err.statusCode;

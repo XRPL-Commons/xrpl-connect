@@ -215,7 +215,7 @@ export class XamanAdapter implements WalletAdapter {
     try {
       // Create and subscribe to payload
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload: any = await this.client.payload?.createAndSubscribe(transaction as any);
+      const payload = await this.client.payload?.createAndSubscribe(transaction as any);
 
       if (!payload) {
         throw new Error('Failed to create payload');
