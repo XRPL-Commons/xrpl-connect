@@ -34,7 +34,7 @@ export type XamanConnectOptions = {
   apiKey?: string;
   onQRCode?: (uri: string) => void;
   onDeepLink?: (uri: string) => string;
-}
+};
 
 /**
  * Xaman wallet adapter implementation
@@ -61,9 +61,11 @@ export class XamanAdapter implements WalletAdapter {
     return true;
   }
 
-  async checkXamanState(options?: ConnectOptions<XamanConnectOptions>): Promise<AccountInfo | null> {
+  async checkXamanState(
+    options?: ConnectOptions<XamanConnectOptions>
+  ): Promise<AccountInfo | null> {
     const apiKey = options?.apiKey || this.options.apiKey;
-    const network = options?.network;
+    let network = options?.network;
 
     if (!apiKey) {
       throw createWalletError.connectionFailed(
@@ -83,9 +85,8 @@ export class XamanAdapter implements WalletAdapter {
     }
 
     // Resolve network if not provided
-    const currentNetwork = (await this.getAccount())?.network
-    if (!network) 
-      network = currentNetwork
+    const currentNetwork = (await this.getAccount())?.network;
+    if (!network) network = currentNetwork;
 
     let resolvedNetwork: NetworkInfo;
     if (network) {
@@ -157,7 +158,7 @@ export class XamanAdapter implements WalletAdapter {
       logger.debug('Authorization successful', { account: authResult.me?.account });
 
       const account = authResult.me.account;
-      const network: NetworkInfo = this.resolveNetwork(options?.network)
+      const network: NetworkInfo = this.resolveNetwork(options?.network);
 
       this.currentAccount = {
         address: account,
@@ -221,7 +222,7 @@ export class XamanAdapter implements WalletAdapter {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const payload = await this.client.payload?.createAndSubscribe({
         txjson: transaction as any,
-        options: { force_network: this.getXamanNetworkName() }
+        options: { force_network: this.getXamanNetworkName() },
       });
 
       if (!payload) {
@@ -448,7 +449,7 @@ export class XamanAdapter implements WalletAdapter {
 
     return config;
   }
-  
+
   private getXamanNetworkName(): 'MAINNET' | 'TESTNET' | 'DEVNET' | undefined {
     // https://github.com/WietseWind/Xaman-App/blob/main/src/common/constants/network.ts#L18
     const id = this.currentAccount?.network.id as 'mainnet' | 'testnet' | 'devnet';

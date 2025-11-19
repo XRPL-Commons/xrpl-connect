@@ -27,9 +27,7 @@ import {
  * Utility function to detect if user is on mobile device
  */
 function isMobile(): boolean {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    navigator.userAgent
-  );
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
 
 /**
@@ -63,7 +61,7 @@ export interface WalletConnectAdapterOptions {
 export type WalletConnectConnectOptions = {
   projectId?: string;
   onQRCode?: (uri: string) => void;
-}
+};
 
 /**
  * WalletConnect adapter implementation using Sign Client v2
@@ -80,7 +78,8 @@ export class WalletConnectAdapter implements WalletAdapter {
   private currentAccount: AccountInfo | null = null;
   private options: WalletConnectAdapterOptions;
   private initializationPromise: Promise<SignClient> | null = null;
-  private pendingConnection: { uri: string; approval: () => Promise<SessionTypes.Struct> } | null = null;
+  private pendingConnection: { uri: string; approval: () => Promise<SessionTypes.Struct> } | null =
+    null;
   private modal: WalletConnectModal | null = null;
 
   constructor(options: WalletConnectAdapterOptions = {}) {
@@ -162,7 +161,10 @@ export class WalletConnectAdapter implements WalletAdapter {
             metadata: this.options.metadata || {
               name: DEFAULT_METADATA.NAME,
               description: DEFAULT_METADATA.DESCRIPTION,
-              url: typeof window !== 'undefined' ? window.location.origin : DEFAULT_METADATA.DEFAULT_URL,
+              url:
+                typeof window !== 'undefined'
+                  ? window.location.origin
+                  : DEFAULT_METADATA.DEFAULT_URL,
               icons: [DEFAULT_METADATA.DEFAULT_ICON],
             },
           });
@@ -198,7 +200,10 @@ export class WalletConnectAdapter implements WalletAdapter {
       // Store the pending connection
       this.pendingConnection = { uri, approval };
 
-      logger.debug('QR code URI pre-generated:', uri.substring(0, LOGGING.URI_PREVIEW_LENGTH) + '...');
+      logger.debug(
+        'QR code URI pre-generated:',
+        uri.substring(0, LOGGING.URI_PREVIEW_LENGTH) + '...'
+      );
 
       if (this.options.onQRCode) {
         logger.debug('Calling onQRCode callback during pre-init');
@@ -251,7 +256,10 @@ export class WalletConnectAdapter implements WalletAdapter {
             metadata: this.options.metadata || {
               name: DEFAULT_METADATA.NAME,
               description: DEFAULT_METADATA.DESCRIPTION,
-              url: typeof window !== 'undefined' ? window.location.origin : DEFAULT_METADATA.DEFAULT_URL,
+              url:
+                typeof window !== 'undefined'
+                  ? window.location.origin
+                  : DEFAULT_METADATA.DEFAULT_URL,
               icons: [DEFAULT_METADATA.DEFAULT_ICON],
             },
           });

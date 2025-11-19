@@ -15,6 +15,7 @@ We provide a comprehensive React example application that demonstrates all XRPL-
 ### What's Included
 
 The example demonstrates:
+
 - ✅ Multiple wallet adapter support (Xaman, WalletConnect, Crossmark, GemWallet, Ledger)
 - ✅ Custom React hooks for wallet management
 - ✅ React Context API for global wallet state
@@ -259,7 +260,7 @@ export function useWalletConnector(walletManager: WalletManager | null) {
       await customElements.whenDefined('xrpl-wallet-connector');
 
       // Small delay to ensure element is fully initialized
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       if (
         walletConnectorRef.current &&
@@ -538,7 +539,7 @@ Always wait for the custom element to be defined before calling methods:
 
 ```typescript
 await customElements.whenDefined('xrpl-wallet-connector');
-await new Promise(resolve => setTimeout(resolve, 0));
+await new Promise((resolve) => setTimeout(resolve, 0));
 ```
 
 ### 2. Cleanup on Unmount
@@ -569,10 +570,7 @@ Use `useMemo` to prevent unnecessary adapter recreation:
 
 ```typescript
 const adapters = useMemo(
-  () => [
-    new XamanAdapter({ apiKey: XAMAN_API_KEY }),
-    new LedgerAdapter(),
-  ],
+  () => [new XamanAdapter({ apiKey: XAMAN_API_KEY }), new LedgerAdapter()],
   []
 );
 ```
