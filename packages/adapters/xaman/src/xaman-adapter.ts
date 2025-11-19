@@ -83,11 +83,15 @@ export class XamanAdapter implements WalletAdapter {
     }
 
     // Resolve network if not provided
+    const currentNetwork = (await this.getAccount())?.network
+    if (!network) 
+      network = currentNetwork
+
     let resolvedNetwork: NetworkInfo;
     if (network) {
       resolvedNetwork = this.resolveNetwork(network);
     } else {
-      const xamanNetwork = await this.client.user.networkType;
+      const xamanNetwork = await this.client.user.networkEndpoint;
       if (!xamanNetwork) {
         throw createWalletError.connectionFailed(
           this.name,
@@ -153,7 +157,7 @@ export class XamanAdapter implements WalletAdapter {
       logger.debug('Authorization successful', { account: authResult.me?.account });
 
       const account = authResult.me.account;
-      const network: NetworkInfo = this.parseNetwork(authResult.me.networkEndpoint || '');
+      const network: NetworkInfo = this.resolveNetwork(options?.network)
 
       this.currentAccount = {
         address: account,
@@ -215,7 +219,10 @@ export class XamanAdapter implements WalletAdapter {
     try {
       // Create and subscribe to payload
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload = await this.client.payload?.createAndSubscribe(transaction as any);
+      const payload = await this.client.payload?.createAndSubscribe({
+        txjson: transaction as any,
+        options: { force_network: this.getXamanNetworkName() }
+      });
 
       if (!payload) {
         throw new Error('Failed to create payload');
@@ -440,5 +447,18 @@ export class XamanAdapter implements WalletAdapter {
     }
 
     return config;
+  }
+  
+  private getXamanNetworkName(): 'MAINNET' | 'TESTNET' | 'DEVNET' | undefined {
+    // https://github.com/WietseWind/Xaman-App/blob/main/src/common/constants/network.ts#L18
+    const id = this.currentAccount?.network.id as 'mainnet' | 'testnet' | 'devnet';
+    if (id === 'mainnet') {
+      return 'MAINNET';
+    } else if (id === 'testnet') {
+      return 'TESTNET';
+    } else if (id === 'devnet') {
+      return 'DEVNET';
+    }
+    return undefined;
   }
 }
