@@ -63,7 +63,7 @@ export class XamanAdapter implements WalletAdapter {
 
   async checkXamanState(options?: ConnectOptions<XamanConnectOptions>): Promise<AccountInfo | null> {
     const apiKey = options?.apiKey || this.options.apiKey;
-    let network = options?.network;
+    const network = options?.network;
 
     if (!apiKey) {
       throw createWalletError.connectionFailed(

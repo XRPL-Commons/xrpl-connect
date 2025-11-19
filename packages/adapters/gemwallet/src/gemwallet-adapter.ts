@@ -23,6 +23,7 @@ import { createWalletError, STANDARD_NETWORKS } from '@xrpl-connect/core';
 /**
  * GemWallet adapter options
  */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface GemWalletAdapterOptions {
   // Currently no specific options needed for GemWallet
 }
