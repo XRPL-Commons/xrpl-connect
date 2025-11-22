@@ -1,11 +1,11 @@
 export function renderAccountSelectionView(
-      walletName: string,
-      walletIcon: string | undefined,
-      accounts: Array<{ address: string; publicKey: string; path: string; index: number }>
-    ): string {
-      const accountButtons = accounts
-        .map(
-          (account) => `
+  walletName: string,
+  walletIcon: string | undefined,
+  accounts: Array<{ address: string; publicKey: string; path: string; index: number }>
+): string {
+  const accountButtons = accounts
+    .map(
+      (account) => `
         <button class="account-button" data-account-index="${account.index}">
           <div class="account-info">
             <div class="account-address">Account ${account.index}</div>
@@ -13,10 +13,10 @@ export function renderAccountSelectionView(
           </div>
         </button>
       `
-        )
-        .join('');
+    )
+    .join('');
 
-      return `
+  return `
       <div class="header">
         <div class="header-with-back">
           <button class="back-button" id="account-selection-back-button" aria-label="Back">←</button>
@@ -56,4 +56,4 @@ export function renderAccountSelectionView(
         </div>
       </div>
     `;
-    }
+}

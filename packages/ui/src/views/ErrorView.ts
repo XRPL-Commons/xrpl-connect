@@ -1,5 +1,5 @@
 export function renderErrorView(walletName: string, error: Error): string {
-      return `
+  return `
       <div class="header">
         <h2 class="title">Connection Failed</h2>
         <button class="close-button" part="close-button" aria-label="Close">×</button>
@@ -23,4 +23,4 @@ export function renderErrorView(walletName: string, error: Error): string {
         </div>
       </div>
     `;
-    }
+}

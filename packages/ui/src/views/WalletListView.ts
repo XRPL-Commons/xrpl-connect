@@ -1,5 +1,5 @@
 export function renderWalletListView(primaryWallet: any | null, otherWallets: any[]): string {
-      return `
+  return `
       <div class="header">
         <h2 class="title">Connect Wallet</h2>
         <button class="close-button" part="close-button" aria-label="Close">×</button>
@@ -29,4 +29,4 @@ export function renderWalletListView(primaryWallet: any | null, otherWallets: an
         </div>
       </div>
     `;
-    }
+}

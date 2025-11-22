@@ -1,15 +1,15 @@
 export function renderAccountModal(
-      account: { address: string } | null,
-      accountBalance: string | null,
-      truncateAddress: (address: string, chars?: number) => string,
-      generateGradientFromAddress: (address: string) => { color1: string; color2: string }
-    ): string {
-      if (!account) return '';
+  account: { address: string } | null,
+  accountBalance: string | null,
+  truncateAddress: (address: string, chars?: number) => string,
+  generateGradientFromAddress: (address: string) => { color1: string; color2: string }
+): string {
+  if (!account) return '';
 
-      const truncatedAddress = truncateAddress(account.address, 6);
-      const { color1, color2 } = generateGradientFromAddress(account.address);
+  const truncatedAddress = truncateAddress(account.address, 6);
+  const { color1, color2 } = generateGradientFromAddress(account.address);
 
-      return `
+  return `
       <div id="account-modal-overlay" class="account-modal-overlay">
         <div class="account-modal">
           <div class="account-modal-header">
@@ -74,4 +74,4 @@ export function renderAccountModal(
         </div>
       </div>
     `;
-    }
+}

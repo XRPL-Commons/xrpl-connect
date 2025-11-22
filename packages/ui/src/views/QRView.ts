@@ -1,5 +1,5 @@
 export function renderQRView(walletName: string): string {
-      return `
+  return `
     <div class="header">
       <div class="header-with-back">
         <button class="back-button" id="back-button" aria-label="Back">←</button>
@@ -22,4 +22,4 @@ export function renderQRView(walletName: string): string {
       </div>
     </div>
   `;
-    }
+}

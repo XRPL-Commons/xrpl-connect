@@ -1,5 +1,5 @@
 export function renderLoadingView(walletName: string, walletIcon?: string): string {
-      return `
+  return `
       <div class="header">
         <div class="header-with-back">
           <button class="back-button" id="loading-back-button" aria-label="Back">←</button>
@@ -21,4 +21,4 @@ export function renderLoadingView(walletName: string, walletIcon?: string): stri
         </div>
       </div>
     `;
-    }
+}
