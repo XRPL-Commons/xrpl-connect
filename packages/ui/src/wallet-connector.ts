@@ -7,7 +7,7 @@ import type { WalletManager } from '@xrpl-connect/core';
 import { createLogger } from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
 import { mainStyles } from './styles/main';
-import { SIZES, TIMINGS, Z_INDEX, QR_CONFIG, ERROR_CODES, FONT_WEIGHTS } from './constants';
+import { SIZES, TIMINGS, QR_CONFIG } from './constants';
 import {
   renderWalletListView,
   renderQRView,
@@ -17,7 +17,7 @@ import {
   renderAccountModal,
 } from './views';
 import { WalletService, EventHandler } from './services';
-import { isSafari, isMobile, isXamanQRImage, delay, adjustColorBrightness } from './utils';
+import { isXamanQRImage, adjustColorBrightness } from './utils';
 
 /**
  * Logger instance for wallet connector
@@ -297,7 +297,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     /**
      * Open the account details modal
      */
-    private openAccountModal() {
+    public openAccountModal() {
       this.accountModalOpen = true;
       this.render();
     }
@@ -313,7 +313,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     /**
      * Disconnect wallet from the account modal
      */
-    private async disconnectFromAccountModal() {
+    public async disconnectFromAccountModal() {
       try {
         await this.walletManager?.disconnect();
         this.closeAccountModal();
@@ -424,15 +424,13 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
     }
 
-    private walletService: WalletService;
-    private eventHandler: EventHandler;
-
-
+    private walletService: WalletService | undefined;
+    private eventHandler: EventHandler | undefined;
 
     /**
      * Show QR code view
      */
-    private showQRCodeView(walletId: string, uri?: string) {
+    public showQRCodeView(walletId: string, uri?: string) {
       this.viewState = 'qr';
       this.qrCodeData = { walletId, uri: uri || '' };
       this.loadingData = null;
@@ -444,7 +442,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     /**
      * Show loading view
      */
-    private showLoadingView(walletId: string, walletName: string, walletIcon?: string) {
+    public showLoadingView(walletId: string, walletName: string, walletIcon?: string) {
       this.viewState = 'loading';
       this.loadingData = { walletId, walletName, walletIcon };
       this.qrCodeData = null;
@@ -456,7 +454,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     /**
      * Show error view
      */
-    private showErrorView(walletId: string, walletName: string, error: Error) {
+    public showErrorView(walletId: string, walletName: string, error: Error) {
       this.viewState = 'error';
       this.errorData = { walletId, walletName, error };
       this.qrCodeData = null;
@@ -468,7 +466,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     /**
      * Show wallet list view
      */
-    private showWalletList() {
+    public showWalletList() {
       this.viewState = 'list';
       this.qrCodeData = null;
       this.loadingData = null;
@@ -480,7 +478,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     /**
      * Show account selection view
      */
-    private showAccountSelectionView(
+    public showAccountSelectionView(
       walletId: string,
       walletName: string,
       walletIcon: string | undefined,
@@ -709,7 +707,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         : ''
     }
 
-    ${this.accountModalOpen ? renderAccountModal(this.walletManager?.account, this.accountBalance, this.truncateAddress, this.generateGradientFromAddress) : ''}
+    ${this.accountModalOpen ? renderAccountModal(this.walletManager?.account ?? null, this.accountBalance, this.truncateAddress, this.generateGradientFromAddress) : ''}
   `;
 
       this.eventHandler?.attachEventListeners();
@@ -750,14 +748,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       // Store current height for next transition
       this.previousModalHeight = newHeight;
     }
-
-
-
-
-
-
-
-    private eventHandler: EventHandler | undefined;
   }
 
   // Assign the class to the export variable
