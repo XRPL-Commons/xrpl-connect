@@ -5,13 +5,14 @@ import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
 import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
+import { PrivyAdapter } from '@xrpl-connect/adapter-privy';
 import { WalletConnectorElement } from '@xrpl-connect/ui';
 import '@xrpl-connect/ui'; // Register the web component
-
 
 // Configuration - ADD YOUR API KEYS HERE
 const XAMAN_API_KEY = '15ba80a8-cba2-4789-a45b-c6a850d9d91b'; // Get from https://apps.xumm.dev/
 const WALLETCONNECT_PROJECT_ID = '32798b46e13dfb0049706a524cf132d6'; // Get from https://cloud.walletconnect.com
+const PRIVY_APP_ID = 'cmikfglb301c2jo0cy32xy03m'; //import.meta.env.VITE_PRIVY_APP_ID || 'your-privy-app-id'; // Get from https://dashboard.privy.io
 
 // Initialize Wallet Manager
 const walletManager = new WalletManager({
@@ -30,6 +31,13 @@ const walletManager = new WalletManager({
         url: window.location.origin,
         icons: ['https://xrpl.org/favicon.ico'],
       },
+    }),
+    // Privy with social login and embedded wallets
+    new PrivyAdapter({
+      appId: PRIVY_APP_ID,
+      authMethods: ['social', 'email', 'sms'], // Available auth methods
+      socialProviders: ['google', 'twitter', 'discord', 'github'], // Social providers
+      createWalletOnLogin: 'users-without-wallets', // Auto-create wallet
     }),
     new CrossmarkAdapter(),
     new GemWalletAdapter(),

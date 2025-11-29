@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privy Adapter Example - XRPL Connect</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      max-width: 600px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .info-box {
+      background: #f7f7f7;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .info-box h3 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+
+    .info-box p {
+      color: #666;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-top: 10px;
+    }
+
+    .status.disconnected {
+      background: #fee;
+      color: #c33;
+    }
+
+    .status.connected {
+      background: #efe;
+      color: #3c3;
+    }
+
+    .account-info {
+      display: none;
+      background: #f0f9ff;
+      border: 2px solid #3b99fc;
+      border-radius: 8px;
+      padding: 15px;
+      margin-top: 20px;
+    }
+
+    .account-info.visible {
+      display: block;
+    }
+
+    .account-info p {
+      margin: 8px 0;
+      font-size: 14px;
+      color: #333;
+    }
+
+    .account-info strong {
+      color: #1a73e8;
+    }
+
+    .button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 14px 28px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 10px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .button:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .button.secondary {
+      background: #e0e0e0;
+      color: #333;
+    }
+
+    .alert {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+
+    .alert h4 {
+      color: #856404;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .alert p {
+      color: #856404;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .alert a {
+      color: #856404;
+      font-weight: 600;
+    }
+
+    code {
+      background: #f5f5f5;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔐 Privy Adapter Example</h1>
+    <p class="subtitle">Social login with embedded wallets for XRPL</p>
+
+    <div class="alert">
+      <h4>⚠️ Integration Required</h4>
+      <p>
+        This adapter requires full integration with Privy SDK.
+        Please add <code>@privy-io/js-sdk-core</code> and configure your
+        <code>VITE_PRIVY_APP_ID</code> environment variable.
+        <br><br>
+        Get your App ID at <a href="https://privy.io" target="_blank">privy.io</a>
+      </p>
+    </div>
+
+    <div class="info-box">
+      <h3>Status</h3>
+      <p id="connection-status">
+        <span class="status disconnected">Disconnected</span>
+      </p>
+    </div>
+
+    <div class="info-box">
+      <h3>Features</h3>
+      <p>
+        • Social Login (Google, Twitter, Discord)<br>
+        • Email & SMS Authentication<br>
+        • Automatic Wallet Creation<br>
+        • Secure Transaction Signing
+      </p>
+    </div>
+
+    <div id="account-info" class="account-info">
+      <p><strong>Address:</strong> <span id="account-address">-</span></p>
+      <p><strong>Network:</strong> <span id="account-network">-</span></p>
+      <p><strong>Public Key:</strong> <span id="account-pubkey">-</span></p>
+    </div>
+
+    <button id="connect-btn" class="button">
+      Connect with Privy
+    </button>
+
+    <button id="disconnect-btn" class="button secondary" style="display: none;">
+      Disconnect
+    </button>
+  </div>
+
+  <script type="module">
+    // This is a placeholder example
+    // Full implementation requires Privy SDK integration
+
+    const connectBtn = document.getElementById('connect-btn');
+    const disconnectBtn = document.getElementById('disconnect-btn');
+    const statusEl = document.getElementById('connection-status');
+    const accountInfoEl = document.getElementById('account-info');
+
+    connectBtn.addEventListener('click', async () => {
+      try {
+        connectBtn.disabled = true;
+        connectBtn.textContent = 'Connecting...';
+
+        // Show info about SDK requirement
+        alert(
+          'Privy SDK integration required!\n\n' +
+          'To use this adapter:\n' +
+          '1. Install @privy-io/js-sdk-core\n' +
+          '2. Set VITE_PRIVY_APP_ID environment variable\n' +
+          '3. Implement PrivyClientWrapper methods\n\n' +
+          'See README.md for details.'
+        );
+
+        connectBtn.textContent = 'Connect with Privy';
+        connectBtn.disabled = false;
+
+      } catch (error) {
+        console.error('Connection error:', error);
+        alert(`Connection failed: ${error.message}`);
+        connectBtn.textContent = 'Connect with Privy';
+        connectBtn.disabled = false;
+      }
+    });
+
+    disconnectBtn.addEventListener('click', async () => {
+      try {
+        // Reset UI
+        statusEl.innerHTML = '<span class="status disconnected">Disconnected</span>';
+        accountInfoEl.classList.remove('visible');
+        connectBtn.style.display = 'block';
+        disconnectBtn.style.display = 'none';
+      } catch (error) {
+        console.error('Disconnect error:', error);
+      }
+    });
+
+    // Log example usage
+    console.log(`
+🔐 Privy Adapter Example
+
+To use this adapter:
+
+import { WalletManager } from '@xrpl-connect/core';
+import { PrivyAdapter } from '@xrpl-connect/adapter-privy';
+
+const manager = new WalletManager({
+  adapters: [
+    new PrivyAdapter({
+      appId: import.meta.env.VITE_PRIVY_APP_ID,
+      socialProviders: ['google', 'twitter', 'discord'],
+      chainType: 'ethereum' // secp256k1 for XRPL
+    })
+  ]
+});
+
+await manager.connect('privy');
+    `);
+  </script>
+</body>
+</html>

@@ -24,11 +24,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private isOpen = false;
     private isFirstOpen = true;
     private primaryWalletId: string | null = null;
-    private viewState: 'list' | 'qr' | 'loading' | 'error' | 'account-selection' = 'list';
+    private viewState: 'list' | 'qr' | 'loading' | 'error' | 'account-selection' | 'privy-auth-select' = 'list';
     private qrCodeData: { walletId: string; uri: string } | null = null;
     private loadingData: { walletId: string; walletName: string; walletIcon?: string } | null = null;
     private errorData: { walletId: string; walletName: string; error: Error } | null = null;
     private accountSelectionData: { walletId: string; walletName: string; walletIcon?: string; accounts: Array<{ address: string; publicKey: string; path: string; index: number }> } | null = null;
+    private privyAuthData: { walletId: string; walletName: string; walletIcon?: string; authMethods: string[]; socialProviders: string[] } | null = null;
     private previousModalHeight: number = 0;
     private preGeneratedQRCode: any | null = null; // Store pre-generated QR code
     private preGeneratedURI: string | null = null; // Store the URI used for pre-generation
@@ -498,6 +499,14 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
           // Show account selection view
           this.showAccountSelectionView(walletId, wallet.name, wallet.icon, accounts);
+        } else if (walletId === 'privy') {
+          // For Privy, show auth method selection
+          const privyAdapter = wallet as any;
+          const authMethods = privyAdapter.getAuthMethods?.() || ['social', 'email', 'wallet'];
+          const socialProviders = privyAdapter.getSocialProviders?.() || ['google', 'twitter', 'discord'];
+
+          // Show Privy auth method selection view
+          this.showPrivyAuthSelectView(walletId, wallet.name, wallet.icon, authMethods, socialProviders);
         } else {
           // For extension wallets, check availability first
           const isAvailable = await wallet.isAvailable();
@@ -650,6 +659,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.loadingData = null;
       this.errorData = null;
       this.accountSelectionData = null;
+      this.privyAuthData = null;
       this.render();
     }
 
@@ -662,6 +672,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.qrCodeData = null;
       this.errorData = null;
       this.accountSelectionData = null;
+      this.privyAuthData = null;
       this.render();
     }
 
@@ -674,6 +685,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.qrCodeData = null;
       this.loadingData = null;
       this.accountSelectionData = null;
+      this.privyAuthData = null;
       this.render();
     }
 
@@ -686,6 +698,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.loadingData = null;
       this.errorData = null;
       this.accountSelectionData = null;
+      this.privyAuthData = null;
       this.render();
     }
 
@@ -698,6 +711,20 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.qrCodeData = null;
       this.loadingData = null;
       this.errorData = null;
+      this.privyAuthData = null;
+      this.render();
+    }
+
+    /**
+     * Show Privy auth method selection view
+     */
+    private showPrivyAuthSelectView(walletId: string, walletName: string, walletIcon: string | undefined, authMethods: string[], socialProviders: string[]) {
+      this.viewState = 'privy-auth-select';
+      this.privyAuthData = { walletId, walletName, walletIcon, authMethods, socialProviders };
+      this.qrCodeData = null;
+      this.loadingData = null;
+      this.errorData = null;
+      this.accountSelectionData = null;
       this.render();
     }
 
@@ -879,6 +906,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         contentHTML = this.renderErrorView();
       } else if (this.viewState === 'account-selection' && this.accountSelectionData) {
         contentHTML = this.renderAccountSelectionView();
+      } else if (this.viewState === 'privy-auth-select' && this.privyAuthData) {
+        contentHTML = this.renderPrivyAuthSelectView();
       } else {
         contentHTML = this.renderWalletListView(primaryWallet, otherWallets);
       }
@@ -1775,6 +1804,157 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       .account-disconnect-button:hover .disconnect-icon path {
         fill: #ef4444;
       }
+
+      /* Privy Auth Selection Styles */
+      .privy-auth-view {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+        padding: 20px 0;
+      }
+
+      .privy-wallet-icon {
+        width: ${SIZES.ICON_LARGE}px;
+        height: ${SIZES.ICON_LARGE}px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .wallet-icon-large {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        border-radius: 12px;
+      }
+
+      .privy-auth-description {
+        text-align: center;
+        font-size: 14px;
+        font-weight: ${FONT_WEIGHTS.LIGHT};
+        opacity: 0.8;
+        line-height: 1.5;
+        margin: 0;
+        max-width: 350px;
+      }
+
+      .privy-section {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .privy-section-title {
+        font-size: 13px;
+        font-weight: ${FONT_WEIGHTS.SEMIBOLD};
+        color: var(--text-color);
+        opacity: 0.7;
+        margin: 0;
+        text-align: center;
+      }
+
+      .privy-social-buttons {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 10px;
+        width: 100%;
+      }
+
+      .privy-social-button {
+        padding: 12px 16px;
+        border-radius: ${SIZES.BUTTON_BORDER_RADIUS}px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        background: var(--wallet-btn-bg);
+        color: var(--text-color);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: all 0.2s;
+        font-size: 14px;
+        font-weight: ${FONT_WEIGHTS.MEDIUM};
+      }
+
+      .privy-social-button:hover {
+        background: var(--wallet-btn-hover);
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      .social-icon {
+        font-size: 18px;
+        flex-shrink: 0;
+      }
+
+      .privy-auth-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: 100%;
+      }
+
+      .privy-auth-button {
+        width: 100%;
+        padding: 14px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
+        border-radius: ${SIZES.BUTTON_BORDER_RADIUS}px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        background: var(--wallet-btn-bg);
+        color: var(--text-color);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        transition: all 0.2s;
+        font-size: 15px;
+        font-weight: ${FONT_WEIGHTS.MEDIUM};
+      }
+
+      .privy-auth-button:hover {
+        background: var(--wallet-btn-hover);
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      .auth-icon {
+        font-size: 20px;
+        flex-shrink: 0;
+      }
+
+      .privy-divider {
+        display: flex;
+        align-items: center;
+        text-align: center;
+        margin: 8px 0;
+      }
+
+      .privy-divider::before,
+      .privy-divider::after {
+        content: '';
+        flex: 1;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+      }
+
+      .privy-divider span {
+        padding: 0 12px;
+        font-size: 12px;
+        font-weight: ${FONT_WEIGHTS.MEDIUM};
+        color: var(--text-color);
+        opacity: 0.5;
+      }
+
+      .privy-footer-text {
+        text-align: center;
+        font-size: 12px;
+        font-weight: ${FONT_WEIGHTS.LIGHT};
+        opacity: 0.6;
+        line-height: 1.4;
+        margin: 8px 0 0 0;
+        max-width: 300px;
+      }
     </style>
 
     <button class="connect-button" id="connect-wallet-button" part="connect-button">${buttonText}</button>
@@ -2027,6 +2207,99 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     /**
+     * Render Privy auth method selection view
+     */
+    private renderPrivyAuthSelectView(): string {
+      if (!this.privyAuthData) return '';
+
+      const { walletName, walletIcon, authMethods, socialProviders } = this.privyAuthData;
+
+      // Social provider icons mapping
+      const socialIcons: Record<string, string> = {
+        google: '🔵',
+        twitter: '🐦',
+        discord: '💬',
+        github: '🐙',
+        apple: '🍎',
+        linkedin: '💼',
+        tiktok: '🎵',
+        farcaster: '🟣'
+      };
+
+      // Generate social provider buttons
+      const socialButtons = socialProviders
+        .map(
+          (provider) => `
+        <button class="privy-social-button" data-auth-method="social" data-provider="${provider}">
+          <span class="social-icon">${socialIcons[provider] || '🔑'}</span>
+          <span>Continue with ${provider.charAt(0).toUpperCase() + provider.slice(1)}</span>
+        </button>`
+        )
+        .join('');
+
+      // Generate other auth method buttons
+      const otherAuthButtons = authMethods
+        .filter((method) => method !== 'social')
+        .map((method) => {
+          const methodLabels: Record<string, { icon: string; label: string }> = {
+            email: { icon: '✉️', label: 'Email' },
+            sms: { icon: '📱', label: 'Phone Number' },
+            wallet: { icon: '👛', label: 'Connect Wallet' }
+          };
+          const methodInfo = methodLabels[method] || { icon: '🔑', label: method };
+          return `
+        <button class="privy-auth-button" data-auth-method="${method}">
+          <span class="auth-icon">${methodInfo.icon}</span>
+          <span>Continue with ${methodInfo.label}</span>
+        </button>`;
+        })
+        .join('');
+
+      return `
+      <div class="header">
+        <div class="header-with-back">
+          <button class="back-button" id="privy-auth-back-button" aria-label="Back">←</button>
+          <h2 class="title">Login to ${walletName}</h2>
+        </div>
+        <button class="close-button" part="close-button" aria-label="Close">×</button>
+      </div>
+
+      <div class="content">
+        <div class="privy-auth-view">
+          ${walletIcon ? `
+          <div class="privy-wallet-icon">
+            <img src="${walletIcon}" alt="${walletName}" class="wallet-icon-large">
+          </div>
+          ` : ''}
+          <p class="privy-auth-description">Choose how you want to login and create your XRPL wallet</p>
+
+          ${authMethods.includes('social') && socialProviders.length > 0 ? `
+          <div class="privy-section">
+            <h3 class="privy-section-title">Social Login</h3>
+            <div class="privy-social-buttons">
+              ${socialButtons}
+            </div>
+          </div>
+          ` : ''}
+
+          ${otherAuthButtons ? `
+          <div class="privy-section">
+            ${authMethods.includes('social') && socialProviders.length > 0 ? '<div class="privy-divider"><span>or</span></div>' : ''}
+            <div class="privy-auth-buttons">
+              ${otherAuthButtons}
+            </div>
+          </div>
+          ` : ''}
+
+          <p class="privy-footer-text">
+            Your wallet will be created securely using Privy's embedded wallet technology
+          </p>
+        </div>
+      </div>
+    `;
+    }
+
+    /**
      * Render account details modal
      */
     private renderAccountModal(): string {
@@ -2260,6 +2533,62 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           this.connectWithCustomDerivationPath(derivationPath);
         }
       });
+
+      // Privy auth selection back button
+      this.shadow.querySelector('#privy-auth-back-button')?.addEventListener('click', () => {
+        this.showWalletList();
+      });
+
+      // Privy social login buttons
+      this.shadow.querySelectorAll('.privy-social-button').forEach((button) => {
+        button.addEventListener('click', () => {
+          const provider = (button as HTMLElement).dataset.provider || '';
+          logger.debug('Privy social login selected:', provider);
+          this.connectWithPrivyAuth('social', provider);
+        });
+      });
+
+      // Privy other auth method buttons
+      this.shadow.querySelectorAll('.privy-auth-button').forEach((button) => {
+        button.addEventListener('click', () => {
+          const method = (button as HTMLElement).dataset.authMethod || '';
+          logger.debug('Privy auth method selected:', method);
+          this.connectWithPrivyAuth(method);
+        });
+      });
+    }
+
+    /**
+     * Connect with Privy using selected auth method
+     */
+    private async connectWithPrivyAuth(authMethod: string, provider?: string) {
+      if (!this.privyAuthData) return;
+
+      const { walletId, walletName, walletIcon } = this.privyAuthData;
+
+      try {
+        // Show loading state
+        this.showLoadingView(walletId, walletName, walletIcon);
+
+        // Prepare connect options with auth method preference
+        const connectOptions: any = {
+          authMethod,
+        };
+
+        if (provider) {
+          connectOptions.provider = provider;
+        }
+
+        // Connect using wallet manager
+        logger.debug('Connecting with Privy:', { authMethod, provider });
+        await this.walletManager?.connect(walletId, connectOptions);
+
+        // Close modal on successful connection
+        this.close();
+      } catch (error) {
+        logger.error('Privy connection failed:', error);
+        this.showErrorView(walletId, walletName, error as Error);
+      }
     }
   }
 

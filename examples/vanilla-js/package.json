@@ -12,6 +12,7 @@
     "@xrpl-connect/adapter-crossmark": "workspace:*",
     "@xrpl-connect/adapter-gemwallet": "workspace:*",
     "@xrpl-connect/adapter-ledger": "workspace:*",
+    "@xrpl-connect/adapter-privy": "workspace:*",
     "@xrpl-connect/adapter-walletconnect": "workspace:*",
     "@xrpl-connect/adapter-xaman": "workspace:*",
     "@xrpl-connect/core": "workspace:*",
