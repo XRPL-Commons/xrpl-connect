@@ -1,6 +1,16 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script type="module">
+      import { Buffer } from 'buffer'
+      import process from 'process'
+      window.Buffer = Buffer
+      window.process = process
+      // Add process.binding polyfill for end-of-stream module
+      if (!process.binding) {
+        process.binding = () => ({})
+      }
+    </script>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -130,9 +140,11 @@
          - Shows account modal when connected (tap to manage account)
          - Click to open wallet selection modal
          - Fully customizable via CSS variables (see style.css for theming)
+         - Add social-auth attribute to enable social login mode
     -->
     <xrpl-wallet-connector
       id="wallet-connector"
+      social-auth
       style="
         --xrpl-background-color: #1a202c;
         --xrpl-background-secondary: #2d3748;
@@ -144,7 +156,7 @@
         --xrpl-border-radius: 12px;
         --xrpl-modal-box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
       "
-      primary-wallet="xaman">
+      primary-wallet="web3auth">
     </xrpl-wallet-connector>
 
     <script type="module" src="/src/main.js"></script>

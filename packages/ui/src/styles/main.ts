@@ -288,6 +288,25 @@ export const mainStyles = `
     border-radius: 6px;
   }
 
+  .switch-view-button {
+    width: 100%;
+    padding: 12px 16px;
+    margin-top: 16px;
+    border: none;
+    background: transparent;
+    color: var(--xc-text-muted-color);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+    font-family: var(--xc-font-family);
+  }
+
+  .switch-view-button:hover {
+    color: var(--xc-primary-color);
+  }
+
   .qr-view {
     display: flex;
     flex-direction: column;

@@ -5,17 +5,23 @@ import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
 import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
-import { WalletConnectorElement } from '@xrpl-connect/ui';
+import { Web3AuthAdapter } from '@xrpl-connect/adapter-web3auth';
 import '@xrpl-connect/ui'; // Register the web component
-
 
 // Configuration - ADD YOUR API KEYS HERE
 const XAMAN_API_KEY = '15ba80a8-cba2-4789-a45b-c6a850d9d91b'; // Get from https://apps.xumm.dev/
 const WALLETCONNECT_PROJECT_ID = '32798b46e13dfb0049706a524cf132d6'; // Get from https://cloud.walletconnect.com
+const WEB3AUTH_CLIENT_ID =
+  'BN07RBNExrd5m6ARsB0PnjxSDtlQaLs5hTuJm9Ylq2be-30n6o0lgRWrtQpNVSWCLAVQpbZCjYDU8a1rp_Yuxxs'; // Get from https://dashboard.web3auth.io/
 
 // Initialize Wallet Manager
 const walletManager = new WalletManager({
   adapters: [
+    // Web3Auth for social login (Google, Twitter, Discord, etc.)
+    new Web3AuthAdapter({
+      clientId: WEB3AUTH_CLIENT_ID,
+      web3AuthNetwork: 'testnet', // 'mainnet' | 'testnet' | 'devnet'
+    }),
     new XamanAdapter({ apiKey: XAMAN_API_KEY }),
     // WalletConnect with modal enabled for mobile deeplinks
     new WalletConnectAdapter({

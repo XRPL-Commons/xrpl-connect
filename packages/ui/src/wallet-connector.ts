@@ -53,10 +53,11 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private walletAvailabilityChecked: boolean = false; // Flag to track if availability has been checked
     private accountModalOpen: boolean = false; // Track if account details modal is open
     private accountBalance: string | null = null; // Cached account balance
+    private currentView: 'social' | 'wallets' = 'social'; // Current view when social-auth is enabled
 
     // Observed attributes
     static get observedAttributes() {
-      return ['primary-wallet', 'wallets'];
+      return ['primary-wallet', 'wallets', 'social-auth'];
     }
 
     constructor() {
@@ -110,6 +111,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Set the WalletManager instance
      */
     setWalletManager(manager: WalletManager) {
+      console.log(manager);
       this.walletManager = manager;
       this.walletService = new WalletService(this.walletManager, this);
       this.eventHandler = new EventHandler(this, this.walletService);
@@ -183,6 +185,29 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       return returnArray;
+    }
+
+    /**
+     * Check if social auth mode is enabled
+     */
+    private isSocialAuthEnabled(): boolean {
+      return this.hasAttribute('social-auth');
+    }
+
+    /**
+     * Switch to social login view
+     */
+    public showSocialView() {
+      this.currentView = 'social';
+      this.render();
+    }
+
+    /**
+     * Switch to wallets view
+     */
+    public showWalletsView() {
+      this.currentView = 'wallets';
+      this.render();
     }
 
     /**
@@ -677,7 +702,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           this.accountSelectionData.accounts
         );
       } else {
-        contentHTML = renderWalletListView(primaryWallet, otherWallets);
+        contentHTML = renderWalletListView(
+          primaryWallet,
+          otherWallets,
+          this.isSocialAuthEnabled(),
+          this.currentView
+        );
       }
 
       const overlayClass = this.isFirstOpen ? 'overlay fade-in' : 'overlay';

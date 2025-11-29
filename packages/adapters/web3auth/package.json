@@ -1,0 +1,65 @@
+{
+  "name": "@xrpl-connect/adapter-web3auth",
+  "version": "0.4.0",
+  "description": "Web3Auth adapter for XRPL Connect - Social login support with Google, Twitter, Discord, and more",
+  "author": "XRPL Connect Contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/XRPL-Commons/xrpl-connect#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/XRPL-Commons/xrpl-connect",
+    "directory": "packages/adapters/web3auth"
+  },
+  "bugs": {
+    "url": "https://github.com/XRPL-Commons/xrpl-connect/issues"
+  },
+  "keywords": [
+    "xrpl",
+    "web3auth",
+    "wallet",
+    "adapter",
+    "web3",
+    "social-login",
+    "oauth",
+    "google",
+    "twitter",
+    "discord"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@web3auth/base": "^9.7.0",
+    "@web3auth/modal": "^10.8.0",
+    "@web3auth/xrpl-provider": "^9.7.0",
+    "@xrpl-connect/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "xrpl": "^3.0.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsup": "^8.1.0",
+    "typescript": "^5.5.0",
+    "vitest": "^1.6.0"
+  }
+}

@@ -79,6 +79,18 @@ export class EventHandler {
       });
     });
 
+    // Switch view button (social auth mode)
+    shadow.querySelectorAll('.switch-view-button').forEach((button: Element) => {
+      button.addEventListener('click', () => {
+        const switchTo = (button as HTMLElement).dataset.switchTo;
+        if (switchTo === 'social') {
+          (this.component as any).showSocialView();
+        } else if (switchTo === 'wallets') {
+          (this.component as any).showWalletsView();
+        }
+      });
+    });
+
     // Back button (QR view)
     shadow.querySelector('#back-button')?.addEventListener('click', () => {
       (this.component as any).showWalletList();
