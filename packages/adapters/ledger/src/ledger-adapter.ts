@@ -20,7 +20,7 @@ import { createWalletError, STANDARD_NETWORKS } from '@xrpl-connect/core';
 
 import type { LedgerAdapterOptions, LedgerConnectOptions } from './types';
 import { LedgerDeviceState } from './types';
-import { parseLedgerError, isBrowserSupported, formatLedgerError } from './errors';
+import { isBrowserSupported, createLedgerError, parseLedgerError } from './errors';
 
 /**
  * Default timeout for Ledger operations (60 seconds)
@@ -122,28 +122,7 @@ export class LedgerAdapter implements WalletAdapter {
       return this.currentAccount;
     } catch (error) {
       await this.cleanup();
-      const { state, message } = parseLedgerError(error);
-
-      if (state === LedgerDeviceState.NOT_CONNECTED) {
-        throw createWalletError.notInstalled(
-          'Ledger device not found. Please connect your Ledger via USB.'
-        );
-      } else if (state === LedgerDeviceState.LOCKED) {
-        throw createWalletError.connectionFailed(
-          this.name,
-          new Error('Ledger is locked. Please unlock your Ledger by entering your PIN.')
-        );
-      } else if (state === LedgerDeviceState.APP_NOT_OPEN) {
-        throw createWalletError.connectionFailed(
-          this.name,
-          new Error('XRP app is not open. Please open the XRP application on your Ledger device.')
-        );
-      } else {
-        throw createWalletError.connectionFailed(
-          this.name,
-          new Error(message || (error as Error).message)
-        );
-      }
+      throw createLedgerError(error, 'connecting');
     }
   }
 
@@ -261,13 +240,7 @@ export class LedgerAdapter implements WalletAdapter {
         throw error;
       }
     } catch (error) {
-      const { state, message } = parseLedgerError(error);
-
-      if (state === LedgerDeviceState.READY && message.includes('rejected')) {
-        throw createWalletError.signRejected();
-      }
-
-      throw createWalletError.signFailed(new Error(formatLedgerError(error)));
+      throw createLedgerError(error, 'signing');
     }
   }
 
@@ -305,7 +278,7 @@ export class LedgerAdapter implements WalletAdapter {
         publicKey: this.currentAccount.publicKey || '',
       };
     } catch (error) {
-      throw createWalletError.signFailed(new Error(formatLedgerError(error)));
+      throw createLedgerError(error, 'signing');
     }
   }
 
@@ -368,13 +341,12 @@ export class LedgerAdapter implements WalletAdapter {
       }
 
       if (accounts.length === 0 && lastError) {
-        const parsedError = parseLedgerError(lastError);
-        throw parsedError;
+        throw createLedgerError(lastError, 'connecting');
       }
 
       return accounts;
     } catch (error) {
-      throw createWalletError.unknown(`Failed to retrieve accounts: ${(error as Error).message}`);
+      throw createLedgerError(error, 'connecting');
     }
   }
 
@@ -437,7 +409,7 @@ export class LedgerAdapter implements WalletAdapter {
     if (typeof config === 'string') {
       const network = STANDARD_NETWORKS[config];
       if (!network) {
-        throw createWalletError.unknown(`Unknown network: ${config}`);
+        throw createWalletError.networkNotSupported(config, this.name);
       }
       return network;
     }

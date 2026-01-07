@@ -1,19 +1,36 @@
 /**
  * Ledger-specific error handling utilities
+ *
+ * This module provides utilities for parsing and formatting Ledger device errors,
+ * mapping them to the appropriate WalletErrorCode values.
  */
 
+import { createWalletError, type WalletError } from '@xrpl-connect/core';
 import { LedgerDeviceState, LedgerErrorCode, LEDGER_STATE_MESSAGES } from './types';
 
 /**
- * Parse Ledger error and determine device state
+ * Result of parsing a Ledger error
  */
-export function parseLedgerError(error: unknown): {
+export interface ParsedLedgerError {
+  /** The determined device state */
   state: LedgerDeviceState;
+  /** Human-readable error message */
   message: string;
-} {
+  /** Whether the error is user-initiated (rejection) */
+  isUserAction: boolean;
+}
+
+/**
+ * Parse Ledger error and determine device state
+ *
+ * @param error - The error to parse
+ * @returns Parsed error information including state and message
+ */
+export function parseLedgerError(error: unknown): ParsedLedgerError {
   if (error && typeof error === 'object') {
     const err = error;
 
+    // Check for Ledger status codes
     if ('statusCode' in err) {
       const statusCode = err.statusCode;
 
@@ -22,6 +39,7 @@ export function parseLedgerError(error: unknown): {
           return {
             state: LedgerDeviceState.LOCKED,
             message: LEDGER_STATE_MESSAGES[LedgerDeviceState.LOCKED],
+            isUserAction: false,
           };
 
         case LedgerErrorCode.APP_NOT_OPEN:
@@ -30,16 +48,19 @@ export function parseLedgerError(error: unknown): {
           return {
             state: LedgerDeviceState.APP_NOT_OPEN,
             message: LEDGER_STATE_MESSAGES[LedgerDeviceState.APP_NOT_OPEN],
+            isUserAction: false,
           };
 
         case LedgerErrorCode.USER_REJECTED:
           return {
             state: LedgerDeviceState.READY,
             message: 'Transaction rejected on Ledger device',
+            isUserAction: true,
           };
       }
     }
 
+    // Check error message for common patterns
     if ('message' in err && typeof err.message === 'string') {
       const message = err.message.toLowerCase();
 
@@ -52,6 +73,7 @@ export function parseLedgerError(error: unknown): {
         return {
           state: LedgerDeviceState.NOT_CONNECTED,
           message: LEDGER_STATE_MESSAGES[LedgerDeviceState.NOT_CONNECTED],
+          isUserAction: false,
         };
       }
 
@@ -59,6 +81,7 @@ export function parseLedgerError(error: unknown): {
         return {
           state: LedgerDeviceState.LOCKED,
           message: LEDGER_STATE_MESSAGES[LedgerDeviceState.LOCKED],
+          isUserAction: false,
         };
       }
 
@@ -66,6 +89,15 @@ export function parseLedgerError(error: unknown): {
         return {
           state: LedgerDeviceState.READY,
           message: 'Operation rejected on Ledger device',
+          isUserAction: true,
+        };
+      }
+
+      if (message.includes('timeout')) {
+        return {
+          state: LedgerDeviceState.UNKNOWN,
+          message: 'Operation timed out. Please try again.',
+          isUserAction: false,
         };
       }
     }
@@ -74,11 +106,14 @@ export function parseLedgerError(error: unknown): {
   return {
     state: LedgerDeviceState.UNKNOWN,
     message: error instanceof Error ? error.message : 'Unknown Ledger error',
+    isUserAction: false,
   };
 }
 
 /**
  * Check if browser supports Ledger (WebHID or WebUSB)
+ *
+ * @returns Object indicating support status and available transports
  */
 export function isBrowserSupported(): {
   supported: boolean;
@@ -107,6 +142,9 @@ export function isBrowserSupported(): {
 
 /**
  * Format a user-friendly error message based on error type
+ *
+ * @param error - The error to format
+ * @returns Formatted error message with helpful instructions
  */
 export function formatLedgerError(error: unknown): string {
   const { state, message } = parseLedgerError(error);
@@ -124,4 +162,47 @@ export function formatLedgerError(error: unknown): string {
     default:
       return message;
   }
+}
+
+/**
+ * Create a WalletError from a Ledger error
+ *
+ * This function parses the Ledger error and creates an appropriate WalletError
+ * with the correct error code based on the device state.
+ *
+ * @param error - The Ledger error
+ * @param context - Optional context (e.g., 'connecting', 'signing')
+ * @returns A WalletError with the appropriate code and message
+ */
+export function createLedgerError(error: unknown, context?: string): WalletError {
+  const parsed = parseLedgerError(error);
+  const formattedMessage = formatLedgerError(error);
+
+  switch (parsed.state) {
+    case LedgerDeviceState.NOT_CONNECTED:
+      return createWalletError.deviceNotFound('Ledger');
+
+    case LedgerDeviceState.LOCKED:
+      return createWalletError.deviceLocked('Ledger');
+
+    case LedgerDeviceState.APP_NOT_OPEN:
+      return createWalletError.deviceAppNotOpen('XRP', 'Ledger');
+
+    case LedgerDeviceState.READY:
+      // Device is ready, so this is likely a user rejection
+      if (parsed.isUserAction) {
+        if (context === 'signing') {
+          return createWalletError.signRejected('Ledger');
+        }
+        return createWalletError.connectionRejected('Ledger');
+      }
+      // Fall through to unknown error
+      break;
+  }
+
+  // Default to unknown error with formatted message
+  return createWalletError.deviceCommunicationError(
+    formattedMessage,
+    error instanceof Error ? error : undefined
+  );
 }
