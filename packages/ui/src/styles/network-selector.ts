@@ -28,20 +28,19 @@ export const networkSelectorStyles = `
   }
 
   .network-button {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 10px 12px;
-    border-radius: var(--xc-network-button-border-radius);
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
     border: var(--xc-network-button-border);
     background: var(--xc-network-button-background);
     color: var(--xc-network-button-color);
-    font-size: 13px;
-    font-weight: ${FONT_WEIGHTS.MEDIUM};
     cursor: pointer;
     transition: all 0.2s;
-    font-family: inherit;
-    white-space: nowrap;
   }
 
   .network-button:hover:not(:disabled) {
@@ -57,27 +56,22 @@ export const networkSelectorStyles = `
     opacity: 0.7;
   }
 
+  .globe-icon {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+
   .network-dot {
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
     width: 8px;
     height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
     box-shadow: 0 0 4px currentColor;
-  }
-
-  .network-label {
-    font-size: 13px;
-    font-weight: ${FONT_WEIGHTS.MEDIUM};
-  }
-
-  .chevron {
-    transition: transform 0.2s ease;
-    opacity: 0.6;
-    flex-shrink: 0;
-  }
-
-  .chevron.open {
-    transform: rotate(180deg);
+    border: 1.5px solid var(--xc-network-button-background);
   }
 
   .dropdown {

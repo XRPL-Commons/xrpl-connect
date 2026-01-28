@@ -28,22 +28,6 @@ function getNetworkColor(networkId: string): string {
   return NETWORK_COLORS[networkId] || '#6b7280'; // Default gray for custom networks
 }
 
-/**
- * Get short label for a network
- */
-function getNetworkLabel(network: NetworkInfo): string {
-  switch (network.id) {
-    case 'mainnet':
-      return 'Main';
-    case 'testnet':
-      return 'Test';
-    case 'devnet':
-      return 'Dev';
-    default:
-      return network.name.substring(0, 4);
-  }
-}
-
 // Only define the component in browser (guard against SSR)
 let NetworkSelectorElement: any = null;
 
@@ -236,7 +220,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private render() {
       const networks = this.getNetworks();
       const currentColor = getNetworkColor(this.currentNetwork.id);
-      const currentLabel = getNetworkLabel(this.currentNetwork);
 
       this.shadow.innerHTML = `
         <style>
@@ -248,13 +231,16 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
             class="network-button${this.isSwitching ? ' switching' : ''}"
             id="network-toggle"
             part="network-button"
+            title="${this.currentNetwork.name}"
             ${this.isSwitching ? 'disabled' : ''}
           >
-            <span class="network-dot" style="background-color: ${currentColor}"></span>
-            <span class="network-label">${this.isSwitching ? '...' : currentLabel}</span>
-            <svg class="chevron${this.isDropdownOpen ? ' open' : ''}" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <svg class="globe-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/>
+              <ellipse cx="12" cy="12" rx="4" ry="10" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M2 12h20" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M4 7h16M4 17h16" stroke="currentColor" stroke-width="1.5" opacity="0.6"/>
             </svg>
+            <span class="network-dot" style="background-color: ${currentColor}"></span>
           </button>
 
           ${
@@ -269,7 +255,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
                 class="dropdown-item${network.id === this.currentNetwork.id ? ' active' : ''}"
                 data-network-id="${network.id}"
               >
-                <span class="network-dot" style="background-color: ${getNetworkColor(network.id)}"></span>
                 <span class="network-name">${network.name}</span>
                 ${
                   network.id === this.currentNetwork.id
