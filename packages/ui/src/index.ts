@@ -4,6 +4,7 @@
  */
 
 export { WalletConnectorElement } from './wallet-connector';
+export { NetworkSelectorElement } from './network-selector';
 
 // Export constants and utilities for advanced use cases
 export * from './constants';

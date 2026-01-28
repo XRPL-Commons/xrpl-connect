@@ -16,6 +16,9 @@ export const mainStyles = `
   }
 
   :host {
+    display: inline-block;
+    position: relative;
+
     /* Defaults for CSS variables - can be overridden via style attribute or CSS */
     /* General */
     --xc-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
