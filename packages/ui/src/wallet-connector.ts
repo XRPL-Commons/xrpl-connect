@@ -3,8 +3,8 @@
  * A framework-agnostic web component for connecting to XRPL wallets
  */
 
-import type { WalletManager } from '@xrpl-connect/core';
-import { createLogger } from '@xrpl-connect/core';
+import type { WalletManager, NetworkInfo } from '@xrpl-connect/core';
+import { createLogger, STANDARD_NETWORKS } from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
 import { mainStyles } from './styles/main';
 import { SIZES, TIMINGS, QR_CONFIG } from './constants';
@@ -53,6 +53,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private walletAvailabilityChecked: boolean = false; // Flag to track if availability has been checked
     private accountModalOpen: boolean = false; // Track if account details modal is open
     private accountBalance: string | null = null; // Cached account balance
+    private isGlobeVisible: boolean = false; // Track if globe icon is visible
+    private currentNetwork: NetworkInfo; // Current network
+    private isNetworkDropdownOpen: boolean = false; // Track if network dropdown is open
+    private isNetworkSwitching: boolean = false; // Track if network is switching
+    private boundHandleMouseMove: ((e: MouseEvent) => void) | null = null; // Bound mouse handler
+    private boundHandleOutsideClick: ((e: MouseEvent) => void) | null = null; // Bound click handler
 
     // Observed attributes
     static get observedAttributes() {
@@ -62,6 +68,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     constructor() {
       super();
       this.shadow = this.attachShadow({ mode: 'open' });
+      // Default to testnet
+      this.currentNetwork = STANDARD_NETWORKS.testnet;
     }
 
     connectedCallback() {
@@ -79,6 +87,193 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         attributes: true,
         attributeFilter: ['style'],
       });
+
+      // Set up mouse proximity tracking for globe icon
+      this.boundHandleMouseMove = this.handleMouseMove.bind(this);
+      this.boundHandleOutsideClick = this.handleOutsideClick.bind(this);
+      document.addEventListener('mousemove', this.boundHandleMouseMove);
+      document.addEventListener('click', this.boundHandleOutsideClick);
+    }
+
+    disconnectedCallback() {
+      // Clean up event listeners
+      if (this.boundHandleMouseMove) {
+        document.removeEventListener('mousemove', this.boundHandleMouseMove);
+      }
+      if (this.boundHandleOutsideClick) {
+        document.removeEventListener('click', this.boundHandleOutsideClick);
+      }
+    }
+
+    /**
+     * Handle mouse movement for globe proximity detection
+     */
+    private handleMouseMove(e: MouseEvent) {
+      const connectButton = this.shadow.querySelector('#connect-wallet-button');
+      if (!connectButton) return;
+
+      const rect = connectButton.getBoundingClientRect();
+      const proximityThreshold = 100; // pixels
+      const leftExtension = 75; // extra pixels to check on the left side
+
+      // Create an asymmetric detection area (extended on the left)
+      const isWithinX =
+        e.clientX >= rect.left - proximityThreshold - leftExtension &&
+        e.clientX <= rect.right + proximityThreshold;
+      const isWithinY =
+        e.clientY >= rect.top - proximityThreshold && e.clientY <= rect.bottom + proximityThreshold;
+
+      const shouldShowGlobe = isWithinX && isWithinY;
+
+      if (shouldShowGlobe !== this.isGlobeVisible) {
+        this.isGlobeVisible = shouldShowGlobe;
+        this.updateGlobeVisibility();
+      }
+    }
+
+    /**
+     * Handle clicks outside the network dropdown
+     */
+    private handleOutsideClick(e: MouseEvent) {
+      if (this.isNetworkDropdownOpen) {
+        const dropdown = this.shadow.querySelector('.network-dropdown');
+        const globeButton = this.shadow.querySelector('#globe-button');
+        const target = e.target as Node;
+
+        // Check if click is outside dropdown and globe button
+        if (dropdown && !dropdown.contains(target) && globeButton && !globeButton.contains(target)) {
+          this.isNetworkDropdownOpen = false;
+          this.render();
+        }
+      }
+    }
+
+    /**
+     * Update globe visibility with animation
+     */
+    private updateGlobeVisibility() {
+      const globeContainer = this.shadow.querySelector('.globe-container') as HTMLElement;
+      if (globeContainer) {
+        if (this.isGlobeVisible) {
+          globeContainer.classList.add('visible');
+        } else {
+          globeContainer.classList.remove('visible');
+        }
+      }
+    }
+
+    /**
+     * Network colors for the dot indicator
+     */
+    private getNetworkColor(networkId: string): string {
+      const colors: Record<string, string> = {
+        mainnet: '#10b981', // Green
+        testnet: '#3b82f6', // Blue
+        devnet: '#f59e0b', // Orange
+      };
+      return colors[networkId] || '#6b7280'; // Default gray for custom networks
+    }
+
+    /**
+     * Get available networks
+     */
+    private getNetworks(): NetworkInfo[] {
+      return Object.values(STANDARD_NETWORKS);
+    }
+
+    /**
+     * Toggle the network dropdown
+     */
+    public toggleNetworkDropdown() {
+      this.isNetworkDropdownOpen = !this.isNetworkDropdownOpen;
+      this.render();
+    }
+
+    /**
+     * Switch network by ID (public method for event handler)
+     */
+    public switchNetworkById(networkId: string) {
+      if (STANDARD_NETWORKS[networkId]) {
+        this.switchNetwork(STANDARD_NETWORKS[networkId]);
+      }
+    }
+
+    /**
+     * Switch to a different network
+     */
+    private async switchNetwork(network: NetworkInfo) {
+      if (this.isNetworkSwitching || network.id === this.currentNetwork.id) {
+        this.isNetworkDropdownOpen = false;
+        this.render();
+        return;
+      }
+
+      this.isNetworkSwitching = true;
+      this.isNetworkDropdownOpen = false;
+
+      try {
+        logger.debug('Switching network to:', network.id);
+
+        const wasConnected = this.walletManager?.connected;
+        const currentWalletId = this.walletManager?.wallet?.id;
+
+        // Disconnect if connected
+        if (wasConnected) {
+          await this.walletManager?.disconnect();
+        }
+
+        // Update internal state
+        this.currentNetwork = network;
+
+        // Update the wallet manager's network option
+        if (this.walletManager) {
+          (this.walletManager as any).options = {
+            ...(this.walletManager as any).options,
+            network: network.id,
+          };
+        }
+
+        // Auto-reconnect if was connected
+        if (wasConnected && currentWalletId && this.walletManager) {
+          logger.debug('Auto-reconnecting to wallet:', currentWalletId);
+          try {
+            await this.walletManager.connect(currentWalletId, { network: network.id });
+          } catch (error) {
+            logger.warn('Auto-reconnect failed:', error);
+            this.dispatchEvent(
+              new CustomEvent('network-switch-error', {
+                detail: { network, error },
+              })
+            );
+          }
+        }
+
+        // Emit network changed event
+        this.dispatchEvent(
+          new CustomEvent('network-change', {
+            detail: { network },
+          })
+        );
+
+        this.render();
+      } catch (error) {
+        logger.error('Failed to switch network:', error);
+        this.dispatchEvent(
+          new CustomEvent('network-switch-error', {
+            detail: { network, error },
+          })
+        );
+      } finally {
+        this.isNetworkSwitching = false;
+        this.render();
+      }
+    }
+
+    /**
+     * Get the current network
+     */
+    getNetwork(): NetworkInfo {
+      return this.currentNetwork;
     }
 
     /**
@@ -114,8 +309,24 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.walletService = new WalletService(this.walletManager, this);
       this.eventHandler = new EventHandler(this, this.walletService);
 
+      // Get the current network from the manager
+      const managerOptions = (manager as any).options;
+      if (managerOptions?.network) {
+        const network = managerOptions.network;
+        if (typeof network === 'string' && STANDARD_NETWORKS[network]) {
+          this.currentNetwork = STANDARD_NETWORKS[network];
+        } else if (typeof network === 'object' && network.id) {
+          this.currentNetwork = network;
+        }
+      }
+
       // Listen to wallet manager events
-      this.walletManager.on('connect', () => {
+      this.walletManager.on('connect', (account: unknown) => {
+        // Update network from account if available
+        if (account && typeof account === 'object' && 'network' in account) {
+          const acc = account as { network: NetworkInfo };
+          this.currentNetwork = acc.network;
+        }
         this.close();
         this.render(); // Re-render to update button
       });
@@ -126,6 +337,14 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       this.walletManager.on('accountChanged', () => {
         this.render(); // Re-render to update button with new account
+      });
+
+      // Listen to network changes
+      this.walletManager.on('networkChanged', (network: unknown) => {
+        if (network && typeof network === 'object' && 'id' in network) {
+          this.currentNetwork = network as NetworkInfo;
+          this.render();
+        }
       });
 
       this.render();
@@ -688,12 +907,66 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.isFirstOpen = false;
       }
 
+      const networks = this.getNetworks();
+      const currentColor = this.getNetworkColor(this.currentNetwork.id);
+
       this.shadow.innerHTML = `
     <style>
       ${mainStyles}
     </style>
 
-    <button class="connect-button" id="connect-wallet-button" part="connect-button">${buttonText}</button>
+    <div class="button-container">
+      <div class="globe-container${this.isGlobeVisible ? ' visible' : ''}">
+        <button
+          class="globe-button${this.isNetworkSwitching ? ' switching' : ''}"
+          id="globe-button"
+          part="globe-button"
+          title="${this.currentNetwork.name}"
+          ${this.isNetworkSwitching ? 'disabled' : ''}
+        >
+          <svg class="globe-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/>
+            <ellipse cx="12" cy="12" rx="4" ry="10" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M2 12h20" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M4 7h16M4 17h16" stroke="currentColor" stroke-width="1.5" opacity="0.6"/>
+          </svg>
+          <span class="network-dot" style="background-color: ${currentColor}"></span>
+        </button>
+
+        ${
+          this.isNetworkDropdownOpen
+            ? `
+        <div class="network-dropdown" part="network-dropdown">
+          <div class="network-dropdown-header">Select Network</div>
+          ${networks
+            .map(
+              (network) => `
+            <button
+              class="network-dropdown-item${network.id === this.currentNetwork.id ? ' active' : ''}"
+              data-network-id="${network.id}"
+            >
+              <span class="network-name">${network.name}</span>
+              ${
+                network.id === this.currentNetwork.id
+                  ? `
+                <svg class="check-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M13.5 4.5L6 12L2.5 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              `
+                  : ''
+              }
+            </button>
+          `
+            )
+            .join('')}
+        </div>
+        `
+            : ''
+        }
+      </div>
+
+      <button class="connect-button" id="connect-wallet-button" part="connect-button">${buttonText}</button>
+    </div>
 
     ${
       this.isOpen

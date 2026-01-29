@@ -5,12 +5,12 @@ import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
 import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
-import { WalletConnectorElement, NetworkSelectorElement } from '@xrpl-connect/ui';
+import { WalletConnectorElement } from '@xrpl-connect/ui';
 import '@xrpl-connect/ui'; // Register the web components
 
-// Ensure NetworkSelectorElement is registered (for debugging)
-console.log('NetworkSelectorElement:', NetworkSelectorElement);
-console.log('Custom element registered:', customElements.get('xrpl-network-selector'));
+// Ensure WalletConnectorElement is registered (for debugging)
+console.log('WalletConnectorElement:', WalletConnectorElement);
+console.log('Custom element registered:', customElements.get('xrpl-wallet-connector'));
 
 
 // Configuration - ADD YOUR API KEYS HERE
@@ -64,17 +64,13 @@ walletManager.on('error', (error) => {
 const walletConnector = document.getElementById('wallet-connector');
 walletConnector.setWalletManager(walletManager);
 
-// Initialize the network selector web component
-const networkSelector = document.getElementById('network-selector');
-networkSelector.setWalletManager(walletManager);
-
-// Listen to network selector events
-networkSelector.addEventListener('network-change', (e) => {
+// Listen to network events (globe icon is now integrated in wallet-connector)
+walletConnector.addEventListener('network-change', (e) => {
   logEvent('Network Changed', e.detail.network);
   showStatus(`Switched to ${e.detail.network.name}`, 'success');
 });
 
-networkSelector.addEventListener('network-switch-error', (e) => {
+walletConnector.addEventListener('network-switch-error', (e) => {
   logEvent('Network Switch Error', e.detail);
   showStatus(`Failed to switch network: ${e.detail.error.message}`, 'error');
 });
@@ -174,7 +170,6 @@ function applyTheme(themeName) {
   // Apply CSS variables to wallet connector component
   Object.entries(theme).forEach(([key, value]) => {
     walletConnector.style.setProperty(key, value);
-    networkSelector.style.setProperty(key, value);
   });
 
   // Update button states

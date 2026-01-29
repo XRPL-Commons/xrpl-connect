@@ -167,5 +167,22 @@ export class EventHandler {
         this.walletService.connectWithCustomDerivationPath(derivationPath);
       }
     });
+
+    // Globe button (network selector)
+    shadow.querySelector('#globe-button')?.addEventListener('click', (e: Event) => {
+      e.stopPropagation();
+      (this.component as any).toggleNetworkDropdown();
+    });
+
+    // Network dropdown items
+    shadow.querySelectorAll('.network-dropdown-item').forEach((item: Element) => {
+      item.addEventListener('click', (e: Event) => {
+        e.stopPropagation();
+        const networkId = (item as HTMLElement).dataset.networkId;
+        if (networkId) {
+          (this.component as any).switchNetworkById(networkId);
+        }
+      });
+    });
   }
 }
