@@ -109,6 +109,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Handle mouse movement for globe proximity detection
      */
     private handleMouseMove(e: MouseEvent) {
+      // Keep globe visible while dropdown is open
+      if (this.isNetworkDropdownOpen) {
+        if (!this.isGlobeVisible) {
+          this.isGlobeVisible = true;
+          this.updateGlobeVisibility();
+        }
+        return;
+      }
+
       const connectButton = this.shadow.querySelector('#connect-wallet-button');
       if (!connectButton) return;
 
@@ -138,10 +147,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       if (this.isNetworkDropdownOpen) {
         const dropdown = this.shadow.querySelector('.network-dropdown');
         const globeButton = this.shadow.querySelector('#globe-button');
-        const target = e.target as Node;
+
+        // Use composedPath to get the actual clicked element through shadow DOM boundaries
+        const path = e.composedPath();
 
         // Check if click is outside dropdown and globe button
-        if (dropdown && !dropdown.contains(target) && globeButton && !globeButton.contains(target)) {
+        const clickedOnDropdown = dropdown && path.includes(dropdown);
+        const clickedOnGlobe = globeButton && path.includes(globeButton);
+
+        if (!clickedOnDropdown && !clickedOnGlobe) {
           this.isNetworkDropdownOpen = false;
           this.render();
         }
