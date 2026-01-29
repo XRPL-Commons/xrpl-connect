@@ -118,12 +118,20 @@ export interface WalletAdapter {
   readonly icon?: string; // URL or base64 icon
   readonly url?: string; // Wallet website/download URL
 
+  // Network switching capability
+  // When true, the adapter can switch networks without disconnecting
+  // Default is false (requires disconnect/reconnect)
+  readonly supportsSeamlessNetworkSwitch?: boolean;
+
   // Availability
   isAvailable(): Promise<boolean>; // Check if wallet is installed/accessible
 
   // Connection lifecycle
   connect(options?: ConnectOptions): Promise<AccountInfo>;
   disconnect(): Promise<void>;
+
+  // Network switching (optional, for wallets that support seamless switching)
+  switchNetwork?(network: NetworkInfo): Promise<AccountInfo>;
 
   // Account information
   getAccount(): Promise<AccountInfo | null>;

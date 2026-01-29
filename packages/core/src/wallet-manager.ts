@@ -13,8 +13,10 @@ import type {
   WalletEvent,
   ConnectOptions,
   NetworkInfo,
+  NetworkConfig,
   StoredState,
 } from './types';
+import { STANDARD_NETWORKS } from './types';
 import { createWalletError } from './errors';
 import { Logger } from './logger';
 import { Storage } from './storage';
@@ -303,6 +305,101 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       this.currentAccount.network = network;
     }
     this.emit('networkChanged', network);
+  }
+
+  /**
+   * Switch to a different network
+   * If the current adapter supports seamless switching, it will be used.
+   * Otherwise, disconnect and reconnect with the new network.
+   * @param network - The network to switch to (NetworkInfo or network key like 'mainnet')
+   * @returns The updated account info, or null if not connected
+   */
+  async switchNetwork(network: NetworkConfig): Promise<AccountInfo | null> {
+    // Resolve network config to NetworkInfo
+    const networkInfo = this.resolveNetwork(network);
+
+    // If not connected, just update the default network option
+    if (!this.currentAdapter || !this.currentAccount) {
+      this.options.network = networkInfo;
+      this.logger.info('Updated default network (not connected)', networkInfo);
+      this.emit('networkChanged', networkInfo);
+      return null;
+    }
+
+    const currentNetwork = this.currentAccount.network;
+
+    // If already on this network, no-op
+    if (currentNetwork.id === networkInfo.id) {
+      this.logger.debug('Already on network:', networkInfo.id);
+      return this.currentAccount;
+    }
+
+    const walletId = this.currentAdapter.id;
+    this.logger.info(`Switching network from ${currentNetwork.id} to ${networkInfo.id}`);
+
+    // Check if adapter supports seamless network switching
+    if (this.currentAdapter.supportsSeamlessNetworkSwitch && this.currentAdapter.switchNetwork) {
+      try {
+        this.logger.debug('Using seamless network switch');
+        const account = await this.currentAdapter.switchNetwork(networkInfo);
+
+        // Update state
+        this.currentAccount = account;
+        this.options.network = networkInfo;
+
+        // Update storage
+        const state: StoredState = {
+          walletId,
+          account,
+          network: account.network,
+          timestamp: Date.now(),
+        };
+        await this.storage.saveState(state);
+
+        this.logger.info('Seamless network switch completed', account);
+        this.emit('networkChanged', networkInfo);
+
+        return account;
+      } catch (error) {
+        this.logger.warn('Seamless network switch failed, falling back to reconnect:', error);
+        // Fall through to disconnect/reconnect flow
+      }
+    }
+
+    // Fallback: disconnect and reconnect with new network
+    this.logger.debug('Using disconnect/reconnect for network switch');
+
+    try {
+      await this.disconnect();
+
+      // Update default network before reconnecting
+      this.options.network = networkInfo;
+
+      // Reconnect with the same wallet on the new network
+      const account = await this.connect(walletId, { network: networkInfo });
+
+      this.logger.info('Network switch via reconnect completed', account);
+      return account;
+    } catch (error) {
+      this.logger.error('Network switch failed:', error);
+      // Emit the network change even on failure so UI can update
+      this.emit('networkChanged', networkInfo);
+      throw error;
+    }
+  }
+
+  /**
+   * Resolve network configuration to NetworkInfo
+   */
+  private resolveNetwork(config: NetworkConfig): NetworkInfo {
+    if (typeof config === 'string') {
+      const network = STANDARD_NETWORKS[config];
+      if (!network) {
+        throw createWalletError.unknown(`Unknown network: ${config}`);
+      }
+      return network;
+    }
+    return config;
   }
 
   /**

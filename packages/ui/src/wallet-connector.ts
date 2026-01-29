@@ -214,6 +214,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     /**
      * Switch to a different network
+     * Uses WalletManager.switchNetwork which handles seamless switching for supported adapters
      */
     private async switchNetwork(network: NetworkInfo) {
       if (this.isNetworkSwitching || network.id === this.currentNetwork.id) {
@@ -224,43 +225,20 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       this.isNetworkSwitching = true;
       this.isNetworkDropdownOpen = false;
+      this.render();
 
       try {
         logger.debug('Switching network to:', network.id);
 
-        const wasConnected = this.walletManager?.connected;
-        const currentWalletId = this.walletManager?.wallet?.id;
-
-        // Disconnect if connected
-        if (wasConnected) {
-          await this.walletManager?.disconnect();
+        // Use WalletManager's switchNetwork which handles:
+        // - Seamless switching for adapters that support it (Crossmark, GemWallet, etc.)
+        // - Disconnect/reconnect for adapters that don't (Xaman, WalletConnect)
+        if (this.walletManager) {
+          await this.walletManager.switchNetwork(network);
         }
 
         // Update internal state
         this.currentNetwork = network;
-
-        // Update the wallet manager's network option
-        if (this.walletManager) {
-          (this.walletManager as any).options = {
-            ...(this.walletManager as any).options,
-            network: network.id,
-          };
-        }
-
-        // Auto-reconnect if was connected
-        if (wasConnected && currentWalletId && this.walletManager) {
-          logger.debug('Auto-reconnecting to wallet:', currentWalletId);
-          try {
-            await this.walletManager.connect(currentWalletId, { network: network.id });
-          } catch (error) {
-            logger.warn('Auto-reconnect failed:', error);
-            this.dispatchEvent(
-              new CustomEvent('network-switch-error', {
-                detail: { network, error },
-              })
-            );
-          }
-        }
 
         // Emit network changed event
         this.dispatchEvent(
@@ -272,6 +250,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.render();
       } catch (error) {
         logger.error('Failed to switch network:', error);
+        // Still update internal state even on error so UI reflects the intended network
+        this.currentNetwork = network;
         this.dispatchEvent(
           new CustomEvent('network-switch-error', {
             detail: { network, error },
