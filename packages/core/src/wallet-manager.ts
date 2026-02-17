@@ -8,6 +8,7 @@ import type {
   WalletManagerOptions,
   AccountInfo,
   Transaction,
+  SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
   WalletEvent,
@@ -182,28 +183,45 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
-   * Sign and optionally submit a transaction to the ledger
-   * This unified method works consistently across all wallets
+   * Sign a transaction without submitting it to the ledger
    * @param transaction - The transaction to sign
-   * @param submit - Whether to submit the transaction to the ledger (default: true)
-   * @returns SubmittedTransaction with hash and optional submission details
+   * @returns SignedTransaction with tx_blob and/or signature
    */
-  async signAndSubmit(
-    transaction: Transaction,
-    submit: boolean = true
-  ): Promise<SubmittedTransaction> {
+  async sign(transaction: Transaction): Promise<SignedTransaction> {
     if (!this.currentAdapter) {
       throw createWalletError.notConnected();
     }
 
-    this.logger.debug(`${submit ? 'Signing and submitting' : 'Signing'} transaction`, transaction);
+    this.logger.debug('Signing transaction', transaction);
 
     try {
-      const result = await this.currentAdapter.signAndSubmit(transaction, submit);
-      this.logger.info(`Transaction ${submit ? 'submitted' : 'signed'}`, result.hash || result.id);
+      const result = await this.currentAdapter.sign(transaction);
+      this.logger.info('Transaction signed', result.tx_blob || result.signature);
       return result;
     } catch (error) {
-      this.logger.error(`Failed to ${submit ? 'submit' : 'sign'} transaction:`, error);
+      this.logger.error('Failed to sign transaction:', error);
+      throw createWalletError.signFailed(error as Error);
+    }
+  }
+
+  /**
+   * Sign and submit a transaction to the ledger
+   * @param transaction - The transaction to sign and submit
+   * @returns SubmittedTransaction with hash from ledger confirmation
+   */
+  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+    if (!this.currentAdapter) {
+      throw createWalletError.notConnected();
+    }
+
+    this.logger.debug('Signing and submitting transaction', transaction);
+
+    try {
+      const result = await this.currentAdapter.signAndSubmit(transaction);
+      this.logger.info('Transaction submitted', result.hash || result.id);
+      return result;
+    } catch (error) {
+      this.logger.error('Failed to submit transaction:', error);
       throw createWalletError.signFailed(error as Error);
     }
   }

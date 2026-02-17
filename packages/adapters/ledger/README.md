@@ -84,13 +84,13 @@ The Ledger adapter supports both single-signature and multi-signature transactio
 
 ```typescript
 // Multi-sig example: Sign without submitting
-const result = await adapter.signAndSubmit({
+const result = await adapter.sign({
   TransactionType: 'Payment',
   Destination: 'rN7n7otQDd6FczFgLdlqtyMVrn3KeKniv',
   Amount: '1000000',
   SigningPubKey: '', // Empty for multisig
   Fee: '30' // Higher fee for multisig : Base fee (10 drops) + (10 drops per signer in quorum)
-}, false); // Don't submit yet
+});
 
 // The result contains the signed tx_blob
 // Now collect other signatures and build final transaction with Signers array

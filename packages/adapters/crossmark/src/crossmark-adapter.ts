@@ -9,6 +9,7 @@ import type {
   ConnectOptions,
   NetworkInfo,
   Transaction,
+  SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
@@ -118,9 +119,39 @@ export class CrossmarkAdapter implements WalletAdapter {
   }
 
   /**
-   * Sign and optionally submit a transaction
+   * Sign a transaction without submitting it to the ledger
    * @param transaction - The transaction to sign
-   * @param submit - Whether to submit to the ledger (default: true)
+   */
+  async sign(transaction: Transaction): Promise<SignedTransaction> {
+    if (!this.currentAccount) {
+      throw createWalletError.notConnected();
+    }
+
+    try {
+      const tx = {
+        ...transaction,
+        Account: transaction.Account || this.currentAccount.address,
+      };
+      const signResponse = await sdk.methods.signAndWait(tx as any);
+
+      if (!signResponse.response.data.txBlob) {
+        throw new Error('Failed to sign transaction with Crossmark');
+      }
+      return {
+        hash: '',
+        tx_blob: signResponse.response.data.txBlob,
+      };
+    } catch (error) {
+      if (error instanceof Error && error.message.toLowerCase().includes('reject')) {
+        throw createWalletError.signRejected();
+      }
+      throw createWalletError.signFailed(error as Error);
+    }
+  }
+
+  /**
+   * Sign and submit a transaction to the ledger
+   * @param transaction - The transaction to sign and submit
    */
   async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
     if (!this.currentAccount) {

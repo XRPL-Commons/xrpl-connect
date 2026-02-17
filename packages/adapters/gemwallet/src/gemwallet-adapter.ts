@@ -15,6 +15,7 @@ import type {
   ConnectOptions,
   NetworkInfo,
   Transaction,
+  SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
@@ -115,57 +116,66 @@ export class GemWalletAdapter implements WalletAdapter {
   }
 
   /**
-   * Sign and optionally submit a transaction
+   * Sign a transaction without submitting it to the ledger
    * @param transaction - The transaction to sign
-   * @param submit - Whether to submit to the ledger (default: true)
    */
-  async signAndSubmit(
-    transaction: Transaction,
-    submit: boolean = true
-  ): Promise<SubmittedTransaction> {
+  async sign(transaction: Transaction): Promise<SignedTransaction> {
     if (!this.currentAccount) {
       throw createWalletError.notConnected();
     }
 
     try {
-      // Ensure Account field is set
       const tx = {
         ...transaction,
         Account: transaction.Account || this.currentAccount.address,
       };
 
-      if (submit) {
-        // Use submitTransaction which autofills, signs, AND submits
-        const submitResponse = await submitTransaction({
-          transaction: tx as any,
-        });
+      const signResponse = await signTransaction({
+        transaction: tx as any,
+      });
 
-        if (!submitResponse.result || !submitResponse.result.hash) {
-          throw new Error('Failed to submit transaction with GemWallet');
-        }
-
-        const { hash } = submitResponse.result;
-
-        return {
-          hash,
-        };
-      } else {
-        // Just sign the transaction without submitting
-        const signResponse = await signTransaction({
-          transaction: tx as any,
-        });
-
-        if (!signResponse.result) {
-          throw new Error('Failed to sign transaction with GemWallet');
-        }
-
-        const { signature } = signResponse.result;
-
-        return {
-          hash: '', // GemWallet doesn't return hash for sign-only
-          signature,
-        };
+      if (!signResponse.result) {
+        throw new Error('Failed to sign transaction with GemWallet');
       }
+
+      return {
+        hash: '',
+        tx_blob: signResponse.result.signature || '',
+      };
+    } catch (error) {
+      if (error instanceof Error && error.message.toLowerCase().includes('reject')) {
+        throw createWalletError.signRejected();
+      }
+      throw createWalletError.signFailed(error as Error);
+    }
+  }
+
+  /**
+   * Sign and submit a transaction to the ledger
+   * @param transaction - The transaction to sign and submit
+   */
+  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+    if (!this.currentAccount) {
+      throw createWalletError.notConnected();
+    }
+
+    try {
+      const tx = {
+        ...transaction,
+        Account: transaction.Account || this.currentAccount.address,
+      };
+
+      const submitResponse = await submitTransaction({
+        transaction: tx as any,
+      });
+
+      if (!submitResponse.result || !submitResponse.result.hash) {
+        throw new Error('Failed to submit transaction with GemWallet');
+      }
+
+      return {
+        hash: submitResponse.result.hash,
+      };
     } catch (error) {
       if (error instanceof Error && error.message.toLowerCase().includes('reject')) {
         throw createWalletError.signRejected();

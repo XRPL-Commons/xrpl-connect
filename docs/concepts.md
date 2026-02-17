@@ -51,6 +51,7 @@ await walletManager.disconnect();
 
 ### Key Methods
 
+- `sign(transaction)` - Sign a transaction and return the signed blob
 - `signAndSubmit(transaction)` - Sign and submit transaction to ledger
 - `signMessage(message)` - Sign a message with the wallet
 - `disconnect()` - Disconnect current wallet
