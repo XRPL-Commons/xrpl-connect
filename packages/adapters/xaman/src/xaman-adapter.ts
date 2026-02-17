@@ -478,17 +478,4 @@ export class XamanAdapter implements WalletAdapter {
 
     return config;
   }
-
-  private getXamanNetworkName(): 'MAINNET' | 'TESTNET' | 'DEVNET' | undefined {
-    // https://github.com/WietseWind/Xaman-App/blob/main/src/common/constants/network.ts#L18
-    const id = this.currentAccount?.network.id as 'mainnet' | 'testnet' | 'devnet';
-    if (id === 'mainnet') {
-      return 'MAINNET';
-    } else if (id === 'testnet') {
-      return 'TESTNET';
-    } else if (id === 'devnet') {
-      return 'DEVNET';
-    }
-    return undefined;
-  }
 }
