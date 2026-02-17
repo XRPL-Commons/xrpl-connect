@@ -28,8 +28,14 @@ export interface XamanAdapterOptions {
   apiKey?: string; // Xumm API key (can also be provided in connect options)
   onQRCode?: (uri: string) => void; // Callback for QR code URI
   onDeepLink?: (uri: string) => string; // Transform URI for deep linking
-  returnUrl?: string; // URL to return to after signing on mobile (appends ?payloadId=xxx). If not provided, keeps listening in background
+  // returnUrl?: string; // URL to return to after signing on mobile (appends ?payloadId=xxx). If not provided, keeps listening in background
 }
+
+export type XamanConnectOptions = {
+  apiKey?: string;
+  onQRCode?: (uri: string) => void;
+  onDeepLink?: (uri: string) => string;
+};
 
 /**
  * Xaman wallet adapter implementation
@@ -56,7 +62,9 @@ export class XamanAdapter implements WalletAdapter {
     return true;
   }
 
-  async checkXamanState(options?: ConnectOptions): Promise<AccountInfo | null> {
+  async checkXamanState(
+    options?: ConnectOptions<XamanConnectOptions>
+  ): Promise<AccountInfo | null> {
     const apiKey = options?.apiKey || this.options.apiKey;
     let network = options?.network;
 
@@ -78,11 +86,14 @@ export class XamanAdapter implements WalletAdapter {
     }
 
     // Resolve network if not provided
+    const currentNetwork = (await this.getAccount())?.network;
+    if (!network) network = currentNetwork;
+
     let resolvedNetwork: NetworkInfo;
     if (network) {
       resolvedNetwork = this.resolveNetwork(network);
     } else {
-      const xamanNetwork = await this.client.user.networkType;
+      const xamanNetwork = await this.client.user.networkEndpoint;
       if (!xamanNetwork) {
         throw createWalletError.connectionFailed(
           this.name,
@@ -106,7 +117,7 @@ export class XamanAdapter implements WalletAdapter {
   /**
    * Connect to Xaman wallet
    */
-  async connect(options?: ConnectOptions): Promise<AccountInfo> {
+  async connect(options?: ConnectOptions<XamanConnectOptions>): Promise<AccountInfo> {
     const apiKey = options?.apiKey || this.options.apiKey;
 
     if (!apiKey) {
@@ -119,8 +130,8 @@ export class XamanAdapter implements WalletAdapter {
     }
 
     // Merge runtime options with constructor options (runtime takes precedence)
-    const onQRCode = (options as any)?.onQRCode || this.options.onQRCode;
-    const onDeepLink = (options as any)?.onDeepLink || this.options.onDeepLink;
+    const onQRCode = options?.onQRCode || this.options.onQRCode;
+    const onDeepLink = options?.onDeepLink || this.options.onDeepLink;
 
     // Temporarily store callbacks for use in openSignWindow
     if (onQRCode) {
@@ -148,7 +159,7 @@ export class XamanAdapter implements WalletAdapter {
       logger.debug('Authorization successful', { account: authResult.me?.account });
 
       const account = authResult.me.account;
-      const network: NetworkInfo = this.parseNetwork(authResult.me.networkEndpoint || '');
+      const network: NetworkInfo = this.resolveNetwork(options?.network);
 
       this.currentAccount = {
         address: account,
@@ -466,5 +477,18 @@ export class XamanAdapter implements WalletAdapter {
     }
 
     return config;
+  }
+
+  private getXamanNetworkName(): 'MAINNET' | 'TESTNET' | 'DEVNET' | undefined {
+    // https://github.com/WietseWind/Xaman-App/blob/main/src/common/constants/network.ts#L18
+    const id = this.currentAccount?.network.id as 'mainnet' | 'testnet' | 'devnet';
+    if (id === 'mainnet') {
+      return 'MAINNET';
+    } else if (id === 'testnet') {
+      return 'TESTNET';
+    } else if (id === 'devnet') {
+      return 'DEVNET';
+    }
+    return undefined;
   }
 }

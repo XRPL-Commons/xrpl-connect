@@ -171,9 +171,7 @@ Access the wallet in any component:
   <div>
     <xrpl-wallet-connector ref="connectorRef" primary-wallet="xaman" />
 
-    <div v-if="$wallet.error" style="color: red">
-      Error: {{ $wallet.error.message }}
-    </div>
+    <div v-if="$wallet.error" style="color: red">Error: {{ $wallet.error.message }}</div>
 
     <div v-if="$wallet.account" style="margin-top: 20px">
       <h3>Connected Account</h3>
@@ -335,7 +333,7 @@ For larger apps, use Pinia with XRPL-Connect:
 ```typescript
 // stores/wallet.ts
 import { defineStore } from 'pinia';
-import { WalletManager, XamanAdapter,} from 'xrpl-connect';
+import { WalletManager, XamanAdapter } from 'xrpl-connect';
 import type { Account, WalletError } from 'xrpl-connect';
 
 export const useWalletStore = defineStore('wallet', () => {
@@ -414,9 +412,7 @@ const config = useRuntimeConfig();
 
 onMounted(() => {
   if (!wallet.manager) {
-    wallet.initializeWallet([
-      new XamanAdapter({ apiKey: config.public.xamanApiKey }),
-    ]);
+    wallet.initializeWallet([new XamanAdapter({ apiKey: config.public.xamanApiKey })]);
   }
 });
 
@@ -450,9 +446,7 @@ Handle errors gracefully:
 </template>
 
 <script setup lang="ts">
-const ErrorAlert = defineAsyncComponent(
-  () => import('~/components/ErrorAlert.vue')
-);
+const ErrorAlert = defineAsyncComponent(() => import('~/components/ErrorAlert.vue'));
 </script>
 ```
 
@@ -606,9 +600,7 @@ NUXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id
       <button type="submit" :disabled="loading">
         {{ loading ? 'Sending...' : 'Send 1 XRP' }}
       </button>
-      <p v-if="paymentResult" class="success">
-        Success! Hash: {{ paymentResult.hash }}
-      </p>
+      <p v-if="paymentResult" class="success">Success! Hash: {{ paymentResult.hash }}</p>
     </form>
   </div>
 </template>

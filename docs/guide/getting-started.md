@@ -30,7 +30,7 @@ The `xrpl-connect` package includes:
 
 - **Core** - WalletManager, event system, and state management
 - **UI** - Beautiful web component for wallet connection
-- **Adapters** - Built-in support for Xaman, Crossmark, GemWallet, and WalletConnect
+- **Adapters** - Built-in support for Xaman, Crossmark, GemWallet, WalletConnect, and Ledger hardware wallets
 
 > **Note:** The `xrpl` package is required for transaction types and utilities.
 
@@ -51,7 +51,7 @@ Xaman is the most popular XRPL wallet. Get your API key here:
 ```javascript
 const adapter = new XamanAdapter({
   apiKey: 'YOUR_API_KEY',
-  apiSecret: 'YOUR_API_SECRET',  // optional
+  apiSecret: 'YOUR_API_SECRET', // optional
 });
 ```
 
@@ -72,12 +72,40 @@ const adapter = new WalletConnectAdapter({
 
 ### Other Adapters
 
-Crossmark and GemWallet don't require API keys - they work directly with browser extensions or wallets:
+Crossmark, GemWallet, and Ledger don't require API keys - they work directly with browser extensions, wallets, or hardware devices:
 
 ```javascript
 const crossmarkAdapter = new CrossmarkAdapter();
 const gemWalletAdapter = new GemWalletAdapter();
 ```
+
+### Ledger Hardware Wallet
+
+For Ledger hardware wallet support, no API keys are required. The adapter communicates directly with the device:
+
+```javascript
+import { LedgerAdapter } from 'xrpl-connect';
+
+const ledgerAdapter = new LedgerAdapter({
+  // Optional: customize derivation path (default: "44'/144'/0'/0/0")
+  derivationPath: "44'/144'/0'/0/0",
+
+  // Optional: timeout for operations in ms (default: 60000)
+  timeout: 60000,
+
+  // Optional: prefer WebHID over WebUSB (default: true)
+  preferWebHID: true,
+});
+```
+
+**Requirements for Ledger:**
+
+- Supported browsers: Chrome, Edge, or Opera (WebHID/WebUSB support required)
+- HTTPS connection (localhost is OK for development)
+- User must unlock device and open the XRP app
+- Close Ledger Live if it's running (conflicts with WebHID/WebUSB)
+
+For more details on Ledger integration, see the [Ledger adapter documentation](https://github.com/XRPL-Commons/xrpl-connect/tree/main/packages/adapters/ledger).
 
 ## Framework-Specific Guides
 
@@ -88,10 +116,10 @@ Once you've installed the package and have your API keys, follow the guide for y
 - **[Vanilla JavaScript](/guide/frameworks/vanilla-js)** - Pure JavaScript, no framework
 - **[React](/guide/frameworks/react)** - Complete React integration guide
 - **[Vue 3](/guide/frameworks/vue)** - Vue 3 Composition API guide
-- **[Next.js](/guide/frameworks/next)** - Next.js app router and SSR
 - **[Nuxt](/guide/frameworks/nuxt)** - Nuxt 3 and Nitro integration
 
 Each guide includes:
+
 - Basic setup and initialization
 - Connecting the wallet manager to the UI component
 - Handling wallet events

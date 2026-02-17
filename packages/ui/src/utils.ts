@@ -26,11 +26,7 @@ export function calculateLuminance(hex: string): number {
         );
   });
 
-  return (
-    LUMINANCE.RED_WEIGHT * rs +
-    LUMINANCE.GREEN_WEIGHT * gs +
-    LUMINANCE.BLUE_WEIGHT * bs
-  );
+  return LUMINANCE.RED_WEIGHT * rs + LUMINANCE.GREEN_WEIGHT * gs + LUMINANCE.BLUE_WEIGHT * bs;
 }
 
 /**

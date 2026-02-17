@@ -40,9 +40,9 @@ const walletManager = new WalletManager({
 
       // Optional: prefer WebHID over WebUSB (default: true)
       preferWebHID: true,
-    })
+    }),
   ],
-  network: 'mainnet'
+  network: 'mainnet',
 });
 ```
 
@@ -61,7 +61,7 @@ console.log('Connected:', account.address);
 const result = await walletManager.signAndSubmit({
   TransactionType: 'Payment',
   Destination: 'rN7n7otQDd6FczFgLdlqtyMVrn3KeKniv',
-  Amount: '1000000'
+  Amount: '1000000',
 });
 
 console.log('Transaction hash:', result.hash);
@@ -72,11 +72,13 @@ console.log('Transaction hash:', result.hash);
 The Ledger adapter supports both single-signature and multi-signature transactions:
 
 **Single-signature (default):**
+
 - The Ledger device signs and submits the transaction directly
 - `SigningPubKey` is set to the device's public key
 - Transaction is broadcast to the network automatically
 
 **Multi-signature:**
+
 - Set `SigningPubKey` to an empty string in your transaction
 - The Ledger signs but doesn't submit automatically
 - You collect signatures from multiple signers
@@ -124,16 +126,17 @@ switch (state) {
 
 ### `LedgerAdapterOptions`
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `derivationPath` | `string` | `"44'/144'/0'/0/0"` | BIP44 derivation path for XRP account (overrides accountIndex) |
-| `accountIndex` | `number` | `0` | Account index for path generation (44'/144'/N'/0/0) - only used if derivationPath not provided |
-| `timeout` | `number` | `60000` | Timeout for operations in milliseconds |
-| `preferWebHID` | `boolean` | `true` | Prefer WebHID over WebUSB when both available |
+| Option           | Type      | Default             | Description                                                                                    |
+| ---------------- | --------- | ------------------- | ---------------------------------------------------------------------------------------------- |
+| `derivationPath` | `string`  | `"44'/144'/0'/0/0"` | BIP44 derivation path for XRP account (overrides accountIndex)                                 |
+| `accountIndex`   | `number`  | `0`                 | Account index for path generation (44'/144'/N'/0/0) - only used if derivationPath not provided |
+| `timeout`        | `number`  | `60000`             | Timeout for operations in milliseconds                                                         |
+| `preferWebHID`   | `boolean` | `true`              | Prefer WebHID over WebUSB when both available                                                  |
 
 ### Examples
 
 **Using account index (recommended):**
+
 ```typescript
 // Account 0 (default): 44'/144'/0'/0/0
 const adapter1 = new LedgerAdapter({ accountIndex: 0 });
@@ -146,9 +149,10 @@ const adapter3 = new LedgerAdapter({ accountIndex: 5 });
 ```
 
 **Using custom derivation path:**
+
 ```typescript
 const adapter = new LedgerAdapter({
-  derivationPath: "44'/144'/10'/0/0"
+  derivationPath: "44'/144'/10'/0/0",
 });
 ```
 
@@ -163,7 +167,7 @@ const adapter = new LedgerAdapter();
 const accounts = await adapter.getAccounts(5, 0);
 
 // Display accounts to user
-accounts.forEach(account => {
+accounts.forEach((account) => {
   console.log(`Account ${account.index}: ${account.address}`);
   console.log(`  Path: ${account.path}`);
 });
@@ -194,12 +198,12 @@ The adapter automatically detects and reports the following device states:
 
 ## Browser Support
 
-| Browser | WebHID | WebUSB | Support |
-|---------|--------|--------|---------|
-| Chrome/Edge | ✅ | ✅ | Full support |
-| Opera | ✅ | ✅ | Full support |
-| Firefox | ❌ | ❌ | Not supported |
-| Safari | ❌ | ❌ | Not supported |
+| Browser     | WebHID | WebUSB | Support       |
+| ----------- | ------ | ------ | ------------- |
+| Chrome/Edge | ✅     | ✅     | Full support  |
+| Opera       | ✅     | ✅     | Full support  |
+| Firefox     | ❌     | ❌     | Not supported |
+| Safari      | ❌     | ❌     | Not supported |
 
 ### Requirements
 
@@ -258,12 +262,12 @@ To use different accounts from the same device:
 ```typescript
 // First account
 const adapter1 = new LedgerAdapter({
-  derivationPath: "44'/144'/0'/0/0"
+  derivationPath: "44'/144'/0'/0/0",
 });
 
 // Second account
 const adapter2 = new LedgerAdapter({
-  derivationPath: "44'/144'/1'/0/0"
+  derivationPath: "44'/144'/1'/0/0",
 });
 ```
 
@@ -274,7 +278,7 @@ const adapter2 = new LedgerAdapter({
 ```typescript
 const adapter = new LedgerAdapter({
   // Force WebUSB instead of WebHID
-  preferWebHID: false
+  preferWebHID: false,
 });
 ```
 
@@ -283,7 +287,7 @@ const adapter = new LedgerAdapter({
 ```typescript
 const adapter = new LedgerAdapter({
   // 2 minutes for users who need more time
-  timeout: 120000
+  timeout: 120000,
 });
 ```
 

@@ -12,7 +12,7 @@ XRPL-Connect is a complete solution for integrating wallet functionality into we
 
 - **Web Component UI** - Beautiful, customizable `<xrpl-wallet-connector>` component for wallet selection and account management
 - **Wallet Manager** - Central event-driven system for managing wallet connections and transactions
-- **Multiple Wallet Support** - Built-in adapters for Xaman, Crossmark, GemWallet, and WalletConnect
+- **Multiple Wallet Support** - Built-in adapters for Xaman, Crossmark, GemWallet, WalletConnect, and Ledger hardware wallets
 - **Framework Agnostic** - Works seamlessly with Vanilla JS, React, Vue, Next.js, Nuxt, and any modern web framework
 - **TypeScript Ready** - Full type definitions for a great developer experience
 - **Production Ready** - Used in production applications across the XRPL ecosystem
@@ -31,23 +31,29 @@ Building wallet connectivity from scratch is complex. XRPL-Connect abstracts awa
 ## Key Features
 
 ### 🎨 Fully Customizable
+
 Customize colors, fonts, and styling using CSS variables without touching HTML or JavaScript. Create themes that match your brand perfectly.
 
 ### 🔌 Multiple Wallets
-Support for all major XRP Ledger wallets including Xaman, Crossmark, GemWallet, and WalletConnect. Give users choice without increasing complexity.
+
+Support for all major XRP Ledger wallets including Xaman, Crossmark, GemWallet, WalletConnect, and Ledger hardware wallets. Give users choice without increasing complexity.
 
 ### ⚡ Framework Agnostic
+
 Works with any JavaScript framework or vanilla JavaScript. Use the same wallet manager across your entire tech stack.
 
 ### 🔒 Secure by Design
+
 - No private key handling - all signing happens in the wallet
 - Automatic session management
 - Built-in error recovery
 
 ### 📱 Mobile Ready
-Support for mobile wallets through WalletConnect. Works seamlessly on desktop and mobile browsers.
+
+Enhanced mobile experience with optimized support for Xaman wallet connections. Works seamlessly on desktop and mobile browsers with improved mobile wallet connectivity.
 
 ### 🎯 Developer Friendly
+
 - Simple, intuitive API
 - Comprehensive documentation
 - TypeScript support
@@ -70,12 +76,12 @@ Your Application
 │   └───────────────────────┘ │
 └──────────────┬──────────────┘
                ↓
-    ┌──────────┴──────────┬───────────┬───────────┐
-    ↓                     ↓           ↓           ↓
-┌────────────┐  ┌──────────────┐  ┌────────┐  ┌────────────┐
-│ Xaman      │  │ Crossmark    │  │GemWal  │  │WalletCon   │
-│ Adapter    │  │ Adapter      │  │Adapter │  │Adapter     │
-└────────────┘  └──────────────┘  └────────┘  └────────────┘
+    ┌──────────┴──────────┬───────────┬───────────┬───────────┐
+    ↓                     ↓           ↓           ↓           ↓
+┌────────────┐  ┌──────────────┐  ┌────────┐  ┌────────────┐  ┌────────┐
+│ Xaman      │  │ Crossmark    │  │GemWal  │  │WalletCon   │  │Ledger  │
+│ Adapter    │  │ Adapter      │  │Adapter │  │Adapter     │  │Adapter │
+└────────────┘  └──────────────┘  └────────┘  └────────────┘  └────────┘
 ```
 
 ## How It Works
@@ -115,7 +121,6 @@ Ready to get started? Here's the recommended learning path:
    - [Vanilla JS](/guide/frameworks/vanilla-js)
    - [React](/guide/frameworks/react)
    - [Vue](/guide/frameworks/vue)
-   - [Next.js](/guide/frameworks/next)
    - [Nuxt](/guide/frameworks/nuxt)
 5. **[Customization](/guide/customization)** - Style the component to match your design
 6. **[API Reference](/guide/api-reference)** - Deep dive into the complete API

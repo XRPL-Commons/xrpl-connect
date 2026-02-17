@@ -13,87 +13,87 @@ Here's a complete example with a single HTML file:
 ```html
 <!DOCTYPE html>
 <html>
-<head>
-  <title>XRPL-Connect Example</title>
-  <style>
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      max-width: 600px;
-      margin: 40px auto;
-      padding: 20px;
-    }
-    #account-info {
-      margin-top: 20px;
-      padding: 15px;
-      background: #f5f5f5;
-      border-radius: 8px;
-      display: none;
-    }
-  </style>
-</head>
-<body>
-  <h1>XRPL-Connect Demo</h1>
-  <xrpl-wallet-connector id="wallet-connector"></xrpl-wallet-connector>
+  <head>
+    <title>XRPL-Connect Example</title>
+    <style>
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        max-width: 600px;
+        margin: 40px auto;
+        padding: 20px;
+      }
+      #account-info {
+        margin-top: 20px;
+        padding: 15px;
+        background: #f5f5f5;
+        border-radius: 8px;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>XRPL-Connect Demo</h1>
+    <xrpl-wallet-connector id="wallet-connector"></xrpl-wallet-connector>
 
-  <div id="account-info">
-    <h2>Connected Account</h2>
-    <p><strong>Address:</strong> <span id="address">-</span></p>
-    <p><strong>Network:</strong> <span id="network">-</span></p>
-    <p><strong>Wallet:</strong> <span id="wallet">-</span></p>
-    <button id="disconnect-btn">Disconnect</button>
-  </div>
+    <div id="account-info">
+      <h2>Connected Account</h2>
+      <p><strong>Address:</strong> <span id="address">-</span></p>
+      <p><strong>Network:</strong> <span id="network">-</span></p>
+      <p><strong>Wallet:</strong> <span id="wallet">-</span></p>
+      <button id="disconnect-btn">Disconnect</button>
+    </div>
 
-  <script type="module">
-    import { WalletManager,XamanAdapter,CrossmarkAdapter } from 'xrpl-connect';
+    <script type="module">
+      import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
 
-    // Initialize WalletManager
-    const walletManager = new WalletManager({
-      adapters: [
-        new XamanAdapter({ apiKey: 'YOUR_API_KEY' }),
-        new CrossmarkAdapter(),
-      ],
-      network: 'testnet',
-      autoConnect: true,
-    });
+      // Initialize WalletManager
+      const walletManager = new WalletManager({
+        adapters: [new XamanAdapter({ apiKey: 'YOUR_API_KEY' }), new CrossmarkAdapter()],
+        network: 'testnet',
+        autoConnect: true,
+      });
 
-    // Get DOM elements
-    const connector = document.getElementById('wallet-connector');
-    const accountInfo = document.getElementById('account-info');
-    const addressEl = document.getElementById('address');
-    const networkEl = document.getElementById('network');
-    const walletEl = document.getElementById('wallet');
-    const disconnectBtn = document.getElementById('disconnect-btn');
+      // Get DOM elements
+      const connector = document.getElementById('wallet-connector');
+      const accountInfo = document.getElementById('account-info');
+      const addressEl = document.getElementById('address');
+      const networkEl = document.getElementById('network');
+      const walletEl = document.getElementById('wallet');
+      const disconnectBtn = document.getElementById('disconnect-btn');
 
-    // Connect component to wallet manager
-    connector.setWalletManager(walletManager);
+      // Connect component to wallet manager
+      connector.setWalletManager(walletManager);
 
-    // Handle connection
-    walletManager.on('connect', (account) => {
-      console.log('Connected:', account.address);
-      addressEl.textContent = account.address;
-      networkEl.textContent = account.network.name;
-      walletEl.textContent = walletManager.wallet.name;
-      accountInfo.style.display = 'block';
-    });
+      // Handle connection
+      walletManager.on('connect', (account) => {
+        console.log('Connected:', account.address);
+        addressEl.textContent = account.address;
+        networkEl.textContent = account.network.name;
+        walletEl.textContent = walletManager.wallet.name;
+        accountInfo.style.display = 'block';
+      });
 
-    // Handle disconnection
-    walletManager.on('disconnect', () => {
-      console.log('Disconnected');
-      accountInfo.style.display = 'none';
-    });
+      // Handle disconnection
+      walletManager.on('disconnect', () => {
+        console.log('Disconnected');
+        accountInfo.style.display = 'none';
+      });
 
-    // Handle errors
-    walletManager.on('error', (error) => {
-      console.error('Error:', error.message);
-      alert('Connection error: ' + error.message);
-    });
+      // Handle errors
+      walletManager.on('error', (error) => {
+        console.error('Error:', error.message);
+        alert('Connection error: ' + error.message);
+      });
 
-    // Disconnect button
-    disconnectBtn.addEventListener('click', async () => {
-      await walletManager.disconnect();
-    });
-  </script>
-</body>
+      // Disconnect button
+      disconnectBtn.addEventListener('click', async () => {
+        await walletManager.disconnect();
+      });
+    </script>
+  </body>
 </html>
 ```
 
@@ -142,7 +142,7 @@ async function sendPayment() {
       TransactionType: 'Payment',
       Account: walletManager.account.address,
       Destination: 'rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT',
-      Amount: '1000000',  // 1 XRP in drops
+      Amount: '1000000', // 1 XRP in drops
     });
 
     console.log('Transaction submitted:', result.hash);
@@ -261,16 +261,10 @@ Customize the component with attributes:
 
 ```html
 <!-- Feature a specific wallet -->
-<xrpl-wallet-connector
-  id="wallet-connector"
-  primary-wallet="xaman"
-></xrpl-wallet-connector>
+<xrpl-wallet-connector id="wallet-connector" primary-wallet="xaman"></xrpl-wallet-connector>
 
 <!-- Show only specific wallets -->
-<xrpl-wallet-connector
-  id="wallet-connector"
-  wallets="xaman,crossmark"
-></xrpl-wallet-connector>
+<xrpl-wallet-connector id="wallet-connector" wallets="xaman,crossmark"></xrpl-wallet-connector>
 
 <!-- Customize styling -->
 <xrpl-wallet-connector
@@ -320,7 +314,7 @@ connector.close();
 If you want to add TypeScript:
 
 ```typescript
-import { WalletManager, Account, WalletError, XamanAdapter} from 'xrpl-connect';
+import { WalletManager, Account, WalletError, XamanAdapter } from 'xrpl-connect';
 
 const walletManager: WalletManager = new WalletManager({
   adapters: [new XamanAdapter({ apiKey: 'YOUR_API_KEY' })],

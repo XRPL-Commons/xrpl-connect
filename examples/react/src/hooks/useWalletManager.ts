@@ -11,14 +11,8 @@ const XAMAN_API_KEY = '15ba80a8-cba2-4789-a45b-c6a850d9d91b';
 const WALLETCONNECT_PROJECT_ID = '32798b46e13dfb0049706a524cf132d6';
 
 export function useWalletManager() {
-  const {
-    walletManager,
-    setWalletManager,
-    setIsConnected,
-    setAccountInfo,
-    addEvent,
-    showStatus,
-  } = useWallet();
+  const { walletManager, setWalletManager, setIsConnected, setAccountInfo, addEvent, showStatus } =
+    useWallet();
 
   useEffect(() => {
     const manager = new WalletManager({

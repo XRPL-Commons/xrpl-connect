@@ -68,62 +68,62 @@ In your CSS file or global styles:
 
 #### Primary Colors
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `--xc-primary-color` | `#3b99fc` | Main accent color (buttons, links, highlights) |
-| `--xc-background-color` | `#000637` | Primary background color |
-| `--xc-background-secondary` | `#1a1a3e` | Secondary background (cards, panels) |
-| `--xc-background-tertiary` | `#242452` | Tertiary background (hover states) |
+| Variable                    | Default   | Purpose                                        |
+| --------------------------- | --------- | ---------------------------------------------- |
+| `--xc-primary-color`        | `#3b99fc` | Main accent color (buttons, links, highlights) |
+| `--xc-background-color`     | `#000637` | Primary background color                       |
+| `--xc-background-secondary` | `#1a1a3e` | Secondary background (cards, panels)           |
+| `--xc-background-tertiary`  | `#242452` | Tertiary background (hover states)             |
 
 #### Text Colors
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `--xc-text-color` | `#F5F4E7` | Primary text color |
+| Variable                | Default                    | Purpose              |
+| ----------------------- | -------------------------- | -------------------- |
+| `--xc-text-color`       | `#F5F4E7`                  | Primary text color   |
 | `--xc-text-muted-color` | `rgba(245, 244, 231, 0.6)` | Secondary/muted text |
 
 #### Status Colors
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `--xc-success-color` | `#10b981` | Success state (green) |
-| `--xc-warning-color` | `#f59e0b` | Warning state (yellow) |
-| `--xc-danger-color` | `#ef4444` | Error/danger state (red) |
-| `--xc-focus-color` | `#3b99fc` | Focus/active state |
+| Variable             | Default   | Purpose                  |
+| -------------------- | --------- | ------------------------ |
+| `--xc-success-color` | `#10b981` | Success state (green)    |
+| `--xc-warning-color` | `#f59e0b` | Warning state (yellow)   |
+| `--xc-danger-color`  | `#ef4444` | Error/danger state (red) |
+| `--xc-focus-color`   | `#3b99fc` | Focus/active state       |
 
 #### Overlay & Modal
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `--xc-overlay-background` | `rgba(0, 0, 0, 0.7)` | Modal backdrop color |
-| `--xc-overlay-backdrop-filter` | `blur(0px)` | Blur effect on backdrop |
-| `--xc-modal-background` | `#000637` | Modal container background |
-| `--xc-modal-border-radius` | `12px` | Modal border roundness |
-| `--xc-modal-box-shadow` | `0 10px 40px rgba(0, 0, 0, 0.2)` | Modal shadow |
+| Variable                       | Default                          | Purpose                    |
+| ------------------------------ | -------------------------------- | -------------------------- |
+| `--xc-overlay-background`      | `rgba(0, 0, 0, 0.7)`             | Modal backdrop color       |
+| `--xc-overlay-backdrop-filter` | `blur(0px)`                      | Blur effect on backdrop    |
+| `--xc-modal-background`        | `#000637`                        | Modal container background |
+| `--xc-modal-border-radius`     | `12px`                           | Modal border roundness     |
+| `--xc-modal-box-shadow`        | `0 10px 40px rgba(0, 0, 0, 0.2)` | Modal shadow               |
 
 ### Spacing & Typography Variables
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `--xc-font-family` | System font stack | Typography for all text |
-| `--xc-border-radius` | `12px` | Default roundness for modals and cards |
+| Variable             | Default           | Purpose                                |
+| -------------------- | ----------------- | -------------------------------------- |
+| `--xc-font-family`   | System font stack | Typography for all text                |
+| `--xc-border-radius` | `12px`            | Default roundness for modals and cards |
 
 ### Button Variables
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `--xc-connect-button-border-radius` | `8px` | Connect button roundness |
-| `--xc-connect-button-font-size` | `16px` | Connect button text size |
-| `--xc-connect-button-font-weight` | `600` | Connect button text weight |
-| `--xc-primary-button-border-radius` | `8px` | Primary button roundness |
-| `--xc-primary-button-font-weight` | `600` | Primary button text weight |
-| `--xc-secondary-button-border-radius` | `8px` | Secondary button roundness |
-| `--xc-secondary-button-font-weight` | `500` | Secondary button text weight |
+| Variable                              | Default | Purpose                      |
+| ------------------------------------- | ------- | ---------------------------- |
+| `--xc-connect-button-border-radius`   | `8px`   | Connect button roundness     |
+| `--xc-connect-button-font-size`       | `16px`  | Connect button text size     |
+| `--xc-connect-button-font-weight`     | `600`   | Connect button text weight   |
+| `--xc-primary-button-border-radius`   | `8px`   | Primary button roundness     |
+| `--xc-primary-button-font-weight`     | `600`   | Primary button text weight   |
+| `--xc-secondary-button-border-radius` | `8px`   | Secondary button roundness   |
+| `--xc-secondary-button-font-weight`   | `500`   | Secondary button text weight |
 
 ### Other Variables
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
+| Variable                    | Default   | Purpose               |
+| --------------------------- | --------- | --------------------- |
 | `--xc-loading-border-color` | `#3b99fc` | Loading spinner color |
 
 ## Primary Wallet Attribute
@@ -142,16 +142,17 @@ The `primary-wallet` attribute controls which wallet is featured or highlighted 
 
 ### Supported Values
 
-| Value | Wallet |
-|-------|--------|
-| `xaman` | Xaman (formerly Xumm) |
-| `crossmark` | Crossmark |
-| `gemwallet` | GemWallet |
-| `walletconnect` | WalletConnect |
+| Value           | Wallet                |
+| --------------- | --------------------- |
+| `xaman`         | Xaman (formerly Xumm) |
+| `crossmark`     | Crossmark             |
+| `gemwallet`     | GemWallet             |
+| `walletconnect` | WalletConnect         |
 
 ### Effect
 
 When you set a `primary-wallet`:
+
 - That wallet appears first or highlighted in the wallet selection list
 - It may be featured more prominently in the UI
 - Users see your recommended wallet immediately
@@ -272,7 +273,7 @@ Use media queries to adapt colors based on user preferences:
 @media (prefers-color-scheme: dark) {
   :root {
     --xc-background-color: #000637;
-    --xc-text-color: #F5F4E7;
+    --xc-text-color: #f5f4e7;
     --xc-primary-color: #3b99fc;
   }
 }

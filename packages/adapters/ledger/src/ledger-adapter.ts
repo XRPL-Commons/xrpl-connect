@@ -19,7 +19,7 @@ import type {
 } from '@xrpl-connect/core';
 import { createWalletError, STANDARD_NETWORKS } from '@xrpl-connect/core';
 
-import type { LedgerAdapterOptions } from './types';
+import type { LedgerAdapterOptions, LedgerConnectOptions } from './types';
 import { LedgerDeviceState } from './types';
 import { parseLedgerError, isBrowserSupported, formatLedgerError } from './errors';
 
@@ -84,7 +84,7 @@ export class LedgerAdapter implements WalletAdapter {
   /**
    * Connect to Ledger device
    */
-  async connect(options?: ConnectOptions): Promise<AccountInfo> {
+  async connect(options?: ConnectOptions<LedgerConnectOptions>): Promise<AccountInfo> {
     try {
       const browserSupport = isBrowserSupported();
       if (!browserSupport.supported) {
@@ -413,11 +413,7 @@ export class LedgerAdapter implements WalletAdapter {
     }
 
     if (browserSupport.webUSB) {
-      try {
-        return await TransportWebUSB.create();
-      } catch (error) {
-        throw error;
-      }
+      return await TransportWebUSB.create();
     }
 
     if (!this.preferWebHID && browserSupport.webUSB) {

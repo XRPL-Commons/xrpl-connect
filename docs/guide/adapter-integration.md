@@ -31,6 +31,7 @@ xrpl-connect/
 │   │   ├── crossmark/           # Crossmark adapter (reference)
 │   │   ├── gemwallet/           # GemWallet adapter (reference)
 │   │   ├── walletconnect/       # WalletConnect adapter (reference)
+│   │   ├── ledger/              # Ledger hardware wallet adapter (reference)
 │   │   └── README.md            # Adapter documentation
 │   └── xrpl-connect/            # Meta package (exports all adapters)
 └── docs/                        # Documentation (this file)
@@ -393,6 +394,7 @@ Edit `packages/xrpl-connect/package.json` and add your adapter to dependencies:
     "@xrpl-connect/adapter-crossmark": "workspace:*",
     "@xrpl-connect/adapter-gemwallet": "workspace:*",
     "@xrpl-connect/adapter-walletconnect": "workspace:*",
+    "@xrpl-connect/adapter-ledger": "workspace:*",
     "@xrpl-connect/adapter-my-wallet": "workspace:*"
   }
 }
@@ -409,6 +411,7 @@ export { XamanAdapter } from '@xrpl-connect/adapter-xaman';
 export { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 export { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 export { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
+export { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
 export { MyWalletAdapter } from '@xrpl-connect/adapter-my-wallet';
 
 // Convenient grouped exports
@@ -416,6 +419,7 @@ import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
 import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
+import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
 import { MyWalletAdapter } from '@xrpl-connect/adapter-my-wallet';
 
 export const Adapters = {
@@ -423,6 +427,7 @@ export const Adapters = {
   Crossmark: CrossmarkAdapter,
   GemWallet: GemWalletAdapter,
   WalletConnect: WalletConnectAdapter,
+  Ledger: LedgerAdapter,
   MyWallet: MyWalletAdapter,
 };
 ```
