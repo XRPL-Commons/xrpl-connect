@@ -328,7 +328,7 @@ importers:
         version: link:../../core
       '@xyrawallet/sdk':
         specifier: ^0.1.3
-        version: 0.1.3
+        version: 0.1.4
       xrpl:
         specifier: ^3.0.0 || ^4.0.0
         version: 4.4.2(bufferutil@4.0.9)(utf-8-validate@5.0.10)
@@ -1522,8 +1522,8 @@ packages:
   '@xrplf/secret-numbers@2.0.0':
     resolution: {integrity: sha512-z3AOibRTE9E8MbjgzxqMpG1RNaBhQ1jnfhNCa1cGf2reZUJzPMYs4TggQTc7j8+0WyV3cr7y/U8Oz99SXIkN5Q==}
 
-  '@xyrawallet/sdk@0.1.3':
-    resolution: {integrity: sha512-i0VG8QbC5FwGgnUTHC13quRHINPh/z5OSfBwI37Jbs8cB87WNIEUH4IW51CKh6VSG3pbiWqWBS9jKAsnki049w==}
+  '@xyrawallet/sdk@0.1.4':
+    resolution: {integrity: sha512-MTneYTCkwNWz4N+LRN/na4qxeXwHP67tgBFIiAFbTUvt6uvRKoBkkoprf6sumy8WVAiZCLe78Bz+P0nZfpvUcQ==}
 
   abab@2.0.6:
     resolution: {integrity: sha512-j2afSsaIENvHZN2B8GOpF566vZ5WVk5opAiMTvWgaQT8DkbOqsTfvNAvHoRGU2zzP8cPoqys+xHTRDWW8L+/BA==}
@@ -5401,7 +5401,7 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@xyrawallet/sdk@0.1.3': {}
+  '@xyrawallet/sdk@0.1.4': {}
 
   abab@2.0.6: {}
 
