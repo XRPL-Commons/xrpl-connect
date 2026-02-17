@@ -18,31 +18,39 @@ const walletManager = new WalletManager(options: WalletManagerConfig)
 
 #### Config Options
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `adapters` | `WalletAdapter[]` | Array of wallet adapters |
-| `network` | `'mainnet' \| 'testnet' \| 'devnet'` | XRPL network to connect to |
-| `autoConnect` | `boolean` | Auto-reconnect on initialization |
-| `logger` | `Logger` | Logger instance for debugging |
+| Property      | Type                                 | Description                      |
+| ------------- | ------------------------------------ | -------------------------------- |
+| `adapters`    | `WalletAdapter[]`                    | Array of wallet adapters         |
+| `network`     | `'mainnet' \| 'testnet' \| 'devnet'` | XRPL network to connect to       |
+| `autoConnect` | `boolean`                            | Auto-reconnect on initialization |
+| `logger`      | `Logger`                             | Logger instance for debugging    |
 
 ### Properties
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `connected` | `boolean` | Whether a wallet is currently connected |
-| `account` | `Account \| null` | Currently connected account |
-| `wallet` | `Wallet \| null` | Currently connected wallet |
-| `adapters` | `WalletAdapter[]` | List of available adapters |
+| Property    | Type              | Description                             |
+| ----------- | ----------------- | --------------------------------------- |
+| `connected` | `boolean`         | Whether a wallet is currently connected |
+| `account`   | `Account \| null` | Currently connected account             |
+| `wallet`    | `Wallet \| null`  | Currently connected wallet              |
+| `adapters`  | `WalletAdapter[]` | List of available adapters              |
 
 ### Methods
+
+#### sign()
+
+```typescript
+async sign(transaction: Transaction): Promise<SignedTransaction>
+```
+
+Sign a transaction without submitting it to the ledger. Returns the signed transaction blob (`tx_blob`).
 
 #### signAndSubmit()
 
 ```typescript
-async signAndSubmit(transaction: Transaction): Promise<SubmitResult>
+async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction>
 ```
 
-Sign and submit a transaction to the ledger.
+Sign and submit a transaction to the ledger. Returns the transaction hash.
 
 #### signMessage()
 
@@ -104,10 +112,10 @@ Beautiful UI component for wallet connection.
 
 ### Attributes
 
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `primary-wallet` | `string` | Wallet ID to feature/highlight |
-| `wallets` | `string` | Comma-separated list of wallet IDs |
+| Attribute        | Type     | Description                        |
+| ---------------- | -------- | ---------------------------------- |
+| `primary-wallet` | `string` | Wallet ID to feature/highlight     |
+| `wallets`        | `string` | Comma-separated list of wallet IDs |
 
 ### Methods
 
@@ -255,13 +263,24 @@ interface Transaction {
 }
 ```
 
-### SubmitResult
+### SignedTransaction
 
 ```typescript
-interface SubmitResult {
-  hash?: string;
+interface SignedTransaction {
+  hash: string;
   tx_blob?: string;
-  [key: string]: any;
+  signature?: string;
+  [key: string]: unknown;
+}
+```
+
+### SubmittedTransaction
+
+```typescript
+interface SubmittedTransaction {
+  hash: string;
+  id?: string;
+  [key: string]: unknown;
 }
 ```
 
@@ -341,13 +360,13 @@ walletManager.on('networkChange', (network: Network) => {
 
 ### Error Codes
 
-| Code | Description | Handling |
-|------|-------------|----------|
-| `WALLET_NOT_FOUND` | Wallet is not installed or not available | Notify user to install wallet |
-| `CONNECTION_FAILED` | Failed to connect to wallet | Retry connection or try different wallet |
-| `SIGN_FAILED` | Failed to sign transaction | User rejected or wallet error |
-| `INVALID_PARAMS` | Invalid transaction parameters | Check transaction format |
-| `NETWORK_ERROR` | Network communication failed | Check connection and retry |
+| Code                | Description                              | Handling                                 |
+| ------------------- | ---------------------------------------- | ---------------------------------------- |
+| `WALLET_NOT_FOUND`  | Wallet is not installed or not available | Notify user to install wallet            |
+| `CONNECTION_FAILED` | Failed to connect to wallet              | Retry connection or try different wallet |
+| `SIGN_FAILED`       | Failed to sign transaction               | User rejected or wallet error            |
+| `INVALID_PARAMS`    | Invalid transaction parameters           | Check transaction format                 |
+| `NETWORK_ERROR`     | Network communication failed             | Check connection and retry               |
 
 ### Error Example
 

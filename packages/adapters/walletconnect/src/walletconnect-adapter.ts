@@ -11,6 +11,7 @@ import type {
   ConnectOptions,
   NetworkInfo,
   Transaction,
+  SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
@@ -27,9 +28,7 @@ import {
  * Utility function to detect if user is on mobile device
  */
 function isMobile(): boolean {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    navigator.userAgent
-  );
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
 
 /**
@@ -60,6 +59,11 @@ export interface WalletConnectAdapterOptions {
   themeMode?: 'dark' | 'light'; // Modal theme (default: 'dark')
 }
 
+export type WalletConnectConnectOptions = {
+  projectId?: string;
+  onQRCode?: (uri: string) => void;
+};
+
 /**
  * WalletConnect adapter implementation using Sign Client v2
  */
@@ -75,7 +79,8 @@ export class WalletConnectAdapter implements WalletAdapter {
   private currentAccount: AccountInfo | null = null;
   private options: WalletConnectAdapterOptions;
   private initializationPromise: Promise<SignClient> | null = null;
-  private pendingConnection: { uri: string; approval: () => Promise<SessionTypes.Struct> } | null = null;
+  private pendingConnection: { uri: string; approval: () => Promise<SessionTypes.Struct> } | null =
+    null;
   private modal: WalletConnectModal | null = null;
 
   constructor(options: WalletConnectAdapterOptions = {}) {
@@ -157,7 +162,10 @@ export class WalletConnectAdapter implements WalletAdapter {
             metadata: this.options.metadata || {
               name: DEFAULT_METADATA.NAME,
               description: DEFAULT_METADATA.DESCRIPTION,
-              url: typeof window !== 'undefined' ? window.location.origin : DEFAULT_METADATA.DEFAULT_URL,
+              url:
+                typeof window !== 'undefined'
+                  ? window.location.origin
+                  : DEFAULT_METADATA.DEFAULT_URL,
               icons: [DEFAULT_METADATA.DEFAULT_ICON],
             },
           });
@@ -193,7 +201,10 @@ export class WalletConnectAdapter implements WalletAdapter {
       // Store the pending connection
       this.pendingConnection = { uri, approval };
 
-      logger.debug('QR code URI pre-generated:', uri.substring(0, LOGGING.URI_PREVIEW_LENGTH) + '...');
+      logger.debug(
+        'QR code URI pre-generated:',
+        uri.substring(0, LOGGING.URI_PREVIEW_LENGTH) + '...'
+      );
 
       if (this.options.onQRCode) {
         logger.debug('Calling onQRCode callback during pre-init');
@@ -209,7 +220,7 @@ export class WalletConnectAdapter implements WalletAdapter {
   /**
    * Connect to WalletConnect
    */
-  async connect(options?: ConnectOptions): Promise<AccountInfo> {
+  async connect(options?: ConnectOptions<WalletConnectConnectOptions>): Promise<AccountInfo> {
     const projectId = options?.projectId || this.options.projectId;
 
     if (!projectId) {
@@ -222,7 +233,7 @@ export class WalletConnectAdapter implements WalletAdapter {
     }
 
     // Merge runtime options with constructor options (runtime takes precedence)
-    const onQRCode = (options as any)?.onQRCode || this.options.onQRCode;
+    const onQRCode = options?.onQRCode || this.options.onQRCode;
     const useModal = this.options.useModal ?? false;
     const modalMode = this.options.modalMode ?? 'mobile-only';
 
@@ -246,7 +257,10 @@ export class WalletConnectAdapter implements WalletAdapter {
             metadata: this.options.metadata || {
               name: DEFAULT_METADATA.NAME,
               description: DEFAULT_METADATA.DESCRIPTION,
-              url: typeof window !== 'undefined' ? window.location.origin : DEFAULT_METADATA.DEFAULT_URL,
+              url:
+                typeof window !== 'undefined'
+                  ? window.location.origin
+                  : DEFAULT_METADATA.DEFAULT_URL,
               icons: [DEFAULT_METADATA.DEFAULT_ICON],
             },
           });
@@ -407,42 +421,65 @@ export class WalletConnectAdapter implements WalletAdapter {
   }
 
   /**
-   * Sign and optionally submit a transaction using xrpl_signTransaction method
-   * @param transaction - The transaction to sign
-   * @param submit - Whether to submit to the ledger (default: true)
+   * Send a WalletConnect sign transaction request
    */
-  async signAndSubmit(
+  private async requestSignTransaction(
     transaction: Transaction,
-    submit: boolean = true
-  ): Promise<SubmittedTransaction> {
+    submit: boolean
+  ): Promise<any> {
     if (!this.client || !this.session || !this.currentAccount) {
       throw createWalletError.notConnected();
     }
 
-    try {
-      // Ensure Account field is set
-      const tx = {
-        ...transaction,
-        Account: transaction.Account || this.currentAccount.address,
-      };
+    const tx = {
+      ...transaction,
+      Account: transaction.Account || this.currentAccount.address,
+    };
 
-      // Request signature/submission via WalletConnect using XRPL RPC format
-      const result = await this.client.request({
-        topic: this.session.topic,
-        chainId:
-          this.currentAccount.network.walletConnectId || `xrpl:${this.currentAccount.network.id}`,
-        request: {
-          method: XRPLMethod.SIGN_TRANSACTION,
-          params: {
-            tx_json: tx,
-            autofill: true,
-            submit, // Controls whether to submit to ledger
-          },
+    const result = await this.client.request({
+      topic: this.session.topic,
+      chainId:
+        this.currentAccount.network.walletConnectId || `xrpl:${this.currentAccount.network.id}`,
+      request: {
+        method: XRPLMethod.SIGN_TRANSACTION,
+        params: {
+          tx_json: tx,
+          autofill: true,
+          submit,
         },
-      });
+      },
+    });
 
-      // Result contains tx_json with the transaction
-      const resultTx = (result as any).tx_json;
+    return (result as any).tx_json;
+  }
+
+  /**
+   * Sign a transaction without submitting it to the ledger
+   * @param transaction - The transaction to sign
+   */
+  async sign(transaction: Transaction): Promise<SignedTransaction> {
+    try {
+      const resultTx = await this.requestSignTransaction(transaction, false);
+
+      return {
+        hash: '',
+        tx_blob: resultTx.TxnSignature,
+      };
+    } catch (error) {
+      if (error instanceof Error && error.message.toLowerCase().includes('reject')) {
+        throw createWalletError.signRejected();
+      }
+      throw createWalletError.signFailed(error as Error);
+    }
+  }
+
+  /**
+   * Sign and submit a transaction to the ledger
+   * @param transaction - The transaction to sign and submit
+   */
+  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+    try {
+      const resultTx = await this.requestSignTransaction(transaction, true);
 
       return {
         hash: resultTx.hash || '',

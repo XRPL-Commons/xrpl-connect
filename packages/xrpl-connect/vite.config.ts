@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
+import { copyFileSync, existsSync } from 'fs';
 import inject from '@rollup/plugin-inject';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -19,9 +20,26 @@ export default defineConfig({
       '@xrpl-connect/adapter-xaman': resolve(__dirname, '../adapters/xaman/src/index.ts'),
       '@xrpl-connect/adapter-crossmark': resolve(__dirname, '../adapters/crossmark/src/index.ts'),
       '@xrpl-connect/adapter-gemwallet': resolve(__dirname, '../adapters/gemwallet/src/index.ts'),
-      '@xrpl-connect/adapter-walletconnect': resolve(__dirname, '../adapters/walletconnect/src/index.ts'),
+      '@xrpl-connect/adapter-walletconnect': resolve(
+        __dirname,
+        '../adapters/walletconnect/src/index.ts'
+      ),
     },
   },
+  plugins: [
+    {
+      name: 'copy-readme',
+      closeBundle() {
+        const rootReadmePath = resolve(__dirname, '../../README.md');
+        const distReadmePath = resolve(__dirname, 'dist-publish/README.md');
+
+        if (existsSync(rootReadmePath)) {
+          copyFileSync(rootReadmePath, distReadmePath);
+          console.log('✓ Copied README.md to dist-publish/');
+        }
+      },
+    },
+  ],
   build: {
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),

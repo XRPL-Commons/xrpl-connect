@@ -2,7 +2,7 @@
  * Core types and interfaces for xrpl-connect
  */
 
-import type { Transaction as XRPLTransaction } from 'xrpl';
+import type { SubmittableTransaction as XRPLTransaction } from 'xrpl';
 
 /**
  * Network information
@@ -92,13 +92,11 @@ export interface SubmittedTransaction {
 /**
  * Options for connecting to a wallet
  */
-export interface ConnectOptions {
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export type ConnectOptions<WalletSpecificOptions extends Record<string, unknown> = {}> = {
   network?: NetworkConfig; // Preferred network
-  projectId?: string; // For WalletConnect
-  apiKey?: string; // For Xaman
   autoReconnect?: boolean; // Auto-reconnect on page load
-  [key: string]: unknown; // Allow additional wallet-specific options
-}
+} & WalletSpecificOptions;
 
 /**
  * Events that adapters can emit
@@ -132,7 +130,8 @@ export interface WalletAdapter {
   getNetwork(): Promise<NetworkInfo>;
 
   // Signing and submission operations
-  signAndSubmit(transaction: Transaction, submit?: boolean): Promise<SubmittedTransaction>;
+  sign(transaction: Transaction): Promise<SignedTransaction>;
+  signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction>;
   signMessage(message: string | Uint8Array): Promise<SignedMessage>;
 
   // Events (optional, for wallets that support event listening)

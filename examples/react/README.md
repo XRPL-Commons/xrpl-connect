@@ -19,11 +19,13 @@ This is a demo application showcasing the XRPL Connect wallet toolkit with a Rea
 Before running the example, you need to obtain API keys:
 
 #### Xaman API Key
+
 1. Visit [https://apps.xumm.dev/](https://apps.xumm.dev/)
 2. Create a new application
 3. Copy your API key
 
 #### WalletConnect Project ID
+
 1. Visit [https://cloud.walletconnect.com](https://cloud.walletconnect.com)
 2. Create a new project
 3. Copy your Project ID
@@ -102,7 +104,11 @@ The web component is used in the JSX like a regular React component:
 <xrpl-wallet-connector
   ref={walletConnectorRef}
   id="wallet-connector"
-  style={{ /* CSS variables */ }}
+  style={
+    {
+      /* CSS variables */
+    }
+  }
   primary-wallet="xaman"
 />
 ```
@@ -181,7 +187,9 @@ The example is configured to use the **testnet** by default. You can change this
 
 ```typescript
 const walletManager = new WalletManager({
-  adapters: [/* ... */],
+  adapters: [
+    /* ... */
+  ],
   network: 'testnet', // Change to 'mainnet', 'devnet', or provide custom config
   autoConnect: true,
   logger: { level: 'info' },
@@ -199,18 +207,23 @@ The built files will be in the `dist/` directory.
 ## Troubleshooting
 
 ### "WalletConnect project ID is required"
+
 Make sure you've added your WalletConnect Project ID in `src/App.tsx`.
 
 ### "Xaman API key is required"
+
 Make sure you've added your Xaman API key in `src/App.tsx`.
 
 ### Popup Blocked
+
 If the Xaman authorization popup is blocked, enable popups for this site in your browser settings.
 
 ### WalletConnect Modal Not Showing
+
 Ensure your WalletConnect Project ID is valid and your internet connection is stable.
 
 ### TypeScript Errors with Web Component
+
 Make sure the `vite-env.d.ts` file is included in your TypeScript configuration.
 
 ## Technologies Used

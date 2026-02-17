@@ -40,12 +40,9 @@ A Web Component is a reusable, encapsulated HTML element built using the Web Com
       import { XamanAdapter, CrossmarkAdapter } from '@xrpl-connect/adapters';
 
       const walletManager = new WalletManager({
-        adapters: [
-          new XamanAdapter({ apiKey: 'YOUR_KEY' }),
-          new CrossmarkAdapter()
-        ],
+        adapters: [new XamanAdapter({ apiKey: 'YOUR_KEY' }), new CrossmarkAdapter()],
         network: 'mainnet',
-        autoConnect: true
+        autoConnect: true,
       });
 
       const connector = document.querySelector('xrpl-wallet-connector');
@@ -69,10 +66,10 @@ A Web Component is a reusable, encapsulated HTML element built using the Web Com
 
 All attributes are optional and control the behavior of the component:
 
-| Attribute | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `primary-wallet` | string | - | Wallet ID to display first (e.g., `'xaman'`) |
-| `wallets` | string | - | Comma-separated list of wallet IDs to include (e.g., `'xaman,crossmark,walletconnect'`) |
+| Attribute        | Type   | Default | Description                                                                             |
+| ---------------- | ------ | ------- | --------------------------------------------------------------------------------------- |
+| `primary-wallet` | string | -       | Wallet ID to display first (e.g., `'xaman'`)                                            |
+| `wallets`        | string | -       | Comma-separated list of wallet IDs to include (e.g., `'xaman,crossmark,walletconnect'`) |
 
 All styling is controlled exclusively via CSS variables (see [Customization](./CUSTOMIZATION.md) guide).
 
@@ -176,9 +173,10 @@ connector.addEventListener('connecting', (e) => {
 ```
 
 **Event Detail**:
+
 ```typescript
 {
-  walletId: string  // ID of the wallet being connected (e.g., 'xaman')
+  walletId: string; // ID of the wallet being connected (e.g., 'xaman')
 }
 ```
 
@@ -206,9 +204,10 @@ connector.addEventListener('connected', (e) => {
 ```
 
 **Event Detail**:
+
 ```typescript
 {
-  walletId: string  // ID of the connected wallet
+  walletId: string; // ID of the connected wallet
 }
 ```
 
@@ -231,11 +230,12 @@ connector.addEventListener('error', (e) => {
 ```
 
 **Event Detail**:
+
 ```typescript
 {
-  error: Error | WalletError;    // The error object
-  walletId: string;              // ID of the wallet
-  errorType: string;             // Error type ('connection_rejected', 'wallet_not_available', etc.)
+  error: Error | WalletError; // The error object
+  walletId: string; // ID of the wallet
+  errorType: string; // Error type ('connection_rejected', 'wallet_not_available', etc.)
 }
 ```
 
@@ -250,11 +250,13 @@ The component displays different views based on the current state:
 Shows available wallets as a grid of cards.
 
 **Displays when**:
+
 - Modal is opened
 - No wallet selected yet
 - User clicked "back" from another view
 
 **UI Elements**:
+
 - Wallet cards with icon, name, and status
 - Primary wallet (if configured) displayed prominently
 - Status badges (e.g., "Installed", "Not installed")
@@ -266,10 +268,12 @@ Shows available wallets as a grid of cards.
 Shows a QR code for mobile scanning (for QR-based adapters like WalletConnect and Xaman).
 
 **Displays when**:
+
 - User selects a QR-code-based wallet
 - QR code URI is generated
 
 **UI Elements**:
+
 - Large QR code image
 - Wallet icon and name
 - "Copy to Clipboard" button for manual pairing
@@ -283,11 +287,13 @@ Shows a QR code for mobile scanning (for QR-based adapters like WalletConnect an
 Shows loading state while awaiting wallet response.
 
 **Displays when**:
+
 - Connection is in progress
 - Waiting for user action in wallet app
 - Polling for transaction response
 
 **UI Elements**:
+
 - Spinning loader animation
 - Wallet icon and name
 - Status text (e.g., "Waiting for approval...")
@@ -300,12 +306,14 @@ Shows loading state while awaiting wallet response.
 Shows error message and recovery options.
 
 **Displays when**:
+
 - Connection attempt failed
 - Wallet rejected the request
 - Wallet is not available
 - Wallet does not support the network
 
 **UI Elements**:
+
 - Error icon and message
 - Error details
 - "Retry" button to try again
@@ -438,7 +446,7 @@ const connector = ref();
 onMounted(() => {
   const walletManager = new WalletManager({
     adapters: [new XamanAdapter({ apiKey: 'YOUR_KEY' })],
-    network: 'mainnet'
+    network: 'mainnet',
   });
 
   connector.value.setWalletManager(walletManager);
@@ -463,12 +471,9 @@ import { XamanAdapter, CrossmarkAdapter } from '@xrpl-connect/adapters';
 
 // Initialize wallet manager
 const walletManager = new WalletManager({
-  adapters: [
-    new XamanAdapter({ apiKey: 'YOUR_KEY' }),
-    new CrossmarkAdapter()
-  ],
+  adapters: [new XamanAdapter({ apiKey: 'YOUR_KEY' }), new CrossmarkAdapter()],
   network: 'mainnet',
-  autoConnect: true
+  autoConnect: true,
 });
 
 // Get component reference
@@ -545,33 +550,71 @@ class WalletConnectorElement extends HTMLElement {
   }
 
   // Lifecycle hooks
-  connectedCallback(): void { /* ... */ }
-  attributeChangedCallback(name: string, oldValue: string, newValue: string): void { /* ... */ }
+  connectedCallback(): void {
+    /* ... */
+  }
+  attributeChangedCallback(name: string, oldValue: string, newValue: string): void {
+    /* ... */
+  }
 
   // Public methods
-  setWalletManager(manager: WalletManager): void { /* ... */ }
-  open(): void { /* ... */ }
-  close(): void { /* ... */ }
-  toggle(): void { /* ... */ }
+  setWalletManager(manager: WalletManager): void {
+    /* ... */
+  }
+  open(): void {
+    /* ... */
+  }
+  close(): void {
+    /* ... */
+  }
+  toggle(): void {
+    /* ... */
+  }
 
   // Rendering
-  private render(): void { /* ... */ }
-  private renderListView(): string { /* ... */ }
-  private renderQRView(): string { /* ... */ }
-  private renderLoadingView(): string { /* ... */ }
-  private renderErrorView(): string { /* ... */ }
+  private render(): void {
+    /* ... */
+  }
+  private renderListView(): string {
+    /* ... */
+  }
+  private renderQRView(): string {
+    /* ... */
+  }
+  private renderLoadingView(): string {
+    /* ... */
+  }
+  private renderErrorView(): string {
+    /* ... */
+  }
 
   // Event handlers
-  private handleWalletClick(walletId: string): void { /* ... */ }
-  private handleConnect(walletId: string): Promise<void> { /* ... */ }
-  private handleError(error: Error, walletId: string): void { /* ... */ }
+  private handleWalletClick(walletId: string): void {
+    /* ... */
+  }
+  private handleConnect(walletId: string): Promise<void> {
+    /* ... */
+  }
+  private handleError(error: Error, walletId: string): void {
+    /* ... */
+  }
 
   // Private helpers
-  private showQRCode(uri: string, walletId: string): void { /* ... */ }
-  private showLoading(walletId: string): void { /* ... */ }
-  private showError(error: Error, walletId: string): void { /* ... */ }
-  private back(): void { /* ... */ }
-  private emit(eventName: string, detail?: any): void { /* ... */ }
+  private showQRCode(uri: string, walletId: string): void {
+    /* ... */
+  }
+  private showLoading(walletId: string): void {
+    /* ... */
+  }
+  private showError(error: Error, walletId: string): void {
+    /* ... */
+  }
+  private back(): void {
+    /* ... */
+  }
+  private emit(eventName: string, detail?: any): void {
+    /* ... */
+  }
 }
 
 customElements.define('xrpl-wallet-connector', WalletConnectorElement);
@@ -583,23 +626,23 @@ The component creates an isolated DOM tree inside the Shadow DOM:
 
 ```html
 #shadow-root (open)
-  <style>
-    /* Scoped styles */
-  </style>
+<style>
+  /* Scoped styles */
+</style>
 
-  <div class="overlay">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>Connect Wallet</h2>
-        <button class="close-btn">×</button>
-      </div>
+<div class="overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Connect Wallet</h2>
+      <button class="close-btn">×</button>
+    </div>
 
-      <div class="modal-content">
-        <!-- View content inserted here -->
-        <!-- List view, QR view, Loading view, or Error view -->
-      </div>
+    <div class="modal-content">
+      <!-- View content inserted here -->
+      <!-- List view, QR view, Loading view, or Error view -->
     </div>
   </div>
+</div>
 ```
 
 ### Styling
@@ -714,6 +757,7 @@ The component works in all modern browsers that support:
 - SVG for icons
 
 **Supported Browsers**:
+
 - Chrome/Chromium 76+
 - Firefox 63+
 - Safari 10.1+
@@ -728,6 +772,7 @@ The component works in all modern browsers that support:
 **Problem**: The `<xrpl-wallet-connector>` element doesn't appear.
 
 **Solutions**:
+
 1. Ensure the web component module is imported before using it
 2. Check that JavaScript is enabled
 3. Verify the component was registered with `customElements.define()`
@@ -744,6 +789,7 @@ import '@xrpl-connect/ui';
 **Problem**: Click on wallet does nothing; no error in console.
 
 **Solutions**:
+
 1. Call `connector.setWalletManager(walletManager)` after initializing `WalletManager`
 2. Ensure `WalletManager` is created before setting it on the component
 
@@ -759,6 +805,7 @@ connector.setWalletManager(manager);  // Required!
 **Problem**: `connected` or `error` event listeners don't trigger.
 
 **Solutions**:
+
 1. Use `addEventListener()`, not React props (unless using a wrapper)
 2. Ensure listener is added after `setWalletManager()`
 3. Check event name is exactly `'connected'`, `'error'`, etc.
@@ -780,6 +827,7 @@ connector.addEventListener('connected', (e) => {
 **Problem**: CSS variable colors don't change appearance.
 
 **Solutions**:
+
 1. Ensure variable names use the `--xrpl-` prefix (e.g., `--xrpl-primary-color`)
 2. Use valid hex colors or CSS color values (e.g., `#0EA5E9`, not `blue`)
 3. Set variables via `style` attribute or CSS before the component renders
@@ -797,7 +845,7 @@ connector.addEventListener('connected', (e) => {
 <style>
   xrpl-wallet-connector {
     --xrpl-background-color: #000637;
-    --xrpl-text-color: #F5F4E7;
+    --xrpl-text-color: #f5f4e7;
   }
 </style>
 ```
@@ -811,6 +859,7 @@ connector.addEventListener('connected', (e) => {
 If your app previously used a button-only approach, the modal component provides a better UX:
 
 **Before**:
+
 ```html
 <button id="connect-btn">Connect Wallet</button>
 <script>
@@ -822,11 +871,10 @@ If your app previously used a button-only approach, the modal component provides
 ```
 
 **After**:
+
 ```html
 <xrpl-wallet-connector primary-wallet="xaman"></xrpl-wallet-connector>
-<button onclick="document.querySelector('xrpl-wallet-connector').open()">
-  Connect Wallet
-</button>
+<button onclick="document.querySelector('xrpl-wallet-connector').open()">Connect Wallet</button>
 ```
 
 ### From HTML Attributes to CSS Variables
@@ -834,6 +882,7 @@ If your app previously used a button-only approach, the modal component provides
 Previous versions used HTML attributes for styling. The component now uses CSS variables exclusively for better flexibility and theming:
 
 **Old approach (no longer supported)**:
+
 ```html
 <xrpl-wallet-connector
   background-color="#000637"
@@ -843,6 +892,7 @@ Previous versions used HTML attributes for styling. The component now uses CSS v
 ```
 
 **New approach (CSS variables)**:
+
 ```html
 <xrpl-wallet-connector
   style="
@@ -854,6 +904,7 @@ Previous versions used HTML attributes for styling. The component now uses CSS v
 ```
 
 Benefits of CSS variables:
+
 - **Dynamic theming** - Change colors at runtime without re-rendering
 - **Cascading** - Define variables once in CSS, apply everywhere
 - **Better performance** - No JavaScript parsing of color values
@@ -899,7 +950,7 @@ connector.addEventListener('error', (e) => {
   analytics.track('wallet_connection_failed', {
     walletId: e.detail.walletId,
     errorCode: e.detail.error.code,
-    errorMessage: e.detail.error.message
+    errorMessage: e.detail.error.message,
   });
 });
 ```
