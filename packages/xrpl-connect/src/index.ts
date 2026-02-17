@@ -27,6 +27,7 @@ export { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 export { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 export { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
 export { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
+export { XyraAdapter } from '@xrpl-connect/adapter-xyra';
 
 // Convenient grouped exports for better DX
 import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
@@ -34,6 +35,7 @@ import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
 import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
+import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
 
 /**
  * Convenient object containing all wallet adapters
@@ -56,4 +58,5 @@ export const Adapters = {
   GemWallet: GemWalletAdapter,
   WalletConnect: WalletConnectAdapter,
   Ledger: LedgerAdapter,
+  Xyra: XyraAdapter,
 };

@@ -94,6 +94,9 @@ importers:
       '@xrpl-connect/adapter-xaman':
         specifier: workspace:*
         version: link:../../packages/adapters/xaman
+      '@xrpl-connect/adapter-xyra':
+        specifier: workspace:*
+        version: link:../../packages/adapters/xyra
       '@xrpl-connect/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -143,6 +146,9 @@ importers:
       '@xrpl-connect/adapter-xaman':
         specifier: workspace:*
         version: link:../../packages/adapters/xaman
+      '@xrpl-connect/adapter-xyra':
+        specifier: workspace:*
+        version: link:../../packages/adapters/xyra
       '@xrpl-connect/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -315,6 +321,31 @@ importers:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@20.19.21)(jsdom@22.1.0(bufferutil@4.0.9)(utf-8-validate@5.0.10))
 
+  packages/adapters/xyra:
+    dependencies:
+      '@xrpl-connect/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@xyrawallet/sdk':
+        specifier: ^0.1.3
+        version: 0.1.3
+      xrpl:
+        specifier: ^3.0.0 || ^4.0.0
+        version: 4.4.2(bufferutil@4.0.9)(utf-8-validate@5.0.10)
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.21
+      tsup:
+        specifier: ^8.1.0
+        version: 8.5.0(postcss@8.5.6)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.6.0
+        version: 1.6.1(@types/node@20.19.21)(jsdom@22.1.0(bufferutil@4.0.9)(utf-8-validate@5.0.10))
+
   packages/core:
     dependencies:
       eventemitter3:
@@ -379,6 +410,9 @@ importers:
       '@xrpl-connect/adapter-xaman':
         specifier: workspace:*
         version: link:../adapters/xaman
+      '@xrpl-connect/adapter-xyra':
+        specifier: workspace:*
+        version: link:../adapters/xyra
       '@xrpl-connect/core':
         specifier: workspace:*
         version: link:../core
@@ -1487,6 +1521,9 @@ packages:
 
   '@xrplf/secret-numbers@2.0.0':
     resolution: {integrity: sha512-z3AOibRTE9E8MbjgzxqMpG1RNaBhQ1jnfhNCa1cGf2reZUJzPMYs4TggQTc7j8+0WyV3cr7y/U8Oz99SXIkN5Q==}
+
+  '@xyrawallet/sdk@0.1.3':
+    resolution: {integrity: sha512-i0VG8QbC5FwGgnUTHC13quRHINPh/z5OSfBwI37Jbs8cB87WNIEUH4IW51CKh6VSG3pbiWqWBS9jKAsnki049w==}
 
   abab@2.0.6:
     resolution: {integrity: sha512-j2afSsaIENvHZN2B8GOpF566vZ5WVk5opAiMTvWgaQT8DkbOqsTfvNAvHoRGU2zzP8cPoqys+xHTRDWW8L+/BA==}
@@ -5363,6 +5400,8 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+
+  '@xyrawallet/sdk@0.1.3': {}
 
   abab@2.0.6: {}
 

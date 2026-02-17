@@ -54,6 +54,7 @@ export { XamanAdapter } from '@xrpl-connect/adapter-xaman';
 export { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 export { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 export { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
+export { XyraAdapter } from '@xrpl-connect/adapter-xyra';
 
 // Convenience object
 export const Adapters = {
@@ -61,6 +62,7 @@ export const Adapters = {
   Crossmark: CrossmarkAdapter,
   GemWallet: GemWalletAdapter,
   WalletConnect: WalletConnectAdapter,
+  Xyra: XyraAdapter,
 };
 ```
 
@@ -81,6 +83,7 @@ import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
 import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
+import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
 ```
 
 ### ✅ With This Package
@@ -96,6 +99,7 @@ import {
   CrossmarkAdapter,
   GemWalletAdapter,
   WalletConnectAdapter,
+  XyraAdapter,
   Adapters,
 } from 'xrpl-connect';
 ```
@@ -160,12 +164,14 @@ export {
   CrossmarkAdapter,
   GemWalletAdapter,
   WalletConnectAdapter,
+  XyraAdapter,
 
   // Types
   XamanAdapterOptions,
   CrossmarkAdapterOptions,
   GemWalletAdapterOptions,
   WalletConnectAdapterOptions,
+  XyraAdapterOptions,
 
   // Enums
   XRPLMethod, // from WalletConnect adapter
@@ -176,6 +182,7 @@ export const Adapters = {
   Crossmark: CrossmarkAdapter,
   GemWallet: GemWalletAdapter,
   WalletConnect: WalletConnectAdapter,
+  Xyra: XyraAdapter,
 };
 ```
 
@@ -210,6 +217,7 @@ const walletManager = new WalletManager({
     new Adapters.Xaman({ apiKey: process.env.XUMM_API_KEY }),
     new Adapters.Crossmark(),
     new Adapters.WalletConnect({ projectId: process.env.WALLETCONNECT_ID }),
+    new Adapters,Xyra(),
   ],
   network: STANDARD_NETWORKS.mainnet,
   autoConnect: true,
@@ -246,6 +254,7 @@ const walletManager = new WalletManager({
     new Adapters.WalletConnect({
       projectId: process.env.WALLETCONNECT_ID,
     }),
+    new Adapters.Xyra(),
   ],
 });
 
@@ -377,7 +386,8 @@ The meta-package depends on:
     "@xrpl-connect/adapter-xaman": "workspace:*",
     "@xrpl-connect/adapter-crossmark": "workspace:*",
     "@xrpl-connect/adapter-gemwallet": "workspace:*",
-    "@xrpl-connect/adapter-walletconnect": "workspace:*"
+    "@xrpl-connect/adapter-walletconnect": "workspace:*",
+    "@xrpl-connect/adapter-xyra": "workspace:*"
   }
 }
 ```
@@ -405,7 +415,8 @@ xrpl-connect (this package)
       ├── XamanAdapter
       ├── CrossmarkAdapter
       ├── GemWalletAdapter
-      └── WalletConnectAdapter
+      ├── WalletConnectAdapter
+      └── XyraAdapter
 ```
 
 ---
@@ -482,6 +493,7 @@ import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
 import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
+import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
 
 // 7 lines just to import!
 ```

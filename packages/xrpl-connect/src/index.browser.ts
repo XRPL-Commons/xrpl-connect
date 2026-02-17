@@ -24,6 +24,7 @@ export { CrossmarkAdapter } from '../../adapters/crossmark';
 export { GemWalletAdapter } from '../../adapters/gemwallet';
 export { WalletConnectAdapter } from '../../adapters/walletconnect';
 export { LedgerAdapter } from '../../adapters/ledger';
+export { XyraAdapter } from '../../adapters/xyra';
 
 // Convenient grouped exports for better DX
 import { XamanAdapter } from '../../adapters/xaman';
@@ -31,6 +32,7 @@ import { CrossmarkAdapter } from '../../adapters/crossmark';
 import { GemWalletAdapter } from '../../adapters/gemwallet';
 import { WalletConnectAdapter } from '../../adapters/walletconnect';
 import { LedgerAdapter } from '../../adapters/ledger';
+import { XyraAdapter } from '../../adapters/xyra';
 
 export const Adapters = {
   Xaman: XamanAdapter,
@@ -38,4 +40,5 @@ export const Adapters = {
   GemWallet: GemWalletAdapter,
   WalletConnect: WalletConnectAdapter,
   Ledger: LedgerAdapter,
+  Xyra: XyraAdapter,
 };

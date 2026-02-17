@@ -345,6 +345,72 @@ This eagerly initializes the WalletConnect infrastructure, reducing latency when
 
 ---
 
+### 5. Xyra Adapter
+
+**Package**: `@xrpl-connect/adapter-xyra`
+
+**Export**: `XyraAdapter`
+
+**File Location**: `packages/adapters/xyra/src/index.ts`
+
+#### Overview
+
+Xyra is a browser-native popup-based wallet adapter. It uses the `@xyrawallet/sdk` to open secure popup windows for account selection and transaction signing, communicating back to the parent page via `postMessage`. No browser extensions, app downloads, or API keys are required.
+
+#### Features
+
+- ✅ Browser-native popup-based signing
+- ✅ Always available (no extension or app required)
+- ✅ No OAuth or API key required
+- ✅ XRPL mainnet and testnet networks support
+- ✅ Origin verification displayed to user before approval
+- ✅ Message signing for authentication and proof of ownership
+- ✅ Client-side encryption — private keys never leave the wallet popup
+
+#### Constructor
+```typescript
+const xyraAdapter = new XyraAdapter(options?: XyraAdapterOptions);
+```
+
+**Options**:
+```typescript
+interface XyraAdapterOptions {
+  walletUrl?: string;       // Custom wallet URL (default: 'https://wallet.xyra.now')
+  timeout?: number;         // Popup timeout in ms (default: 300000 / 5 minutes)
+  popupWidth?: number;      // Connect popup width (default: 420)
+  popupHeight?: number;     // Connect popup height (default: 720)
+  signPopupHeight?: number; // Sign popup height (default: 640)
+}
+```
+
+#### Example Usage
+```typescript
+import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
+import { WalletManager } from '@xrpl-connect/core';
+
+const xyraAdapter = new XyraAdapter();
+
+const walletManager = new WalletManager({
+  adapters: [xyraAdapter],
+  network: 'testnet',
+});
+
+// Xyra is always available — no availability check needed
+const account = await walletManager.connect('xyra');
+console.log('Connected:', account.address);
+```
+
+#### Implementation Details
+
+- **isAvailable()**: Always returns `true` in browser environments (web-based wallet, no extension dependency)
+- **connect()**: Opens a popup at `wallet.xyra.now/connect` via the Xyra SDK; user selects an account and approves; address and public key are returned via `postMessage`
+- **signAndSubmit()**: Opens a popup at `wallet.xyra.now/sign` showing full transaction details and requesting origin; supports sign-only and sign-and-submit modes
+- **signMessage()**: Opens a popup at `wallet.xyra.now/sign-message` for arbitrary message signing (authentication, proof of ownership)
+- **Network mapping**: Translates between xrpl-connect network IDs (`mainnet`, `testnet`) and Xyra network strings (`xrpl-mainnet`, `xrpl-testnet`)
+- **Event Handling**: Emits standard `connect`, `disconnect`, and `error` events; no persistent wallet-side listeners since Xyra is stateless
+
+---
+
 ## Creating a Custom Adapter
 
 To add support for a new wallet, create a class that implements the `WalletAdapter` interface.
