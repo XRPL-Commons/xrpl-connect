@@ -854,6 +854,14 @@ packages/adapters/
 │   │   └── types.ts
 │   ├── package.json
 │   └── tsconfig.json
+├── xyra/                     # Xyra browser adapter
+│   ├── src/
+│   │   ├── index.ts
+│   │   ├── types.ts
+|   |   └── xyra-adapter.ts
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── tsup.config.ts
 ├── index.ts                  # Central export point
 └── CODE_DOC.md              # This file
 ```
