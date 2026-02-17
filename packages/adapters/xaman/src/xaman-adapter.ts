@@ -9,6 +9,7 @@ import {
   ConnectOptions,
   NetworkInfo,
   Transaction,
+  SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
   STANDARD_NETWORKS,
@@ -208,41 +209,69 @@ export class XamanAdapter implements WalletAdapter {
   }
 
   /**
-   * Sign and optionally submit a transaction
-   * Note: Xaman only supports signing via popup flow. The submit parameter is ignored.
-   * Users must submit the signed transaction separately or use Xaman's auto-submit feature.
+   * Create a Xaman payload, open the signing popup, and wait for the result.
+   * Shared logic used by both sign() and signAndSubmit().
    */
-  async signAndSubmit(transaction: Transaction, _submit?: boolean): Promise<SubmittedTransaction> {
+  private async createAndWaitForPayload(
+    transaction: Transaction
+  ): Promise<{ txid: string; tx_blob: string; signature: string }> {
     if (!this.client || !this.currentAccount) {
       throw createWalletError.notConnected();
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payload: any = await this.client.payload?.createAndSubscribe(transaction as any);
+
+    if (!payload) {
+      throw new Error('Failed to create payload');
+    }
+
+    this.openSignWindow(payload.created.next.always);
+
+    const result = await this.waitForSignature(payload.websocket.url);
+
+    if (!result.signed) {
+      throw createWalletError.signRejected();
+    }
+
+    return {
+      txid: result.txid || '',
+      tx_blob: result.tx_blob || '',
+      signature: result.signature || '',
+    };
+  }
+
+  /**
+   * Sign a transaction without submitting it to the ledger
+   * Note: Xaman uses a popup flow for signing.
+   */
+  async sign(transaction: Transaction): Promise<SignedTransaction> {
     try {
-      // Create and subscribe to payload
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload = await this.client.payload?.createAndSubscribe({
-        txjson: transaction as any,
-        options: { force_network: this.getXamanNetworkName() },
-      });
+      const result = await this.createAndWaitForPayload(transaction);
 
-      if (!payload) {
-        throw new Error('Failed to create payload');
-      }
-
-      // Open popup window for signing
-      this.openSignWindow(payload.created.next.always);
-
-      // Wait for WebSocket response
-      const result = await this.waitForSignature(payload.websocket.url);
-
-      if (!result.signed) {
+      return {
+        hash: '',
+        tx_blob: result.tx_blob,
+        signature: result.signature,
+      };
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('rejected')) {
         throw createWalletError.signRejected();
       }
+      throw createWalletError.signFailed(error as Error);
+    }
+  }
 
-      // Xaman only signs; submission depends on user's wallet settings
-      // The submit parameter is documented but not used for Xaman
+  /**
+   * Sign and submit a transaction to the ledger
+   * Note: Xaman handles submission internally based on user's wallet settings.
+   */
+  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+    try {
+      const result = await this.createAndWaitForPayload(transaction);
+
       return {
-        hash: result.txid || '',
+        hash: result.txid,
         tx_blob: result.tx_blob,
         signature: result.signature,
       };
