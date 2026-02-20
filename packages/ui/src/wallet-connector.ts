@@ -29,21 +29,42 @@ let WalletConnectorElement: any = null;
 
 if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
   const XC_CSS_VARIABLES = [
-    '--xc-font-family', '--xc-border-radius', '--xc-overlay-background',
-    '--xc-overlay-backdrop-filter', '--xc-primary-color', '--xc-background-color',
-    '--xc-text-color', '--xc-text-muted-color', '--xc-background-secondary',
-    '--xc-background-tertiary', '--xc-loading-border-color',
-    '--xc-connect-button-font-size', '--xc-connect-button-border-radius',
-    '--xc-connect-button-color', '--xc-connect-button-background',
-    '--xc-connect-button-border', '--xc-connect-button-hover-background',
-    '--xc-connect-button-font-weight', '--xc-primary-button-color',
-    '--xc-primary-button-background', '--xc-primary-button-border-radius',
-    '--xc-primary-button-font-weight', '--xc-primary-button-hover-background',
-    '--xc-secondary-button-color', '--xc-secondary-button-background',
-    '--xc-secondary-button-border-radius', '--xc-secondary-button-font-weight',
-    '--xc-secondary-button-hover-background', '--xc-account-address-button-hover-color',
-    '--xc-modal-background', '--xc-modal-border-radius', '--xc-modal-box-shadow',
-    '--xc-focus-color', '--xc-danger-color', '--xc-success-color', '--xc-warning-color',
+    '--xc-font-family',
+    '--xc-border-radius',
+    '--xc-overlay-background',
+    '--xc-overlay-backdrop-filter',
+    '--xc-primary-color',
+    '--xc-background-color',
+    '--xc-text-color',
+    '--xc-text-muted-color',
+    '--xc-background-secondary',
+    '--xc-background-tertiary',
+    '--xc-loading-border-color',
+    '--xc-connect-button-font-size',
+    '--xc-connect-button-border-radius',
+    '--xc-connect-button-color',
+    '--xc-connect-button-background',
+    '--xc-connect-button-border',
+    '--xc-connect-button-hover-background',
+    '--xc-connect-button-font-weight',
+    '--xc-primary-button-color',
+    '--xc-primary-button-background',
+    '--xc-primary-button-border-radius',
+    '--xc-primary-button-font-weight',
+    '--xc-primary-button-hover-background',
+    '--xc-secondary-button-color',
+    '--xc-secondary-button-background',
+    '--xc-secondary-button-border-radius',
+    '--xc-secondary-button-font-weight',
+    '--xc-secondary-button-hover-background',
+    '--xc-account-address-button-hover-color',
+    '--xc-modal-background',
+    '--xc-modal-border-radius',
+    '--xc-modal-box-shadow',
+    '--xc-focus-color',
+    '--xc-danger-color',
+    '--xc-success-color',
+    '--xc-warning-color',
   ] as const;
 
   class WalletConnectorElementImpl extends HTMLElement {
@@ -704,7 +725,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     private render() {
       // Capture current modal height before re-rendering
-      const existingModal = this.overlayPortal?.shadowRoot?.querySelector('.modal') as HTMLElement | null;
+      const existingModal = this.overlayPortal?.shadowRoot?.querySelector(
+        '.modal'
+      ) as HTMLElement | null;
       if (existingModal) {
         this.previousModalHeight = existingModal.offsetHeight;
       }

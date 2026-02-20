@@ -52,7 +52,9 @@ export class EventHandler {
       if (address) {
         try {
           await navigator.clipboard.writeText(address);
-          const btn = accountRoot?.querySelector('#copy-account-address') as HTMLButtonElement | null;
+          const btn = accountRoot?.querySelector(
+            '#copy-account-address'
+          ) as HTMLButtonElement | null;
           if (!btn) return;
           const originalHTML = btn.innerHTML;
           btn.innerHTML = '<span>Copied!</span>';
@@ -164,7 +166,9 @@ export class EventHandler {
 
     // Custom derivation path button (in overlay portal)
     overlayRoot?.querySelector('#custom-path-connect-button')?.addEventListener('click', () => {
-      const input = overlayRoot?.querySelector('#custom-derivation-path') as HTMLInputElement | null;
+      const input = overlayRoot?.querySelector(
+        '#custom-derivation-path'
+      ) as HTMLInputElement | null;
       if (input && input.value.trim()) {
         const derivationPath = input.value.trim();
         logger.debug('Custom derivation path entered:', derivationPath);
