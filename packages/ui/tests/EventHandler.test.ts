@@ -3,11 +3,17 @@ import { EventHandler } from '../src/services/EventHandler';
 
 describe('EventHandler', () => {
   it('should attach event listeners', () => {
+    const mockPortalRoot = {
+      querySelector: vi.fn(),
+      querySelectorAll: vi.fn(() => []),
+    };
     const mockComponent = {
       shadow: {
         querySelector: vi.fn(),
         querySelectorAll: vi.fn(() => []),
       },
+      getOverlayRoot: vi.fn(() => mockPortalRoot),
+      getAccountModalRoot: vi.fn(() => mockPortalRoot),
       open: vi.fn(),
     };
     const eventHandler = new EventHandler(mockComponent as any, {} as any);

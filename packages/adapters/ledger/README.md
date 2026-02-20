@@ -91,7 +91,7 @@ const result = await adapter.sign({
   Destination: 'rN7n7otQDd6FczFgLdlqtyMVrn3KeKniv',
   Amount: '1000000',
   SigningPubKey: '', // Empty for multisig
-  Fee: '30' // Higher fee for multisig : Base fee (10 drops) + (10 drops per signer in quorum)
+  Fee: '30', // Higher fee for multisig : Base fee (10 drops) + (10 drops per signer in quorum)
 });
 
 // The result contains the signed tx_blob
