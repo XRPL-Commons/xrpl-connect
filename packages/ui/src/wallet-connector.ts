@@ -28,6 +28,45 @@ const logger = createLogger('[WalletConnector]');
 let WalletConnectorElement: any = null;
 
 if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
+  const XC_CSS_VARIABLES = [
+    '--xc-font-family',
+    '--xc-border-radius',
+    '--xc-overlay-background',
+    '--xc-overlay-backdrop-filter',
+    '--xc-primary-color',
+    '--xc-background-color',
+    '--xc-text-color',
+    '--xc-text-muted-color',
+    '--xc-background-secondary',
+    '--xc-background-tertiary',
+    '--xc-loading-border-color',
+    '--xc-connect-button-font-size',
+    '--xc-connect-button-border-radius',
+    '--xc-connect-button-color',
+    '--xc-connect-button-background',
+    '--xc-connect-button-border',
+    '--xc-connect-button-hover-background',
+    '--xc-connect-button-font-weight',
+    '--xc-primary-button-color',
+    '--xc-primary-button-background',
+    '--xc-primary-button-border-radius',
+    '--xc-primary-button-font-weight',
+    '--xc-primary-button-hover-background',
+    '--xc-secondary-button-color',
+    '--xc-secondary-button-background',
+    '--xc-secondary-button-border-radius',
+    '--xc-secondary-button-font-weight',
+    '--xc-secondary-button-hover-background',
+    '--xc-account-address-button-hover-color',
+    '--xc-modal-background',
+    '--xc-modal-border-radius',
+    '--xc-modal-box-shadow',
+    '--xc-focus-color',
+    '--xc-danger-color',
+    '--xc-success-color',
+    '--xc-warning-color',
+  ] as const;
+
   class WalletConnectorElementImpl extends HTMLElement {
     private walletManager: WalletManager | null = null;
     private shadow: ShadowRoot;
@@ -53,6 +92,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private walletAvailabilityChecked: boolean = false; // Flag to track if availability has been checked
     private accountModalOpen: boolean = false; // Track if account details modal is open
     private accountBalance: string | null = null; // Cached account balance
+    private overlayPortal: HTMLDivElement | null = null;
+    private accountModalPortal: HTMLDivElement | null = null;
 
     // Observed attributes
     static get observedAttributes() {
@@ -81,6 +122,52 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       });
     }
 
+    disconnectedCallback() {
+      this.overlayPortal?.remove();
+      this.overlayPortal = null;
+      this.accountModalPortal?.remove();
+      this.accountModalPortal = null;
+      document.body.style.overflow = '';
+    }
+
+    private forwardCSSVariables(portalHost: HTMLElement): void {
+      const computedStyle = window.getComputedStyle(this);
+      for (const varName of XC_CSS_VARIABLES) {
+        const value = computedStyle.getPropertyValue(varName).trim();
+        if (value) portalHost.style.setProperty(varName, value);
+      }
+    }
+
+    private ensureOverlayPortal(): ShadowRoot {
+      if (!this.overlayPortal) {
+        this.overlayPortal = document.createElement('div');
+        this.overlayPortal.setAttribute('data-xrpl-overlay-portal', '');
+        this.overlayPortal.attachShadow({ mode: 'open' });
+        document.body.appendChild(this.overlayPortal);
+      }
+      this.forwardCSSVariables(this.overlayPortal);
+      return this.overlayPortal.shadowRoot!;
+    }
+
+    private ensureAccountModalPortal(): ShadowRoot {
+      if (!this.accountModalPortal) {
+        this.accountModalPortal = document.createElement('div');
+        this.accountModalPortal.setAttribute('data-xrpl-account-modal-portal', '');
+        this.accountModalPortal.attachShadow({ mode: 'open' });
+        document.body.appendChild(this.accountModalPortal);
+      }
+      this.forwardCSSVariables(this.accountModalPortal);
+      return this.accountModalPortal.shadowRoot!;
+    }
+
+    public getOverlayRoot(): ShadowRoot | null {
+      return this.overlayPortal?.shadowRoot ?? null;
+    }
+
+    public getAccountModalRoot(): ShadowRoot | null {
+      return this.accountModalPortal?.shadowRoot ?? null;
+    }
+
     /**
      * Update derived colors (like hover states) based on color changes
      */
@@ -98,6 +185,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.style.setProperty('--xc-primary-button-hover-background', primaryHoverColor);
       this.style.setProperty('--xc-connect-button-hover-background', backgroundHoverColor);
       this.style.setProperty('--xc-account-address-button-hover-color', primaryHoverColor);
+
+      // Forward updated variables to portals
+      if (this.overlayPortal) this.forwardCSSVariables(this.overlayPortal);
+      if (this.accountModalPortal) this.forwardCSSVariables(this.accountModalPortal);
     }
 
     attributeChangedCallback(_name: string, _oldValue: string, _newValue: string) {
@@ -509,7 +600,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
         setTimeout(() => {
           logger.debug('Attempting to render QR code...');
-          const container = this.shadow.querySelector('#qr-container');
+          const container = this.overlayPortal?.shadowRoot?.querySelector('#qr-container');
           logger.debug('QR container found:', !!container);
           this.renderQRCode(uri);
         }, TIMINGS.QR_RENDER_DELAY);
@@ -528,7 +619,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     private async renderQRCode(uri: string) {
       logger.debug('renderQRCode called with URI:', uri.substring(0, 60) + '...');
-      const container = this.shadow.querySelector('#qr-container');
+      const container = this.overlayPortal?.shadowRoot?.querySelector('#qr-container');
       if (!container || !uri) {
         logger.warn('No container or URI for QR code rendering');
         return;
@@ -634,7 +725,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     private render() {
       // Capture current modal height before re-rendering
-      const existingModal = this.shadow.querySelector('.modal') as HTMLElement;
+      const existingModal = this.overlayPortal?.shadowRoot?.querySelector(
+        '.modal'
+      ) as HTMLElement | null;
       if (existingModal) {
         this.previousModalHeight = existingModal.offsetHeight;
       }
@@ -688,27 +781,45 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.isFirstOpen = false;
       }
 
+      // Connect button stays in the component's own shadow root
       this.shadow.innerHTML = `
     <style>
       ${mainStyles}
     </style>
-
     <button class="connect-button" id="connect-wallet-button" part="connect-button">${buttonText}</button>
+  `;
 
-    ${
-      this.isOpen
-        ? `
+      // Wallet connection overlay — rendered in a portal on document.body to guarantee
+      // position: fixed is always relative to the viewport (not a transformed ancestor)
+      if (this.isOpen) {
+        const overlayRoot = this.ensureOverlayPortal();
+        overlayRoot.innerHTML = `
+    <style>${mainStyles}</style>
     <div class="${overlayClass}" part="overlay">
       <div class="${modalClass}" part="modal">
         ${contentHTML}
       </div>
     </div>
-    `
-        : ''
-    }
-
-    ${this.accountModalOpen ? renderAccountModal(this.walletManager?.account ?? null, this.accountBalance, this.truncateAddress, this.generateGradientFromAddress) : ''}
   `;
+      } else if (this.overlayPortal) {
+        this.overlayPortal.shadowRoot!.innerHTML = '';
+      }
+
+      // Account modal — same portal approach
+      if (this.accountModalOpen) {
+        const accountRoot = this.ensureAccountModalPortal();
+        accountRoot.innerHTML = `
+    <style>${mainStyles}</style>
+    ${renderAccountModal(
+      this.walletManager?.account ?? null,
+      this.accountBalance,
+      this.truncateAddress.bind(this),
+      this.generateGradientFromAddress.bind(this)
+    )}
+  `;
+      } else if (this.accountModalPortal) {
+        this.accountModalPortal.shadowRoot!.innerHTML = '';
+      }
 
       this.eventHandler?.attachEventListeners();
 
@@ -722,7 +833,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Update modal height with smooth transition
      */
     private updateModalHeight() {
-      const modal = this.shadow.querySelector('.modal') as HTMLElement;
+      const modal = this.overlayPortal?.shadowRoot?.querySelector('.modal') as HTMLElement | null;
       if (!modal) return;
 
       // Use the stored previous height
