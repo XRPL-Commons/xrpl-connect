@@ -407,7 +407,8 @@ console.log('Connected:', account.address);
 
 - **isAvailable()**: Always returns `true` in browser environments (web-based wallet, no extension dependency)
 - **connect()**: Opens a popup at `wallet.xyra.now/connect` via the Xyra SDK; user selects an account and approves; address and public key are returned via `postMessage`
-- **signAndSubmit()**: Opens a popup at `wallet.xyra.now/sign` showing full transaction details and requesting origin; supports sign-only and sign-and-submit modes
+- **sign()**: Opens a popup at `wallet.xyra.now/sign` showing full transaction details and requesting origin; does not submit to the transaction to the network.
+  **signAndSubmit()**: Opens a popup at `wallet.xyra.now/sign` showing full transaction details and requesting origin; submit the transaction to the network.
 - **signMessage()**: Opens a popup at `wallet.xyra.now/sign-message` for arbitrary message signing (authentication, proof of ownership)
 - **Network mapping**: Translates between xrpl-connect network IDs (`mainnet`, `testnet`) and Xyra network strings (`xrpl-mainnet`, `xrpl-testnet`)
 - **Event Handling**: Emits standard `connect`, `disconnect`, and `error` events; no persistent wallet-side listeners since Xyra is stateless
