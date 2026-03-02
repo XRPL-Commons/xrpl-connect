@@ -27,6 +27,7 @@ WalletManager (expects WalletAdapter interface)
 │  ├─ connect()                                     │
 │  ├─ disconnect()                                  │
 │  ├─ getAccount()                                  │
+│  ├─ sign()                                        │
 │  ├─ signAndSubmit()                               │
 │  ├─ signMessage()                                 │
 │  └─ on() / off() (event listeners)                │
@@ -67,10 +68,8 @@ interface WalletAdapter {
   getNetwork(): Promise<NetworkInfo>;
 
   // ==================== Signing Operations ====================
-  signAndSubmit(
-    transaction: Transaction,
-    submit?: boolean
-  ): Promise<SignedTransaction | SubmittedTransaction>;
+  sign(transaction: Transaction): Promise<SignedTransaction>;
+  signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction>;
   signMessage(message: string | Uint8Array): Promise<SignedMessage>;
 
   // ==================== Event Listeners (Optional) ====================
@@ -216,7 +215,8 @@ if (available) {
 
 - **isAvailable()**: Checks if `window.crossmark` (injected by extension) exists
 - **connect()**: Creates a sign-in hash and requests user authorization via extension
-- **signAndSubmit()**: Uses extension's `signAndSubmit` method
+- **sign()**: Uses extension's `signAndWait` method to return signed blob
+- **signAndSubmit()**: Uses extension's `signAndSubmitAndWait` method
 - **signMessage()**: Uses extension's `signMessage` method
 - **Event Handling**: Listens to extension-emitted events
 
@@ -549,27 +549,30 @@ export class YourWalletAdapter implements WalletAdapter {
 
   // ==================== Signing ====================
 
-  async signAndSubmit(
-    transaction: any,
-    submit: boolean = false
-  ): Promise<SignedTransaction | SubmittedTransaction> {
+  async sign(transaction: any): Promise<SignedTransaction> {
     if (!this.account) {
       throw new WalletError('Not connected', WalletErrorCode.NOT_CONNECTED);
     }
 
     try {
-      // Call wallet to sign
       const signedTx = await this.signTransaction(transaction);
 
-      if (!submit) {
-        return {
-          hash: signedTx.hash,
-          tx_blob: signedTx.tx_blob,
-          signature: signedTx.signature,
-        };
-      }
+      return {
+        hash: '',
+        tx_blob: signedTx.tx_blob,
+      };
+    } catch (error) {
+      throw this.handleError(error, 'Signing failed');
+    }
+  }
 
-      // Submit to network
+  async signAndSubmit(transaction: any): Promise<SubmittedTransaction> {
+    if (!this.account) {
+      throw new WalletError('Not connected', WalletErrorCode.NOT_CONNECTED);
+    }
+
+    try {
+      const signedTx = await this.signTransaction(transaction);
       const submitResult = await this.submitTransaction(signedTx);
 
       return {

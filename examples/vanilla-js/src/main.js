@@ -200,7 +200,7 @@ elements.txForm.addEventListener('submit', async (e) => {
       Amount: amount,
     };
 
-    // Use the unified signAndSubmit method - works across all wallets!
+    // Use signAndSubmit to sign and submit - works across all wallets!
     const result = await walletManager.signAndSubmit(transaction);
 
     elements.txResult.innerHTML = `

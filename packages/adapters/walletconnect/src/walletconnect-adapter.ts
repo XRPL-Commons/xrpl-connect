@@ -11,6 +11,7 @@ import type {
   ConnectOptions,
   NetworkInfo,
   Transaction,
+  SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
@@ -420,42 +421,65 @@ export class WalletConnectAdapter implements WalletAdapter {
   }
 
   /**
-   * Sign and optionally submit a transaction using xrpl_signTransaction method
-   * @param transaction - The transaction to sign
-   * @param submit - Whether to submit to the ledger (default: true)
+   * Send a WalletConnect sign transaction request
    */
-  async signAndSubmit(
+  private async requestSignTransaction(
     transaction: Transaction,
-    submit: boolean = true
-  ): Promise<SubmittedTransaction> {
+    submit: boolean
+  ): Promise<any> {
     if (!this.client || !this.session || !this.currentAccount) {
       throw createWalletError.notConnected();
     }
 
-    try {
-      // Ensure Account field is set
-      const tx: Transaction = {
-        ...transaction,
-        Account: transaction.Account || this.currentAccount.address,
-      };
+    const tx = {
+      ...transaction,
+      Account: transaction.Account || this.currentAccount.address,
+    };
 
-      // Request signature/submission via WalletConnect using XRPL RPC format
-      const result = await this.client.request({
-        topic: this.session.topic,
-        chainId:
-          this.currentAccount.network.walletConnectId || `xrpl:${this.currentAccount.network.id}`,
-        request: {
-          method: XRPLMethod.SIGN_TRANSACTION,
-          params: {
-            tx_json: tx,
-            autofill: true,
-            submit, // Controls whether to submit to ledger
-          },
+    const result = await this.client.request({
+      topic: this.session.topic,
+      chainId:
+        this.currentAccount.network.walletConnectId || `xrpl:${this.currentAccount.network.id}`,
+      request: {
+        method: XRPLMethod.SIGN_TRANSACTION,
+        params: {
+          tx_json: tx,
+          autofill: true,
+          submit,
         },
-      });
+      },
+    });
 
-      // Result contains tx_json with the transaction
-      const resultTx = (result as any).tx_json;
+    return (result as any).tx_json;
+  }
+
+  /**
+   * Sign a transaction without submitting it to the ledger
+   * @param transaction - The transaction to sign
+   */
+  async sign(transaction: Transaction): Promise<SignedTransaction> {
+    try {
+      const resultTx = await this.requestSignTransaction(transaction, false);
+
+      return {
+        hash: '',
+        tx_blob: resultTx.TxnSignature,
+      };
+    } catch (error) {
+      if (error instanceof Error && error.message.toLowerCase().includes('reject')) {
+        throw createWalletError.signRejected();
+      }
+      throw createWalletError.signFailed(error as Error);
+    }
+  }
+
+  /**
+   * Sign and submit a transaction to the ledger
+   * @param transaction - The transaction to sign and submit
+   */
+  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+    try {
+      const resultTx = await this.requestSignTransaction(transaction, true);
 
       return {
         hash: resultTx.hash || '',

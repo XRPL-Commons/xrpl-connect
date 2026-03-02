@@ -373,6 +373,13 @@ export const useWalletStore = defineStore('wallet', () => {
     }
   };
 
+  const sign = async (transaction: any) => {
+    if (!manager.value?.connected) {
+      throw new Error('Wallet not connected');
+    }
+    return manager.value.sign(transaction);
+  };
+
   const signAndSubmit = async (transaction: any) => {
     if (!manager.value?.connected) {
       throw new Error('Wallet not connected');
@@ -387,6 +394,7 @@ export const useWalletStore = defineStore('wallet', () => {
     error,
     initializeWallet,
     disconnect,
+    sign,
     signAndSubmit,
   };
 });

@@ -36,13 +36,21 @@ const walletManager = new WalletManager(options: WalletManagerConfig)
 
 ### Methods
 
+#### sign()
+
+```typescript
+async sign(transaction: Transaction): Promise<SignedTransaction>
+```
+
+Sign a transaction without submitting it to the ledger. Returns the signed transaction blob (`tx_blob`).
+
 #### signAndSubmit()
 
 ```typescript
-async signAndSubmit(transaction: Transaction): Promise<SubmitResult>
+async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction>
 ```
 
-Sign and submit a transaction to the ledger.
+Sign and submit a transaction to the ledger. Returns the transaction hash.
 
 #### signMessage()
 
@@ -255,13 +263,24 @@ interface Transaction {
 }
 ```
 
-### SubmitResult
+### SignedTransaction
 
 ```typescript
-interface SubmitResult {
-  hash?: string;
+interface SignedTransaction {
+  hash: string;
   tx_blob?: string;
-  [key: string]: any;
+  signature?: string;
+  [key: string]: unknown;
+}
+```
+
+### SubmittedTransaction
+
+```typescript
+interface SubmittedTransaction {
+  hash: string;
+  id?: string;
+  [key: string]: unknown;
 }
 ```
 
