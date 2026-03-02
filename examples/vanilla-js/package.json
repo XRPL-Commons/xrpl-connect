@@ -14,6 +14,7 @@
     "@xrpl-connect/adapter-ledger": "workspace:*",
     "@xrpl-connect/adapter-walletconnect": "workspace:*",
     "@xrpl-connect/adapter-xaman": "workspace:*",
+    "@xrpl-connect/adapter-xyra": "workspace:*",
     "@xrpl-connect/core": "workspace:*",
     "@xrpl-connect/ui": "workspace:*",
     "xrpl": "^4.0.0"

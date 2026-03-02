@@ -4,6 +4,7 @@ import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
 import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
 import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
+import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
 import { useWallet } from '../context/WalletContext';
 
 // Configuration - ADD YOUR API KEYS HERE
@@ -21,6 +22,7 @@ export function useWalletManager() {
         new WalletConnectAdapter({ projectId: WALLETCONNECT_PROJECT_ID }),
         new CrossmarkAdapter(),
         new GemWalletAdapter(),
+        new XyraAdapter(),
       ],
       network: 'testnet',
       autoConnect: true,
