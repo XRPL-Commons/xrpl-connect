@@ -68,5 +68,5 @@ export const XRPL_CONNECT_TO_XYRA_NETWORK: Record<string, Network> = {
  */
 export const XYRA_TO_XRPL_CONNECT_NETWORK: Partial<Record<Network, string>> = {
   'xrpl-mainnet': 'mainnet',
-  'xrpl-testnet': 'testnet'
+  'xrpl-testnet': 'testnet',
 };

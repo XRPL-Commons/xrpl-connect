@@ -423,10 +423,7 @@ export class WalletConnectAdapter implements WalletAdapter {
   /**
    * Send a WalletConnect sign transaction request
    */
-  private async requestSignTransaction(
-    transaction: Transaction,
-    submit: boolean
-  ): Promise<any> {
+  private async requestSignTransaction(transaction: Transaction, submit: boolean): Promise<any> {
     if (!this.client || !this.session || !this.currentAccount) {
       throw createWalletError.notConnected();
     }

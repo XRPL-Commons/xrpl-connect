@@ -10,12 +10,7 @@
  */
 
 import { XyraSDK } from '@xyrawallet/sdk';
-import type {
-  ConnectResponse,
-  SignResponse,
-  SignMessageResponse,
-  Network,
-} from '@xyrawallet/sdk';
+import type { ConnectResponse, SignResponse, SignMessageResponse, Network } from '@xyrawallet/sdk';
 import type {
   WalletAdapter,
   AccountInfo,
@@ -314,8 +309,7 @@ export class XyraAdapter implements WalletAdapter {
 
     try {
       // Convert Uint8Array to string if needed
-      const messageStr =
-        typeof message === 'string' ? message : new TextDecoder().decode(message);
+      const messageStr = typeof message === 'string' ? message : new TextDecoder().decode(message);
 
       logger.debug('Signing message', {
         length: messageStr.length,
@@ -413,10 +407,7 @@ export class XyraAdapter implements WalletAdapter {
     const networkId = typeof networkConfig === 'string' ? networkConfig : networkConfig.id;
 
     // Check if it's already a valid Xyra network string
-    const validXyraNetworks: Network[] = [
-      'xrpl-mainnet',
-      'xrpl-testnet',
-    ];
+    const validXyraNetworks: Network[] = ['xrpl-mainnet', 'xrpl-testnet'];
     if (validXyraNetworks.includes(networkId as Network)) {
       return networkId as Network;
     }
@@ -454,7 +445,7 @@ export class XyraAdapter implements WalletAdapter {
       return STANDARD_NETWORKS[connectNetworkId];
     }
 
-        // Fallback to XRPL testnet
+    // Fallback to XRPL testnet
     return STANDARD_NETWORKS.testnet;
   }
 

@@ -368,22 +368,25 @@ Xyra is a browser-native popup-based wallet adapter. It uses the `@xyrawallet/sd
 - ✅ Client-side encryption — private keys never leave the wallet popup
 
 #### Constructor
+
 ```typescript
 const xyraAdapter = new XyraAdapter(options?: XyraAdapterOptions);
 ```
 
 **Options**:
+
 ```typescript
 interface XyraAdapterOptions {
-  walletUrl?: string;       // Custom wallet URL (default: 'https://wallet.xyra.now')
-  timeout?: number;         // Popup timeout in ms (default: 300000 / 5 minutes)
-  popupWidth?: number;      // Connect popup width (default: 420)
-  popupHeight?: number;     // Connect popup height (default: 720)
+  walletUrl?: string; // Custom wallet URL (default: 'https://wallet.xyra.now')
+  timeout?: number; // Popup timeout in ms (default: 300000 / 5 minutes)
+  popupWidth?: number; // Connect popup width (default: 420)
+  popupHeight?: number; // Connect popup height (default: 720)
   signPopupHeight?: number; // Sign popup height (default: 640)
 }
 ```
 
 #### Example Usage
+
 ```typescript
 import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
 import { WalletManager } from '@xrpl-connect/core';
