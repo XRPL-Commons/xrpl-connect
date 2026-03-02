@@ -22,6 +22,7 @@ import type {
   ConnectOptions,
   NetworkInfo,
   Transaction,
+  SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
   WalletAdapterEvent,
@@ -203,20 +204,16 @@ export class XyraAdapter implements WalletAdapter {
   // ==================== Signing Operations ====================
 
   /**
-   * Sign a transaction and optionally submit it to the network.
+   * Sign a transaction without submitting it to the ledger.
    *
    * Opens a popup window showing the full transaction details
    * and the requesting origin. The user must explicitly approve
    * the transaction before it is signed.
    *
    * @param transaction - The XRPL transaction object
-   * @param submit - If true, submit to the network after signing (default: true)
-   * @returns The signed/submitted transaction result
+   * @returns The signed transaction with tx_blob
    */
-  async signAndSubmit(
-    transaction: Transaction,
-    submit: boolean = true
-  ): Promise<SubmittedTransaction> {
+  async sign(transaction: Transaction): Promise<SignedTransaction> {
     if (!this.currentAccount || !this.currentXyraNetwork) {
       throw createWalletError.notConnected();
     }
@@ -227,43 +224,73 @@ export class XyraAdapter implements WalletAdapter {
       logger.debug('Signing transaction', {
         type: (transaction as Record<string, unknown>).TransactionType,
         network,
-        submit,
       });
 
-      let response: SignResponse;
-
-      if (submit) {
-        response = await this.sdk.signAndSubmit({
-          transaction: transaction as Record<string, unknown>,
-          network,
-        });
-      } else {
-        response = await this.sdk.sign({
-          transaction: transaction as Record<string, unknown>,
-          network,
-        });
-      }
+      const response: SignResponse = await this.sdk.sign({
+        transaction: transaction as Record<string, unknown>,
+        network,
+      });
 
       logger.debug('Transaction signed', {
         hash: response.hash,
-        submitted: response.submitted,
       });
 
-      // Map to xrpl-connect SubmittedTransaction format
-      const result: SubmittedTransaction = {
+      return {
         hash: response.hash,
         tx_blob: response.tx_blob,
-        submitted: response.submitted,
+      };
+    } catch (error) {
+      logger.error('Sign failed', error);
+
+      const walletError = this.mapError(error, 'sign');
+      this.emit('error', walletError);
+      throw walletError;
+    }
+  }
+
+  /**
+   * Sign and submit a transaction to the ledger.
+   *
+   * Opens a popup window showing the full transaction details
+   * and the requesting origin. The user must explicitly approve
+   * the transaction before it is signed and submitted.
+   *
+   * @param transaction - The XRPL transaction object
+   * @returns The submitted transaction result
+   */
+  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+    if (!this.currentAccount || !this.currentXyraNetwork) {
+      throw createWalletError.notConnected();
+    }
+
+    try {
+      const network = this.currentXyraNetwork;
+
+      logger.debug('Signing and submitting transaction', {
+        type: (transaction as Record<string, unknown>).TransactionType,
+        network,
+      });
+
+      const response: SignResponse = await this.sdk.signAndSubmit({
+        transaction: transaction as Record<string, unknown>,
+        network,
+      });
+
+      logger.debug('Transaction signed and submitted', {
+        hash: response.hash,
+      });
+
+      const result: SubmittedTransaction = {
+        hash: response.hash,
       };
 
-      // Include submit result details if available
       if (response.submitResult) {
         result.submitResult = response.submitResult;
       }
 
       return result;
     } catch (error) {
-      logger.error('Sign failed', error);
+      logger.error('Sign and submit failed', error);
 
       const walletError = this.mapError(error, 'sign');
       this.emit('error', walletError);
