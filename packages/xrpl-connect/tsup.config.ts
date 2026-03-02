@@ -21,6 +21,7 @@ export default defineConfig({
     '@xrpl-connect/adapter-crossmark',
     '@xrpl-connect/adapter-gemwallet',
     '@xrpl-connect/adapter-walletconnect',
+    '@xrpl-connect/adapter-xyra',
   ],
   outDir: 'dist',
   outExtension({ format }) {
