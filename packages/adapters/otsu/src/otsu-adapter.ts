@@ -55,7 +55,7 @@ export class OtsuAdapter implements WalletAdapter {
   readonly name = 'Otsu Wallet';
   readonly icon =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAAA90lEQVR4nO3RQQkAMAzAwIqt2MmajD5yEAGBm92nw+b8IB4AAO0AAGgHAEA7AADaAQDQDgCAdgAAtAMAoB0AAO0AAGgHAEA7AADaAQDQDgCAdgAAtAMAoB0AAO0AAGgHAEA7AADaAQDQDgCAdgAAtAMAoB0AAO0AAGgHAEA7AADaAQDQDgCAdgAAtAMAoB0AAO0AAGgHAEA7AADaAQDQDgCAdgAAtAMAoB0AAO0AAGgHAEA7AADaAQDQDgCAdgAAtAMAoB0AAO0AAGgHAEA7AADaAQDQDgCAdgAAtAMAoB0AAO0AAGgHAEA7AADaAQDQDgCAdgAAtPvXFQXdn24nWgAAAABJRU5ErkJggg==';
-  readonly url = 'https://github.com/AnotherDevBit/spec-wallet';
+  readonly url = 'https://github.com/RomThpt/otsu-wallet';
 
   // ==================== Private State ====================
 
