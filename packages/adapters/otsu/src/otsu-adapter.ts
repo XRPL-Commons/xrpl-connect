@@ -75,7 +75,7 @@ export class OtsuAdapter implements WalletAdapter {
     if (typeof window === 'undefined') {
       return false;
     }
-    return !!window.xrpl?.isOtsu;
+    return true;
   }
 
   // ==================== Connection Lifecycle ====================

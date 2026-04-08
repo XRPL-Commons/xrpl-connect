@@ -81,6 +81,9 @@ importers:
       '@xrpl-connect/adapter-gemwallet':
         specifier: workspace:*
         version: link:../../packages/adapters/gemwallet
+      '@xrpl-connect/adapter-otsu':
+        specifier: workspace:*
+        version: link:../../packages/adapters/otsu
       '@xrpl-connect/adapter-walletconnect':
         specifier: workspace:*
         version: link:../../packages/adapters/walletconnect
@@ -133,6 +136,9 @@ importers:
       '@xrpl-connect/adapter-ledger':
         specifier: workspace:*
         version: link:../../packages/adapters/ledger
+      '@xrpl-connect/adapter-otsu':
+        specifier: workspace:*
+        version: link:../../packages/adapters/otsu
       '@xrpl-connect/adapter-walletconnect':
         specifier: workspace:*
         version: link:../../packages/adapters/walletconnect

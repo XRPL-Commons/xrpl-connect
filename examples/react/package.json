@@ -15,6 +15,7 @@
     "@xrpl-connect/adapter-crossmark": "workspace:*",
     "@xrpl-connect/adapter-gemwallet": "workspace:*",
     "@xrpl-connect/adapter-xyra": "workspace:*",
+    "@xrpl-connect/adapter-otsu": "workspace:*",
     "@xrpl-connect/ui": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
