@@ -22,6 +22,7 @@ export default defineConfig({
     '@xrpl-connect/adapter-gemwallet',
     '@xrpl-connect/adapter-walletconnect',
     '@xrpl-connect/adapter-xyra',
+    '@xrpl-connect/adapter-otsu',
   ],
   outDir: 'dist',
   outExtension({ format }) {
