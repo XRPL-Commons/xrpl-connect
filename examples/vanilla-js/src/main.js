@@ -6,6 +6,7 @@ import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
 import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
+import { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
 import { WalletConnectorElement } from '@xrpl-connect/ui';
 import '@xrpl-connect/ui'; // Register the web component
 
@@ -36,6 +37,7 @@ const walletManager = new WalletManager({
     new GemWalletAdapter(),
     new LedgerAdapter(),
     new XyraAdapter(),
+    new OtsuAdapter(),
   ],
   network: 'testnet',
   autoConnect: true,

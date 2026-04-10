@@ -415,6 +415,64 @@ console.log('Connected:', account.address);
 
 ---
 
+### 6. Otsu Adapter
+
+**Package**: `@xrpl-connect/adapter-otsu`
+
+**Export**: `OtsuAdapter`
+
+**File Location**: `packages/adapters/otsu/src/index.ts`
+
+#### Overview
+
+Otsu is an MV3 browser extension wallet for XRPL that supports mainnet, testnet, and devnet. It injects a provider at `window.xrpl` with `isOtsu=true` and communicates with dApps via postMessage-based content script bridging.
+
+#### Features
+
+- Browser extension-based (Chrome + Firefox)
+- Available only if extension is installed
+- Granular dApp permission scopes (read, sign, submit, switchNetwork)
+- Transaction simulation and risk scanning before user approval
+- Account and network change event forwarding
+- Message signing for authentication
+
+#### Constructor
+
+```typescript
+const otsuAdapter = new OtsuAdapter();
+```
+
+#### Example Usage
+
+```typescript
+import { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
+import { WalletManager } from '@xrpl-connect/core';
+
+const otsuAdapter = new OtsuAdapter();
+
+const walletManager = new WalletManager({
+  adapters: [otsuAdapter],
+  network: 'testnet',
+});
+
+const available = await otsuAdapter.isAvailable();
+if (available) {
+  const account = await walletManager.connect('otsu');
+  console.log('Connected:', account.address);
+}
+```
+
+#### Implementation Details
+
+- **isAvailable()**: Checks if `window.xrpl?.isOtsu` exists (injected by extension)
+- **connect()**: Requests connection with full permission scopes; opens extension notification popup for user approval
+- **sign()**: Uses extension's `signTransaction` method with transaction simulation
+- **signAndSubmit()**: Uses extension's `signAndSubmit` method
+- **signMessage()**: Signs arbitrary messages for authentication
+- **Event Handling**: Forwards `accountChanged`, `networkChanged`, and `disconnected` events from the extension provider
+
+---
+
 ## Creating a Custom Adapter
 
 To add support for a new wallet, create a class that implements the `WalletAdapter` interface.
@@ -866,6 +924,14 @@ packages/adapters/
 │   │   ├── index.ts
 │   │   ├── types.ts
 |   |   └── xyra-adapter.ts
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── tsup.config.ts
+├── otsu/                     # Otsu extension adapter
+│   ├── src/
+│   │   ├── index.ts
+│   │   ├── types.ts
+|   |   └── otsu-adapter.ts
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── tsup.config.ts

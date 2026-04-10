@@ -31,6 +31,8 @@ export const useWallet = () => {
           WalletConnectAdapter,
           XamanAdapter,
           WalletManager,
+          LedgerAdapter,
+          XyraAdapter,
         } = (await import('xrpl-connect')) as any;
 
         if (!WalletManager) {
@@ -50,6 +52,18 @@ export const useWallet = () => {
         try {
           const gem = new GemWalletAdapter();
           adapters.push(gem);
+        } catch (err) {
+          console.warn('Failed to create GemWalletAdapter:', err);
+        }
+        try {
+          const ledger = new LedgerAdapter();
+          adapters.push(ledger);
+        } catch (err) {
+          console.warn('Failed to create GemWalletAdapter:', err);
+        }
+        try {
+          const xyra = new XyraAdapter();
+          adapters.push(xyra);
         } catch (err) {
           console.warn('Failed to create GemWalletAdapter:', err);
         }

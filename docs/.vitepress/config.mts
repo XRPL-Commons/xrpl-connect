@@ -46,7 +46,7 @@ export default defineConfig({
         ],
       },
       {
-        text: 'v0.3.0',
+        text: 'v0.6.0',
         link: 'https://github.com/XRPL-Commons/xrpl-connect/releases',
       },
     ],

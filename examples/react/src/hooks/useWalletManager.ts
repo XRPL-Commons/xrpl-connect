@@ -5,6 +5,7 @@ import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
 import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
+import { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
 import { useWallet } from '../context/WalletContext';
 
 // Configuration - ADD YOUR API KEYS HERE
@@ -23,6 +24,7 @@ export function useWalletManager() {
         new CrossmarkAdapter(),
         new GemWalletAdapter(),
         new XyraAdapter(),
+        new OtsuAdapter(),
       ],
       network: 'testnet',
       autoConnect: true,
