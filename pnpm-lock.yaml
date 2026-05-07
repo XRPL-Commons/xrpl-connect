@@ -332,6 +332,9 @@ importers:
       '@types/node':
         specifier: ^20.14.0
         version: 20.19.21
+      jsdom:
+        specifier: ^22.1.0
+        version: 22.1.0(bufferutil@4.0.9)(utf-8-validate@5.0.10)
       tsup:
         specifier: ^8.1.0
         version: 8.5.0(postcss@8.5.6)(typescript@5.9.3)

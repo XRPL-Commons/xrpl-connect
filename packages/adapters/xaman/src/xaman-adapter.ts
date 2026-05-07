@@ -50,6 +50,7 @@ export class XamanAdapter implements WalletAdapter {
   private client: Xumm | null = null;
   private currentAccount: AccountInfo | null = null;
   private options: XamanAdapterOptions;
+  private signPopup: Window | null = null;
 
   constructor(options: XamanAdapterOptions = {}) {
     this.options = options;
@@ -228,7 +229,12 @@ export class XamanAdapter implements WalletAdapter {
 
     this.openSignWindow(payload.created.next.always);
 
-    const result = await this.waitForSignature(payload.websocket.url);
+    let result;
+    try {
+      result = await this.waitForSignature(payload.websocket.url);
+    } finally {
+      this.closeSignPopup();
+    }
 
     if (!result.signed) {
       throw createWalletError.signRejected();
@@ -297,7 +303,7 @@ export class XamanAdapter implements WalletAdapter {
 
       // Use SignIn payload type for message signing
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const payload: any = await this.client.payload?.create({
+      const payload: any = await this.client.payload?.createAndSubscribe({
         TransactionType: 'SignIn',
       });
 
@@ -305,19 +311,31 @@ export class XamanAdapter implements WalletAdapter {
         throw new Error('Failed to create sign message payload');
       }
 
-      // Open popup for signing
-      this.openSignWindow(payload.next.always);
+      this.openSignWindow(payload.created.next.always);
 
-      // Note: Xaman doesn't directly support arbitrary message signing
-      // This is a simplified implementation - in production, you'd use a custom payload
-      // or implement a different approach (like signing a memo field)
+      let result;
+      try {
+        result = await this.waitForSignature(payload.websocket.url);
+      } finally {
+        this.closeSignPopup();
+      }
 
+      if (!result.signed) {
+        throw createWalletError.signRejected();
+      }
+
+      // Xaman doesn't expose an arbitrary-message signature for SignIn payloads;
+      // the signed proof is the txid/tx_blob. Surface what we have so callers can
+      // verify against the SignIn payload server-side if they need to.
       return {
         message: messageStr,
-        signature: '', // Would need to extract from Xaman response
+        signature: result.signature || result.tx_blob || '',
         publicKey: this.currentAccount.publicKey || '',
       };
     } catch (error) {
+      if (error instanceof Error && error.message.includes('rejected')) {
+        throw createWalletError.signRejected();
+      }
       throw createWalletError.signFailed(error as Error);
     }
   }
@@ -376,11 +394,28 @@ export class XamanAdapter implements WalletAdapter {
     const left = window.screen.width / 2 - width / 2;
     const top = window.screen.height / 2 - height / 2;
 
-    window.open(
+    this.signPopup = window.open(
       url,
       'Xaman Sign',
       `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
     );
+  }
+
+  /**
+   * Close the sign popup if it's still open.
+   * On mobile, `window.open(...)` opens a tab and the deeplink-return lands there
+   * after the user signs in Xaman; closing it brings the user back to the
+   * original tab where the WebSocket has already resolved the sign promise.
+   */
+  private closeSignPopup(): void {
+    if (this.signPopup && !this.signPopup.closed) {
+      try {
+        this.signPopup.close();
+      } catch {
+        // Ignored: cross-origin navigation can make .close() throw.
+      }
+    }
+    this.signPopup = null;
   }
 
   /**
