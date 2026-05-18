@@ -60,11 +60,11 @@ npm install xrpl-connect xrpl
 
 **File: `src/main.tsx`**
 
-In your entry point, import the UI package to register the web component:
+In your entry point, import `xrpl-connect` to register the web component:
 
 ```typescript
 // src/main.tsx
-import '@xrpl-connect/ui'; // Register web components
+import 'xrpl-connect'; // Register web components
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -108,7 +108,7 @@ Create a context to share wallet state across your app:
 ```typescript
 // src/context/WalletContext.tsx
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import type { WalletManager } from '@xrpl-connect/core';
+import type { WalletManager } from 'xrpl-connect';
 
 interface AccountInfo {
   address: string;
@@ -170,12 +170,14 @@ Create a hook to initialize and manage the WalletManager:
 ```typescript
 // src/hooks/useWalletManager.ts
 import { useEffect } from 'react';
-import { WalletManager } from '@xrpl-connect/core';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
-import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
-import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
+import {
+  WalletManager,
+  XamanAdapter,
+  WalletConnectAdapter,
+  CrossmarkAdapter,
+  GemWalletAdapter,
+  LedgerAdapter,
+} from 'xrpl-connect';
 import { useWallet } from '../context/WalletContext';
 
 // Configuration - ADD YOUR API KEYS HERE
@@ -247,7 +249,7 @@ Create a hook to properly connect the web component with the WalletManager:
 ```typescript
 // src/hooks/useWalletConnector.ts
 import { useEffect, useRef } from 'react';
-import type { WalletManager } from '@xrpl-connect/core';
+import type { WalletManager } from 'xrpl-connect';
 
 export function useWalletConnector(walletManager: WalletManager | null) {
   const walletConnectorRef = useRef<HTMLElement | null>(null);
