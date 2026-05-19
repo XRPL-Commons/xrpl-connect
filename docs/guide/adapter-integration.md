@@ -151,10 +151,10 @@ First, check the `WalletAdapter` interface in `packages/core/src/types.ts`. Your
 ```typescript
 interface WalletAdapter {
   // Metadata
-  readonly id: string;                       // 'xaman', 'crossmark', etc.
-  readonly name: string;                     // Display name
-  readonly icon?: string;                    // URL or base64 icon
-  readonly url?: string;                     // Wallet website / download URL
+  readonly id: string; // 'xaman', 'crossmark', etc.
+  readonly name: string; // Display name
+  readonly icon?: string; // URL or base64 icon
+  readonly url?: string; // Wallet website / download URL
 
   // Availability
   isAvailable(): Promise<boolean>;
@@ -178,12 +178,7 @@ interface WalletAdapter {
 }
 
 // Events an adapter can emit
-type WalletAdapterEvent =
-  | 'connect'
-  | 'disconnect'
-  | 'accountChanged'
-  | 'networkChanged'
-  | 'error';
+type WalletAdapterEvent = 'connect' | 'disconnect' | 'accountChanged' | 'networkChanged' | 'error';
 ```
 
 ### 3.2 Create the Adapter Class

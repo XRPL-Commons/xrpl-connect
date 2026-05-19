@@ -18,13 +18,13 @@ const walletManager = new WalletManager(options: WalletManagerOptions)
 
 #### Options
 
-| Property      | Type                | Description                                                  |
-| ------------- | ------------------- | ------------------------------------------------------------ |
-| `adapters`    | `WalletAdapter[]`   | Array of wallet adapters to register                         |
-| `network`     | `NetworkConfig`     | Default network (a standard id or a custom `NetworkInfo`)    |
-| `autoConnect` | `boolean`           | Auto-reconnect from stored session on initialization         |
-| `storage`     | `StorageAdapter`    | Custom storage adapter (defaults to `LocalStorageAdapter`)   |
-| `logger`      | `LoggerOptions`     | `{ level?, prefix? }` to configure logging                   |
+| Property      | Type              | Description                                                |
+| ------------- | ----------------- | ---------------------------------------------------------- |
+| `adapters`    | `WalletAdapter[]` | Array of wallet adapters to register                       |
+| `network`     | `NetworkConfig`   | Default network (a standard id or a custom `NetworkInfo`)  |
+| `autoConnect` | `boolean`         | Auto-reconnect from stored session on initialization       |
+| `storage`     | `StorageAdapter`  | Custom storage adapter (defaults to `LocalStorageAdapter`) |
+| `logger`      | `LoggerOptions`   | `{ level?, prefix? }` to configure logging                 |
 
 `NetworkConfig` is either one of the standard keys (`'mainnet' | 'testnet' | 'devnet'`) or a `NetworkInfo` object.
 
@@ -463,21 +463,21 @@ walletManager.on('networkChanged', (network: NetworkInfo) => {
 
 All error codes are exposed by the `WalletErrorCode` enum.
 
-| Code                     | Description                                              | Handling                                 |
-| ------------------------ | -------------------------------------------------------- | ---------------------------------------- |
-| `WALLET_NOT_FOUND`       | Adapter not registered with the WalletManager            | Check the `adapters` array               |
-| `WALLET_NOT_INSTALLED`   | Browser extension / app is not installed                 | Prompt the user to install the wallet    |
-| `WALLET_NOT_AVAILABLE`   | Wallet present but not currently usable                  | Surface a "wallet unavailable" message   |
-| `CONNECTION_FAILED`      | Connection to the wallet failed                          | Retry or fall back to another wallet     |
-| `CONNECTION_REJECTED`    | User rejected the connection                             | Allow the user to retry                  |
-| `SIGN_FAILED`            | Signing failed for an unspecified reason                 | Retry or surface the original error      |
-| `SIGN_REJECTED`          | User rejected the signing prompt                         | Allow the user to retry                  |
-| `NETWORK_NOT_SUPPORTED`  | Wallet does not support the requested network            | Switch to a supported network            |
-| `NETWORK_MISMATCH`       | Wallet is connected to a different network               | Ask the user to switch networks          |
-| `NOT_CONNECTED`          | A connection is required but none is active              | Connect before calling the method        |
-| `ALREADY_CONNECTED`      | A different wallet is already connected                  | Disconnect first                         |
-| `UNSUPPORTED_METHOD`     | The wallet does not implement this method                | Use a wallet that supports it            |
-| `UNKNOWN_ERROR`          | Unhandled error from the adapter                         | Inspect `originalError`                  |
+| Code                    | Description                                   | Handling                               |
+| ----------------------- | --------------------------------------------- | -------------------------------------- |
+| `WALLET_NOT_FOUND`      | Adapter not registered with the WalletManager | Check the `adapters` array             |
+| `WALLET_NOT_INSTALLED`  | Browser extension / app is not installed      | Prompt the user to install the wallet  |
+| `WALLET_NOT_AVAILABLE`  | Wallet present but not currently usable       | Surface a "wallet unavailable" message |
+| `CONNECTION_FAILED`     | Connection to the wallet failed               | Retry or fall back to another wallet   |
+| `CONNECTION_REJECTED`   | User rejected the connection                  | Allow the user to retry                |
+| `SIGN_FAILED`           | Signing failed for an unspecified reason      | Retry or surface the original error    |
+| `SIGN_REJECTED`         | User rejected the signing prompt              | Allow the user to retry                |
+| `NETWORK_NOT_SUPPORTED` | Wallet does not support the requested network | Switch to a supported network          |
+| `NETWORK_MISMATCH`      | Wallet is connected to a different network    | Ask the user to switch networks        |
+| `NOT_CONNECTED`         | A connection is required but none is active   | Connect before calling the method      |
+| `ALREADY_CONNECTED`     | A different wallet is already connected       | Disconnect first                       |
+| `UNSUPPORTED_METHOD`    | The wallet does not implement this method     | Use a wallet that supports it          |
+| `UNKNOWN_ERROR`         | Unhandled error from the adapter              | Inspect `originalError`                |
 
 ### Error Example
 

@@ -84,12 +84,12 @@ In your CSS file or global styles:
 
 #### Status Colors
 
-| Variable             | Default   | Purpose                  |
-| -------------------- | --------- | ------------------------ |
-| `--xc-success-color` | `#10b981`                  | Success state (green)    |
-| `--xc-warning-color` | `#f59e0b`                  | Warning state (yellow)   |
-| `--xc-danger-color`  | `#ef4444`                  | Error/danger state (red) |
-| `--xc-focus-color`   | `var(--xc-primary-color)`  | Focus/active state       |
+| Variable             | Default                   | Purpose                  |
+| -------------------- | ------------------------- | ------------------------ |
+| `--xc-success-color` | `#10b981`                 | Success state (green)    |
+| `--xc-warning-color` | `#f59e0b`                 | Warning state (yellow)   |
+| `--xc-danger-color`  | `#ef4444`                 | Error/danger state (red) |
+| `--xc-focus-color`   | `var(--xc-primary-color)` | Focus/active state       |
 
 #### Overlay & Modal
 
@@ -110,47 +110,47 @@ In your CSS file or global styles:
 
 ### Connect Button Variables
 
-| Variable                                | Default                                | Purpose                            |
-| --------------------------------------- | -------------------------------------- | ---------------------------------- |
-| `--xc-connect-button-border-radius`     | `8px`                                  | Connect button roundness           |
-| `--xc-connect-button-font-size`         | `16px`                                 | Connect button text size           |
-| `--xc-connect-button-font-weight`       | `600`                                  | Connect button text weight         |
-| `--xc-connect-button-color`             | `var(--xc-text-color)`                 | Connect button text color          |
-| `--xc-connect-button-background`        | `var(--xc-background-color)`           | Connect button background          |
-| `--xc-connect-button-border`            | `1px solid rgba(255, 255, 255, 0.1)`   | Connect button border              |
-| `--xc-connect-button-hover-background`  | derived from `--xc-background-color`   | Connect button hover background    |
+| Variable                               | Default                              | Purpose                         |
+| -------------------------------------- | ------------------------------------ | ------------------------------- |
+| `--xc-connect-button-border-radius`    | `8px`                                | Connect button roundness        |
+| `--xc-connect-button-font-size`        | `16px`                               | Connect button text size        |
+| `--xc-connect-button-font-weight`      | `600`                                | Connect button text weight      |
+| `--xc-connect-button-color`            | `var(--xc-text-color)`               | Connect button text color       |
+| `--xc-connect-button-background`       | `var(--xc-background-color)`         | Connect button background       |
+| `--xc-connect-button-border`           | `1px solid rgba(255, 255, 255, 0.1)` | Connect button border           |
+| `--xc-connect-button-hover-background` | derived from `--xc-background-color` | Connect button hover background |
 
 ### Primary Button Variables
 
-| Variable                                | Default                              | Purpose                          |
-| --------------------------------------- | ------------------------------------ | -------------------------------- |
-| `--xc-primary-button-border-radius`     | `8px`                                | Primary button roundness         |
-| `--xc-primary-button-font-weight`       | `600`                                | Primary button text weight       |
-| `--xc-primary-button-color`             | `#ffffff`                            | Primary button text color        |
-| `--xc-primary-button-background`        | `var(--xc-primary-color)`            | Primary button background        |
-| `--xc-primary-button-hover-background`  | derived from `--xc-primary-color`    | Primary button hover background  |
+| Variable                               | Default                           | Purpose                         |
+| -------------------------------------- | --------------------------------- | ------------------------------- |
+| `--xc-primary-button-border-radius`    | `8px`                             | Primary button roundness        |
+| `--xc-primary-button-font-weight`      | `600`                             | Primary button text weight      |
+| `--xc-primary-button-color`            | `#ffffff`                         | Primary button text color       |
+| `--xc-primary-button-background`       | `var(--xc-primary-color)`         | Primary button background       |
+| `--xc-primary-button-hover-background` | derived from `--xc-primary-color` | Primary button hover background |
 
 ### Secondary Button Variables
 
-| Variable                                  | Default                              | Purpose                            |
-| ----------------------------------------- | ------------------------------------ | ---------------------------------- |
-| `--xc-secondary-button-border-radius`     | `8px`                                | Secondary button roundness         |
-| `--xc-secondary-button-font-weight`       | `500`                                | Secondary button text weight       |
-| `--xc-secondary-button-color`             | `var(--xc-text-color)`               | Secondary button text color        |
-| `--xc-secondary-button-background`        | `var(--xc-background-secondary)`     | Secondary button background        |
-| `--xc-secondary-button-hover-background`  | `var(--xc-background-tertiary)`      | Secondary button hover background  |
+| Variable                                 | Default                          | Purpose                           |
+| ---------------------------------------- | -------------------------------- | --------------------------------- |
+| `--xc-secondary-button-border-radius`    | `8px`                            | Secondary button roundness        |
+| `--xc-secondary-button-font-weight`      | `500`                            | Secondary button text weight      |
+| `--xc-secondary-button-color`            | `var(--xc-text-color)`           | Secondary button text color       |
+| `--xc-secondary-button-background`       | `var(--xc-background-secondary)` | Secondary button background       |
+| `--xc-secondary-button-hover-background` | `var(--xc-background-tertiary)`  | Secondary button hover background |
 
 ### Account Modal Variables
 
-| Variable                                    | Default                              | Purpose                                       |
-| ------------------------------------------- | ------------------------------------ | --------------------------------------------- |
-| `--xc-account-address-button-hover-color`   | derived from `--xc-primary-color`    | Hover color of the address copy button        |
+| Variable                                  | Default                           | Purpose                                |
+| ----------------------------------------- | --------------------------------- | -------------------------------------- |
+| `--xc-account-address-button-hover-color` | derived from `--xc-primary-color` | Hover color of the address copy button |
 
 ### Other Variables
 
-| Variable                    | Default                   | Purpose               |
-| --------------------------- | ------------------------- | --------------------- |
-| `--xc-loading-border-color` | `#0EA5E9`                 | Loading spinner color |
+| Variable                    | Default   | Purpose               |
+| --------------------------- | --------- | --------------------- |
+| `--xc-loading-border-color` | `#0EA5E9` | Loading spinner color |
 
 > Variables marked "derived" are automatically computed from `--xc-primary-color` / `--xc-background-color`. You can still override them explicitly.
 

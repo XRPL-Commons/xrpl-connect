@@ -42,13 +42,13 @@ await walletManager.disconnect();
 
 ### Properties
 
-| Property    | Type                            | Description                             |
-| ----------- | ------------------------------- | --------------------------------------- |
-| `connected` | `boolean`                       | Whether a wallet is currently connected |
-| `account`   | `AccountInfo \| null`           | Currently connected account info        |
-| `wallet`    | `WalletAdapter \| null`         | Currently connected wallet adapter      |
-| `wallets`   | `WalletAdapter[]`               | Array of registered wallet adapters     |
-| `adapters`  | `Map<string, WalletAdapter>`    | Registered adapters keyed by id         |
+| Property    | Type                         | Description                             |
+| ----------- | ---------------------------- | --------------------------------------- |
+| `connected` | `boolean`                    | Whether a wallet is currently connected |
+| `account`   | `AccountInfo \| null`        | Currently connected account info        |
+| `wallet`    | `WalletAdapter \| null`      | Currently connected wallet adapter      |
+| `wallets`   | `WalletAdapter[]`            | Array of registered wallet adapters     |
+| `adapters`  | `Map<string, WalletAdapter>` | Registered adapters keyed by id         |
 
 ### Key Methods
 
