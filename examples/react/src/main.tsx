@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import '@xrpl-connect/ui'; // Import to register web components
+import 'xrpl-connect'; // Register web components
 import App from './App';
 import './index.css';
 

@@ -33,6 +33,7 @@ export const useWallet = () => {
           WalletManager,
           LedgerAdapter,
           XyraAdapter,
+          OtsuAdapter,
         } = (await import('xrpl-connect')) as any;
 
         if (!WalletManager) {
@@ -59,13 +60,19 @@ export const useWallet = () => {
           const ledger = new LedgerAdapter();
           adapters.push(ledger);
         } catch (err) {
-          console.warn('Failed to create GemWalletAdapter:', err);
+          console.warn('Failed to create LedgerAdapter:', err);
         }
         try {
           const xyra = new XyraAdapter();
           adapters.push(xyra);
         } catch (err) {
-          console.warn('Failed to create GemWalletAdapter:', err);
+          console.warn('Failed to create XyraAdapter:', err);
+        }
+        try {
+          const otsu = new OtsuAdapter();
+          adapters.push(otsu);
+        } catch (err) {
+          console.warn('Failed to create OtsuAdapter:', err);
         }
 
         try {

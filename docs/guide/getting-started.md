@@ -30,7 +30,7 @@ The `xrpl-connect` package includes:
 
 - **Core** - WalletManager, event system, and state management
 - **UI** - Beautiful web component for wallet connection
-- **Adapters** - Built-in support for Xaman, Crossmark, GemWallet, WalletConnect, and Ledger hardware wallets
+- **Adapters** - Built-in support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger hardware wallets, Xyra, and Otsu
 
 > **Note:** The `xrpl` package is required for transaction types and utilities.
 
@@ -45,13 +45,12 @@ Xaman is the most popular XRPL wallet. Get your API key here:
 1. Go to [https://apps.xumm.dev/](https://apps.xumm.dev/)
 2. Sign in with your Xaman account
 3. Create a new application
-4. Copy your `API Key` and optionally your `API Secret`
-5. Use these when creating the XamanAdapter
+4. Copy your `API Key`
+5. Use it when creating the XamanAdapter
 
 ```javascript
 const adapter = new XamanAdapter({
   apiKey: 'YOUR_API_KEY',
-  apiSecret: 'YOUR_API_SECRET', // optional
 });
 ```
 
@@ -72,11 +71,13 @@ const adapter = new WalletConnectAdapter({
 
 ### Other Adapters
 
-Crossmark, GemWallet, and Ledger don't require API keys - they work directly with browser extensions, wallets, or hardware devices:
+Crossmark, GemWallet, Xyra, Otsu, and Ledger don't require API keys - they work directly with browser extensions, wallets, or hardware devices:
 
 ```javascript
 const crossmarkAdapter = new CrossmarkAdapter();
 const gemWalletAdapter = new GemWalletAdapter();
+const xyraAdapter = new XyraAdapter();
+const otsuAdapter = new OtsuAdapter();
 ```
 
 ### Ledger Hardware Wallet

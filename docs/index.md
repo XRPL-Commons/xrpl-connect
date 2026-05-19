@@ -14,7 +14,7 @@ XRPL-Connect is a complete solution for integrating wallet functionality into we
 
 - **Web Component UI** - Beautiful, customizable `<xrpl-wallet-connector>` component for wallet selection and account management
 - **Wallet Manager** - Central event-driven system for managing wallet connections and transactions
-- **Multiple Wallet Support** - Built-in adapters for Xaman, Crossmark, GemWallet, WalletConnect, and Ledger hardware wallets
+- **Multiple Wallet Support** - Built-in adapters for Xaman, Crossmark, GemWallet, WalletConnect, Ledger hardware wallets, Xyra, and Otsu
 - **Framework Agnostic** - Works seamlessly with Vanilla JS, React, Vue, Next.js, Nuxt, and any modern web framework
 - **TypeScript Ready** - Full type definitions for a great developer experience
 - **Production Ready** - Used in production applications across the XRPL ecosystem
@@ -38,7 +38,7 @@ Customize colors, fonts, and styling using CSS variables without touching HTML o
 
 ### 🔌 Multiple Wallets
 
-Support for all major XRP Ledger wallets including Xaman, Crossmark, GemWallet, WalletConnect, and Ledger hardware wallets. Give users choice without increasing complexity.
+Support for all major XRP Ledger wallets including Xaman, Crossmark, GemWallet, WalletConnect, Ledger hardware wallets, Xyra, and Otsu. Give users choice without increasing complexity.
 
 ### ⚡ Framework Agnostic
 
@@ -78,12 +78,12 @@ Your Application
 │   └───────────────────────┘ │
 └──────────────┬──────────────┘
                ↓
-    ┌──────────┴──────────┬───────────┬───────────┬───────────┐
-    ↓                     ↓           ↓           ↓           ↓
-┌────────────┐  ┌──────────────┐  ┌────────┐  ┌────────────┐  ┌────────┐
-│ Xaman      │  │ Crossmark    │  │GemWal  │  │WalletCon   │  │Ledger  │
-│ Adapter    │  │ Adapter      │  │Adapter │  │Adapter     │  │Adapter │
-└────────────┘  └──────────────┘  └────────┘  └────────────┘  └────────┘
+    ┌──────────┬──────────┬─────────┬─────────────┬────────┬────────┬────────┐
+    ↓          ↓          ↓         ↓             ↓        ↓        ↓
+┌────────┐ ┌──────────┐ ┌────────┐ ┌─────────┐ ┌────────┐ ┌──────┐ ┌──────┐
+│ Xaman  │ │Crossmark │ │GemWal  │ │WalletCon│ │Ledger  │ │Xyra  │ │Otsu  │
+│ Adapter│ │Adapter   │ │Adapter │ │Adapter  │ │Adapter │ │Adptr │ │Adptr │
+└────────┘ └──────────┘ └────────┘ └─────────┘ └────────┘ └──────┘ └──────┘
 ```
 
 ## How It Works
