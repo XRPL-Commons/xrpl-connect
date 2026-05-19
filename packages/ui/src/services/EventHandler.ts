@@ -1,6 +1,7 @@
 import { WalletService } from './WalletService';
 import { TIMINGS } from '../constants';
-import { createLogger } from '@xrpl-connect/core';
+import type { WalletAdapter } from '@xrpl-connect/core';
+import { createLogger, supportsDeepLink } from '@xrpl-connect/core';
 import { isMobile } from '../utils';
 
 const logger = createLogger('[EventHandler]');
@@ -143,14 +144,14 @@ export class EventHandler {
     this.add(overlayRoot?.querySelector('#deeplink-button'), 'click', () => {
       if ((this.component as any).qrCodeData?.uri && (this.component as any).qrCodeData?.walletId) {
         const adapter = (this.component as any).walletManager?.wallets.find(
-          (w: any) => w.id === (this.component as any).qrCodeData?.walletId
-        );
+          (w: WalletAdapter) => w.id === (this.component as any).qrCodeData?.walletId
+        ) as WalletAdapter | undefined;
 
         let deepLink = (this.component as any).qrCodeData.uri;
 
         // Try to get proper deep link from adapter
-        if (adapter && typeof (adapter as any).getDeepLinkURI === 'function') {
-          deepLink = (adapter as any).getDeepLinkURI((this.component as any).qrCodeData.uri);
+        if (adapter && supportsDeepLink(adapter)) {
+          deepLink = adapter.getDeepLinkURI((this.component as any).qrCodeData.uri);
         }
 
         // Detect mobile and open deep link

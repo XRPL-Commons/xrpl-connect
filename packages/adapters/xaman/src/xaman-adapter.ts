@@ -13,6 +13,7 @@ import {
   SignedMessage,
   SubmittedTransaction,
   STANDARD_NETWORKS,
+  SupportsDeepLink,
 } from '@xrpl-connect/core';
 import { createWalletError, createLogger } from '@xrpl-connect/core';
 
@@ -40,7 +41,7 @@ export type XamanConnectOptions = {
 /**
  * Xaman wallet adapter implementation
  */
-export class XamanAdapter implements WalletAdapter {
+export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
   readonly id = 'xaman';
   readonly name = 'Xaman';
   readonly icon =

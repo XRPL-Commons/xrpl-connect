@@ -23,9 +23,16 @@ export type {
   StorageAdapter,
   StoredState,
   LoggerOptions,
+  SupportsPreInitialize,
+  SupportsDeepLink,
 } from './types';
 
-export { STANDARD_NETWORKS, WalletErrorCode } from './types';
+export {
+  STANDARD_NETWORKS,
+  WalletErrorCode,
+  supportsPreInitialize,
+  supportsDeepLink,
+} from './types';
 
 // Errors
 export { WalletError, createWalletError, isWalletError, getErrorMessage } from './errors';
