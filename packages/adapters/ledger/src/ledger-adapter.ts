@@ -22,6 +22,9 @@ import { createWalletError, STANDARD_NETWORKS } from '@xrpl-connect/core';
 import type { LedgerAdapterOptions, LedgerConnectOptions } from './types';
 import { LedgerDeviceState } from './types';
 import { parseLedgerError, isBrowserSupported, formatLedgerError } from './errors';
+import iconSvg from './assets/icon.svg';
+
+const ICON_DATA_URL = `data:image/svg+xml;utf8,${encodeURIComponent(iconSvg)}`;
 
 /**
  * Default timeout for Ledger operations (60 seconds)
@@ -35,8 +38,7 @@ const DEFAULT_TIMEOUT = 60000;
 export class LedgerAdapter implements WalletAdapter {
   readonly id = 'ledger';
   readonly name = 'Ledger';
-  readonly icon =
-    'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyOCIgaGVpZ2h0PSIyOCIgZmlsbD0ibm9uZSI+PHBhdGggZmlsbD0iIzAwMCIgZD0iTTAgMGgyOHYyOEgweiIvPjxwYXRoIGZpbGw9IiNmZmYiIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTExLjY1IDQuNEg0LjRWOWgxLjFWNS41bDYuMTUtLjA0VjQuNFptLjA1IDUuOTV2Ny4yNWg0LjZ2LTEuMWgtMy41bC0uMDQtNi4xNUgxMS43Wk00LjQgMjMuNmg3LjI1di0xLjA2TDUuNSAyMi41VjE5SDQuNHY0LjZaTTE2LjM1IDQuNGg3LjI1VjloLTEuMVY1LjVsLTYuMTUtLjA0VjQuNFptNy4yNSAxOS4yaC03LjI1di0xLjA2bDYuMTUtLjA0VjE5aDEuMXY0LjZaIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiLz48L3N2Zz4=';
+  readonly icon = ICON_DATA_URL;
   readonly url = 'https://www.ledger.com';
 
   private transport: Transport | null = null;

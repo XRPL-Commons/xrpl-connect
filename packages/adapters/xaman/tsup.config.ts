@@ -11,4 +11,7 @@ export default defineConfig({
   treeshake: true,
   external: ['xrpl'],
   outDir: 'dist',
+  loader: {
+    '.svg': 'text',
+  },
 });
