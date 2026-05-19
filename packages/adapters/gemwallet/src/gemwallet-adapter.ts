@@ -214,5 +214,4 @@ export class GemWalletAdapter implements WalletAdapter {
       throw createWalletError.signFailed(error as Error);
     }
   }
-
 }

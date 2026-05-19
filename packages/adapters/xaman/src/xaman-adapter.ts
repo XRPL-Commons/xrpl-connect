@@ -458,5 +458,4 @@ export class XamanAdapter implements WalletAdapter {
     this.currentAccount = null;
     // Don't clear pending payload on disconnect - it might still be needed
   }
-
 }
