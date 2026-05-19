@@ -19,7 +19,7 @@ import type {
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
-import { createWalletError, STANDARD_NETWORKS } from '@xrpl-connect/core';
+import { createWalletError, resolveNetwork } from '@xrpl-connect/core';
 
 /**
  * GemWallet adapter options
@@ -69,7 +69,7 @@ export class GemWalletAdapter implements WalletAdapter {
       }
 
       // Determine network
-      const network = this.resolveNetwork(options?.network);
+      const network = resolveNetwork(options?.network);
 
       // Get public key (which also returns the address)
       const publicKeyResponse = await getPublicKey();
@@ -215,22 +215,4 @@ export class GemWalletAdapter implements WalletAdapter {
     }
   }
 
-  /**
-   * Resolve network configuration
-   */
-  private resolveNetwork(config?: ConnectOptions['network']): NetworkInfo {
-    if (!config) {
-      return STANDARD_NETWORKS.mainnet;
-    }
-
-    if (typeof config === 'string') {
-      const network = STANDARD_NETWORKS[config];
-      if (!network) {
-        throw createWalletError.unknown(`Unknown network: ${config}`);
-      }
-      return network;
-    }
-
-    return config;
-  }
 }
