@@ -27,11 +27,13 @@ xrpl-connect/
 │   ├── core/                    # WalletManager and interfaces
 │   ├── ui/                      # Web component
 │   ├── adapters/                # All wallet adapters
-│   │   ├── xaman/              # Xaman adapter (reference)
+│   │   ├── xaman/               # Xaman adapter (reference)
 │   │   ├── crossmark/           # Crossmark adapter (reference)
 │   │   ├── gemwallet/           # GemWallet adapter (reference)
 │   │   ├── walletconnect/       # WalletConnect adapter (reference)
 │   │   ├── ledger/              # Ledger hardware wallet adapter (reference)
+│   │   ├── xyra/                # Xyra adapter (reference)
+│   │   ├── otsu/                # Otsu adapter (reference)
 │   │   └── README.md            # Adapter documentation
 │   └── xrpl-connect/            # Meta package (exports all adapters)
 └── docs/                        # Documentation (this file)
@@ -148,20 +150,40 @@ First, check the `WalletAdapter` interface in `packages/core/src/types.ts`. Your
 
 ```typescript
 interface WalletAdapter {
-  name: string;
-  icon: string;
-  isAvailable(): boolean;
-  connect(options?: ConnectOptions): Promise<void>;
+  // Metadata
+  readonly id: string;                       // 'xaman', 'crossmark', etc.
+  readonly name: string;                     // Display name
+  readonly icon?: string;                    // URL or base64 icon
+  readonly url?: string;                     // Wallet website / download URL
+
+  // Availability
+  isAvailable(): Promise<boolean>;
+
+  // Connection lifecycle
+  connect(options?: ConnectOptions): Promise<AccountInfo>;
   disconnect(): Promise<void>;
-  getAccount(): Promise<Account | null>;
-  signTransaction(transaction: Transaction): Promise<SignResult>;
-  signMessage(message: string): Promise<SignResult>;
-  on(
-    event: 'connect' | 'disconnect' | 'accountChange' | 'error',
-    listener: (data?: any) => void
-  ): void;
-  off(event: string, listener: (data?: any) => void): void;
+
+  // Account information
+  getAccount(): Promise<AccountInfo | null>;
+  getNetwork(): Promise<NetworkInfo>;
+
+  // Signing
+  sign(transaction: Transaction): Promise<SignedTransaction>;
+  signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction>;
+  signMessage(message: string | Uint8Array): Promise<SignedMessage>;
+
+  // Optional event hooks
+  on?(event: WalletAdapterEvent, callback: (data: unknown) => void): void;
+  off?(event: WalletAdapterEvent, callback: (data: unknown) => void): void;
 }
+
+// Events an adapter can emit
+type WalletAdapterEvent =
+  | 'connect'
+  | 'disconnect'
+  | 'accountChanged'
+  | 'networkChanged'
+  | 'error';
 ```
 
 ### 3.2 Create the Adapter Class
@@ -171,59 +193,55 @@ Create `src/my-wallet-adapter.ts`:
 ```typescript
 import {
   WalletAdapter,
-  Account,
-  SignResult,
+  WalletAdapterEvent,
+  AccountInfo,
+  NetworkInfo,
+  STANDARD_NETWORKS,
+  SignedTransaction,
+  SubmittedTransaction,
+  SignedMessage,
   Transaction,
   ConnectOptions,
+  createWalletError,
 } from '@xrpl-connect/core';
 
 export class MyWalletAdapter implements WalletAdapter {
-  name = 'My Wallet';
-  icon = 'https://example.com/wallet-icon.png';
+  readonly id = 'my-wallet';
+  readonly name = 'My Wallet';
+  readonly icon = 'https://example.com/wallet-icon.png';
+  readonly url = 'https://example.com';
 
-  private connected = false;
-  private account: Account | null = null;
-  private listeners: Map<string, Set<Function>> = new Map();
+  private account: AccountInfo | null = null;
+  private network: NetworkInfo = STANDARD_NETWORKS.mainnet;
+  private listeners: Map<WalletAdapterEvent, Set<(data: unknown) => void>> = new Map();
 
-  isAvailable(): boolean {
-    // Check if wallet is available in the browser environment
-    // Example: return typeof (window as any).myWallet !== 'undefined';
+  async isAvailable(): Promise<boolean> {
     if (typeof window === 'undefined') return false;
     return typeof (window as any).myWallet !== 'undefined';
   }
 
-  async connect(options?: ConnectOptions): Promise<void> {
+  async connect(options?: ConnectOptions): Promise<AccountInfo> {
+    if (!(await this.isAvailable())) {
+      throw createWalletError.notInstalled(this.name);
+    }
+
     try {
-      if (!this.isAvailable()) {
-        throw new Error('My Wallet is not installed');
-      }
-
-      // Request connection from your wallet
       const accounts = await (window as any).myWallet.connect();
-
       if (!accounts || accounts.length === 0) {
-        throw new Error('No accounts available');
+        throw createWalletError.connectionRejected(this.name);
       }
 
-      // Get account details
       const address = accounts[0];
       const publicKey = await (window as any).myWallet.getPublicKey(address);
+      this.network = this.resolveNetwork(options?.network);
 
-      this.account = {
-        address,
-        publicKey,
-      };
-
-      this.connected = true;
-
-      // Setup wallet event listeners
+      this.account = { address, publicKey, network: this.network };
       this.setupWalletListeners();
-
-      // Emit connect event
-      this.emit('connect', { account: this.account });
+      this.emit('connect', this.account);
+      return this.account;
     } catch (error) {
       this.emit('error', error);
-      throw error;
+      throw createWalletError.connectionFailed(this.name, error as Error);
     }
   }
 
@@ -232,103 +250,90 @@ export class MyWalletAdapter implements WalletAdapter {
       if (typeof (window as any).myWallet?.disconnect === 'function') {
         await (window as any).myWallet.disconnect();
       }
-
-      this.connected = false;
       this.account = null;
-      this.emit('disconnect');
+      this.emit('disconnect', undefined);
     } catch (error) {
       this.emit('error', error);
       throw error;
     }
   }
 
-  async getAccount(): Promise<Account | null> {
+  async getAccount(): Promise<AccountInfo | null> {
     return this.account;
   }
 
-  async signTransaction(transaction: Transaction): Promise<SignResult> {
-    if (!this.connected || !this.account) {
-      throw new Error('Wallet not connected');
-    }
-
-    try {
-      // Add account to transaction if not present
-      const tx = { ...transaction };
-      if (!tx.Account) {
-        tx.Account = this.account.address;
-      }
-
-      // Sign with your wallet
-      const result = await (window as any).myWallet.signTransaction(tx);
-
-      return {
-        signature: result.signature,
-        signedTransaction: result.signedTransaction,
-      };
-    } catch (error) {
-      this.emit('error', error);
-      throw error;
-    }
+  async getNetwork(): Promise<NetworkInfo> {
+    return this.network;
   }
 
-  async signMessage(message: string): Promise<SignResult> {
-    if (!this.connected || !this.account) {
-      throw new Error('Wallet not connected');
-    }
-
-    try {
-      const result = await (window as any).myWallet.signMessage(message);
-
-      return {
-        signature: result.signature,
-      };
-    } catch (error) {
-      this.emit('error', error);
-      throw error;
-    }
+  async sign(transaction: Transaction): Promise<SignedTransaction> {
+    this.assertConnected();
+    const tx = { ...transaction, Account: transaction.Account || this.account!.address };
+    const result = await (window as any).myWallet.sign(tx);
+    return { hash: result.hash, tx_blob: result.tx_blob, signature: result.signature };
   }
 
-  on(event: string, listener: Function): void {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, new Set());
-    }
-    this.listeners.get(event)!.add(listener);
+  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+    this.assertConnected();
+    const tx = { ...transaction, Account: transaction.Account || this.account!.address };
+    const result = await (window as any).myWallet.signAndSubmit(tx);
+    return { hash: result.hash };
   }
 
-  off(event: string, listener: Function): void {
-    if (this.listeners.has(event)) {
-      this.listeners.get(event)!.delete(listener);
-    }
+  async signMessage(message: string | Uint8Array): Promise<SignedMessage> {
+    this.assertConnected();
+    const text = typeof message === 'string' ? message : new TextDecoder().decode(message);
+    const result = await (window as any).myWallet.signMessage(text);
+    return {
+      message: text,
+      signature: result.signature,
+      publicKey: result.publicKey ?? this.account!.publicKey ?? '',
+    };
+  }
+
+  on(event: WalletAdapterEvent, callback: (data: unknown) => void): void {
+    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+    this.listeners.get(event)!.add(callback);
+  }
+
+  off(event: WalletAdapterEvent, callback: (data: unknown) => void): void {
+    this.listeners.get(event)?.delete(callback);
+  }
+
+  private assertConnected(): void {
+    if (!this.account) throw createWalletError.notConnected();
+  }
+
+  private resolveNetwork(network?: ConnectOptions['network']): NetworkInfo {
+    if (!network) return STANDARD_NETWORKS.mainnet;
+    return typeof network === 'string' ? STANDARD_NETWORKS[network] : network;
   }
 
   private setupWalletListeners(): void {
     const wallet = (window as any).myWallet;
 
-    wallet.on('disconnect', () => {
-      this.connected = false;
+    wallet.on?.('disconnect', () => {
       this.account = null;
-      this.emit('disconnect');
+      this.emit('disconnect', undefined);
     });
 
-    wallet.on('accountChange', (accounts: string[]) => {
-      if (accounts.length === 0) {
-        this.connected = false;
+    wallet.on?.('accountChanged', (addresses: string[]) => {
+      if (!addresses?.length) {
         this.account = null;
-        this.emit('disconnect');
-      } else {
-        this.account = {
-          address: accounts[0],
-          publicKey: this.account?.publicKey || '',
-        };
-        this.emit('accountChange', { account: this.account });
+        this.emit('disconnect', undefined);
+        return;
       }
+      this.account = {
+        address: addresses[0],
+        publicKey: this.account?.publicKey,
+        network: this.network,
+      };
+      this.emit('accountChanged', this.account);
     });
   }
 
-  private emit(event: string, data?: any): void {
-    if (this.listeners.has(event)) {
-      this.listeners.get(event)!.forEach((listener) => listener(data));
-    }
+  private emit(event: WalletAdapterEvent, data: unknown): void {
+    this.listeners.get(event)?.forEach((listener) => listener(data));
   }
 }
 ```
@@ -395,6 +400,8 @@ Edit `packages/xrpl-connect/package.json` and add your adapter to dependencies:
     "@xrpl-connect/adapter-gemwallet": "workspace:*",
     "@xrpl-connect/adapter-walletconnect": "workspace:*",
     "@xrpl-connect/adapter-ledger": "workspace:*",
+    "@xrpl-connect/adapter-xyra": "workspace:*",
+    "@xrpl-connect/adapter-otsu": "workspace:*",
     "@xrpl-connect/adapter-my-wallet": "workspace:*"
   }
 }
@@ -412,6 +419,8 @@ export { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 export { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 export { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
 export { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
+export { XyraAdapter } from '@xrpl-connect/adapter-xyra';
+export { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
 export { MyWalletAdapter } from '@xrpl-connect/adapter-my-wallet';
 
 // Convenient grouped exports
@@ -420,6 +429,8 @@ import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
 import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
+import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
+import { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
 import { MyWalletAdapter } from '@xrpl-connect/adapter-my-wallet';
 
 export const Adapters = {
@@ -428,6 +439,8 @@ export const Adapters = {
   GemWallet: GemWalletAdapter,
   WalletConnect: WalletConnectAdapter,
   Ledger: LedgerAdapter,
+  Xyra: XyraAdapter,
+  Otsu: OtsuAdapter,
   MyWallet: MyWalletAdapter,
 };
 ```
@@ -524,8 +537,8 @@ git push origin feat/add-my-wallet-adapter
 ### PR Checklist
 
 - [ ] Adapter implements complete `WalletAdapter` interface
-- [ ] All methods handle errors gracefully
-- [ ] Event system works correctly (connect, disconnect, accountChange, error)
+- [ ] All methods handle errors gracefully and throw `WalletError` where appropriate
+- [ ] Event system works correctly (`connect`, `disconnect`, `accountChanged`, `networkChanged`, `error`)
 - [ ] Tests written with good coverage
 - [ ] Documentation updated with example usage
 - [ ] package.json properly configured
@@ -554,10 +567,12 @@ private hasStoredSession(): boolean {
 ### Handle Network Switching
 
 ```typescript
-async switchNetwork(network: 'mainnet' | 'testnet' | 'devnet'): Promise<void> {
+async switchNetwork(network: NetworkInfo): Promise<void> {
   const wallet = (window as any).myWallet;
-  await wallet.switchNetwork(network);
-  this.emit('networkChange', { network });
+  await wallet.switchNetwork(network.id);
+  this.network = network;
+  if (this.account) this.account.network = network;
+  this.emit('networkChanged', network);
 }
 ```
 

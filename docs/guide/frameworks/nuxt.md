@@ -20,7 +20,7 @@ Create a composable for wallet management:
 // composables/useWallet.ts
 import { ref, onMounted } from 'vue';
 import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
-import type { Account, WalletError, WalletAdapter } from 'xrpl-connect';
+import type { AccountInfo, WalletError, WalletAdapter } from 'xrpl-connect';
 
 interface UseWalletOptions {
   adapters: WalletAdapter[];
@@ -31,7 +31,7 @@ export const useWallet = (options: UseWalletOptions) => {
   const { adapters, network = 'testnet' } = options;
 
   const walletManager = ref<WalletManager | null>(null);
-  const account = ref<Account | null>(null);
+  const account = ref<AccountInfo | null>(null);
   const connected = ref(false);
   const error = ref<WalletError | null>(null);
   const loading = ref(true);
@@ -44,7 +44,7 @@ export const useWallet = (options: UseWalletOptions) => {
       autoConnect: true,
     });
 
-    manager.on('connect', (acc: Account) => {
+    manager.on('connect', (acc: AccountInfo) => {
       account.value = acc;
       connected.value = true;
       error.value = null;
@@ -93,7 +93,7 @@ Create a Nuxt plugin to provide wallet globally:
 // plugins/wallet.client.ts
 import { defineNuxtPlugin } from '#app';
 import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
-import type { Account, WalletError } from 'xrpl-connect';
+import type { AccountInfo, WalletError } from 'xrpl-connect';
 
 declare module '#app' {
   interface NuxtApp {
@@ -122,12 +122,12 @@ export default defineNuxtPlugin(() => {
 
   const state = reactive({
     manager,
-    account: null as Account | null,
+    account: null as AccountInfo | null,
     connected: false,
     error: null as WalletError | null,
   });
 
-  manager.on('connect', (account: Account) => {
+  manager.on('connect', (account: AccountInfo) => {
     state.account = account;
     state.connected = true;
     state.error = null;
@@ -334,11 +334,11 @@ For larger apps, use Pinia with XRPL-Connect:
 // stores/wallet.ts
 import { defineStore } from 'pinia';
 import { WalletManager, XamanAdapter } from 'xrpl-connect';
-import type { Account, WalletError } from 'xrpl-connect';
+import type { AccountInfo, WalletError } from 'xrpl-connect';
 
 export const useWalletStore = defineStore('wallet', () => {
   const manager = ref<WalletManager | null>(null);
-  const account = ref<Account | null>(null);
+  const account = ref<AccountInfo | null>(null);
   const connected = ref(false);
   const error = ref<WalletError | null>(null);
 
@@ -349,7 +349,7 @@ export const useWalletStore = defineStore('wallet', () => {
       autoConnect: true,
     });
 
-    newManager.on('connect', (acc: Account) => {
+    newManager.on('connect', (acc: AccountInfo) => {
       account.value = acc;
       connected.value = true;
       error.value = null;

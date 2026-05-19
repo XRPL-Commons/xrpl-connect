@@ -120,12 +120,12 @@ walletManager.on('error', (error) => {
 });
 
 // Account change (user switched accounts)
-walletManager.on('accountChange', (account) => {
+walletManager.on('accountChanged', (account) => {
   console.log('Account changed:', account.address);
 });
 
 // Network change (user switched networks)
-walletManager.on('networkChange', (network) => {
+walletManager.on('networkChanged', (network) => {
   console.log('Network changed:', network.name);
 });
 ```
@@ -219,17 +219,17 @@ Always handle errors gracefully:
 walletManager.on('error', (error) => {
   console.error('Error code:', error.code);
   console.error('Error message:', error.message);
-  console.error('Error details:', error.details);
+  console.error('Original error:', error.originalError);
 
   // Handle specific errors
   switch (error.code) {
-    case 'WALLET_NOT_FOUND':
+    case 'WALLET_NOT_INSTALLED':
       alert('Please install a wallet to continue');
       break;
     case 'CONNECTION_FAILED':
       alert('Failed to connect. Please try again.');
       break;
-    case 'SIGN_FAILED':
+    case 'SIGN_REJECTED':
       alert('You rejected the transaction');
       break;
     default:
@@ -245,10 +245,10 @@ try {
   const result = await walletManager.signAndSubmit(transaction);
   console.log('Success:', result);
 } catch (error) {
-  if (error.code === 'SIGN_FAILED') {
+  if (error.code === 'SIGN_REJECTED') {
     console.error('User rejected the transaction');
-  } else if (error.code === 'NETWORK_ERROR') {
-    console.error('Network problem:', error.message);
+  } else if (error.code === 'NETWORK_MISMATCH') {
+    console.error('Wallet on wrong network:', error.message);
   } else {
     console.error('Unexpected error:', error);
   }
@@ -314,7 +314,8 @@ connector.close();
 If you want to add TypeScript:
 
 ```typescript
-import { WalletManager, Account, WalletError, XamanAdapter } from 'xrpl-connect';
+import { WalletManager, XamanAdapter } from 'xrpl-connect';
+import type { AccountInfo, WalletError } from 'xrpl-connect';
 
 const walletManager: WalletManager = new WalletManager({
   adapters: [new XamanAdapter({ apiKey: 'YOUR_API_KEY' })],
@@ -322,7 +323,7 @@ const walletManager: WalletManager = new WalletManager({
   autoConnect: true,
 });
 
-walletManager.on('connect', (account: Account) => {
+walletManager.on('connect', (account: AccountInfo) => {
   console.log('Connected:', account.address);
 });
 
