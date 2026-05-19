@@ -50,6 +50,12 @@ export class XamanAdapter implements WalletAdapter {
   private client: Xumm | null = null;
   private currentAccount: AccountInfo | null = null;
   private options: XamanAdapterOptions;
+  // Per-connection callback overrides. Populated by connect() and cleared by
+  // cleanup(); avoids mutating constructor-supplied options across calls.
+  private activeCallbacks: {
+    onQRCode?: (uri: string) => void;
+    onDeepLink?: (uri: string) => string;
+  } = {};
 
   constructor(options: XamanAdapterOptions = {}) {
     this.options = options;
@@ -129,17 +135,16 @@ export class XamanAdapter implements WalletAdapter {
       );
     }
 
-    // Merge runtime options with constructor options (runtime takes precedence)
-    const onQRCode = options?.onQRCode || this.options.onQRCode;
-    const onDeepLink = options?.onDeepLink || this.options.onDeepLink;
+    // Reset any leftover state from a previous connection attempt so a fast
+    // disconnect → connect cycle doesn't carry stale client/callbacks forward.
+    this.cleanup();
 
-    // Temporarily store callbacks for use in openSignWindow
-    if (onQRCode) {
-      this.options.onQRCode = onQRCode;
-    }
-    if (onDeepLink) {
-      this.options.onDeepLink = onDeepLink;
-    }
+    // Stash per-connection callback overrides without mutating constructor
+    // options — those must remain valid for any future connect() call.
+    this.activeCallbacks = {
+      onQRCode: options?.onQRCode,
+      onDeepLink: options?.onDeepLink,
+    };
 
     try {
       this.client = new Xumm(apiKey);
@@ -170,6 +175,9 @@ export class XamanAdapter implements WalletAdapter {
       return this.currentAccount;
     } catch (error) {
       logger.error('Authorization failed:', error);
+      // Drop the half-initialized client + per-connection callbacks so the
+      // next connect() starts from a clean slate.
+      this.cleanup();
       throw createWalletError.connectionFailed(this.name, error as Error);
     }
   }
@@ -360,12 +368,13 @@ export class XamanAdapter implements WalletAdapter {
    */
   private openSignWindow(url: string): void {
     logger.debug('openSignWindow called with URL:', url.substring(0, 50) + '...');
-    logger.debug('onQRCode callback exists:', !!this.options.onQRCode);
+    const onQRCode = this.activeCallbacks.onQRCode || this.options.onQRCode;
+    logger.debug('onQRCode callback exists:', !!onQRCode);
 
     // If QR code callback is provided, use that instead of popup
-    if (this.options.onQRCode) {
+    if (onQRCode) {
       logger.debug('Calling onQRCode callback');
-      this.options.onQRCode(url);
+      onQRCode(url);
       return;
     }
 
@@ -387,8 +396,9 @@ export class XamanAdapter implements WalletAdapter {
    * Get deep link URI for mobile (Xaman app)
    */
   public getDeepLinkURI(url: string): string {
-    if (this.options.onDeepLink) {
-      return this.options.onDeepLink(url);
+    const onDeepLink = this.activeCallbacks.onDeepLink || this.options.onDeepLink;
+    if (onDeepLink) {
+      return onDeepLink(url);
     }
     // Xaman deep link format
     return `xumm://xumm.app/sign/${url.split('/').pop()}`;
@@ -457,7 +467,7 @@ export class XamanAdapter implements WalletAdapter {
   private cleanup(): void {
     this.client = null;
     this.currentAccount = null;
-    // Don't clear pending payload on disconnect - it might still be needed
+    this.activeCallbacks = {};
   }
 
   /**
