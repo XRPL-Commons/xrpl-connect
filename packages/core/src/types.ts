@@ -213,3 +213,24 @@ export enum WalletErrorCode {
   // General errors
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
+
+/**
+ * High-level categories for wallet errors.
+ *
+ * Each `WalletErrorCode` belongs to exactly one category, letting consumer apps
+ * branch UX on the *kind* of failure without enumerating every code:
+ *
+ * - `USER_ACTION` — user explicitly rejected or cancelled. Usually no error toast.
+ * - `WALLET_UNAVAILABLE` — provider missing, locked, or on the wrong network.
+ *   Surface install / unlock / switch-network instructions.
+ * - `NETWORK` — RPC or transport failure. Retry-friendly.
+ * - `INVALID_INPUT` — programmer error (bad call, missing state). Bubble up.
+ * - `INTERNAL` — unexpected failure that should be reported.
+ */
+export enum WalletErrorCategory {
+  USER_ACTION = 'USER_ACTION',
+  WALLET_UNAVAILABLE = 'WALLET_UNAVAILABLE',
+  NETWORK = 'NETWORK',
+  INVALID_INPUT = 'INVALID_INPUT',
+  INTERNAL = 'INTERNAL',
+}

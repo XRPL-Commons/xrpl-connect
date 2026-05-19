@@ -2,19 +2,53 @@
  * Wallet error handling
  */
 
-import { WalletErrorCode } from './types';
+import { WalletErrorCategory, WalletErrorCode } from './types';
+
+/**
+ * Maps each `WalletErrorCode` to its high-level `WalletErrorCategory`.
+ * Consumer apps should branch on `WalletError.category` for UX decisions and
+ * fall back to `WalletError.code` only when finer granularity is needed.
+ */
+const CODE_TO_CATEGORY: Record<WalletErrorCode, WalletErrorCategory> = {
+  [WalletErrorCode.WALLET_NOT_FOUND]: WalletErrorCategory.WALLET_UNAVAILABLE,
+  [WalletErrorCode.WALLET_NOT_INSTALLED]: WalletErrorCategory.WALLET_UNAVAILABLE,
+  [WalletErrorCode.WALLET_NOT_AVAILABLE]: WalletErrorCategory.WALLET_UNAVAILABLE,
+  [WalletErrorCode.NETWORK_NOT_SUPPORTED]: WalletErrorCategory.WALLET_UNAVAILABLE,
+  [WalletErrorCode.NETWORK_MISMATCH]: WalletErrorCategory.WALLET_UNAVAILABLE,
+
+  [WalletErrorCode.CONNECTION_REJECTED]: WalletErrorCategory.USER_ACTION,
+  [WalletErrorCode.SIGN_REJECTED]: WalletErrorCategory.USER_ACTION,
+
+  [WalletErrorCode.CONNECTION_FAILED]: WalletErrorCategory.NETWORK,
+
+  [WalletErrorCode.NOT_CONNECTED]: WalletErrorCategory.INVALID_INPUT,
+  [WalletErrorCode.ALREADY_CONNECTED]: WalletErrorCategory.INVALID_INPUT,
+  [WalletErrorCode.UNSUPPORTED_METHOD]: WalletErrorCategory.INVALID_INPUT,
+
+  [WalletErrorCode.SIGN_FAILED]: WalletErrorCategory.INTERNAL,
+  [WalletErrorCode.UNKNOWN_ERROR]: WalletErrorCategory.INTERNAL,
+};
+
+/**
+ * Resolve the category for a given error code.
+ */
+export function getWalletErrorCategory(code: WalletErrorCode): WalletErrorCategory {
+  return CODE_TO_CATEGORY[code] ?? WalletErrorCategory.INTERNAL;
+}
 
 /**
  * Custom error class for wallet operations
  */
 export class WalletError extends Error {
   public readonly code: WalletErrorCode;
+  public readonly category: WalletErrorCategory;
   public readonly originalError?: Error;
 
   constructor(code: WalletErrorCode, message: string, originalError?: Error) {
     super(message);
     this.name = 'WalletError';
     this.code = code;
+    this.category = getWalletErrorCategory(code);
     this.originalError = originalError;
 
     // Maintain proper stack trace for where error was thrown (only available on V8)
@@ -30,6 +64,7 @@ export class WalletError extends Error {
     return {
       name: this.name,
       code: this.code,
+      category: this.category,
       message: this.message,
       stack: this.stack,
       originalError: this.originalError

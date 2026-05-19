@@ -25,10 +25,16 @@ export type {
   LoggerOptions,
 } from './types';
 
-export { STANDARD_NETWORKS, WalletErrorCode } from './types';
+export { STANDARD_NETWORKS, WalletErrorCode, WalletErrorCategory } from './types';
 
 // Errors
-export { WalletError, createWalletError, isWalletError, getErrorMessage } from './errors';
+export {
+  WalletError,
+  createWalletError,
+  isWalletError,
+  getErrorMessage,
+  getWalletErrorCategory,
+} from './errors';
 
 // Storage
 export { Storage, LocalStorageAdapter, MemoryStorageAdapter } from './storage';

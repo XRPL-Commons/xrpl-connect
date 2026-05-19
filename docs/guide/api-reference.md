@@ -397,11 +397,12 @@ interface SignedMessage {
 ```typescript
 class WalletError extends Error {
   readonly code: WalletErrorCode;
+  readonly category: WalletErrorCategory;
   readonly originalError?: Error;
 }
 ```
 
-Use `isWalletError(error)` to narrow `unknown` to `WalletError`, and the `WalletErrorCode` enum (or string equivalents) to switch on `error.code`.
+Use `isWalletError(error)` to narrow `unknown` to `WalletError`. For UX decisions, switch on `error.category` (5 high-level buckets); for finer behavior, switch on `error.code`. See [Error Categories](#error-categories) for the recommended UX response per category.
 
 ## Events
 
@@ -459,33 +460,77 @@ walletManager.on('networkChanged', (network: NetworkInfo) => {
 
 ## Error Handling
 
+### Error Categories
+
+`WalletError.category` groups every code into one of five high-level buckets so
+consumer apps can drive UX off the *kind* of failure without enumerating every
+code. Each code maps to exactly one category.
+
+| Category             | Meaning                                                                     | Recommended UX                                                                   |
+| -------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `USER_ACTION`        | The user explicitly rejected or cancelled.                                  | No error toast — return to the previous state silently or show a subtle "cancelled" hint. |
+| `WALLET_UNAVAILABLE` | Provider missing, locked, or on the wrong network.                          | Show install / unlock / switch-network instructions. Not retryable in place.     |
+| `NETWORK`            | RPC, WebSocket, or transport failure between the app, wallet, or ledger.    | Offer a retry. Consider a fallback wallet or RPC.                                |
+| `INVALID_INPUT`      | Programmer error: bad call, missing state, unsupported method.              | Bubble up. Should never reach an end user in a well-formed app — log it.         |
+| `INTERNAL`           | Unexpected failure with no specific category.                               | Surface a generic error and report to your error tracker.                        |
+
 ### Error Codes
 
 All error codes are exposed by the `WalletErrorCode` enum.
 
-| Code                    | Description                                   | Handling                               |
-| ----------------------- | --------------------------------------------- | -------------------------------------- |
-| `WALLET_NOT_FOUND`      | Adapter not registered with the WalletManager | Check the `adapters` array             |
-| `WALLET_NOT_INSTALLED`  | Browser extension / app is not installed      | Prompt the user to install the wallet  |
-| `WALLET_NOT_AVAILABLE`  | Wallet present but not currently usable       | Surface a "wallet unavailable" message |
-| `CONNECTION_FAILED`     | Connection to the wallet failed               | Retry or fall back to another wallet   |
-| `CONNECTION_REJECTED`   | User rejected the connection                  | Allow the user to retry                |
-| `SIGN_FAILED`           | Signing failed for an unspecified reason      | Retry or surface the original error    |
-| `SIGN_REJECTED`         | User rejected the signing prompt              | Allow the user to retry                |
-| `NETWORK_NOT_SUPPORTED` | Wallet does not support the requested network | Switch to a supported network          |
-| `NETWORK_MISMATCH`      | Wallet is connected to a different network    | Ask the user to switch networks        |
-| `NOT_CONNECTED`         | A connection is required but none is active   | Connect before calling the method      |
-| `ALREADY_CONNECTED`     | A different wallet is already connected       | Disconnect first                       |
-| `UNSUPPORTED_METHOD`    | The wallet does not implement this method     | Use a wallet that supports it          |
-| `UNKNOWN_ERROR`         | Unhandled error from the adapter              | Inspect `originalError`                |
+| Code                    | Category             | Description                                   | Handling                               |
+| ----------------------- | -------------------- | --------------------------------------------- | -------------------------------------- |
+| `WALLET_NOT_FOUND`      | `WALLET_UNAVAILABLE` | Adapter not registered with the WalletManager | Check the `adapters` array             |
+| `WALLET_NOT_INSTALLED`  | `WALLET_UNAVAILABLE` | Browser extension / app is not installed      | Prompt the user to install the wallet  |
+| `WALLET_NOT_AVAILABLE`  | `WALLET_UNAVAILABLE` | Wallet present but not currently usable       | Surface a "wallet unavailable" message |
+| `NETWORK_NOT_SUPPORTED` | `WALLET_UNAVAILABLE` | Wallet does not support the requested network | Switch to a supported network          |
+| `NETWORK_MISMATCH`      | `WALLET_UNAVAILABLE` | Wallet is connected to a different network    | Ask the user to switch networks        |
+| `CONNECTION_REJECTED`   | `USER_ACTION`        | User rejected the connection                  | Allow the user to retry                |
+| `SIGN_REJECTED`         | `USER_ACTION`        | User rejected the signing prompt              | Allow the user to retry                |
+| `CONNECTION_FAILED`     | `NETWORK`            | Connection to the wallet failed               | Retry or fall back to another wallet   |
+| `NOT_CONNECTED`         | `INVALID_INPUT`      | A connection is required but none is active   | Connect before calling the method      |
+| `ALREADY_CONNECTED`     | `INVALID_INPUT`      | A different wallet is already connected       | Disconnect first                       |
+| `UNSUPPORTED_METHOD`    | `INVALID_INPUT`      | The wallet does not implement this method     | Use a wallet that supports it          |
+| `SIGN_FAILED`           | `INTERNAL`           | Signing failed for an unspecified reason      | Retry or surface the original error    |
+| `UNKNOWN_ERROR`         | `INTERNAL`           | Unhandled error from the adapter              | Inspect `originalError`                |
 
 ### Error Example
+
+Most app code only needs the category:
+
+```typescript
+import { WalletErrorCategory, isWalletError } from 'xrpl-connect';
+
+try {
+  await walletManager.signAndSubmit(transaction);
+} catch (error) {
+  if (!isWalletError(error)) throw error;
+
+  switch (error.category) {
+    case WalletErrorCategory.USER_ACTION:
+      // Cancelled by the user — no toast.
+      break;
+    case WalletErrorCategory.WALLET_UNAVAILABLE:
+      showInstallOrSwitchNetworkPrompt(error);
+      break;
+    case WalletErrorCategory.NETWORK:
+      offerRetry(error);
+      break;
+    case WalletErrorCategory.INVALID_INPUT:
+    case WalletErrorCategory.INTERNAL:
+      reportToErrorTracker(error);
+      break;
+  }
+}
+```
+
+For finer-grained behavior, fall back to `error.code`:
 
 ```typescript
 import { WalletErrorCode, isWalletError } from 'xrpl-connect';
 
 try {
-  const result = await walletManager.signAndSubmit(transaction);
+  await walletManager.signAndSubmit(transaction);
 } catch (error) {
   if (isWalletError(error)) {
     switch (error.code) {
