@@ -3,7 +3,7 @@
  * A framework-agnostic web component for connecting to XRPL wallets
  */
 
-import type { WalletManager } from '@xrpl-connect/core';
+import type { WalletAdapter, WalletManager } from '@xrpl-connect/core';
 import { createLogger } from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
 import { mainStyles } from './styles/main';
@@ -17,6 +17,16 @@ import {
   renderAccountModal,
 } from './views';
 import { WalletService, EventHandler } from './services';
+import {
+  isPreInitializableAdapter,
+  isXamanStateAdapter,
+  type AccountSelectionData,
+  type ErrorData,
+  type LedgerAccount,
+  type LoadingData,
+  type QRCodeData,
+  type WalletConnectorContext,
+} from './types';
 import { isXamanQRImage, adjustColorBrightness } from './utils';
 
 /**
@@ -25,7 +35,7 @@ import { isXamanQRImage, adjustColorBrightness } from './utils';
 const logger = createLogger('[WalletConnector]');
 
 // Only define the component in browser (guard against SSR)
-let WalletConnectorElement: any = null;
+let WalletConnectorElement: CustomElementConstructor | null = null;
 
 if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
   const XC_CSS_VARIABLES = [
@@ -67,31 +77,25 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     '--xc-warning-color',
   ] as const;
 
-  class WalletConnectorElementImpl extends HTMLElement {
-    private walletManager: WalletManager | null = null;
-    private shadow: ShadowRoot;
+  class WalletConnectorElementImpl extends HTMLElement implements WalletConnectorContext {
+    public walletManager: WalletManager | null = null;
+    public readonly shadow: ShadowRoot;
     private isOpen = false;
     private isFirstOpen = true;
     private primaryWalletId: string | null = null;
     private viewState: 'list' | 'qr' | 'loading' | 'error' | 'account-selection' = 'list';
-    private qrCodeData: { walletId: string; uri: string } | null = null;
-    private loadingData: { walletId: string; walletName: string; walletIcon?: string } | null =
-      null;
-    private errorData: { walletId: string; walletName: string; error: Error } | null = null;
-    private accountSelectionData: {
-      walletId: string;
-      walletName: string;
-      walletIcon?: string;
-      accounts: Array<{ address: string; publicKey: string; path: string; index: number }>;
-    } | null = null;
+    public qrCodeData: QRCodeData | null = null;
+    private loadingData: LoadingData | null = null;
+    public errorData: ErrorData | null = null;
+    public accountSelectionData: AccountSelectionData | null = null;
     private previousModalHeight: number = 0;
-    private preGeneratedQRCode: any | null = null; // Store pre-generated QR code
-    private preGeneratedURI: string | null = null; // Store the URI used for pre-generation
-    private specifiedWalletIds: string[] = []; // Wallet IDs specified via 'wallets' attribute
-    private availableWallets: any[] = []; // Cache of available wallets
-    private walletAvailabilityChecked: boolean = false; // Flag to track if availability has been checked
-    private accountModalOpen: boolean = false; // Track if account details modal is open
-    private accountBalance: string | null = null; // Cached account balance
+    private preGeneratedQRCode: QRCodeStyling | null = null;
+    private preGeneratedURI: string | null = null;
+    private specifiedWalletIds: string[] = [];
+    private availableWallets: WalletAdapter[] = [];
+    private walletAvailabilityChecked: boolean = false;
+    private accountModalOpen: boolean = false;
+    private accountBalance: string | null = null;
     private overlayPortal: HTMLDivElement | null = null;
     private accountModalPortal: HTMLDivElement | null = null;
     private styleObserver: MutationObserver | null = null;
@@ -260,19 +264,14 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     private async checkXamanStateOnInit() {
       try {
-        if (this.listAdapters().includes('xaman')) {
-          const xamanAdapter: any = this.walletManager?.adapters?.get('xaman');
+        const xamanAdapter = this.walletManager?.adapters?.get('xaman');
+        if (!xamanAdapter || !isXamanStateAdapter(xamanAdapter)) {
+          return;
+        }
 
-          if (!xamanAdapter) {
-            return;
-          }
-
-          const account = await xamanAdapter.checkXamanState();
-          if (account) {
-            if (this.walletManager && !this.walletManager.connected) {
-              await this.walletManager.connect('xaman');
-            }
-          }
+        const account = await xamanAdapter.checkXamanState();
+        if (account && this.walletManager && !this.walletManager.connected) {
+          await this.walletManager.connect('xaman');
         }
       } catch (err) {
         console.error('Failed to check Xaman state:', err);
@@ -293,17 +292,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         .split(',')
         .map((id) => id.trim())
         .filter((id) => id.length > 0);
-    }
-
-    private listAdapters(): string[] {
-      const returnArray: string[] = [];
-      if (!this.walletManager?.wallets) return returnArray;
-
-      for (const adapter of Object.values(this.walletManager.wallets)) {
-        returnArray.push(adapter.id);
-      }
-
-      return returnArray;
     }
 
     /**
@@ -346,7 +334,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.availableWallets = this.specifiedWalletIds
           .map((id) => availabilityChecks.find((check) => check.wallet.id === id)?.wallet)
           .filter(
-            (wallet): wallet is any =>
+            (wallet): wallet is WalletAdapter =>
               (wallet !== undefined &&
                 availabilityChecks.find((c) => c.wallet.id === wallet.id)?.available) ??
               false
@@ -426,7 +414,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     /**
      * Close the account details modal
      */
-    private closeAccountModal() {
+    public closeAccountModal() {
       this.accountModalOpen = false;
       this.render();
     }
@@ -469,35 +457,25 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       // Find WalletConnect adapter
       const walletConnectAdapter = this.walletManager.wallets.find((w) => w.id === 'walletconnect');
 
-      if (!walletConnectAdapter) return;
+      if (!walletConnectAdapter || !isPreInitializableAdapter(walletConnectAdapter)) return;
 
-      // Check if adapter has preInitialize method
-      if (typeof (walletConnectAdapter as any).preInitialize === 'function') {
-        try {
-          logger.debug('Pre-initializing WalletConnect...');
+      try {
+        logger.debug('Pre-initializing WalletConnect...');
 
-          // Extract projectId from adapter's stored options
-          const projectId = (walletConnectAdapter as any).options?.projectId;
+        const projectId = walletConnectAdapter.options?.projectId;
+        const network = this.walletManager.defaultNetwork;
 
-          // Pass network information if available
-          const network = (this.walletManager as any).options?.network;
+        // Install the QR-generation callback the adapter will invoke during pre-init.
+        const adapterOptions = (walletConnectAdapter.options ??= {});
+        adapterOptions.onQRCode = (uri: string) => {
+          logger.debug('Pre-generating QR code...');
+          this.preGenerateQRCode(uri);
+        };
 
-          // Store the QR generation callback in the adapter's options
-          // The adapter will call this callback during pre-initialization
-          if (!(walletConnectAdapter as any).options) {
-            (walletConnectAdapter as any).options = {};
-          }
-          (walletConnectAdapter as any).options.onQRCode = (uri: string) => {
-            logger.debug('Pre-generating QR code...');
-            this.preGenerateQRCode(uri);
-          };
-
-          // Pre-initialize with projectId and network
-          await (walletConnectAdapter as any).preInitialize(projectId, network);
-        } catch (error) {
-          logger.warn('Failed to pre-initialize WalletConnect:', error);
-          // Silent failure - connection will initialize on demand if this fails
-        }
+        await walletConnectAdapter.preInitialize(projectId, network);
+      } catch (error) {
+        logger.warn('Failed to pre-initialize WalletConnect:', error);
+        // Silent failure - connection will initialize on demand if this fails
       }
     }
 
@@ -603,7 +581,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       walletId: string,
       walletName: string,
       walletIcon: string | undefined,
-      accounts: Array<{ address: string; publicKey: string; path: string; index: number }>
+      accounts: LedgerAccount[]
     ) {
       this.viewState = 'account-selection';
       this.accountSelectionData = { walletId, walletName, walletIcon, accounts };
@@ -779,7 +757,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           : this.walletManager?.wallets || [];
 
       const primaryWallet = this.primaryWalletId
-        ? wallets.find((w) => w.id === this.primaryWalletId)
+        ? (wallets.find((w) => w.id === this.primaryWalletId) ?? null)
         : null;
       const otherWallets = wallets.filter((w) => w.id !== this.primaryWalletId);
 
@@ -896,7 +874,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
   // Register the custom element
   if (!customElements.get('xrpl-wallet-connector')) {
-    customElements.define('xrpl-wallet-connector', WalletConnectorElement);
+    customElements.define('xrpl-wallet-connector', WalletConnectorElementImpl);
   }
 }
 

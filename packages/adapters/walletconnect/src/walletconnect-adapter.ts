@@ -9,6 +9,7 @@ import type {
   WalletAdapter,
   AccountInfo,
   ConnectOptions,
+  NetworkConfig,
   NetworkInfo,
   Transaction,
   SignedTransaction,
@@ -138,7 +139,7 @@ export class WalletConnectAdapter implements WalletAdapter {
    * This generates the QR code URI before the user clicks WalletConnect
    * Based on ConnectKit's eager initialization pattern
    */
-  async preInitialize(projectId?: string, network?: string): Promise<void> {
+  async preInitialize(projectId?: string, network?: NetworkConfig): Promise<void> {
     const pid = projectId || this.options.projectId;
 
     if (!pid) {

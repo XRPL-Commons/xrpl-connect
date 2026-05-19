@@ -1,4 +1,9 @@
-export function renderWalletListView(primaryWallet: any | null, otherWallets: any[]): string {
+import type { WalletAdapter } from '@xrpl-connect/core';
+
+export function renderWalletListView(
+  primaryWallet: WalletAdapter | null,
+  otherWallets: WalletAdapter[]
+): string {
   return `
       <div class="header">
         <h2 class="title">Connect Wallet</h2>
