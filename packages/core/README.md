@@ -45,11 +45,19 @@ interface WalletManagerOptions {
   network?: NetworkConfig | string; // Default network ('mainnet', 'testnet', 'devnet')
   autoConnect?: boolean; // Attempt to reconnect from stored state
   storage?: StorageAdapter; // Custom storage implementation (defaults to LocalStorageAdapter)
-  logger?: LoggerOptions; // Logging configuration
+  logger?: LoggerOptions | LoggerInstance; // Logging configuration — pass options or a custom logger
 }
 
 interface LoggerOptions {
-  level?: 'debug' | 'info' | 'warn' | 'error' | 'none'; // Log level (default: 'info')
+  level?: 'debug' | 'info' | 'warn' | 'error' | 'silent' | 'none'; // 'none' is a deprecated alias for 'silent'
+  prefix?: string;
+}
+
+interface LoggerInstance {
+  debug(message: string, ...args: unknown[]): void;
+  info(message: string, ...args: unknown[]): void;
+  warn(message: string, ...args: unknown[]): void;
+  error(message: string, ...args: unknown[]): void;
 }
 ```
 
@@ -546,18 +554,34 @@ const manager = new WalletManager({
 
 ## Logging
 
-The core includes a configurable logger for debugging.
+The core includes a configurable logger for debugging. The configuration passed to
+`WalletManager` is applied globally, so adapter-level loggers honour the same
+level or routing decisions.
 
 ### Logger Configuration
+
+Set a log level via `LoggerOptions`:
 
 ```typescript
 const manager = new WalletManager({
   adapters: [...],
   logger: {
-    level: 'debug'  // 'debug', 'info', 'warn', 'error', 'none'
-  }
+    level: 'debug', // 'debug' | 'info' | 'warn' | 'error' | 'silent'
+  },
 });
 ```
+
+Silence all output (e.g. in production):
+
+```typescript
+const manager = new WalletManager({
+  adapters: [...],
+  logger: { level: 'silent' },
+});
+```
+
+**Defaults**: when no level is provided, `'debug'` is used in development
+(`NODE_ENV === 'development'` or localhost) and `'warn'` everywhere else.
 
 **Log Levels**:
 
@@ -565,7 +589,32 @@ const manager = new WalletManager({
 - `info`: General information messages
 - `warn`: Warning messages
 - `error`: Error messages only
-- `none`: No logging
+- `silent`: No logging (`'none'` is a deprecated alias)
+
+### Routing logs to a custom logger
+
+Pass any object that implements `LoggerInstance` (matching the `console.*`
+shape) to send all log calls — including those emitted by individual adapters —
+into your own logging pipeline (Sentry, Datadog, pino, etc.):
+
+```typescript
+import type { LoggerInstance } from '@xrpl-connect/core';
+
+const appLogger: LoggerInstance = {
+  debug: (msg, ...args) => myLogger.trace({ msg, args }),
+  info: (msg, ...args) => myLogger.info({ msg, args }),
+  warn: (msg, ...args) => myLogger.warn({ msg, args }),
+  error: (msg, ...args) => myLogger.error({ msg, args }),
+};
+
+const manager = new WalletManager({
+  adapters: [...],
+  logger: appLogger,
+});
+```
+
+The supplied instance receives messages from the manager and every registered
+adapter, each prefixed with its source (e.g. `[Xaman] Connecting…`).
 
 ---
 

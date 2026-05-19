@@ -17,7 +17,7 @@ import type {
   StoredState,
 } from './types';
 import { createWalletError } from './errors';
-import { Logger } from './logger';
+import { Logger, configureLogger, isLoggerInstance } from './logger';
 import { Storage } from './storage';
 import { TIME } from './constants';
 
@@ -36,8 +36,11 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     super();
     this.options = options;
 
-    // Initialize logger
-    this.logger = new Logger(options.logger);
+    // Apply logger configuration globally so adapter-level loggers honour it,
+    // then build the manager's own Logger. A user-supplied LoggerInstance
+    // routes through `configureLogger`; LoggerOptions also drive the local logger.
+    configureLogger(options.logger);
+    this.logger = new Logger(isLoggerInstance(options.logger) ? undefined : options.logger);
 
     // Initialize storage
     this.storage = new Storage(options.storage);

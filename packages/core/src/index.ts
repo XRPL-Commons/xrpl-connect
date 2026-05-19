@@ -23,6 +23,8 @@ export type {
   StorageAdapter,
   StoredState,
   LoggerOptions,
+  LoggerInstance,
+  LogLevel,
 } from './types';
 
 export { STANDARD_NETWORKS, WalletErrorCode } from './types';
@@ -34,7 +36,7 @@ export { WalletError, createWalletError, isWalletError, getErrorMessage } from '
 export { Storage, LocalStorageAdapter, MemoryStorageAdapter } from './storage';
 
 // Logger
-export { Logger, createLogger } from './logger';
+export { Logger, createLogger, configureLogger, isLoggerInstance } from './logger';
 
 // Constants
 export { TIME } from './constants';
