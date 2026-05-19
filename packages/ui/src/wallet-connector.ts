@@ -7,7 +7,15 @@ import type { WalletManager } from '@xrpl-connect/core';
 import { createLogger } from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
 import { mainStyles } from './styles/main';
-import { SIZES, TIMINGS, QR_CONFIG } from './constants';
+import {
+  SIZES,
+  TIMINGS,
+  QR_CONFIG,
+  DEFAULT_THEME,
+  COLOR_ADJUSTMENT,
+  ADDRESS_DISPLAY,
+  GRADIENT,
+} from './constants';
 import {
   renderWalletListView,
   renderQRView,
@@ -192,13 +200,18 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     private updateDerivedColors() {
       const computedStyle = window.getComputedStyle(this);
-      const primaryColor = computedStyle.getPropertyValue('--xc-primary-color').trim() || '#0EA5E9';
+      const primaryColor =
+        computedStyle.getPropertyValue('--xc-primary-color').trim() || DEFAULT_THEME.PRIMARY_COLOR;
       const backgroundColor =
-        computedStyle.getPropertyValue('--xc-background-color').trim() || '#000637';
+        computedStyle.getPropertyValue('--xc-background-color').trim() ||
+        DEFAULT_THEME.BACKGROUND_COLOR;
 
       // Calculate lighter shades for hover states
-      const primaryHoverColor = adjustColorBrightness(primaryColor, 0.15);
-      const backgroundHoverColor = adjustColorBrightness(backgroundColor, 0.15);
+      const primaryHoverColor = adjustColorBrightness(primaryColor, COLOR_ADJUSTMENT.HOVER_BRIGHTNESS);
+      const backgroundHoverColor = adjustColorBrightness(
+        backgroundColor,
+        COLOR_ADJUSTMENT.HOVER_BRIGHTNESS
+      );
 
       // Apply hover colors
       this.style.setProperty('--xc-primary-button-hover-background', primaryHoverColor);
@@ -663,7 +676,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           <img
             src="${uri}"
             alt="QR Code"
-            style="width: ${SIZES.QR_CODE}px; height: ${SIZES.QR_CODE}px; border-radius: 16px; display: block;"
+            style="width: ${SIZES.QR_CODE}px; height: ${SIZES.QR_CODE}px; border-radius: ${SIZES.QR_IMAGE_BORDER_RADIUS}px; display: block;"
           />
         `;
           return;
@@ -712,7 +725,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       } catch (error) {
         logger.error('Failed to generate QR code:', error);
         container.innerHTML = `
-        <div class="qr-loading" style="color: #ef4444;">
+        <div class="qr-loading" style="color: ${DEFAULT_THEME.DANGER_COLOR};">
           Failed to generate QR code
         </div>
       `;
@@ -722,7 +735,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     /**
      * Truncate address for display
      */
-    private truncateAddress(address: string, chars: number = 6): string {
+    private truncateAddress(
+      address: string,
+      chars: number = ADDRESS_DISPLAY.TRUNCATE_CHARS_DEFAULT
+    ): string {
       if (address.length <= chars * 2) return address;
       return `${address.substring(0, chars)}...${address.substring(address.length - chars)}`;
     }
@@ -741,11 +757,11 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       // Generate two colors from the hash
-      const hue1 = Math.abs(hash % 360);
-      const hue2 = (hue1 + 60) % 360; // Offset by 60 degrees for contrast
+      const hue1 = Math.abs(hash % GRADIENT.HUE_MAX_DEGREES);
+      const hue2 = (hue1 + GRADIENT.HUE_OFFSET_DEGREES) % GRADIENT.HUE_MAX_DEGREES;
 
-      const color1 = `hsl(${hue1}, 70%, 55%)`;
-      const color2 = `hsl(${hue2}, 70%, 55%)`;
+      const color1 = `hsl(${hue1}, ${GRADIENT.SATURATION_PERCENT}%, ${GRADIENT.LIGHTNESS_PERCENT}%)`;
+      const color2 = `hsl(${hue2}, ${GRADIENT.SATURATION_PERCENT}%, ${GRADIENT.LIGHTNESS_PERCENT}%)`;
 
       return { color1, color2 };
     }
@@ -769,7 +785,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       const currentAccount = this.walletManager?.account;
       const buttonText =
         isConnected && currentAccount
-          ? this.truncateAddress(currentAccount.address, 4)
+          ? this.truncateAddress(currentAccount.address, ADDRESS_DISPLAY.TRUNCATE_CHARS_BUTTON)
           : 'Connect Wallet';
 
       // Use available wallets if any have been checked, otherwise fallback to all wallets
