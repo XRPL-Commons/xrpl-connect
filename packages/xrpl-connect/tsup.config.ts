@@ -3,9 +3,7 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: ['src/index.ts'],
   format: ['cjs', 'esm'],
-  // Skip DTS since we're just re-exporting from other packages
-  // Users will get types from those packages directly
-  dts: false,
+  dts: true,
   clean: true,
   sourcemap: true,
   splitting: false,

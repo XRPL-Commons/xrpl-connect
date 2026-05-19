@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { useWallet } from '../context/WalletContext';
-import { Transaction } from '@xrpl-connect/core';
+import { Transaction } from 'xrpl-connect';
 
 export function TransactionForm() {
   const { walletManager, isConnected, addEvent } = useWallet();

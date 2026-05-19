@@ -194,7 +194,7 @@ const { connected, account, wallet } = walletManager;
 Give users choice by supporting multiple wallets:
 
 ```javascript
-import { WalletManager,XamanAdapter,WalletConnectAdapter,GemWalletAdapter;CrossmarkAdapter } from 'xrpl-connect';
+import { WalletManager, XamanAdapter, WalletConnectAdapter, GemWalletAdapter, CrossmarkAdapter } from 'xrpl-connect';
 
 
 const walletManager = new WalletManager({

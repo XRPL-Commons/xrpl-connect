@@ -19,7 +19,7 @@ Create a composable for wallet management:
 ```typescript
 // composables/useWallet.ts
 import { ref, onMounted } from 'vue';
-import { WalletManager,XamanAdapter;CrossmarkAdapter } from 'xrpl-connect';
+import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
 import type { Account, WalletError, WalletAdapter } from 'xrpl-connect';
 
 interface UseWalletOptions {
@@ -92,7 +92,7 @@ Create a Nuxt plugin to provide wallet globally:
 ```typescript
 // plugins/wallet.client.ts
 import { defineNuxtPlugin } from '#app';
-import { WalletManager,XamanAdapter;CrossmarkAdapter } from 'xrpl-connect';
+import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
 import type { Account, WalletError } from 'xrpl-connect';
 
 declare module '#app' {
