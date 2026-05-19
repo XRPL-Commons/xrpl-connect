@@ -5,19 +5,44 @@ import { isMobile } from '../utils';
 
 const logger = createLogger('[EventHandler]');
 
+interface TrackedListener {
+  target: EventTarget;
+  type: string;
+  handler: EventListener;
+}
+
 export class EventHandler {
+  private listeners: TrackedListener[] = [];
+
   constructor(
     private component: HTMLElement,
     private walletService: WalletService
   ) {}
 
+  private add(target: EventTarget | null | undefined, type: string, handler: EventListener) {
+    if (!target) return;
+    target.addEventListener(type, handler);
+    this.listeners.push({ target, type, handler });
+  }
+
+  public detachEventListeners() {
+    for (const { target, type, handler } of this.listeners) {
+      target.removeEventListener(type, handler);
+    }
+    this.listeners = [];
+  }
+
   public attachEventListeners() {
+    // Remove any previously tracked listeners before re-binding, otherwise
+    // every render() would stack a new copy on the same (or re-created) elements.
+    this.detachEventListeners();
+
     const shadow = (this.component as any).shadow as ShadowRoot;
     const overlayRoot: ShadowRoot | null = (this.component as any).getOverlayRoot();
     const accountRoot: ShadowRoot | null = (this.component as any).getAccountModalRoot();
 
     // Connect wallet button (in component shadow root)
-    shadow.querySelector('#connect-wallet-button')?.addEventListener('click', async () => {
+    this.add(shadow.querySelector('#connect-wallet-button'), 'click', async () => {
       const isConnected = (this.component as any).walletManager?.connected || false;
 
       if (isConnected) {
@@ -30,24 +55,24 @@ export class EventHandler {
     });
 
     // Account modal close button (in account modal portal)
-    accountRoot?.querySelector('#account-modal-close')?.addEventListener('click', () => {
+    this.add(accountRoot?.querySelector('#account-modal-close'), 'click', () => {
       (this.component as any).closeAccountModal();
     });
 
     // Account modal disconnect button (in account modal portal)
-    accountRoot?.querySelector('#account-modal-disconnect')?.addEventListener('click', () => {
+    this.add(accountRoot?.querySelector('#account-modal-disconnect'), 'click', () => {
       (this.component as any).disconnectFromAccountModal();
     });
 
     // Account modal overlay click (in account modal portal)
-    accountRoot?.querySelector('#account-modal-overlay')?.addEventListener('click', (e: Event) => {
+    this.add(accountRoot?.querySelector('#account-modal-overlay'), 'click', (e: Event) => {
       if (e.target === e.currentTarget) {
         (this.component as any).closeAccountModal();
       }
     });
 
     // Copy account address button (in account modal portal)
-    accountRoot?.querySelector('#copy-account-address')?.addEventListener('click', async () => {
+    this.add(accountRoot?.querySelector('#copy-account-address'), 'click', async () => {
       const address = (this.component as any).walletManager?.account?.address;
       if (address) {
         try {
@@ -68,35 +93,35 @@ export class EventHandler {
     });
 
     // Close button (in overlay portal)
-    overlayRoot
-      ?.querySelector('.close-button')
-      ?.addEventListener('click', () => (this.component as any).close());
+    this.add(overlayRoot?.querySelector('.close-button'), 'click', () =>
+      (this.component as any).close()
+    );
 
     // Overlay click (in overlay portal)
-    overlayRoot?.querySelector('.overlay')?.addEventListener('click', (e: Event) => {
+    this.add(overlayRoot?.querySelector('.overlay'), 'click', (e: Event) => {
       if (e.target === e.currentTarget) (this.component as any).close();
     });
 
     // Wallet buttons (in overlay portal)
     overlayRoot?.querySelectorAll('[data-wallet-id]').forEach((button: Element) => {
-      button.addEventListener('click', () => {
+      this.add(button, 'click', () => {
         const walletId = (button as HTMLElement).dataset.walletId;
         if (walletId) this.walletService.connectWallet(walletId);
       });
     });
 
     // Back button (QR view, in overlay portal)
-    overlayRoot?.querySelector('#back-button')?.addEventListener('click', () => {
+    this.add(overlayRoot?.querySelector('#back-button'), 'click', () => {
       (this.component as any).showWalletList();
     });
 
     // Back button (Loading view, in overlay portal)
-    overlayRoot?.querySelector('#loading-back-button')?.addEventListener('click', () => {
+    this.add(overlayRoot?.querySelector('#loading-back-button'), 'click', () => {
       (this.component as any).showWalletList();
     });
 
     // Copy button (QR view, in overlay portal)
-    overlayRoot?.querySelector('#copy-button')?.addEventListener('click', async () => {
+    this.add(overlayRoot?.querySelector('#copy-button'), 'click', async () => {
       if ((this.component as any).qrCodeData?.uri) {
         try {
           await navigator.clipboard.writeText((this.component as any).qrCodeData.uri);
@@ -115,7 +140,7 @@ export class EventHandler {
     });
 
     // Deeplink button (in overlay portal)
-    overlayRoot?.querySelector('#deeplink-button')?.addEventListener('click', () => {
+    this.add(overlayRoot?.querySelector('#deeplink-button'), 'click', () => {
       if ((this.component as any).qrCodeData?.uri && (this.component as any).qrCodeData?.walletId) {
         const adapter = (this.component as any).walletManager?.wallets.find(
           (w: any) => w.id === (this.component as any).qrCodeData?.walletId
@@ -139,25 +164,25 @@ export class EventHandler {
     });
 
     // Error retry button (in overlay portal)
-    overlayRoot?.querySelector('#error-retry-button')?.addEventListener('click', () => {
+    this.add(overlayRoot?.querySelector('#error-retry-button'), 'click', () => {
       if ((this.component as any).errorData?.walletId) {
         this.walletService.connectWallet((this.component as any).errorData.walletId);
       }
     });
 
     // Error back button (in overlay portal)
-    overlayRoot?.querySelector('#error-back-button')?.addEventListener('click', () => {
+    this.add(overlayRoot?.querySelector('#error-back-button'), 'click', () => {
       (this.component as any).showWalletList();
     });
 
     // Account selection back button (in overlay portal)
-    overlayRoot?.querySelector('#account-selection-back-button')?.addEventListener('click', () => {
+    this.add(overlayRoot?.querySelector('#account-selection-back-button'), 'click', () => {
       (this.component as any).showWalletList();
     });
 
     // Account selection buttons (in overlay portal)
     overlayRoot?.querySelectorAll('.account-button').forEach((button: Element) => {
-      button.addEventListener('click', () => {
+      this.add(button, 'click', () => {
         const accountIndex = parseInt((button as HTMLElement).dataset.accountIndex || '0', 10);
         logger.debug('Account selected:', accountIndex);
         this.walletService.connectWithLedgerAccount(accountIndex);
@@ -165,7 +190,7 @@ export class EventHandler {
     });
 
     // Custom derivation path button (in overlay portal)
-    overlayRoot?.querySelector('#custom-path-connect-button')?.addEventListener('click', () => {
+    this.add(overlayRoot?.querySelector('#custom-path-connect-button'), 'click', () => {
       const input = overlayRoot?.querySelector(
         '#custom-derivation-path'
       ) as HTMLInputElement | null;

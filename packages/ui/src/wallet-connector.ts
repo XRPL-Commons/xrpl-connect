@@ -94,6 +94,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private accountBalance: string | null = null; // Cached account balance
     private overlayPortal: HTMLDivElement | null = null;
     private accountModalPortal: HTMLDivElement | null = null;
+    private styleObserver: MutationObserver | null = null;
+    private walletManagerHandlers: {
+      connect: () => void;
+      disconnect: () => void;
+      accountChanged: () => void;
+    } | null = null;
 
     // Observed attributes
     static get observedAttributes() {
@@ -112,17 +118,30 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       requestAnimationFrame(() => this.updateDerivedColors());
 
       // Observe style attribute changes for CSS variable updates
-      const styleObserver = new MutationObserver(() => {
+      this.styleObserver?.disconnect();
+      this.styleObserver = new MutationObserver(() => {
         this.updateDerivedColors();
       });
 
-      styleObserver.observe(this, {
+      this.styleObserver.observe(this, {
         attributes: true,
         attributeFilter: ['style'],
       });
     }
 
     disconnectedCallback() {
+      this.eventHandler?.detachEventListeners();
+
+      if (this.walletManager && this.walletManagerHandlers) {
+        this.walletManager.off('connect', this.walletManagerHandlers.connect);
+        this.walletManager.off('disconnect', this.walletManagerHandlers.disconnect);
+        this.walletManager.off('accountChanged', this.walletManagerHandlers.accountChanged);
+        this.walletManagerHandlers = null;
+      }
+
+      this.styleObserver?.disconnect();
+      this.styleObserver = null;
+
       this.overlayPortal?.remove();
       this.overlayPortal = null;
       this.accountModalPortal?.remove();
@@ -201,23 +220,34 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Set the WalletManager instance
      */
     setWalletManager(manager: WalletManager) {
+      // If a previous manager was wired up, drop its subscriptions before swapping.
+      if (this.walletManager && this.walletManagerHandlers) {
+        this.walletManager.off('connect', this.walletManagerHandlers.connect);
+        this.walletManager.off('disconnect', this.walletManagerHandlers.disconnect);
+        this.walletManager.off('accountChanged', this.walletManagerHandlers.accountChanged);
+      }
+
       this.walletManager = manager;
       this.walletService = new WalletService(this.walletManager, this);
       this.eventHandler = new EventHandler(this, this.walletService);
 
-      // Listen to wallet manager events
-      this.walletManager.on('connect', () => {
-        this.close();
-        this.render(); // Re-render to update button
-      });
+      // Listen to wallet manager events — keep refs so we can detach on disconnect.
+      this.walletManagerHandlers = {
+        connect: () => {
+          this.close();
+          this.render(); // Re-render to update button
+        },
+        disconnect: () => {
+          this.render(); // Re-render to update button
+        },
+        accountChanged: () => {
+          this.render(); // Re-render to update button with new account
+        },
+      };
 
-      this.walletManager.on('disconnect', () => {
-        this.render(); // Re-render to update button
-      });
-
-      this.walletManager.on('accountChanged', () => {
-        this.render(); // Re-render to update button with new account
-      });
+      this.walletManager.on('connect', this.walletManagerHandlers.connect);
+      this.walletManager.on('disconnect', this.walletManagerHandlers.disconnect);
+      this.walletManager.on('accountChanged', this.walletManagerHandlers.accountChanged);
 
       this.render();
 
