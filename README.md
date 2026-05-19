@@ -154,7 +154,9 @@ pnpm dev
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](./docs/guide/adapter-integration.md) for details on our code of conduct and the process for submitting pull requests.
+Contributions are welcome! Please read our [Contributing Guide](./CONTRIBUTING.md) for development setup, branch/PR conventions, and the release process. To author a new wallet adapter specifically, see the [Adapter Integration Guide](./docs/guide/adapter-integration.md).
+
+A summary of notable changes in each release lives in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## 📄 License
 
