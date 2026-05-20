@@ -18,5 +18,5 @@ export default defineConfig(
       '@xrpl-connect/adapter-otsu',
       '@xrpl-connect/adapter-ledger',
     ],
-  }),
+  })
 );
