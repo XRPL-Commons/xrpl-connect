@@ -43,7 +43,8 @@
     "dev": "tsup --watch",
     "lint": "eslint src",
     "type-check": "tsc --noEmit",
-    "test": "vitest"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "peerDependencies": {
     "@xrpl-connect/core": "^0.1.0"
