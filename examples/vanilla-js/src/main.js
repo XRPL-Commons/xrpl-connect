@@ -98,13 +98,19 @@ const elements = {
   accountSection: document.getElementById('account-section'),
   transactionSection: document.getElementById('transaction-section'),
   messageSection: document.getElementById('message-section'),
+  credentialSection: document.getElementById('credential-section'),
+  credentialAcceptSection: document.getElementById('credential-accept-section'),
   address: document.getElementById('address'),
   network: document.getElementById('network'),
   walletName: document.getElementById('wallet-name'),
   txForm: document.getElementById('tx-form'),
   msgForm: document.getElementById('msg-form'),
+  credForm: document.getElementById('cred-form'),
+  credAcceptForm: document.getElementById('cred-accept-form'),
   txResult: document.getElementById('tx-result'),
   msgResult: document.getElementById('msg-result'),
+  credResult: document.getElementById('cred-result'),
+  credAcceptResult: document.getElementById('cred-accept-result'),
   eventsLog: document.getElementById('events-log'),
   clearLog: document.getElementById('clear-log'),
   currentTheme: document.getElementById('current-theme'),
@@ -222,6 +228,104 @@ elements.txForm.addEventListener('submit', async (e) => {
   }
 });
 
+// Encode UTF-8 string to uppercase hex (XRPL on-ledger fields like CredentialType / URI are hex blobs)
+function toHex(str) {
+  return Array.from(new TextEncoder().encode(str))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase();
+}
+
+// Ripple epoch starts 2000-01-01T00:00:00Z (946684800 seconds after unix epoch)
+const RIPPLE_EPOCH_OFFSET = 946684800;
+
+// Credential Create Form
+elements.credForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const subject = document.getElementById('cred-subject').value.trim();
+  const credentialType = document.getElementById('cred-type').value.trim();
+  const uri = document.getElementById('cred-uri').value.trim();
+  const expirationSeconds = document.getElementById('cred-expiration').value;
+
+  try {
+    elements.credResult.innerHTML =
+      '<div class="loading">Signing and submitting CredentialCreate...</div>';
+
+    const transaction = {
+      TransactionType: 'CredentialCreate',
+      Account: walletManager.account.address,
+      Subject: subject,
+      CredentialType: toHex(credentialType),
+    };
+
+    if (uri) {
+      transaction.URI = toHex(uri);
+    }
+
+    if (expirationSeconds) {
+      const unixSeconds = Math.floor(Date.now() / 1000) + Number(expirationSeconds);
+      transaction.Expiration = unixSeconds - RIPPLE_EPOCH_OFFSET;
+    }
+
+    const result = await walletManager.signAndSubmit(transaction);
+
+    elements.credResult.innerHTML = `
+      <div class="success">
+        <h3>Credential Created!</h3>
+        <p><strong>Issuer:</strong> ${transaction.Account}</p>
+        <p><strong>Subject:</strong> ${subject}</p>
+        <p><strong>Credential Type:</strong> ${credentialType} <code>(${transaction.CredentialType})</code></p>
+        <p><strong>Hash:</strong> ${result.hash || 'Pending'}</p>
+        ${result.id ? `<p><strong>ID:</strong> ${result.id}</p>` : ''}
+      </div>
+    `;
+
+    logEvent('CredentialCreate Submitted', { transaction, result });
+  } catch (error) {
+    elements.credResult.innerHTML = `<div class="error">Failed: ${error.message}</div>`;
+    logEvent('CredentialCreate Failed', error);
+  }
+});
+
+// Credential Accept Form
+elements.credAcceptForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const issuer = document.getElementById('cred-accept-issuer').value.trim();
+  const credentialType = document.getElementById('cred-accept-type').value.trim();
+
+  try {
+    elements.credAcceptResult.innerHTML =
+      '<div class="loading">Signing and submitting CredentialAccept...</div>';
+
+    const transaction = {
+      TransactionType: 'CredentialAccept',
+      Account: walletManager.account.address,
+      Issuer: issuer,
+      CredentialType: toHex(credentialType),
+    };
+
+    const result = await walletManager.signAndSubmit(transaction);
+
+    elements.credAcceptResult.innerHTML = `
+      <div class="success">
+        <h3>Credential Accepted!</h3>
+        <p><strong>Subject:</strong> ${transaction.Account}</p>
+        <p><strong>Issuer:</strong> ${issuer}</p>
+        <p><strong>Credential Type:</strong> ${credentialType} <code>(${transaction.CredentialType})</code></p>
+        <p><strong>Hash:</strong> ${result.hash || 'Pending'}</p>
+        ${result.id ? `<p><strong>ID:</strong> ${result.id}</p>` : ''}
+      </div>
+    `;
+
+    logEvent('CredentialAccept Submitted', { transaction, result });
+  } catch (error) {
+    elements.credAcceptResult.innerHTML = `<div class="error">Failed: ${error.message}</div>`;
+    logEvent('CredentialAccept Failed', error);
+  }
+});
+
 // Message Form
 elements.msgForm.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -268,6 +372,14 @@ function updateUI() {
     elements.accountSection.style.display = 'block';
     elements.transactionSection.style.display = 'block';
     elements.messageSection.style.display = 'block';
+    elements.credentialSection.style.display = 'block';
+    elements.credentialAcceptSection.style.display = 'block';
+
+    // Default the credential subject to the connected account if empty
+    const subjectInput = document.getElementById('cred-subject');
+    if (subjectInput && !subjectInput.value) {
+      subjectInput.value = walletManager.account.address;
+    }
 
     // Update account info
     elements.address.textContent = account.address;
@@ -281,10 +393,14 @@ function updateUI() {
     elements.accountSection.style.display = 'none';
     elements.transactionSection.style.display = 'none';
     elements.messageSection.style.display = 'none';
+    elements.credentialSection.style.display = 'none';
+    elements.credentialAcceptSection.style.display = 'none';
 
     // Clear results
     elements.txResult.innerHTML = '';
     elements.msgResult.innerHTML = '';
+    elements.credResult.innerHTML = '';
+    elements.credAcceptResult.innerHTML = '';
   }
 }
 

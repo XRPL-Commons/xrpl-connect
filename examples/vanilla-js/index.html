@@ -93,6 +93,83 @@
           <div id="tx-result" class="result"></div>
         </section>
 
+        <!-- Credential Create Section -->
+        <section id="credential-section" style="display: none;">
+          <h2>Create Credential</h2>
+          <p class="section-description">Issue an on-ledger credential to a subject account (XLS-70).</p>
+          <form id="cred-form" class="tx-form">
+            <div class="form-group">
+              <label for="cred-subject">Subject Address</label>
+              <input
+                type="text"
+                id="cred-subject"
+                placeholder="rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label for="cred-type">Credential Type</label>
+              <input
+                type="text"
+                id="cred-type"
+                placeholder="KYC"
+                required
+              />
+              <small>Plain string — will be hex-encoded automatically (max 64 bytes)</small>
+            </div>
+            <div class="form-group">
+              <label for="cred-uri">URI (optional)</label>
+              <input
+                type="text"
+                id="cred-uri"
+                placeholder="https://example.com/credential.json"
+              />
+              <small>Optional reference URI — will be hex-encoded automatically</small>
+            </div>
+            <div class="form-group">
+              <label for="cred-expiration">Expiration (optional, seconds from now)</label>
+              <input
+                type="number"
+                id="cred-expiration"
+                placeholder="86400"
+                min="1"
+              />
+              <small>Leave empty for no expiration</small>
+            </div>
+            <button type="submit" class="btn-primary">Sign & Submit CredentialCreate</button>
+          </form>
+          <div id="cred-result" class="result"></div>
+        </section>
+
+        <!-- Credential Accept Section -->
+        <section id="credential-accept-section" style="display: none;">
+          <h2>Accept Credential</h2>
+          <p class="section-description">As the subject, accept a credential that an issuer has created for you (XLS-70).</p>
+          <form id="cred-accept-form" class="tx-form">
+            <div class="form-group">
+              <label for="cred-accept-issuer">Issuer Address</label>
+              <input
+                type="text"
+                id="cred-accept-issuer"
+                placeholder="rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label for="cred-accept-type">Credential Type</label>
+              <input
+                type="text"
+                id="cred-accept-type"
+                placeholder="KYC"
+                required
+              />
+              <small>Plain string — must match the value the issuer used; will be hex-encoded automatically</small>
+            </div>
+            <button type="submit" class="btn-primary">Sign & Submit CredentialAccept</button>
+          </form>
+          <div id="cred-accept-result" class="result"></div>
+        </section>
+
         <!-- Sign Message Section -->
         <section id="message-section" style="display: none;">
           <h2>Sign Message</h2>
