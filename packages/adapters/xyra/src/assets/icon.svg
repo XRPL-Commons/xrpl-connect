@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300">
+  <defs>
+    <linearGradient id="xyra-icon-gradient-1" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#63e0ff" />
+      <stop offset="50%" stop-color="#5a7cff" />
+      <stop offset="100%" stop-color="#b26bff" />
+    </linearGradient>
+    <linearGradient id="xyra-icon-gradient-2" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#63e0ff" />
+      <stop offset="50%" stop-color="#5a7cff" />
+      <stop offset="100%" stop-color="#b26bff" />
+    </linearGradient>
+  </defs>
+  <g transform="matrix(1.369806 0 0 1.369806 -448.332644 -130.193822)">
+    <g transform="translate(436.801 204.55)">
+      <ellipse rx="90" ry="38" transform="matrix(0.819152 0.573576 -0.573576 0.819152 0 0)" fill="none" stroke="url(#xyra-icon-gradient-1)" stroke-width="18" stroke-linecap="round" />
+      <ellipse rx="90" ry="38" transform="matrix(0.819152 -0.573576 0.573576 0.819152 0 0)" opacity="0.95" fill="none" stroke="url(#xyra-icon-gradient-2)" stroke-width="18" stroke-linecap="round" />
+    </g>
+  </g>
+</svg>
