@@ -18,13 +18,13 @@ const walletManager = new WalletManager(options: WalletManagerOptions)
 
 #### Options
 
-| Property      | Type              | Description                                                |
-| ------------- | ----------------- | ---------------------------------------------------------- |
-| `adapters`    | `WalletAdapter[]` | Array of wallet adapters to register                       |
-| `network`     | `NetworkConfig`   | Default network (a standard id or a custom `NetworkInfo`)  |
-| `autoConnect` | `boolean`         | Auto-reconnect from stored session on initialization       |
-| `storage`     | `StorageAdapter`  | Custom storage adapter (defaults to `LocalStorageAdapter`) |
-| `logger`      | `LoggerOptions`   | `{ level?, prefix? }` to configure logging                 |
+| Property      | Type                              | Description                                                                                                                                     |
+| ------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `adapters`    | `WalletAdapter[]`                 | Array of wallet adapters to register                                                                                                            |
+| `network`     | `NetworkConfig`                   | Default network (a standard id or a custom `NetworkInfo`)                                                                                       |
+| `autoConnect` | `boolean`                         | Auto-reconnect from stored session on initialization                                                                                            |
+| `storage`     | `StorageAdapter`                  | Custom storage adapter (defaults to `LocalStorageAdapter`)                                                                                      |
+| `logger`      | `LoggerOptions \| LoggerInstance` | `{ level?, prefix? }` to configure the built-in logger, or a custom logger object (`{ debug, info, warn, error }`) that receives all log output |
 
 `NetworkConfig` is either one of the standard keys (`'mainnet' | 'testnet' | 'devnet'`) or a `NetworkInfo` object.
 

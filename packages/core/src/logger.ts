@@ -1,19 +1,24 @@
 /**
  * Logging system for xrpl-connect
- * Supports dev/prod mode with configurable log levels
+ * Supports dev/prod mode with configurable log levels and custom logger instances
  */
 
-import type { LoggerOptions } from './types';
+import type { LoggerOptions, LoggerInstance, LogLevel } from './types';
 
-type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'none';
+type InternalLogLevel = 'debug' | 'info' | 'warn' | 'error' | 'silent';
 
-const LOG_LEVELS: Record<LogLevel, number> = {
+const LOG_LEVELS: Record<InternalLogLevel, number> = {
   debug: 0,
   info: 1,
   warn: 2,
   error: 3,
-  none: 4,
+  silent: 4,
 };
+
+function normalizeLevel(level: LogLevel | undefined): InternalLogLevel | undefined {
+  if (!level) return undefined;
+  return level === 'none' ? 'silent' : level;
+}
 
 /**
  * Detect if running in development mode
@@ -34,31 +39,98 @@ function isDevelopment(): boolean {
 }
 
 /**
- * Logger class for structured logging
- * In development: logs debug, info, warn, error
- * In production: logs only warn and error
+ * Type guard for a user-supplied LoggerInstance.
+ */
+export function isLoggerInstance(value: unknown): value is LoggerInstance {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.debug === 'function' &&
+    typeof candidate.info === 'function' &&
+    typeof candidate.warn === 'function' &&
+    typeof candidate.error === 'function'
+  );
+}
+
+interface GlobalLoggerConfig {
+  instance?: LoggerInstance;
+  level?: InternalLogLevel;
+}
+
+let globalConfig: GlobalLoggerConfig = {};
+
+/**
+ * Configure the global logger used by every `Logger` instance — including the
+ * per-adapter loggers created via `createLogger`. Called by `WalletManager`
+ * when a consumer passes `logger` in `WalletManagerOptions`.
+ *
+ * - A `LoggerInstance` routes every subsequent log call (from the manager and
+ *   all adapters) into the supplied object.
+ * - A `LoggerOptions` value sets a global default level. Per-logger overrides
+ *   still win when explicitly set.
+ * - `undefined` resets the global configuration.
+ */
+export function configureLogger(option: LoggerOptions | LoggerInstance | undefined): void {
+  if (option === undefined) {
+    globalConfig = {};
+    return;
+  }
+  if (isLoggerInstance(option)) {
+    globalConfig = { instance: option };
+    return;
+  }
+  globalConfig = { level: normalizeLevel(option.level) };
+}
+
+/**
+ * Reset the global logger configuration. Exposed primarily for tests.
+ */
+export function resetGlobalLogger(): void {
+  globalConfig = {};
+}
+
+/**
+ * Logger class for structured logging.
+ *
+ * Resolution order for the effective level:
+ *   1. Explicit level passed to the constructor / `setLevel`.
+ *   2. Global level set via `configureLogger`.
+ *   3. `'debug'` in development, `'warn'` in production.
+ *
+ * When a custom `LoggerInstance` is configured globally, all log calls are
+ * routed to that instance instead of `console.*`.
  */
 export class Logger {
-  private level: LogLevel;
+  private localLevel?: InternalLogLevel;
   private prefix: string;
 
   constructor(options: LoggerOptions = {}) {
-    // Auto-detect level based on environment if not explicitly set
-    this.level = options.level || (isDevelopment() ? 'debug' : 'warn');
+    this.localLevel = normalizeLevel(options.level);
     this.prefix = options.prefix || '[xrpl-connect]';
+  }
+
+  /**
+   * Compute the level that should apply to this logger right now.
+   */
+  private effectiveLevel(): InternalLogLevel {
+    if (this.localLevel) return this.localLevel;
+    if (globalConfig.level) return globalConfig.level;
+    return isDevelopment() ? 'debug' : 'warn';
   }
 
   /**
    * Check if a log level should be output
    */
-  private shouldLog(level: LogLevel): boolean {
-    return LOG_LEVELS[level] >= LOG_LEVELS[this.level];
+  private shouldLog(level: Exclude<InternalLogLevel, 'silent'>): boolean {
+    const effective = this.effectiveLevel();
+    if (effective === 'silent') return false;
+    return LOG_LEVELS[level] >= LOG_LEVELS[effective];
   }
 
   /**
    * Format log message with prefix
    */
-  private formatMessage(level: LogLevel, message: string): string {
+  private formatMessage(level: InternalLogLevel, message: string): string {
     const timestamp = new Date().toISOString();
     return `${this.prefix} [${level.toUpperCase()}] ${timestamp} - ${message}`;
   }
@@ -67,50 +139,62 @@ export class Logger {
    * Log debug message
    */
   debug(message: string, ...args: unknown[]): void {
-    if (this.shouldLog('debug')) {
-      console.debug(this.formatMessage('debug', message), ...args);
+    if (!this.shouldLog('debug')) return;
+    if (globalConfig.instance) {
+      globalConfig.instance.debug(`${this.prefix} ${message}`, ...args);
+      return;
     }
+    console.debug(this.formatMessage('debug', message), ...args);
   }
 
   /**
    * Log info message
    */
   info(message: string, ...args: unknown[]): void {
-    if (this.shouldLog('info')) {
-      console.info(this.formatMessage('info', message), ...args);
+    if (!this.shouldLog('info')) return;
+    if (globalConfig.instance) {
+      globalConfig.instance.info(`${this.prefix} ${message}`, ...args);
+      return;
     }
+    console.info(this.formatMessage('info', message), ...args);
   }
 
   /**
    * Log warning message
    */
   warn(message: string, ...args: unknown[]): void {
-    if (this.shouldLog('warn')) {
-      console.warn(this.formatMessage('warn', message), ...args);
+    if (!this.shouldLog('warn')) return;
+    if (globalConfig.instance) {
+      globalConfig.instance.warn(`${this.prefix} ${message}`, ...args);
+      return;
     }
+    console.warn(this.formatMessage('warn', message), ...args);
   }
 
   /**
    * Log error message
    */
   error(message: string, ...args: unknown[]): void {
-    if (this.shouldLog('error')) {
-      console.error(this.formatMessage('error', message), ...args);
+    if (!this.shouldLog('error')) return;
+    if (globalConfig.instance) {
+      globalConfig.instance.error(`${this.prefix} ${message}`, ...args);
+      return;
     }
+    console.error(this.formatMessage('error', message), ...args);
   }
 
   /**
    * Update log level
    */
   setLevel(level: LogLevel): void {
-    this.level = level;
+    this.localLevel = normalizeLevel(level);
   }
 
   /**
-   * Get current log level
+   * Get current effective log level
    */
-  getLevel(): LogLevel {
-    return this.level;
+  getLevel(): InternalLogLevel {
+    return this.effectiveLevel();
   }
 }
 
