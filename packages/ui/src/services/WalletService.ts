@@ -1,17 +1,39 @@
-import type { WalletManager } from '@xrpl-connect/core';
+import type { ConnectOptions, WalletManager } from '@xrpl-connect/core';
 import { createLogger } from '@xrpl-connect/core';
 import { isSafari, isMobile, delay } from '../utils';
 import { TIMINGS, ERROR_CODES } from '../constants';
+import {
+  isModalConfigurableAdapter,
+  isMultiAccountAdapter,
+  type LedgerConnectOptions,
+  type WalletConnectConnectOptions,
+  type WalletConnectorContext,
+} from '../types';
 
 const logger = createLogger('[WalletService]');
+
+/**
+ * Narrow `unknown` thrown values to the bits we read for error display.
+ */
+interface ErrorLike {
+  code?: string | number;
+  message?: string;
+}
+
+function asErrorLike(value: unknown): ErrorLike {
+  if (value && typeof value === 'object') {
+    return value as ErrorLike;
+  }
+  return {};
+}
 
 export class WalletService {
   constructor(
     private walletManager: WalletManager,
-    private component: HTMLElement
+    private component: WalletConnectorContext
   ) {}
 
-  async connectWallet(walletId: string, options?: any) {
+  async connectWallet(walletId: string, options?: ConnectOptions) {
     if (!this.walletManager) {
       logger.error('WalletManager not set');
       return;
@@ -28,9 +50,12 @@ export class WalletService {
 
       if (walletId === 'walletconnect') {
         // Check if wallet adapter supports modal
-        const wcAdapter = wallet as any;
-        const useModal = wcAdapter.options?.useModal ?? false;
-        const modalMode = wcAdapter.options?.modalMode ?? 'mobile-only';
+        const useModal = isModalConfigurableAdapter(wallet)
+          ? (wallet.options?.useModal ?? false)
+          : false;
+        const modalMode = isModalConfigurableAdapter(wallet)
+          ? (wallet.options?.modalMode ?? 'mobile-only')
+          : 'mobile-only';
 
         const shouldUseModal =
           useModal && (modalMode === 'always' || (modalMode === 'mobile-only' && isMobile()));
@@ -44,7 +69,7 @@ export class WalletService {
           // This gives users the impression they're still in the connection flow
 
           // Show loading state first (with spinning animation like Xaman)
-          (this.component as any).showLoadingView(walletId, wallet.name, wallet.icon);
+          this.component.showLoadingView(walletId, wallet.name, wallet.icon);
 
           this.component.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
 
@@ -56,20 +81,20 @@ export class WalletService {
           this.component.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
 
           // Close our modal after successful connection
-          (this.component as any).close();
+          this.component.close();
         } else {
           // ===== USE CUSTOM QR (Desktop mode) =====
           logger.debug('Using custom QR code (desktop mode)');
 
           // Show QR code view first for WalletConnect
-          (this.component as any).showQRCodeView(walletId);
+          this.component.showQRCodeView(walletId);
 
           // Set up QR code callback
-          const connectOptions = {
+          const connectOptions: ConnectOptions<WalletConnectConnectOptions> = {
             ...options,
             onQRCode: (uri: string) => {
               logger.debug('QR code callback received:', uri.substring(0, 50) + '...');
-              (this.component as any).setQRCode(walletId, uri);
+              this.component.setQRCode(walletId, uri);
             },
           };
 
@@ -87,8 +112,12 @@ export class WalletService {
           );
         }
 
+        if (!isMultiAccountAdapter(wallet)) {
+          throw new Error(`${wallet.name} does not support account enumeration`);
+        }
+
         // Show loading while fetching accounts
-        (this.component as any).showLoadingView(walletId, wallet.name, wallet.icon);
+        this.component.showLoadingView(walletId, wallet.name, wallet.icon);
 
         // Small delay for UI
         if (!isSafari()) {
@@ -97,16 +126,11 @@ export class WalletService {
 
         // Fetch accounts from Ledger
         logger.debug('Fetching Ledger accounts...');
-        const accounts = await (wallet as any).getAccounts(5, 0);
+        const accounts = await wallet.getAccounts(5, 0);
         logger.debug('Fetched accounts:', accounts);
 
         // Show account selection view
-        (this.component as any).showAccountSelectionView(
-          walletId,
-          wallet.name,
-          wallet.icon,
-          accounts
-        );
+        this.component.showAccountSelectionView(walletId, wallet.name, wallet.icon, accounts);
       } else {
         // For extension wallets, check availability first
         const isAvailable = await wallet.isAvailable();
@@ -117,7 +141,7 @@ export class WalletService {
         }
 
         // Show loading state
-        (this.component as any).showLoadingView(walletId, wallet.name, wallet.icon);
+        this.component.showLoadingView(walletId, wallet.name, wallet.icon);
 
         this.component.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
 
@@ -130,22 +154,23 @@ export class WalletService {
         await this.walletManager.connect(walletId, options);
         this.component.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = asErrorLike(error);
       const wallet = this.walletManager?.wallets.find((w) => w.id === walletId);
 
       // Detect error type based on error code (ConnectKit pattern)
-      let errorMessage = error.message || 'An unexpected error occurred';
+      let errorMessage = err.message || 'An unexpected error occurred';
       let errorType: 'rejected' | 'unavailable' | 'failed' = 'failed';
 
       // Check for specific error codes
       if (
-        error.code === ERROR_CODES.USER_REJECTED ||
+        err.code === ERROR_CODES.USER_REJECTED ||
         errorMessage.toLowerCase().includes('user rejected')
       ) {
         errorType = 'rejected';
         errorMessage = 'Connection request was cancelled';
       } else if (
-        error.code === ERROR_CODES.POPUP_CLOSED ||
+        err.code === ERROR_CODES.POPUP_CLOSED ||
         errorMessage.toLowerCase().includes('already pending')
       ) {
         errorType = 'unavailable';
@@ -154,13 +179,9 @@ export class WalletService {
         errorType = 'unavailable';
       }
 
-      logger.debug('Connection error type:', errorType, 'Code:', error.code);
+      logger.debug('Connection error type:', errorType, 'Code:', err.code);
 
-      (this.component as any).showErrorView(
-        walletId,
-        wallet?.name || 'Wallet',
-        new Error(errorMessage)
-      );
+      this.component.showErrorView(walletId, wallet?.name || 'Wallet', new Error(errorMessage));
       this.component.dispatchEvent(
         new CustomEvent('error', { detail: { error, walletId, errorType } })
       );
@@ -169,13 +190,13 @@ export class WalletService {
   }
 
   async connectWithLedgerAccount(accountIndex: number) {
-    if (!this.walletManager || !(this.component as any).accountSelectionData) return;
+    if (!this.walletManager || !this.component.accountSelectionData) return;
 
-    const { walletId, walletName, walletIcon } = (this.component as any).accountSelectionData;
+    const { walletId, walletName, walletIcon } = this.component.accountSelectionData;
 
     try {
       // Show loading state
-      (this.component as any).showLoadingView(walletId, walletName, walletIcon);
+      this.component.showLoadingView(walletId, walletName, walletIcon);
 
       // Small delay for UI
       if (!isSafari()) {
@@ -187,27 +208,28 @@ export class WalletService {
         new CustomEvent('connecting', { detail: { walletId, accountIndex } })
       );
 
-      // Connect with selected account index
-      await this.walletManager.connect(walletId, { accountIndex } as any); // Custom options for Ledger
+      const ledgerOptions: ConnectOptions<LedgerConnectOptions> = { accountIndex };
+      await this.walletManager.connect(walletId, ledgerOptions);
 
       this.component.dispatchEvent(
         new CustomEvent('connected', { detail: { walletId, accountIndex } })
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = asErrorLike(error);
       // Handle error - show error view
-      let errorMessage = error.message || 'An unexpected error occurred';
+      let errorMessage = err.message || 'An unexpected error occurred';
       let errorType: 'rejected' | 'unavailable' | 'failed' = 'failed';
 
       if (
-        error.code === ERROR_CODES.USER_REJECTED ||
+        err.code === ERROR_CODES.USER_REJECTED ||
         errorMessage.toLowerCase().includes('user rejected')
       ) {
         errorType = 'rejected';
         errorMessage = 'Connection request was cancelled';
       }
 
-      logger.debug('Connection error type:', errorType, 'Code:', error.code);
-      (this.component as any).showErrorView(walletId, walletName, new Error(errorMessage));
+      logger.debug('Connection error type:', errorType, 'Code:', err.code);
+      this.component.showErrorView(walletId, walletName, new Error(errorMessage));
       this.component.dispatchEvent(
         new CustomEvent('error', { detail: { error, walletId, errorType } })
       );
@@ -216,9 +238,9 @@ export class WalletService {
   }
 
   async connectWithCustomDerivationPath(derivationPath: string) {
-    if (!this.walletManager || !(this.component as any).accountSelectionData) return;
+    if (!this.walletManager || !this.component.accountSelectionData) return;
 
-    const { walletId, walletName, walletIcon } = (this.component as any).accountSelectionData;
+    const { walletId, walletName, walletIcon } = this.component.accountSelectionData;
 
     try {
       // Validate derivation path format
@@ -228,7 +250,7 @@ export class WalletService {
       }
 
       // Show loading state
-      (this.component as any).showLoadingView(walletId, walletName, walletIcon);
+      this.component.showLoadingView(walletId, walletName, walletIcon);
 
       // Small delay for UI
       if (!isSafari()) {
@@ -240,27 +262,28 @@ export class WalletService {
         new CustomEvent('connecting', { detail: { walletId, derivationPath } })
       );
 
-      // Connect with custom derivation path
-      await this.walletManager.connect(walletId, { derivationPath } as any); // Custom options for Ledger
+      const ledgerOptions: ConnectOptions<LedgerConnectOptions> = { derivationPath };
+      await this.walletManager.connect(walletId, ledgerOptions);
 
       this.component.dispatchEvent(
         new CustomEvent('connected', { detail: { walletId, derivationPath } })
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = asErrorLike(error);
       // Handle error - show error view
-      let errorMessage = error.message || 'An unexpected error occurred';
+      let errorMessage = err.message || 'An unexpected error occurred';
       let errorType: 'rejected' | 'unavailable' | 'failed' = 'failed';
 
       if (
-        error.code === ERROR_CODES.USER_REJECTED ||
+        err.code === ERROR_CODES.USER_REJECTED ||
         errorMessage.toLowerCase().includes('user rejected')
       ) {
         errorType = 'rejected';
         errorMessage = 'Connection request was cancelled';
       }
 
-      logger.debug('Connection error type:', errorType, 'Code:', error.code);
-      (this.component as any).showErrorView(walletId, walletName, new Error(errorMessage));
+      logger.debug('Connection error type:', errorType, 'Code:', err.code);
+      this.component.showErrorView(walletId, walletName, new Error(errorMessage));
       this.component.dispatchEvent(
         new CustomEvent('error', { detail: { error, walletId, errorType } })
       );
