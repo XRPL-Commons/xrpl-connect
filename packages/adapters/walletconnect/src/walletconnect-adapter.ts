@@ -16,7 +16,7 @@ import type {
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
-import { createWalletError, STANDARD_NETWORKS, createLogger } from '@xrpl-connect/core';
+import { createWalletError, resolveNetwork, createLogger } from '@xrpl-connect/core';
 import {
   DISCONNECT_REASONS,
   DEFAULT_METADATA,
@@ -176,7 +176,7 @@ export class WalletConnectAdapter implements WalletAdapter {
       }
 
       // Determine network for pre-initialization
-      const networkInfo = this.resolveNetwork(network);
+      const networkInfo = resolveNetwork(network);
 
       // Start connection to generate URI (ConnectKit pattern)
       const requiredNamespaces = {
@@ -244,7 +244,7 @@ export class WalletConnectAdapter implements WalletAdapter {
 
     try {
       // Determine network
-      const network = this.resolveNetwork(options?.network);
+      const network = resolveNetwork(options?.network);
 
       // Initialize SignClient if needed
       if (!this.client) {
@@ -499,25 +499,6 @@ export class WalletConnectAdapter implements WalletAdapter {
     throw createWalletError.unsupportedMethod(
       'Message signing is not supported via WalletConnect. Please use Xaman, Crossmark, or GemWallet for signing messages.'
     );
-  }
-
-  /**
-   * Resolve network configuration
-   */
-  private resolveNetwork(config?: ConnectOptions['network']): NetworkInfo {
-    if (!config) {
-      return STANDARD_NETWORKS.mainnet;
-    }
-
-    if (typeof config === 'string') {
-      const network = STANDARD_NETWORKS[config];
-      if (!network) {
-        throw createWalletError.unknown(`Unknown network: ${config}`);
-      }
-      return network;
-    }
-
-    return config;
   }
 
   /**

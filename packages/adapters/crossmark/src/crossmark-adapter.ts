@@ -13,7 +13,7 @@ import type {
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
-import { createWalletError, STANDARD_NETWORKS } from '@xrpl-connect/core';
+import { createWalletError, resolveNetwork } from '@xrpl-connect/core';
 
 /**
  * Crossmark adapter options
@@ -65,7 +65,7 @@ export class CrossmarkAdapter implements WalletAdapter {
       }
 
       // Determine network
-      const network = this.resolveNetwork(options?.network);
+      const network = resolveNetwork(options?.network);
 
       // Generate a random hash for signing
       const hash = this.generateRandomHash();
@@ -209,25 +209,6 @@ export class CrossmarkAdapter implements WalletAdapter {
     } catch (error) {
       throw createWalletError.signFailed(error as Error);
     }
-  }
-
-  /**
-   * Resolve network configuration
-   */
-  private resolveNetwork(config?: ConnectOptions['network']): NetworkInfo {
-    if (!config) {
-      return STANDARD_NETWORKS.mainnet;
-    }
-
-    if (typeof config === 'string') {
-      const network = STANDARD_NETWORKS[config];
-      if (!network) {
-        throw createWalletError.unknown(`Unknown network: ${config}`);
-      }
-      return network;
-    }
-
-    return config;
   }
 
   /**
