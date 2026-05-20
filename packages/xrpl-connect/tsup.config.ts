@@ -1,31 +1,22 @@
 import { defineConfig } from 'tsup';
+import { createTsupConfig } from '../../tsup.base.config';
 
-export default defineConfig({
-  entry: ['src/index.ts'],
-  format: ['cjs', 'esm'],
-  dts: true,
-  clean: true,
-  sourcemap: true,
-  splitting: false,
-  treeshake: true,
-  // Don't bundle - let imports work during development
-  // For publishing to npm, use: pnpm publish:build
-  external: [
-    'xrpl',
-    // Externalize all internal packages (they're re-exported)
-    '@xrpl-connect/core',
-    '@xrpl-connect/ui',
-    '@xrpl-connect/adapter-xaman',
-    '@xrpl-connect/adapter-crossmark',
-    '@xrpl-connect/adapter-gemwallet',
-    '@xrpl-connect/adapter-walletconnect',
-    '@xrpl-connect/adapter-xyra',
-    '@xrpl-connect/adapter-otsu',
-  ],
-  outDir: 'dist',
-  outExtension({ format }) {
-    return {
-      js: format === 'cjs' ? '.js' : '.mjs',
-    };
-  },
-});
+// The umbrella package re-exports every workspace package. Externalize all of
+// them (and `xrpl`) so consumers resolve them via their own published builds.
+// For npm publishing, use `pnpm publish:build` which runs the Vite bundle.
+export default defineConfig(
+  createTsupConfig({
+    external: [
+      'xrpl',
+      '@xrpl-connect/core',
+      '@xrpl-connect/ui',
+      '@xrpl-connect/adapter-xaman',
+      '@xrpl-connect/adapter-crossmark',
+      '@xrpl-connect/adapter-gemwallet',
+      '@xrpl-connect/adapter-walletconnect',
+      '@xrpl-connect/adapter-xyra',
+      '@xrpl-connect/adapter-otsu',
+      '@xrpl-connect/adapter-ledger',
+    ],
+  }),
+);
