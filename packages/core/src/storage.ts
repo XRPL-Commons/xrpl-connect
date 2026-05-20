@@ -242,7 +242,7 @@ export class Storage {
 
     if (version > this.version) {
       logger.warn(
-        `Stored state version ${version} is newer than supported (${this.version}); discarding`,
+        `Stored state version ${version} is newer than supported (${this.version}); discarding`
       );
       return null;
     }

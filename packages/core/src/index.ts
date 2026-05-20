@@ -45,3 +45,6 @@ export { Logger, createLogger } from './logger';
 
 // Constants
 export { TIME } from './constants';
+
+// Network helpers
+export { resolveNetwork } from './network';

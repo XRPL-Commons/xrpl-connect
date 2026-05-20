@@ -84,7 +84,7 @@ describe('Storage versioning', () => {
     const adapter = new MemoryStorageAdapter();
     await adapter.set(
       STATE_KEY,
-      JSON.stringify({ version: STORED_STATE_VERSION + 1, payload: makeState() }),
+      JSON.stringify({ version: STORED_STATE_VERSION + 1, payload: makeState() })
     );
 
     const storage = new Storage(adapter);

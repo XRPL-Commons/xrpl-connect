@@ -9,13 +9,14 @@ import type {
   WalletAdapter,
   AccountInfo,
   ConnectOptions,
+  NetworkConfig,
   NetworkInfo,
   Transaction,
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
-import { createWalletError, STANDARD_NETWORKS, createLogger } from '@xrpl-connect/core';
+import { createWalletError, resolveNetwork, createLogger } from '@xrpl-connect/core';
 import {
   DISCONNECT_REASONS,
   DEFAULT_METADATA,
@@ -82,6 +83,8 @@ export class WalletConnectAdapter implements WalletAdapter {
   private pendingConnection: { uri: string; approval: () => Promise<SessionTypes.Struct> } | null =
     null;
   private modal: WalletConnectModal | null = null;
+  private sessionDeleteHandler: (() => void) | null = null;
+  private sessionExpireHandler: (() => void) | null = null;
 
   constructor(options: WalletConnectAdapterOptions = {}) {
     this.options = options;
@@ -138,7 +141,7 @@ export class WalletConnectAdapter implements WalletAdapter {
    * This generates the QR code URI before the user clicks WalletConnect
    * Based on ConnectKit's eager initialization pattern
    */
-  async preInitialize(projectId?: string, network?: string): Promise<void> {
+  async preInitialize(projectId?: string, network?: NetworkConfig): Promise<void> {
     const pid = projectId || this.options.projectId;
 
     if (!pid) {
@@ -175,7 +178,7 @@ export class WalletConnectAdapter implements WalletAdapter {
       }
 
       // Determine network for pre-initialization
-      const networkInfo = this.resolveNetwork(network);
+      const networkInfo = resolveNetwork(network);
 
       // Start connection to generate URI (ConnectKit pattern)
       const requiredNamespaces = {
@@ -243,7 +246,7 @@ export class WalletConnectAdapter implements WalletAdapter {
 
     try {
       // Determine network
-      const network = this.resolveNetwork(options?.network);
+      const network = resolveNetwork(options?.network);
 
       // Initialize SignClient if needed
       if (!this.client) {
@@ -315,11 +318,16 @@ export class WalletConnectAdapter implements WalletAdapter {
         let uri: string;
         let approval: () => Promise<SessionTypes.Struct>;
 
-        // Check if we have a pending connection from pre-initialization
-        if (this.pendingConnection) {
+        // Check if we have a pending connection from pre-initialization.
+        // Consume it immediately so a retry after this connect() fails (or a
+        // concurrent call) does not reuse the same approval promise.
+        const pending = this.pendingConnection;
+        this.pendingConnection = null;
+
+        if (pending) {
           logger.debug('Using pre-generated connection');
-          uri = this.pendingConnection.uri;
-          approval = this.pendingConnection.approval;
+          uri = pending.uri;
+          approval = pending.approval;
 
           if (onQRCode) {
             logger.debug('Calling onQRCode callback with pre-generated URI');
@@ -379,6 +387,8 @@ export class WalletConnectAdapter implements WalletAdapter {
       if (this.modal) {
         this.modal.closeModal();
       }
+      // Drop any stale pending connection so the next connect() starts fresh
+      this.pendingConnection = null;
       throw createWalletError.connectionFailed(this.name, error as Error);
     }
   }
@@ -501,45 +511,41 @@ export class WalletConnectAdapter implements WalletAdapter {
   }
 
   /**
-   * Resolve network configuration
-   */
-  private resolveNetwork(config?: ConnectOptions['network']): NetworkInfo {
-    if (!config) {
-      return STANDARD_NETWORKS.mainnet;
-    }
-
-    if (typeof config === 'string') {
-      const network = STANDARD_NETWORKS[config];
-      if (!network) {
-        throw createWalletError.unknown(`Unknown network: ${config}`);
-      }
-      return network;
-    }
-
-    return config;
-  }
-
-  /**
    * Setup event listeners for session
    */
   private setupEventListeners(): void {
     if (!this.client) return;
 
-    // Session delete event
-    this.client.on('session_delete', () => {
-      this.cleanup();
-    });
+    // Tear down any handlers from a previous session before re-binding, so
+    // listeners don't accumulate across connect/disconnect cycles.
+    this.removeEventListeners();
 
-    // Session expire event
-    this.client.on('session_expire', () => {
-      this.cleanup();
-    });
+    this.sessionDeleteHandler = () => this.cleanup();
+    this.sessionExpireHandler = () => this.cleanup();
+
+    this.client.on('session_delete', this.sessionDeleteHandler);
+    this.client.on('session_expire', this.sessionExpireHandler);
+  }
+
+  private removeEventListeners(): void {
+    if (this.client) {
+      if (this.sessionDeleteHandler) {
+        this.client.off('session_delete', this.sessionDeleteHandler);
+      }
+      if (this.sessionExpireHandler) {
+        this.client.off('session_expire', this.sessionExpireHandler);
+      }
+    }
+    this.sessionDeleteHandler = null;
+    this.sessionExpireHandler = null;
   }
 
   /**
    * Cleanup adapter state
    */
   private cleanup(): void {
+    this.removeEventListeners();
+
     // Close and cleanup modal
     if (this.modal) {
       this.modal.closeModal();
