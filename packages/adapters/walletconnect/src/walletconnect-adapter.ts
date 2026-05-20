@@ -9,13 +9,14 @@ import type {
   WalletAdapter,
   AccountInfo,
   ConnectOptions,
+  NetworkConfig,
   NetworkInfo,
   Transaction,
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
-import { createWalletError, STANDARD_NETWORKS, createLogger } from '@xrpl-connect/core';
+import { createWalletError, resolveNetwork, createLogger } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
 
 const ICON_DATA_URL = `data:image/svg+xml;utf8,${encodeURIComponent(iconSvg)}`;
@@ -140,7 +141,7 @@ export class WalletConnectAdapter implements WalletAdapter {
    * This generates the QR code URI before the user clicks WalletConnect
    * Based on ConnectKit's eager initialization pattern
    */
-  async preInitialize(projectId?: string, network?: string): Promise<void> {
+  async preInitialize(projectId?: string, network?: NetworkConfig): Promise<void> {
     const pid = projectId || this.options.projectId;
 
     if (!pid) {
@@ -177,7 +178,7 @@ export class WalletConnectAdapter implements WalletAdapter {
       }
 
       // Determine network for pre-initialization
-      const networkInfo = this.resolveNetwork(network);
+      const networkInfo = resolveNetwork(network);
 
       // Start connection to generate URI (ConnectKit pattern)
       const requiredNamespaces = {
@@ -245,7 +246,7 @@ export class WalletConnectAdapter implements WalletAdapter {
 
     try {
       // Determine network
-      const network = this.resolveNetwork(options?.network);
+      const network = resolveNetwork(options?.network);
 
       // Initialize SignClient if needed
       if (!this.client) {
@@ -500,25 +501,6 @@ export class WalletConnectAdapter implements WalletAdapter {
     throw createWalletError.unsupportedMethod(
       'Message signing is not supported via WalletConnect. Please use Xaman, Crossmark, or GemWallet for signing messages.'
     );
-  }
-
-  /**
-   * Resolve network configuration
-   */
-  private resolveNetwork(config?: ConnectOptions['network']): NetworkInfo {
-    if (!config) {
-      return STANDARD_NETWORKS.mainnet;
-    }
-
-    if (typeof config === 'string') {
-      const network = STANDARD_NETWORKS[config];
-      if (!network) {
-        throw createWalletError.unknown(`Unknown network: ${config}`);
-      }
-      return network;
-    }
-
-    return config;
   }
 
   /**

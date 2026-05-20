@@ -17,7 +17,7 @@ import type {
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
-import { createWalletError, STANDARD_NETWORKS } from '@xrpl-connect/core';
+import { createWalletError, resolveNetwork } from '@xrpl-connect/core';
 
 import type { LedgerAdapterOptions, LedgerConnectOptions } from './types';
 import { LedgerDeviceState } from './types';
@@ -101,7 +101,7 @@ export class LedgerAdapter implements WalletAdapter {
         this.derivationPath = `44'/144'/${options.accountIndex}'/0/0`;
       }
 
-      const network = this.resolveNetwork(options?.network);
+      const network = resolveNetwork(options?.network);
       this.transport = await this.createTransport();
       this.xrpApp = new Xrp(this.transport);
 
@@ -446,25 +446,6 @@ export class LedgerAdapter implements WalletAdapter {
       this.transport = null;
     }
     this.xrpApp = null;
-  }
-
-  /**
-   * Resolve network configuration
-   */
-  private resolveNetwork(config?: ConnectOptions['network']): NetworkInfo {
-    if (!config) {
-      return STANDARD_NETWORKS.mainnet;
-    }
-
-    if (typeof config === 'string') {
-      const network = STANDARD_NETWORKS[config];
-      if (!network) {
-        throw createWalletError.unknown(`Unknown network: ${config}`);
-      }
-      return network;
-    }
-
-    return config;
   }
 
   /**

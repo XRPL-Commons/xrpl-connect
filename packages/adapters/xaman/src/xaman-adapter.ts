@@ -12,9 +12,8 @@ import {
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
-  STANDARD_NETWORKS,
 } from '@xrpl-connect/core';
-import { createWalletError, createLogger } from '@xrpl-connect/core';
+import { createWalletError, createLogger, resolveNetwork } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
 
 const ICON_DATA_URL = `data:image/svg+xml;utf8,${encodeURIComponent(iconSvg)}`;
@@ -93,7 +92,7 @@ export class XamanAdapter implements WalletAdapter {
 
     let resolvedNetwork: NetworkInfo;
     if (network) {
-      resolvedNetwork = this.resolveNetwork(network);
+      resolvedNetwork = resolveNetwork(network);
     } else {
       const xamanNetwork = await this.client.user.networkEndpoint;
       if (!xamanNetwork) {
@@ -161,7 +160,7 @@ export class XamanAdapter implements WalletAdapter {
       logger.debug('Authorization successful', { account: authResult.me?.account });
 
       const account = authResult.me.account;
-      const network: NetworkInfo = this.resolveNetwork(options?.network);
+      const network: NetworkInfo = resolveNetwork(options?.network);
 
       this.currentAccount = {
         address: account,
@@ -460,24 +459,5 @@ export class XamanAdapter implements WalletAdapter {
     this.client = null;
     this.currentAccount = null;
     // Don't clear pending payload on disconnect - it might still be needed
-  }
-
-  /**
-   * Resolve network configuration
-   */
-  private resolveNetwork(config?: ConnectOptions['network']): NetworkInfo {
-    if (!config) {
-      return STANDARD_NETWORKS.mainnet;
-    }
-
-    if (typeof config === 'string') {
-      const network = STANDARD_NETWORKS[config];
-      if (!network) {
-        throw createWalletError.unknown(`Unknown network: ${config}`);
-      }
-      return network;
-    }
-
-    return config;
   }
 }

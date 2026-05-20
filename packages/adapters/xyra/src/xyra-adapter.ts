@@ -138,7 +138,7 @@ export class XyraAdapter implements WalletAdapter {
       this.currentXyraNetwork = response.network;
 
       // Map the response to xrpl-connect AccountInfo
-      const networkInfo = this.resolveNetworkInfo(response.network);
+      const networkInfo = this.xyraNetworkToInfo(response.network);
 
       this.currentAccount = {
         address: response.address,
@@ -438,8 +438,14 @@ export class XyraAdapter implements WalletAdapter {
 
   /**
    * Map a Xyra SDK Network string back to an xrpl-connect NetworkInfo.
+   *
+   * This is not the same as the shared `resolveNetwork` helper from
+   * `@xrpl-connect/core`: that helper resolves a user-supplied
+   * `ConnectOptions['network']` (string id or `NetworkInfo`) to a
+   * `NetworkInfo`, whereas this method translates a Xyra-SDK-native
+   * network identifier returned by the wallet itself.
    */
-  private resolveNetworkInfo(xyraNetwork: Network): NetworkInfo {
+  private xyraNetworkToInfo(xyraNetwork: Network): NetworkInfo {
     const connectNetworkId = XYRA_TO_XRPL_CONNECT_NETWORK[xyraNetwork];
 
     // Check standard networks first

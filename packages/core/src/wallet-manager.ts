@@ -13,6 +13,7 @@ import type {
   SubmittedTransaction,
   WalletEvent,
   ConnectOptions,
+  NetworkConfig,
   NetworkInfo,
   StoredState,
 } from './types';
@@ -292,6 +293,13 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    */
   get wallets(): WalletAdapter[] {
     return Array.from(this.adapters.values());
+  }
+
+  /**
+   * Default network configured on the manager, if any.
+   */
+  get defaultNetwork(): NetworkConfig | undefined {
+    return this.options.network;
   }
 
   /**
