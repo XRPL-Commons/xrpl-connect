@@ -207,7 +207,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         DEFAULT_THEME.BACKGROUND_COLOR;
 
       // Calculate lighter shades for hover states
-      const primaryHoverColor = adjustColorBrightness(primaryColor, COLOR_ADJUSTMENT.HOVER_BRIGHTNESS);
+      const primaryHoverColor = adjustColorBrightness(
+        primaryColor,
+        COLOR_ADJUSTMENT.HOVER_BRIGHTNESS
+      );
       const backgroundHoverColor = adjustColorBrightness(
         backgroundColor,
         COLOR_ADJUSTMENT.HOVER_BRIGHTNESS
