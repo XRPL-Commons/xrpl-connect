@@ -27,7 +27,7 @@ import type { XyraAdapterOptions, XyraConnectOptions } from './types';
 import { XRPL_CONNECT_TO_XYRA_NETWORK, XYRA_TO_XRPL_CONNECT_NETWORK } from './types';
 import iconSvg from './assets/icon.svg';
 
-const ICON_DATA_URL = `data:image/svg+xml;utf8,${encodeURIComponent(iconSvg)}`;
+const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
 
 /**
  * Logger instance for Xyra adapter
