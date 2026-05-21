@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { copyFileSync, existsSync } from 'fs';
+import { copyFileSync, existsSync, readFileSync } from 'fs';
 import inject from '@rollup/plugin-inject';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -27,6 +27,22 @@ export default defineConfig({
     },
   },
   plugins: [
+    // Match the per-adapter tsup config (`loader: { '.svg': 'text' }`). Without
+    // this, Vite's default asset handler resolves `.svg` imports to a
+    // `data:image/svg+xml,...` URL, and each adapter's
+    // `data:image/svg+xml,${encodeURIComponent(iconSvg)}` wrapper then
+    // double-encodes it into an unrenderable URI.
+    {
+      name: 'svg-as-text',
+      enforce: 'pre',
+      load(id) {
+        const path = id.split('?')[0];
+        if (path.endsWith('.svg')) {
+          const source = readFileSync(path, 'utf-8');
+          return `export default ${JSON.stringify(source)};`;
+        }
+      },
+    },
     {
       name: 'copy-readme',
       closeBundle() {
