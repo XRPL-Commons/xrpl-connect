@@ -1,6 +1,6 @@
 {
   "name": "@xrpl-connect/adapter-walletconnect",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "WalletConnect adapter for XRPL Connect - QR code based wallet connections",
   "author": "XRPL Connect Contributors",
   "license": "MIT",

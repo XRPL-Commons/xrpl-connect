@@ -1,6 +1,6 @@
 {
   "name": "@xrpl-connect/adapter-xyra",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Xyra wallet adapter for XRPL Connect - browser-native popup-based wallet",
   "author": "Xyra Wallet",
   "license": "MIT",
