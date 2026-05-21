@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-05-21
+
+### Fixed
+
+- Adapters: drop the invalid `;utf8` media-type parameter from inlined SVG icon data URLs so wallet logos render in browsers / CSP / sanitizer setups that strict-parse `data:` URIs (#85).
+
 ## [0.8.0] - 2026-05-21
 
 ### Added
@@ -123,7 +129,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Switch the build to Vite for the meta package.
 - Crossmark adapter: use `signAndSubmitAndWait` and improve `isAvailable`.
 
-[Unreleased]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.6.0...v0.7.0

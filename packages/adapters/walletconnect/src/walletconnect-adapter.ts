@@ -28,7 +28,7 @@ import {
   XRPL_NAMESPACE,
 } from './constants';
 
-const ICON_DATA_URL = `data:image/svg+xml;utf8,${encodeURIComponent(iconSvg)}`;
+const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
 
 /**
  * Utility function to detect if user is on mobile device
