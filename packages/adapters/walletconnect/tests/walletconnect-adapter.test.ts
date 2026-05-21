@@ -6,6 +6,7 @@ const mockClient = {
   disconnect: vi.fn(),
   request: vi.fn(),
   on: vi.fn(),
+  off: vi.fn(),
 };
 
 vi.mock('@walletconnect/sign-client', () => ({
@@ -27,6 +28,7 @@ beforeEach(() => {
   mockClient.disconnect.mockReset();
   mockClient.request.mockReset();
   mockClient.on.mockReset();
+  mockClient.off.mockReset();
   SignClientMock.init.mockResolvedValue(mockClient);
 });
 
