@@ -1,6 +1,6 @@
 {
   "name": "@xrpl-connect/ui",
-  "version": "0.4.0",
+  "version": "0.8.0",
   "description": "Web component UI for XRPL Connect wallet connections",
   "author": "XRPL Connect Contributors",
   "license": "MIT",
@@ -47,7 +47,7 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@xrpl-connect/core": "^0.1.0"
+    "@xrpl-connect/core": "^0.8.0"
   },
   "devDependencies": {
     "@xrpl-connect/core": "workspace:*",
