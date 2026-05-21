@@ -463,16 +463,16 @@ walletManager.on('networkChanged', (network: NetworkInfo) => {
 ### Error Categories
 
 `WalletError.category` groups every code into one of five high-level buckets so
-consumer apps can drive UX off the *kind* of failure without enumerating every
+consumer apps can drive UX off the _kind_ of failure without enumerating every
 code. Each code maps to exactly one category.
 
-| Category             | Meaning                                                                     | Recommended UX                                                                   |
-| -------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `USER_ACTION`        | The user explicitly rejected or cancelled.                                  | No error toast — return to the previous state silently or show a subtle "cancelled" hint. |
-| `WALLET_UNAVAILABLE` | Provider missing, locked, or on the wrong network.                          | Show install / unlock / switch-network instructions. Not retryable in place.     |
-| `NETWORK`            | RPC, WebSocket, or transport failure between the app, wallet, or ledger.    | Offer a retry. Consider a fallback wallet or RPC.                                |
-| `INVALID_INPUT`      | Programmer error: bad call, missing state, unsupported method.              | Bubble up. Should never reach an end user in a well-formed app — log it.         |
-| `INTERNAL`           | Unexpected failure with no specific category.                               | Surface a generic error and report to your error tracker.                        |
+| Category             | Meaning                                                                  | Recommended UX                                                                            |
+| -------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `USER_ACTION`        | The user explicitly rejected or cancelled.                               | No error toast — return to the previous state silently or show a subtle "cancelled" hint. |
+| `WALLET_UNAVAILABLE` | Provider missing, locked, or on the wrong network.                       | Show install / unlock / switch-network instructions. Not retryable in place.              |
+| `NETWORK`            | RPC, WebSocket, or transport failure between the app, wallet, or ledger. | Offer a retry. Consider a fallback wallet or RPC.                                         |
+| `INVALID_INPUT`      | Programmer error: bad call, missing state, unsupported method.           | Bubble up. Should never reach an end user in a well-formed app — log it.                  |
+| `INTERNAL`           | Unexpected failure with no specific category.                            | Surface a generic error and report to your error tracker.                                 |
 
 ### Error Codes
 
