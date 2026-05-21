@@ -140,6 +140,35 @@ export interface WalletAdapter {
 }
 
 /**
+ * Capability: adapter can pre-initialize its connection session before the
+ * user picks the wallet, so the QR code / handshake is ready by the time the
+ * UI opens its panel. Implemented by WalletConnect.
+ */
+export interface SupportsPreInitialize {
+  preInitialize(network?: NetworkConfig, onQRCode?: (uri: string) => void): Promise<void>;
+}
+
+/**
+ * Capability: adapter can transform a generic connection URI into a
+ * wallet-specific deep link (e.g. mobile app handoff).
+ */
+export interface SupportsDeepLink {
+  getDeepLinkURI(uri: string): string;
+}
+
+export function supportsPreInitialize(
+  adapter: WalletAdapter
+): adapter is WalletAdapter & SupportsPreInitialize {
+  return typeof (adapter as Partial<SupportsPreInitialize>).preInitialize === 'function';
+}
+
+export function supportsDeepLink(
+  adapter: WalletAdapter
+): adapter is WalletAdapter & SupportsDeepLink {
+  return typeof (adapter as Partial<SupportsDeepLink>).getDeepLinkURI === 'function';
+}
+
+/**
  * Events emitted by WalletManager
  */
 export type WalletEvent = 'connect' | 'disconnect' | 'accountChanged' | 'networkChanged' | 'error';

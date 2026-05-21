@@ -15,11 +15,11 @@ import type {
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
+  SupportsDeepLink,
+  SupportsPreInitialize,
 } from '@xrpl-connect/core';
 import { createWalletError, resolveNetwork, createLogger } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
-
-const ICON_DATA_URL = `data:image/svg+xml;utf8,${encodeURIComponent(iconSvg)}`;
 import {
   DISCONNECT_REASONS,
   DEFAULT_METADATA,
@@ -27,6 +27,8 @@ import {
   ACCOUNT_FORMAT,
   XRPL_NAMESPACE,
 } from './constants';
+
+const ICON_DATA_URL = `data:image/svg+xml;utf8,${encodeURIComponent(iconSvg)}`;
 
 /**
  * Utility function to detect if user is on mobile device
@@ -71,7 +73,9 @@ export type WalletConnectConnectOptions = {
 /**
  * WalletConnect adapter implementation using Sign Client v2
  */
-export class WalletConnectAdapter implements WalletAdapter {
+export class WalletConnectAdapter
+  implements WalletAdapter, SupportsPreInitialize, SupportsDeepLink
+{
   readonly id = 'walletconnect';
   readonly name = 'WalletConnect';
   readonly icon = ICON_DATA_URL;
@@ -143,12 +147,17 @@ export class WalletConnectAdapter implements WalletAdapter {
    * This generates the QR code URI before the user clicks WalletConnect
    * Based on ConnectKit's eager initialization pattern
    */
-  async preInitialize(projectId?: string, network?: NetworkConfig): Promise<void> {
-    const pid = projectId || this.options.projectId;
+  async preInitialize(network?: NetworkConfig, onQRCode?: (uri: string) => void): Promise<void> {
+    const pid = this.options.projectId;
 
     if (!pid) {
       logger.warn('Cannot pre-initialize without project ID');
       return;
+    }
+
+    // Remember the QR callback so the subsequent connect() call can reuse it
+    if (onQRCode) {
+      this.options.onQRCode = onQRCode;
     }
 
     if (this.pendingConnection) {

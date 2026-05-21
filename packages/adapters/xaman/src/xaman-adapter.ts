@@ -12,6 +12,7 @@ import {
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
+  SupportsDeepLink,
 } from '@xrpl-connect/core';
 import { createWalletError, createLogger, resolveNetwork } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
@@ -42,7 +43,7 @@ export type XamanConnectOptions = {
 /**
  * Xaman wallet adapter implementation
  */
-export class XamanAdapter implements WalletAdapter {
+export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
   readonly id = 'xaman';
   readonly name = 'Xaman';
   readonly icon = ICON_DATA_URL;

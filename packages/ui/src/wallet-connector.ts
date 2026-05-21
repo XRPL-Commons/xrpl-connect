@@ -4,7 +4,7 @@
  */
 
 import type { WalletAdapter, WalletManager } from '@xrpl-connect/core';
-import { createLogger } from '@xrpl-connect/core';
+import { createLogger, supportsPreInitialize } from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
 import { mainStyles } from './styles/main';
 import {
@@ -26,7 +26,6 @@ import {
 } from './views';
 import { WalletService, EventHandler } from './services';
 import {
-  isPreInitializableAdapter,
   isXamanStateAdapter,
   type AccountSelectionData,
   type ErrorData,
@@ -473,22 +472,17 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       // Find WalletConnect adapter
       const walletConnectAdapter = this.walletManager.wallets.find((w) => w.id === 'walletconnect');
 
-      if (!walletConnectAdapter || !isPreInitializableAdapter(walletConnectAdapter)) return;
+      if (!walletConnectAdapter || !supportsPreInitialize(walletConnectAdapter)) return;
 
       try {
         logger.debug('Pre-initializing WalletConnect...');
 
-        const projectId = walletConnectAdapter.options?.projectId;
         const network = this.walletManager.defaultNetwork;
 
-        // Install the QR-generation callback the adapter will invoke during pre-init.
-        const adapterOptions = (walletConnectAdapter.options ??= {});
-        adapterOptions.onQRCode = (uri: string) => {
+        await walletConnectAdapter.preInitialize(network, (uri) => {
           logger.debug('Pre-generating QR code...');
           this.preGenerateQRCode(uri);
-        };
-
-        await walletConnectAdapter.preInitialize(projectId, network);
+        });
       } catch (error) {
         logger.warn('Failed to pre-initialize WalletConnect:', error);
         // Silent failure - connection will initialize on demand if this fails

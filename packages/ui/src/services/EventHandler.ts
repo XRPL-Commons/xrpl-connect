@@ -1,7 +1,7 @@
 import { WalletService } from './WalletService';
 import { TIMINGS } from '../constants';
-import { createLogger } from '@xrpl-connect/core';
-import { isDeepLinkAdapter, type WalletConnectorContext } from '../types';
+import { createLogger, supportsDeepLink } from '@xrpl-connect/core';
+import type { WalletConnectorContext } from '../types';
 import { isMobile } from '../utils';
 
 const logger = createLogger('[EventHandler]');
@@ -152,7 +152,7 @@ export class EventHandler {
         let deepLink = qrCodeData.uri;
 
         // Try to get proper deep link from adapter
-        if (adapter && isDeepLinkAdapter(adapter)) {
+        if (adapter && supportsDeepLink(adapter)) {
           deepLink = adapter.getDeepLinkURI(qrCodeData.uri);
         }
 

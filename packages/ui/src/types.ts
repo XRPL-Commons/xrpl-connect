@@ -3,12 +3,13 @@
  *
  * Defines a typed surface for the host web component (`WalletConnectorContext`)
  * so services can depend on a stable interface instead of casting through `any`,
- * plus capability interfaces for optional adapter methods (`preInitialize`,
- * `getDeepLinkURI`, `checkXamanState`, `getAccounts`) that aren't part of the
- * base `WalletAdapter` contract.
+ * plus UI-specific capability interfaces for optional adapter methods
+ * (`checkXamanState`, `getAccounts`) that aren't part of the base
+ * `WalletAdapter` contract. Generic capabilities (`SupportsPreInitialize`,
+ * `SupportsDeepLink`) live in `@xrpl-connect/core`.
  */
 
-import type { AccountInfo, NetworkConfig, WalletAdapter, WalletManager } from '@xrpl-connect/core';
+import type { AccountInfo, WalletAdapter, WalletManager } from '@xrpl-connect/core';
 
 /**
  * A single derived account returned by Ledger's `getAccounts`.
@@ -113,15 +114,6 @@ export interface WalletConnectAdapterLikeOptions {
 }
 
 /**
- * Adapter capability: WalletConnect-style eager initialization with QR pre-gen.
- */
-export interface PreInitializableAdapter {
-  preInitialize(projectId?: string, network?: NetworkConfig): Promise<void>;
-  options?: WalletConnectAdapterLikeOptions;
-  getDeepLinkURI(uri: string): string;
-}
-
-/**
  * Adapter capability: Xaman-style session state probe used for silent reconnect.
  */
 export interface XamanStateAdapter {
@@ -136,33 +128,11 @@ export interface MultiAccountAdapter {
 }
 
 /**
- * Adapter capability: produces a deep-link URI from a connection URI (mobile).
- */
-export interface DeepLinkAdapter {
-  getDeepLinkURI(uri: string): string;
-}
-
-/**
  * Adapter capability: exposes a WalletConnect-style options bag whose
  * `useModal` / `modalMode` flags drive UI behavior.
  */
 export interface ModalConfigurableAdapter {
   options?: WalletConnectAdapterLikeOptions;
-}
-
-export function isPreInitializableAdapter(
-  adapter: WalletAdapter
-): adapter is WalletAdapter & PreInitializableAdapter {
-  const candidate = adapter as Partial<PreInitializableAdapter>;
-  return (
-    typeof candidate.preInitialize === 'function' && typeof candidate.getDeepLinkURI === 'function'
-  );
-}
-
-export function isDeepLinkAdapter(
-  adapter: WalletAdapter
-): adapter is WalletAdapter & DeepLinkAdapter {
-  return typeof (adapter as Partial<DeepLinkAdapter>).getDeepLinkURI === 'function';
 }
 
 export function isXamanStateAdapter(
