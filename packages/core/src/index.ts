@@ -32,12 +32,19 @@ export type {
 export {
   STANDARD_NETWORKS,
   WalletErrorCode,
+  WalletErrorCategory,
   supportsPreInitialize,
   supportsDeepLink,
 } from './types';
 
 // Errors
-export { WalletError, createWalletError, isWalletError, getErrorMessage } from './errors';
+export {
+  WalletError,
+  createWalletError,
+  isWalletError,
+  getErrorMessage,
+  getWalletErrorCategory,
+} from './errors';
 
 // Storage
 export {

@@ -18,7 +18,7 @@ import type {
   NetworkInfo,
   StoredState,
 } from './types';
-import { createWalletError } from './errors';
+import { createWalletError, isWalletError } from './errors';
 import { Logger, configureLogger, isLoggerInstance } from './logger';
 import { Storage } from './storage';
 import { TIME } from './constants';
@@ -143,6 +143,11 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       return account;
     } catch (error) {
       this.logger.error(`Failed to connect to ${adapter.name}:`, error);
+      // Preserve adapter-thrown WalletError so user-rejection / not-installed / etc.
+      // surface with their original code & category instead of collapsing into CONNECTION_FAILED.
+      if (isWalletError(error)) {
+        throw error;
+      }
       throw createWalletError.connectionFailed(adapter.name, error as Error);
     }
   }
@@ -207,6 +212,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       return result;
     } catch (error) {
       this.logger.error('Failed to sign transaction:', error);
+      if (isWalletError(error)) {
+        throw error;
+      }
       throw createWalletError.signFailed(error as Error);
     }
   }
@@ -229,6 +237,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       return result;
     } catch (error) {
       this.logger.error('Failed to submit transaction:', error);
+      if (isWalletError(error)) {
+        throw error;
+      }
       throw createWalletError.signFailed(error as Error);
     }
   }
@@ -249,6 +260,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       return signed;
     } catch (error) {
       this.logger.error('Failed to sign message:', error);
+      if (isWalletError(error)) {
+        throw error;
+      }
       throw createWalletError.signFailed(error as Error);
     }
   }
