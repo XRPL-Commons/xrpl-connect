@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-05-21
+
+### Fixed
+
+- xrpl-connect (meta-bundle): load `.svg` imports as raw text in the Vite build so adapter icons aren't double-encoded as `data:image/svg+xml,data%3Aimage%2Fsvg%2Bxml%2C…` and render correctly in consumer apps (#87). The 0.8.1 fix in #85 corrected the per-adapter tsup builds but the published meta-bundle still shipped the broken pattern.
+
 ## [0.8.1] - 2026-05-21
 
 ### Fixed
@@ -129,7 +135,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Switch the build to Vite for the meta package.
 - Crossmark adapter: use `signAndSubmitAndWait` and improve `isAvailable`.
 
-[Unreleased]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.7.0...v0.7.1

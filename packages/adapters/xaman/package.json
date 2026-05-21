@@ -1,6 +1,6 @@
 {
   "name": "@xrpl-connect/adapter-xaman",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Xaman (formerly Xumm) wallet adapter for XRPL Connect - Mobile and desktop wallet support",
   "author": "XRPL Connect Contributors",
   "license": "MIT",
