@@ -5,6 +5,7 @@
 import EventEmitter from 'eventemitter3';
 import type {
   WalletAdapter,
+  WalletAdapterEvent,
   WalletManagerOptions,
   AccountInfo,
   Transaction,
@@ -13,11 +14,12 @@ import type {
   SubmittedTransaction,
   WalletEvent,
   ConnectOptions,
+  NetworkConfig,
   NetworkInfo,
   StoredState,
 } from './types';
 import { createWalletError, isWalletError } from './errors';
-import { Logger } from './logger';
+import { Logger, configureLogger, isLoggerInstance } from './logger';
 import { Storage } from './storage';
 import { TIME } from './constants';
 
@@ -31,13 +33,20 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   private storage: Storage;
   private logger: Logger;
   private options: WalletManagerOptions;
+  private adapterListeners: Array<{
+    event: WalletAdapterEvent;
+    callback: (data: unknown) => void;
+  }> = [];
 
   constructor(options: WalletManagerOptions) {
     super();
     this.options = options;
 
-    // Initialize logger
-    this.logger = new Logger(options.logger);
+    // Apply logger configuration globally so adapter-level loggers honour it,
+    // then build the manager's own Logger. A user-supplied LoggerInstance
+    // routes through `configureLogger`; LoggerOptions also drive the local logger.
+    configureLogger(options.logger);
+    this.logger = new Logger(isLoggerInstance(options.logger) ? undefined : options.logger);
 
     // Initialize storage
     this.storage = new Storage(options.storage);
@@ -123,12 +132,10 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       };
       await this.storage.saveState(state);
 
-      // Subscribe to adapter events if supported
-      if (adapter.on) {
-        adapter.on('disconnect', () => this.handleAdapterDisconnect());
-        adapter.on('accountChanged', (data) => this.handleAccountChanged(data as AccountInfo));
-        adapter.on('networkChanged', (data) => this.handleNetworkChanged(data as NetworkInfo));
-      }
+      // Subscribe to adapter events if supported. Track every registration so
+      // disconnect() can call the matching off() and stop late callbacks from
+      // mutating manager state after the session is gone.
+      this.subscribeToAdapter(adapter);
 
       this.logger.info(`Connected to ${adapter.name}`, account);
       this.emit('connect', account);
@@ -309,6 +316,13 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
+   * Default network configured on the manager, if any.
+   */
+  get defaultNetwork(): NetworkConfig | undefined {
+    return this.options.network;
+  }
+
+  /**
    * Handle adapter disconnect event
    */
   private async handleAdapterDisconnect(): Promise<void> {
@@ -338,9 +352,44 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
+   * Register adapter listeners and remember them so we can detach later.
+   */
+  private subscribeToAdapter(adapter: WalletAdapter): void {
+    if (!adapter.on) return;
+
+    const register = (event: WalletAdapterEvent, callback: (data: unknown) => void): void => {
+      adapter.on!(event, callback);
+      this.adapterListeners.push({ event, callback });
+    };
+
+    register('disconnect', () => this.handleAdapterDisconnect());
+    register('accountChanged', (data) => this.handleAccountChanged(data as AccountInfo));
+    register('networkChanged', (data) => this.handleNetworkChanged(data as NetworkInfo));
+  }
+
+  /**
+   * Detach every listener registered via subscribeToAdapter.
+   */
+  private unsubscribeFromAdapter(adapter: WalletAdapter): void {
+    if (adapter.off) {
+      for (const { event, callback } of this.adapterListeners) {
+        try {
+          adapter.off(event, callback);
+        } catch (error) {
+          this.logger.warn(`Failed to detach adapter listener for ${event}:`, error);
+        }
+      }
+    }
+    this.adapterListeners = [];
+  }
+
+  /**
    * Cleanup connection state
    */
   private async cleanup(): Promise<void> {
+    if (this.currentAdapter) {
+      this.unsubscribeFromAdapter(this.currentAdapter);
+    }
     this.currentAdapter = null;
     this.currentAccount = null;
     await this.storage.clearState();

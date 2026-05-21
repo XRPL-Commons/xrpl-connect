@@ -9,13 +9,17 @@ import type {
   WalletAdapter,
   AccountInfo,
   ConnectOptions,
+  NetworkConfig,
   NetworkInfo,
   Transaction,
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
+  SupportsDeepLink,
+  SupportsPreInitialize,
 } from '@xrpl-connect/core';
-import { createWalletError, STANDARD_NETWORKS, createLogger } from '@xrpl-connect/core';
+import { createWalletError, resolveNetwork, createLogger } from '@xrpl-connect/core';
+import iconSvg from './assets/icon.svg';
 import {
   DISCONNECT_REASONS,
   DEFAULT_METADATA,
@@ -23,6 +27,8 @@ import {
   ACCOUNT_FORMAT,
   XRPL_NAMESPACE,
 } from './constants';
+
+const ICON_DATA_URL = `data:image/svg+xml;utf8,${encodeURIComponent(iconSvg)}`;
 
 /**
  * Utility function to detect if user is on mobile device
@@ -67,11 +73,12 @@ export type WalletConnectConnectOptions = {
 /**
  * WalletConnect adapter implementation using Sign Client v2
  */
-export class WalletConnectAdapter implements WalletAdapter {
+export class WalletConnectAdapter
+  implements WalletAdapter, SupportsPreInitialize, SupportsDeepLink
+{
   readonly id = 'walletconnect';
   readonly name = 'WalletConnect';
-  readonly icon =
-    'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyB4bWxuczp4b2RtPSJodHRwOi8vd3d3LmNvcmVsLmNvbS9jb3JlbGRyYXcvb2RtLzIwMDMiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHZlcnNpb249IjEuMSIgaWQ9IkxheWVyXzEiIHg9IjBweCIgeT0iMHB4IiB2aWV3Qm94PSIwIDAgMjQ5NyAyNDk3IiBzdHlsZT0iZW5hYmxlLWJhY2tncm91bmQ6bmV3IDAgMCAyNDk3IDI0OTc7IiB4bWw6c3BhY2U9InByZXNlcnZlIj4KPHN0eWxlIHR5cGU9InRleHQvY3NzIj4KCS5zdDB7ZmlsbDojMzM5NkZGO3N0cm9rZTojNjZCMUZGO3N0cm9rZS13aWR0aDozO3N0cm9rZS1taXRlcmxpbWl0OjIyLjkyNTY7fQoJLnN0MXtmaWxsOiNGRkZGRkY7fQo8L3N0eWxlPgo8ZyBpZD0iTGF5ZXJfeDAwMjBfMSI+Cgk8ZyBpZD0iXzI4MDYwNTAxMzY4OTYiPgoJCTxjaXJjbGUgY2xhc3M9InN0MCIgY3g9IjEyNDkiIGN5PSIxMjQ5IiByPSIxMjQ3Ij48L2NpcmNsZT4KCQk8cGF0aCBjbGFzcz0ic3QxIiBkPSJNNzY0LDkzMGMyNjctMjYxLDcwMS0yNjEsOTY5LDBsMzIsMzFjMTMsMTMsMTMsMzQsMCw0N2wtMTEwLDEwN2MtNyw3LTE4LDctMjQsMGwtNDQtNDMgICAgYy0xODctMTgyLTQ4OS0xODItNjc2LDBsLTQ3LDQ2Yy03LDctMTgsNy0yNCwwbC0xMTAtMTA3Yy0xMy0xMy0xMy0zNCwwLTQ3bDM1LTM0SDc2NHogTTE5NjAsMTE1Mmw5OCw5NmMxMywxMywxMywzNCwwLDQ3ICAgIGwtNDQyLDQzMWMtMTMsMTMtMzUsMTMtNDgsMGwtMzE0LTMwNmMtMy0zLTktMy0xMiwwbC0zMTQsMzA2Yy0xMywxMy0zNSwxMy00OCwwbC00NDItNDMxYy0xMy0xMy0xMy0zNCwwLTQ3bDk4LTk2ICAgIGMxMy0xMywzNS0xMyw0OCwwbDMxNCwzMDZjMywzLDksMywxMiwwbDMxNC0zMDZjMTMtMTMsMzUtMTMsNDgsMGwzMTQsMzA2YzMsMyw5LDMsMTIsMGwzMTQtMzA2QzE5MjUsMTEzOSwxOTQ3LDExMzksMTk2MCwxMTUyICAgIEwxOTYwLDExNTJ6Ij48L3BhdGg+Cgk8L2c+CjwvZz4KPC9zdmc+Cg==';
+  readonly icon = ICON_DATA_URL;
   readonly url = 'https://walletconnect.com';
 
   private client: SignClient | null = null;
@@ -82,6 +89,8 @@ export class WalletConnectAdapter implements WalletAdapter {
   private pendingConnection: { uri: string; approval: () => Promise<SessionTypes.Struct> } | null =
     null;
   private modal: WalletConnectModal | null = null;
+  private sessionDeleteHandler: (() => void) | null = null;
+  private sessionExpireHandler: (() => void) | null = null;
 
   constructor(options: WalletConnectAdapterOptions = {}) {
     this.options = options;
@@ -138,12 +147,17 @@ export class WalletConnectAdapter implements WalletAdapter {
    * This generates the QR code URI before the user clicks WalletConnect
    * Based on ConnectKit's eager initialization pattern
    */
-  async preInitialize(projectId?: string, network?: string): Promise<void> {
-    const pid = projectId || this.options.projectId;
+  async preInitialize(network?: NetworkConfig, onQRCode?: (uri: string) => void): Promise<void> {
+    const pid = this.options.projectId;
 
     if (!pid) {
       logger.warn('Cannot pre-initialize without project ID');
       return;
+    }
+
+    // Remember the QR callback so the subsequent connect() call can reuse it
+    if (onQRCode) {
+      this.options.onQRCode = onQRCode;
     }
 
     if (this.pendingConnection) {
@@ -175,7 +189,7 @@ export class WalletConnectAdapter implements WalletAdapter {
       }
 
       // Determine network for pre-initialization
-      const networkInfo = this.resolveNetwork(network);
+      const networkInfo = resolveNetwork(network);
 
       // Start connection to generate URI (ConnectKit pattern)
       const requiredNamespaces = {
@@ -243,7 +257,7 @@ export class WalletConnectAdapter implements WalletAdapter {
 
     try {
       // Determine network
-      const network = this.resolveNetwork(options?.network);
+      const network = resolveNetwork(options?.network);
 
       // Initialize SignClient if needed
       if (!this.client) {
@@ -315,11 +329,16 @@ export class WalletConnectAdapter implements WalletAdapter {
         let uri: string;
         let approval: () => Promise<SessionTypes.Struct>;
 
-        // Check if we have a pending connection from pre-initialization
-        if (this.pendingConnection) {
+        // Check if we have a pending connection from pre-initialization.
+        // Consume it immediately so a retry after this connect() fails (or a
+        // concurrent call) does not reuse the same approval promise.
+        const pending = this.pendingConnection;
+        this.pendingConnection = null;
+
+        if (pending) {
           logger.debug('Using pre-generated connection');
-          uri = this.pendingConnection.uri;
-          approval = this.pendingConnection.approval;
+          uri = pending.uri;
+          approval = pending.approval;
 
           if (onQRCode) {
             logger.debug('Calling onQRCode callback with pre-generated URI');
@@ -379,6 +398,8 @@ export class WalletConnectAdapter implements WalletAdapter {
       if (this.modal) {
         this.modal.closeModal();
       }
+      // Drop any stale pending connection so the next connect() starts fresh
+      this.pendingConnection = null;
       throw createWalletError.connectionFailed(this.name, error as Error);
     }
   }
@@ -501,45 +522,41 @@ export class WalletConnectAdapter implements WalletAdapter {
   }
 
   /**
-   * Resolve network configuration
-   */
-  private resolveNetwork(config?: ConnectOptions['network']): NetworkInfo {
-    if (!config) {
-      return STANDARD_NETWORKS.mainnet;
-    }
-
-    if (typeof config === 'string') {
-      const network = STANDARD_NETWORKS[config];
-      if (!network) {
-        throw createWalletError.unknown(`Unknown network: ${config}`);
-      }
-      return network;
-    }
-
-    return config;
-  }
-
-  /**
    * Setup event listeners for session
    */
   private setupEventListeners(): void {
     if (!this.client) return;
 
-    // Session delete event
-    this.client.on('session_delete', () => {
-      this.cleanup();
-    });
+    // Tear down any handlers from a previous session before re-binding, so
+    // listeners don't accumulate across connect/disconnect cycles.
+    this.removeEventListeners();
 
-    // Session expire event
-    this.client.on('session_expire', () => {
-      this.cleanup();
-    });
+    this.sessionDeleteHandler = () => this.cleanup();
+    this.sessionExpireHandler = () => this.cleanup();
+
+    this.client.on('session_delete', this.sessionDeleteHandler);
+    this.client.on('session_expire', this.sessionExpireHandler);
+  }
+
+  private removeEventListeners(): void {
+    if (this.client) {
+      if (this.sessionDeleteHandler) {
+        this.client.off('session_delete', this.sessionDeleteHandler);
+      }
+      if (this.sessionExpireHandler) {
+        this.client.off('session_expire', this.sessionExpireHandler);
+      }
+    }
+    this.sessionDeleteHandler = null;
+    this.sessionExpireHandler = null;
   }
 
   /**
    * Cleanup adapter state
    */
   private cleanup(): void {
+    this.removeEventListeners();
+
     // Close and cleanup modal
     if (this.modal) {
       this.modal.closeModal();

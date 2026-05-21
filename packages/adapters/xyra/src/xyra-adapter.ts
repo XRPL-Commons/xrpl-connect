@@ -25,6 +25,9 @@ import type {
 import { createWalletError, STANDARD_NETWORKS, createLogger } from '@xrpl-connect/core';
 import type { XyraAdapterOptions, XyraConnectOptions } from './types';
 import { XRPL_CONNECT_TO_XYRA_NETWORK, XYRA_TO_XRPL_CONNECT_NETWORK } from './types';
+import iconSvg from './assets/icon.svg';
+
+const ICON_DATA_URL = `data:image/svg+xml;utf8,${encodeURIComponent(iconSvg)}`;
 
 /**
  * Logger instance for Xyra adapter
@@ -57,8 +60,7 @@ export class XyraAdapter implements WalletAdapter {
 
   readonly id = 'xyra';
   readonly name = 'Xyra';
-  readonly icon =
-    'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMDAgMzAwIj4KICA8ZGVmcz4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0ieHlyYS1pY29uLWdyYWRpZW50LTEiIHgxPSIwIiB5MT0iMCIgeDI9IjEiIHkyPSIxIiBncmFkaWVudFVuaXRzPSJvYmplY3RCb3VuZGluZ0JveCI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiM2M2UwZmYiIC8+CiAgICAgIDxzdG9wIG9mZnNldD0iNTAlIiBzdG9wLWNvbG9yPSIjNWE3Y2ZmIiAvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNiMjZiZmYiIC8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJ4eXJhLWljb24tZ3JhZGllbnQtMiIgeDE9IjAiIHkxPSIwIiB4Mj0iMSIgeTI9IjEiIGdyYWRpZW50VW5pdHM9Im9iamVjdEJvdW5kaW5nQm94Ij4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzYzZTBmZiIgLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI1MCUiIHN0b3AtY29sb3I9IiM1YTdjZmYiIC8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2IyNmJmZiIgLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxnIHRyYW5zZm9ybT0ibWF0cml4KDEuMzY5ODA2IDAgMCAxLjM2OTgwNiAtNDQ4LjMzMjY0NCAtMTMwLjE5MzgyMikiPgogICAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNDM2LjgwMSAyMDQuNTUpIj4KICAgICAgPGVsbGlwc2Ugcng9IjkwIiByeT0iMzgiIHRyYW5zZm9ybT0ibWF0cml4KDAuODE5MTUyIDAuNTczNTc2IC0wLjU3MzU3NiAwLjgxOTE1MiAwIDApIiBmaWxsPSJub25lIiBzdHJva2U9InVybCgjeHlyYS1pY29uLWdyYWRpZW50LTEpIiBzdHJva2Utd2lkdGg9IjE4IiBzdHJva2UtbGluZWNhcD0icm91bmQiIC8+CiAgICAgIDxlbGxpcHNlIHJ4PSI5MCIgcnk9IjM4IiB0cmFuc2Zvcm09Im1hdHJpeCgwLjgxOTE1MiAtMC41NzM1NzYgMC41NzM1NzYgMC44MTkxNTIgMCAwKSIgb3BhY2l0eT0iMC45NSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ1cmwoI3h5cmEtaWNvbi1ncmFkaWVudC0yKSIgc3Ryb2tlLXdpZHRoPSIxOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiAvPgogICAgPC9nPgogIDwvZz4KPC9zdmc+';
+  readonly icon = ICON_DATA_URL;
   readonly url = 'https://xyra.now';
 
   // ==================== Private State ====================
@@ -136,7 +138,7 @@ export class XyraAdapter implements WalletAdapter {
       this.currentXyraNetwork = response.network;
 
       // Map the response to xrpl-connect AccountInfo
-      const networkInfo = this.resolveNetworkInfo(response.network);
+      const networkInfo = this.xyraNetworkToInfo(response.network);
 
       this.currentAccount = {
         address: response.address,
@@ -436,8 +438,14 @@ export class XyraAdapter implements WalletAdapter {
 
   /**
    * Map a Xyra SDK Network string back to an xrpl-connect NetworkInfo.
+   *
+   * This is not the same as the shared `resolveNetwork` helper from
+   * `@xrpl-connect/core`: that helper resolves a user-supplied
+   * `ConnectOptions['network']` (string id or `NetworkInfo`) to a
+   * `NetworkInfo`, whereas this method translates a Xyra-SDK-native
+   * network identifier returned by the wallet itself.
    */
-  private resolveNetworkInfo(xyraNetwork: Network): NetworkInfo {
+  private xyraNetworkToInfo(xyraNetwork: Network): NetworkInfo {
     const connectNetworkId = XYRA_TO_XRPL_CONNECT_NETWORK[xyraNetwork];
 
     // Check standard networks first

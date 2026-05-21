@@ -61,6 +61,9 @@ import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
 const walletManager = new WalletManager({
   adapters: [new XamanAdapter(), new CrossmarkAdapter()],
   network: 'testnet',
+  // When true, the WalletManager attempts to restore the previous session
+  // from localStorage on page load (the user is not prompted again). Set to
+  // false if you want users to explicitly reconnect every time.
   autoConnect: true,
 });
 
@@ -78,16 +81,37 @@ walletManager.on('connect', (account) => {
   console.log('Connected:', account.address);
 });
 
-// Sign transactions after connection
-const signed = await walletManager.sign({
-  TransactionType: 'Payment',
-  Account: walletManager.account.address,
-  Destination: 'rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT',
-  Amount: '1000000',
+// Always handle disconnects so your UI can reset
+walletManager.on('disconnect', () => {
+  console.log('Disconnected');
 });
+
+// Surface connection/adapter errors (wallet not installed, network issues, etc.)
+walletManager.on('error', (error) => {
+  console.error('Wallet error:', error.code, error.message);
+});
+
+// Sign transactions after connection. Always wrap in try/catch — the promise
+// rejects when the user cancels the request in their wallet (SIGN_FAILED).
+try {
+  const signed = await walletManager.sign({
+    TransactionType: 'Payment',
+    Account: walletManager.account.address,
+    Destination: 'rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT',
+    Amount: '1000000',
+  });
+} catch (error) {
+  if (error.code === 'SIGN_FAILED') {
+    console.log('User rejected the transaction');
+  } else {
+    console.error('Sign failed:', error);
+  }
+}
 ```
 
 That's it! The web component provides a beautiful, pre-built UI for wallet selection, QR codes, and connection states.
+
+> **Heads up on `autoConnect`:** with `autoConnect: true`, the WalletManager silently restores the previous session from `localStorage` when your page loads and emits a `connect` event before any user interaction. Register your `connect` / `disconnect` / `error` listeners **immediately** after constructing the manager so you don't miss that initial event.
 
 ## 📚 Documentation
 
@@ -154,7 +178,9 @@ pnpm dev
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](./docs/guide/adapter-integration.md) for details on our code of conduct and the process for submitting pull requests.
+Contributions are welcome! Please read our [Contributing Guide](./CONTRIBUTING.md) for development setup, branch/PR conventions, and the release process. To author a new wallet adapter specifically, see the [Adapter Integration Guide](./docs/guide/adapter-integration.md).
+
+A summary of notable changes in each release lives in [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## 📄 License
 

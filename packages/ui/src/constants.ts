@@ -8,6 +8,7 @@
  */
 export const SIZES = {
   QR_CODE: 260,
+  QR_IMAGE_BORDER_RADIUS: 16,
   LOADING_LOGO: 80,
   MODAL_WIDTH: 343,
   MODAL_BORDER_RADIUS: 20,
@@ -48,7 +49,8 @@ export const Z_INDEX = {
 export const DEFAULT_THEME = {
   BACKGROUND_COLOR: '#000637',
   TEXT_COLOR: '#F5F4E7',
-  PRIMARY_COLOR: '#0ea5e9',
+  PRIMARY_COLOR: '#0EA5E9',
+  DANGER_COLOR: '#ef4444',
   FONT_FAMILY: "'Karla', sans-serif",
 } as const;
 
@@ -121,4 +123,22 @@ export const FONT_WEIGHTS = {
   REGULAR: 400,
   MEDIUM: 500,
   SEMIBOLD: 600,
+} as const;
+
+/**
+ * Address display configuration
+ */
+export const ADDRESS_DISPLAY = {
+  TRUNCATE_CHARS_DEFAULT: 6,
+  TRUNCATE_CHARS_BUTTON: 4,
+} as const;
+
+/**
+ * Deterministic gradient generation from wallet addresses
+ */
+export const GRADIENT = {
+  HUE_MAX_DEGREES: 360,
+  HUE_OFFSET_DEGREES: 60,
+  SATURATION_PERCENT: 70,
+  LIGHTNESS_PERCENT: 55,
 } as const;
