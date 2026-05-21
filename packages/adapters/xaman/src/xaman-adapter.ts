@@ -17,7 +17,7 @@ import {
 import { createWalletError, createLogger, resolveNetwork } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
 
-const ICON_DATA_URL = `data:image/svg+xml;utf8,${encodeURIComponent(iconSvg)}`;
+const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
 
 /**
  * Logger instance for Xaman adapter

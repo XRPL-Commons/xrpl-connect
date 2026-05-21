@@ -24,7 +24,7 @@ import { LedgerDeviceState } from './types';
 import { parseLedgerError, isBrowserSupported, formatLedgerError } from './errors';
 import iconSvg from './assets/icon.svg';
 
-const ICON_DATA_URL = `data:image/svg+xml;utf8,${encodeURIComponent(iconSvg)}`;
+const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
 
 /**
  * Default timeout for Ledger operations (60 seconds)
