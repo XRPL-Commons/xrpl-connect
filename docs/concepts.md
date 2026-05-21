@@ -42,18 +42,22 @@ await walletManager.disconnect();
 
 ### Properties
 
-| Property    | Type              | Description                             |
-| ----------- | ----------------- | --------------------------------------- |
-| `connected` | `boolean`         | Whether a wallet is currently connected |
-| `account`   | `Account \| null` | Currently connected account info        |
-| `wallet`    | `Wallet \| null`  | Currently connected wallet adapter      |
-| `adapters`  | `WalletAdapter[]` | Array of available wallet adapters      |
+| Property    | Type                         | Description                             |
+| ----------- | ---------------------------- | --------------------------------------- |
+| `connected` | `boolean`                    | Whether a wallet is currently connected |
+| `account`   | `AccountInfo \| null`        | Currently connected account info        |
+| `wallet`    | `WalletAdapter \| null`      | Currently connected wallet adapter      |
+| `wallets`   | `WalletAdapter[]`            | Array of registered wallet adapters     |
+| `adapters`  | `Map<string, WalletAdapter>` | Registered adapters keyed by id         |
 
 ### Key Methods
 
+- `connect(walletId, options?)` - Connect to a wallet by id
+- `reconnect()` - Reconnect to the previously connected wallet from storage
 - `sign(transaction)` - Sign a transaction and return the signed blob
 - `signAndSubmit(transaction)` - Sign and submit transaction to ledger
-- `signMessage(message)` - Sign a message with the wallet
+- `signMessage(message)` - Sign a message (string or `Uint8Array`)
+- `getAvailableWallets()` - List adapters whose `isAvailable()` resolves true
 - `disconnect()` - Disconnect current wallet
 - `on(event, listener)` - Listen to events
 - `off(event, listener)` - Remove event listener
@@ -89,7 +93,6 @@ import { XamanAdapter } from 'xrpl-connect';
 
 const adapter = new XamanAdapter({
   apiKey: 'YOUR_API_KEY', // Get from https://apps.xumm.dev
-  apiSecret: 'YOUR_API_SECRET', // Optional
 });
 ```
 
@@ -132,6 +135,45 @@ const adapter = new WalletConnectAdapter({
 ```
 
 **Features:** Mobile wallet support, QR code connection, enterprise features
+
+#### Ledger Adapter
+
+Connect a Ledger hardware wallet via WebHID/WebUSB.
+
+```javascript
+import { LedgerAdapter } from 'xrpl-connect';
+
+const adapter = new LedgerAdapter({
+  // Optional: derivation path or accountIndex
+  accountIndex: 0,
+});
+```
+
+**Features:** On-device transaction confirmation, message signing, multiple derivation paths
+
+#### Xyra Adapter
+
+Connect to Xyra, a multi-chain wallet with XRPL support.
+
+```javascript
+import { XyraAdapter } from 'xrpl-connect';
+
+const adapter = new XyraAdapter();
+```
+
+**Features:** Transaction signing, message signing, no API keys required
+
+#### Otsu Adapter
+
+Connect to Otsu Wallet, a browser extension XRPL wallet.
+
+```javascript
+import { OtsuAdapter } from 'xrpl-connect';
+
+const adapter = new OtsuAdapter();
+```
+
+**Features:** Transaction signing, message signing, no API keys required
 
 ### Creating Multiple Adapters
 
@@ -282,15 +324,16 @@ Both WalletManager and the Web Component emit events that you can listen to:
 
 - **connect** - User connected a wallet
 - **disconnect** - User disconnected a wallet
-- **accountChange** - User switched accounts
-- **networkChange** - User switched networks
+- **accountChanged** - User switched accounts
+- **networkChanged** - User switched networks
 - **error** - An error occurred
 
 ### Web Component Events
 
+- **open** - Modal opened
+- **close** - Modal closed
 - **connecting** - User started connecting
 - **connected** - Connection succeeded
-- **disconnected** - User disconnected
 - **error** - Connection failed
 
 ## State Management

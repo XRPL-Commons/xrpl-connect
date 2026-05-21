@@ -89,10 +89,11 @@ For better reusability, create a composable:
 ```typescript
 // composables/useWallet.ts
 import { ref, onMounted } from 'vue';
-import type { WalletManager, Account, WalletError } from 'xrpl-connect';
+import { WalletManager } from 'xrpl-connect';
+import type { AccountInfo, WalletAdapter, WalletError } from 'xrpl-connect';
 
 interface UseWalletOptions {
-  adapters: any[];
+  adapters: WalletAdapter[];
   network?: 'mainnet' | 'testnet' | 'devnet';
 }
 
@@ -100,22 +101,20 @@ export function useWallet(options: UseWalletOptions) {
   const { adapters, network = 'testnet' } = options;
 
   const walletManager = ref<WalletManager | null>(null);
-  const account = ref<Account | null>(null);
+  const account = ref<AccountInfo | null>(null);
   const connected = ref(false);
   const error = ref<WalletError | null>(null);
   const loading = ref(true);
   const connectorRef = ref<HTMLElement | null>(null);
 
   onMounted(() => {
-    const { WalletManager } = require('xrpl-connect');
-
     const manager = new WalletManager({
       adapters,
       network,
       autoConnect: true,
     });
 
-    manager.on('connect', (acc: Account) => {
+    manager.on('connect', (acc: AccountInfo) => {
       account.value = acc;
       connected.value = true;
       error.value = null;
@@ -239,15 +238,14 @@ For larger apps, use Provide/Inject to share wallet state:
 ```typescript
 // composables/useWalletState.ts
 import { provide, inject, ref, onMounted } from 'vue';
-import type { WalletManager, Account } from 'xrpl-connect';
+import { WalletManager } from 'xrpl-connect';
+import type { AccountInfo, WalletAdapter } from 'xrpl-connect';
 
 const WalletSymbol = Symbol('wallet');
 
-export function provideWallet(adapters: any[], network = 'testnet') {
-  const { WalletManager } = require('xrpl-connect');
-
+export function provideWallet(adapters: WalletAdapter[], network = 'testnet') {
   const walletManager = ref<WalletManager | null>(null);
-  const account = ref<Account | null>(null);
+  const account = ref<AccountInfo | null>(null);
   const connected = ref(false);
 
   onMounted(() => {
@@ -257,7 +255,7 @@ export function provideWallet(adapters: any[], network = 'testnet') {
       autoConnect: true,
     });
 
-    manager.on('connect', (acc: Account) => {
+    manager.on('connect', (acc: AccountInfo) => {
       account.value = acc;
       connected.value = true;
     });

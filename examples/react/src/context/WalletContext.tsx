@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import type { WalletManager } from '@xrpl-connect/core';
+import type { WalletManager } from 'xrpl-connect';
 import type { Event, AccountInfo, StatusMessage } from '../types';
 
 interface WalletContextType {

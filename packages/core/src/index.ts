@@ -23,18 +23,44 @@ export type {
   StorageAdapter,
   StoredState,
   LoggerOptions,
+  LoggerInstance,
+  LogLevel,
+  SupportsPreInitialize,
+  SupportsDeepLink,
 } from './types';
 
-export { STANDARD_NETWORKS, WalletErrorCode } from './types';
+export {
+  STANDARD_NETWORKS,
+  WalletErrorCode,
+  WalletErrorCategory,
+  supportsPreInitialize,
+  supportsDeepLink,
+} from './types';
 
 // Errors
-export { WalletError, createWalletError, isWalletError, getErrorMessage } from './errors';
+export {
+  WalletError,
+  createWalletError,
+  isWalletError,
+  getErrorMessage,
+  getWalletErrorCategory,
+} from './errors';
 
 // Storage
-export { Storage, LocalStorageAdapter, MemoryStorageAdapter } from './storage';
+export {
+  Storage,
+  LocalStorageAdapter,
+  MemoryStorageAdapter,
+  STORED_STATE_VERSION,
+  STATE_MIGRATIONS,
+} from './storage';
+export type { StorageOptions, StoredStateEnvelope, StoredStateMigration } from './storage';
 
 // Logger
-export { Logger, createLogger } from './logger';
+export { Logger, createLogger, configureLogger, isLoggerInstance } from './logger';
 
 // Constants
 export { TIME } from './constants';
+
+// Network helpers
+export { resolveNetwork } from './network';

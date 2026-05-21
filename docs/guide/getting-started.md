@@ -30,7 +30,7 @@ The `xrpl-connect` package includes:
 
 - **Core** - WalletManager, event system, and state management
 - **UI** - Beautiful web component for wallet connection
-- **Adapters** - Built-in support for Xaman, Crossmark, GemWallet, WalletConnect, and Ledger hardware wallets
+- **Adapters** - Built-in support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger hardware wallets, Xyra, and Otsu
 
 > **Note:** The `xrpl` package is required for transaction types and utilities.
 
@@ -45,13 +45,12 @@ Xaman is the most popular XRPL wallet. Get your API key here:
 1. Go to [https://apps.xumm.dev/](https://apps.xumm.dev/)
 2. Sign in with your Xaman account
 3. Create a new application
-4. Copy your `API Key` and optionally your `API Secret`
-5. Use these when creating the XamanAdapter
+4. Copy your `API Key`
+5. Use it when creating the XamanAdapter
 
 ```javascript
 const adapter = new XamanAdapter({
   apiKey: 'YOUR_API_KEY',
-  apiSecret: 'YOUR_API_SECRET', // optional
 });
 ```
 
@@ -72,11 +71,13 @@ const adapter = new WalletConnectAdapter({
 
 ### Other Adapters
 
-Crossmark, GemWallet, and Ledger don't require API keys - they work directly with browser extensions, wallets, or hardware devices:
+Crossmark, GemWallet, Xyra, Otsu, and Ledger don't require API keys - they work directly with browser extensions, wallets, or hardware devices:
 
 ```javascript
 const crossmarkAdapter = new CrossmarkAdapter();
 const gemWalletAdapter = new GemWalletAdapter();
+const xyraAdapter = new XyraAdapter();
+const otsuAdapter = new OtsuAdapter();
 ```
 
 ### Ledger Hardware Wallet
@@ -106,6 +107,75 @@ const ledgerAdapter = new LedgerAdapter({
 - Close Ledger Live if it's running (conflicts with WebHID/WebUSB)
 
 For more details on Ledger integration, see the [Ledger adapter documentation](https://github.com/XRPL-Commons/xrpl-connect/tree/main/packages/adapters/ledger).
+
+## Quick Start
+
+A minimal, copy-pasteable example covering the patterns you almost always need: wiring the UI component, listening to `connect` / `disconnect` / `error`, and signing a transaction with proper user-rejection handling.
+
+```html
+<button id="connect-btn">Connect Wallet</button>
+<xrpl-wallet-connector id="wallet-connector"></xrpl-wallet-connector>
+```
+
+```javascript
+import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
+
+const walletManager = new WalletManager({
+  adapters: [new XamanAdapter({ apiKey: 'YOUR_API_KEY' }), new CrossmarkAdapter()],
+  network: 'testnet',
+  autoConnect: true,
+});
+
+const connector = document.getElementById('wallet-connector');
+connector.setWalletManager(walletManager);
+
+document.getElementById('connect-btn').addEventListener('click', () => {
+  connector.open();
+});
+
+walletManager.on('connect', (account) => {
+  console.log('Connected:', account.address);
+});
+
+// Reset your UI when the user (or an autoConnect failure) disconnects.
+walletManager.on('disconnect', () => {
+  console.log('Disconnected');
+});
+
+// Surfaces adapter/connection errors (wallet missing, network issues, etc.).
+walletManager.on('error', (error) => {
+  console.error('Wallet error:', error.code, error.message);
+});
+
+// `sign` rejects when the user cancels in their wallet — always wrap it.
+async function sendPayment() {
+  try {
+    const signed = await walletManager.sign({
+      TransactionType: 'Payment',
+      Account: walletManager.account.address,
+      Destination: 'rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT',
+      Amount: '1000000',
+    });
+    console.log('Signed:', signed);
+  } catch (error) {
+    if (error.code === 'SIGN_FAILED') {
+      // User rejected the prompt in their wallet — usually a no-op.
+      console.log('User rejected the transaction');
+    } else {
+      console.error('Sign failed:', error);
+    }
+  }
+}
+```
+
+### About `autoConnect`
+
+`autoConnect: true` tells the WalletManager to silently restore the user's previous session from `localStorage` when the page loads. If the previous adapter is still available and the stored session is valid, you'll receive a `connect` event **before** any user interaction; otherwise the manager stays disconnected (and may emit `error` if the adapter explicitly fails).
+
+Two practical consequences:
+
+- **Register listeners first.** Add `on('connect')`, `on('disconnect')`, and `on('error')` immediately after constructing the manager, otherwise the initial reconnect event will fire before your UI is listening.
+- **Set it to `false`** if your app needs the user to explicitly choose a wallet on every visit (e.g., shared kiosks, strict privacy requirements).
 
 ## Framework-Specific Guides
 

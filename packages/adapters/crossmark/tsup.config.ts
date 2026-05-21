@@ -1,14 +1,11 @@
 import { defineConfig } from 'tsup';
+import { createTsupConfig } from '../../../tsup.base.config';
 
-export default defineConfig({
-  entry: ['src/index.ts'],
-  format: ['cjs', 'esm'],
-  bundle: true,
-  dts: true,
-  clean: true,
-  sourcemap: true,
-  splitting: false,
-  treeshake: true,
-  external: ['xrpl'],
-  outDir: 'dist',
-});
+export default defineConfig(
+  createTsupConfig({
+    external: ['xrpl'],
+    loader: {
+      '.svg': 'text',
+    },
+  })
+);

@@ -42,4 +42,12 @@ export default defineConfig([{
           caughtErrors: "none",
         }],
     },
+}, {
+    // The UI package is held to a stricter bar: no `any`. The web component is
+    // the most-exercised public surface, so untyped escape hatches there hide
+    // missing adapter capability declarations.
+    files: ["packages/ui/src/**/*.ts"],
+    rules: {
+        "@typescript-eslint/no-explicit-any": "error",
+    },
 }]);

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { WalletManager } from '@xrpl-connect/core';
+import type { WalletManager } from 'xrpl-connect';
 import { useWallet } from '../context/WalletContext';
 
 export function useWalletConnector(walletManager: WalletManager | null) {

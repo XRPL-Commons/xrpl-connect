@@ -75,30 +75,6 @@ importers:
 
   examples/react:
     dependencies:
-      '@xrpl-connect/adapter-crossmark':
-        specifier: workspace:*
-        version: link:../../packages/adapters/crossmark
-      '@xrpl-connect/adapter-gemwallet':
-        specifier: workspace:*
-        version: link:../../packages/adapters/gemwallet
-      '@xrpl-connect/adapter-otsu':
-        specifier: workspace:*
-        version: link:../../packages/adapters/otsu
-      '@xrpl-connect/adapter-walletconnect':
-        specifier: workspace:*
-        version: link:../../packages/adapters/walletconnect
-      '@xrpl-connect/adapter-xaman':
-        specifier: workspace:*
-        version: link:../../packages/adapters/xaman
-      '@xrpl-connect/adapter-xyra':
-        specifier: workspace:*
-        version: link:../../packages/adapters/xyra
-      '@xrpl-connect/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@xrpl-connect/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -108,6 +84,9 @@ importers:
       xrpl:
         specifier: ^4.0.0
         version: 4.4.2(bufferutil@4.0.9)(utf-8-validate@5.0.10)
+      xrpl-connect:
+        specifier: workspace:*
+        version: link:../../packages/xrpl-connect
     devDependencies:
       '@types/react':
         specifier: ^18.3.12
