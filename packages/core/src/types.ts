@@ -181,7 +181,7 @@ export interface WalletManagerOptions {
   network?: NetworkConfig; // Default network
   autoConnect?: boolean; // Auto-reconnect on initialization
   storage?: StorageAdapter; // Custom storage (default: localStorage)
-  logger?: LoggerOptions; // Logging configuration
+  logger?: LoggerOptions | LoggerInstance; // Logging configuration (level options or a custom logger instance)
 }
 
 /**
@@ -205,12 +205,31 @@ export interface StoredState {
 }
 
 /**
+ * Supported log levels.
+ * `'silent'` disables all output; `'none'` is a deprecated alias kept for backwards compatibility.
+ */
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'silent' | 'none';
+
+/**
  * Logger configuration options
  * Level is optional - defaults to 'debug' in development, 'warn' in production
  */
 export interface LoggerOptions {
-  level?: 'debug' | 'info' | 'warn' | 'error' | 'none';
+  level?: LogLevel;
   prefix?: string;
+}
+
+/**
+ * A custom logger object the application can supply to route log output
+ * (e.g. into Sentry, Datadog, or any structured logging stack).
+ *
+ * Method signatures match `console.debug/info/warn/error`.
+ */
+export interface LoggerInstance {
+  debug(message: string, ...args: unknown[]): void;
+  info(message: string, ...args: unknown[]): void;
+  warn(message: string, ...args: unknown[]): void;
+  error(message: string, ...args: unknown[]): void;
 }
 
 /**

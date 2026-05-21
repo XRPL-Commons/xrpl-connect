@@ -3,11 +3,19 @@
  * A framework-agnostic web component for connecting to XRPL wallets
  */
 
-import type { WalletManager } from '@xrpl-connect/core';
+import type { WalletAdapter, WalletManager } from '@xrpl-connect/core';
 import { createLogger, supportsPreInitialize } from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
 import { mainStyles } from './styles/main';
-import { SIZES, TIMINGS, QR_CONFIG } from './constants';
+import {
+  SIZES,
+  TIMINGS,
+  QR_CONFIG,
+  DEFAULT_THEME,
+  COLOR_ADJUSTMENT,
+  ADDRESS_DISPLAY,
+  GRADIENT,
+} from './constants';
 import {
   renderWalletListView,
   renderQRView,
@@ -17,6 +25,15 @@ import {
   renderAccountModal,
 } from './views';
 import { WalletService, EventHandler } from './services';
+import {
+  isXamanStateAdapter,
+  type AccountSelectionData,
+  type ErrorData,
+  type LedgerAccount,
+  type LoadingData,
+  type QRCodeData,
+  type WalletConnectorContext,
+} from './types';
 import { isXamanQRImage, adjustColorBrightness } from './utils';
 
 /**
@@ -25,7 +42,7 @@ import { isXamanQRImage, adjustColorBrightness } from './utils';
 const logger = createLogger('[WalletConnector]');
 
 // Only define the component in browser (guard against SSR)
-let WalletConnectorElement: any = null;
+let WalletConnectorElement: CustomElementConstructor | null = null;
 
 if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
   const XC_CSS_VARIABLES = [
@@ -67,31 +84,25 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     '--xc-warning-color',
   ] as const;
 
-  class WalletConnectorElementImpl extends HTMLElement {
-    private walletManager: WalletManager | null = null;
-    private shadow: ShadowRoot;
+  class WalletConnectorElementImpl extends HTMLElement implements WalletConnectorContext {
+    public walletManager: WalletManager | null = null;
+    public readonly shadow: ShadowRoot;
     private isOpen = false;
     private isFirstOpen = true;
     private primaryWalletId: string | null = null;
     private viewState: 'list' | 'qr' | 'loading' | 'error' | 'account-selection' = 'list';
-    private qrCodeData: { walletId: string; uri: string } | null = null;
-    private loadingData: { walletId: string; walletName: string; walletIcon?: string } | null =
-      null;
-    private errorData: { walletId: string; walletName: string; error: Error } | null = null;
-    private accountSelectionData: {
-      walletId: string;
-      walletName: string;
-      walletIcon?: string;
-      accounts: Array<{ address: string; publicKey: string; path: string; index: number }>;
-    } | null = null;
+    public qrCodeData: QRCodeData | null = null;
+    private loadingData: LoadingData | null = null;
+    public errorData: ErrorData | null = null;
+    public accountSelectionData: AccountSelectionData | null = null;
     private previousModalHeight: number = 0;
-    private preGeneratedQRCode: any | null = null; // Store pre-generated QR code
-    private preGeneratedURI: string | null = null; // Store the URI used for pre-generation
-    private specifiedWalletIds: string[] = []; // Wallet IDs specified via 'wallets' attribute
-    private availableWallets: any[] = []; // Cache of available wallets
-    private walletAvailabilityChecked: boolean = false; // Flag to track if availability has been checked
-    private accountModalOpen: boolean = false; // Track if account details modal is open
-    private accountBalance: string | null = null; // Cached account balance
+    private preGeneratedQRCode: QRCodeStyling | null = null;
+    private preGeneratedURI: string | null = null;
+    private specifiedWalletIds: string[] = [];
+    private availableWallets: WalletAdapter[] = [];
+    private walletAvailabilityChecked: boolean = false;
+    private accountModalOpen: boolean = false;
+    private accountBalance: string | null = null;
     private overlayPortal: HTMLDivElement | null = null;
     private accountModalPortal: HTMLDivElement | null = null;
     private styleObserver: MutationObserver | null = null;
@@ -192,13 +203,21 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     private updateDerivedColors() {
       const computedStyle = window.getComputedStyle(this);
-      const primaryColor = computedStyle.getPropertyValue('--xc-primary-color').trim() || '#0EA5E9';
+      const primaryColor =
+        computedStyle.getPropertyValue('--xc-primary-color').trim() || DEFAULT_THEME.PRIMARY_COLOR;
       const backgroundColor =
-        computedStyle.getPropertyValue('--xc-background-color').trim() || '#000637';
+        computedStyle.getPropertyValue('--xc-background-color').trim() ||
+        DEFAULT_THEME.BACKGROUND_COLOR;
 
       // Calculate lighter shades for hover states
-      const primaryHoverColor = adjustColorBrightness(primaryColor, 0.15);
-      const backgroundHoverColor = adjustColorBrightness(backgroundColor, 0.15);
+      const primaryHoverColor = adjustColorBrightness(
+        primaryColor,
+        COLOR_ADJUSTMENT.HOVER_BRIGHTNESS
+      );
+      const backgroundHoverColor = adjustColorBrightness(
+        backgroundColor,
+        COLOR_ADJUSTMENT.HOVER_BRIGHTNESS
+      );
 
       // Apply hover colors
       this.style.setProperty('--xc-primary-button-hover-background', primaryHoverColor);
@@ -260,19 +279,14 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     private async checkXamanStateOnInit() {
       try {
-        if (this.listAdapters().includes('xaman')) {
-          const xamanAdapter: any = this.walletManager?.adapters?.get('xaman');
+        const xamanAdapter = this.walletManager?.adapters?.get('xaman');
+        if (!xamanAdapter || !isXamanStateAdapter(xamanAdapter)) {
+          return;
+        }
 
-          if (!xamanAdapter) {
-            return;
-          }
-
-          const account = await xamanAdapter.checkXamanState();
-          if (account) {
-            if (this.walletManager && !this.walletManager.connected) {
-              await this.walletManager.connect('xaman');
-            }
-          }
+        const account = await xamanAdapter.checkXamanState();
+        if (account && this.walletManager && !this.walletManager.connected) {
+          await this.walletManager.connect('xaman');
         }
       } catch (err) {
         console.error('Failed to check Xaman state:', err);
@@ -293,17 +307,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         .split(',')
         .map((id) => id.trim())
         .filter((id) => id.length > 0);
-    }
-
-    private listAdapters(): string[] {
-      const returnArray: string[] = [];
-      if (!this.walletManager?.wallets) return returnArray;
-
-      for (const adapter of Object.values(this.walletManager.wallets)) {
-        returnArray.push(adapter.id);
-      }
-
-      return returnArray;
     }
 
     /**
@@ -346,7 +349,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.availableWallets = this.specifiedWalletIds
           .map((id) => availabilityChecks.find((check) => check.wallet.id === id)?.wallet)
           .filter(
-            (wallet): wallet is any =>
+            (wallet): wallet is WalletAdapter =>
               (wallet !== undefined &&
                 availabilityChecks.find((c) => c.wallet.id === wallet.id)?.available) ??
               false
@@ -426,7 +429,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     /**
      * Close the account details modal
      */
-    private closeAccountModal() {
+    public closeAccountModal() {
       this.accountModalOpen = false;
       this.render();
     }
@@ -474,8 +477,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       try {
         logger.debug('Pre-initializing WalletConnect...');
 
-        // Use the network the manager was configured with, if exposed
-        const network = (this.walletManager as any).options?.network;
+        const network = this.walletManager.defaultNetwork;
 
         await walletConnectAdapter.preInitialize(network, (uri) => {
           logger.debug('Pre-generating QR code...');
@@ -589,7 +591,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       walletId: string,
       walletName: string,
       walletIcon: string | undefined,
-      accounts: Array<{ address: string; publicKey: string; path: string; index: number }>
+      accounts: LedgerAccount[]
     ) {
       this.viewState = 'account-selection';
       this.accountSelectionData = { walletId, walletName, walletIcon, accounts };
@@ -649,7 +651,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           <img
             src="${uri}"
             alt="QR Code"
-            style="width: ${SIZES.QR_CODE}px; height: ${SIZES.QR_CODE}px; border-radius: 16px; display: block;"
+            style="width: ${SIZES.QR_CODE}px; height: ${SIZES.QR_CODE}px; border-radius: ${SIZES.QR_IMAGE_BORDER_RADIUS}px; display: block;"
           />
         `;
           return;
@@ -698,7 +700,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       } catch (error) {
         logger.error('Failed to generate QR code:', error);
         container.innerHTML = `
-        <div class="qr-loading" style="color: #ef4444;">
+        <div class="qr-loading" style="color: ${DEFAULT_THEME.DANGER_COLOR};">
           Failed to generate QR code
         </div>
       `;
@@ -708,7 +710,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     /**
      * Truncate address for display
      */
-    private truncateAddress(address: string, chars: number = 6): string {
+    private truncateAddress(
+      address: string,
+      chars: number = ADDRESS_DISPLAY.TRUNCATE_CHARS_DEFAULT
+    ): string {
       if (address.length <= chars * 2) return address;
       return `${address.substring(0, chars)}...${address.substring(address.length - chars)}`;
     }
@@ -727,11 +732,11 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       // Generate two colors from the hash
-      const hue1 = Math.abs(hash % 360);
-      const hue2 = (hue1 + 60) % 360; // Offset by 60 degrees for contrast
+      const hue1 = Math.abs(hash % GRADIENT.HUE_MAX_DEGREES);
+      const hue2 = (hue1 + GRADIENT.HUE_OFFSET_DEGREES) % GRADIENT.HUE_MAX_DEGREES;
 
-      const color1 = `hsl(${hue1}, 70%, 55%)`;
-      const color2 = `hsl(${hue2}, 70%, 55%)`;
+      const color1 = `hsl(${hue1}, ${GRADIENT.SATURATION_PERCENT}%, ${GRADIENT.LIGHTNESS_PERCENT}%)`;
+      const color2 = `hsl(${hue2}, ${GRADIENT.SATURATION_PERCENT}%, ${GRADIENT.LIGHTNESS_PERCENT}%)`;
 
       return { color1, color2 };
     }
@@ -755,7 +760,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       const currentAccount = this.walletManager?.account;
       const buttonText =
         isConnected && currentAccount
-          ? this.truncateAddress(currentAccount.address, 4)
+          ? this.truncateAddress(currentAccount.address, ADDRESS_DISPLAY.TRUNCATE_CHARS_BUTTON)
           : 'Connect Wallet';
 
       // Use available wallets if any have been checked, otherwise fallback to all wallets
@@ -765,7 +770,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           : this.walletManager?.wallets || [];
 
       const primaryWallet = this.primaryWalletId
-        ? wallets.find((w) => w.id === this.primaryWalletId)
+        ? (wallets.find((w) => w.id === this.primaryWalletId) ?? null)
         : null;
       const otherWallets = wallets.filter((w) => w.id !== this.primaryWalletId);
 
@@ -882,7 +887,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
   // Register the custom element
   if (!customElements.get('xrpl-wallet-connector')) {
-    customElements.define('xrpl-wallet-connector', WalletConnectorElement);
+    customElements.define('xrpl-wallet-connector', WalletConnectorElementImpl);
   }
 }
 
