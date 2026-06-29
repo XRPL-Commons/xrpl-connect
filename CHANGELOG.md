@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- xrpl-connect (meta-package): re-export each adapter's full public surface, not just the adapter class. Consumers of `xrpl-connect` can now reach adapter-specific exports — `XRPLMethod`, `LedgerDeviceState`, `LEDGER_STATE_MESSAGES`, `OTSU_NETWORK_MAP`, `XRPL_CONNECT_TO_XYRA_NETWORK`/`XYRA_TO_XRPL_CONNECT_NETWORK`, and every `*AdapterOptions`/`*ConnectOptions` type — without adding a direct dependency on the sub-package (#35).
+
 ## [0.8.2] - 2026-05-21
 
 ### Fixed

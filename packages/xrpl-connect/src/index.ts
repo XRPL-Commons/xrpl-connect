@@ -21,14 +21,21 @@
 export * from '@xrpl-connect/core';
 export * from '@xrpl-connect/ui';
 
-// Re-export all adapters
-export { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-export { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
-export { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
-export { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
-export { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
-export { XyraAdapter } from '@xrpl-connect/adapter-xyra';
-export { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
+// Re-export each adapter's FULL public surface — not just the adapter class, but
+// every enum, option type, helper and network map it exports. Previously only the
+// classes were re-exported, so consumers of the meta-package could not reach e.g.
+// `XRPLMethod`, `LedgerDeviceState`, `LEDGER_STATE_MESSAGES`, `OTSU_NETWORK_MAP`,
+// the Xyra network maps, or the per-adapter `*AdapterOptions` types without adding
+// a direct dependency on the sub-package. (#35)
+// Adapter exports are uniquely named, so these `export *` re-exports do not collide
+// with each other or with the core/ui surfaces above.
+export * from '@xrpl-connect/adapter-xaman';
+export * from '@xrpl-connect/adapter-crossmark';
+export * from '@xrpl-connect/adapter-gemwallet';
+export * from '@xrpl-connect/adapter-walletconnect';
+export * from '@xrpl-connect/adapter-ledger';
+export * from '@xrpl-connect/adapter-xyra';
+export * from '@xrpl-connect/adapter-otsu';
 
 // Convenient grouped exports for better DX
 import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
