@@ -16,10 +16,13 @@ const distPkg = {
   description: mainPkg.description,
   author: mainPkg.author,
   license: mainPkg.license,
-  type: 'module',
+  // Intentionally NO `"type": "module"`: the ESM entry is already `.mjs`, while
+  // the `require` entry below is the UMD `.js` which must be parsed as CommonJS.
+  // Setting `type: module` would make Node/TypeScript treat the UMD file as ESM
+  // and break `require('xrpl-connect')` for CommonJS consumers (TS1479).
   main: './xrpl-connect.umd.js',
   module: './xrpl-connect.mjs',
-  // Rolled-up declaration file emitted by vite-plugin-dts (see vite.config.ts).
+  // Rolled-up declaration file emitted by api-extractor (see scripts/build-types.mjs).
   // Required so `npm install xrpl-connect` consumers get full TypeScript types
   // for the re-exported core/ui/adapter API (fixes #56).
   types: './index.d.ts',
