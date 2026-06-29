@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- xrpl-connect (meta-bundle): the published npm package now ships TypeScript types. The self-contained Vite bundle previously emitted no `.d.ts` and the generated `package.json` had no `types`/`exports.types`, so `npm install xrpl-connect` consumers got zero IntelliSense for the re-exported core/UI/adapter API. `publish:build` now rolls a single inlined `dist-publish/index.d.ts` via api-extractor (mirroring the JS bundle, with `@xrpl-connect/*` and `eventemitter3` types inlined and `xrpl` kept as a peer) and `prepare-publish.js` wires up `types` + `exports.types` (#56).
+
 ## [0.8.2] - 2026-05-21
 
 ### Fixed

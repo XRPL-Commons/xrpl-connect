@@ -19,8 +19,14 @@ const distPkg = {
   type: 'module',
   main: './xrpl-connect.umd.js',
   module: './xrpl-connect.mjs',
+  // Rolled-up declaration file emitted by vite-plugin-dts (see vite.config.ts).
+  // Required so `npm install xrpl-connect` consumers get full TypeScript types
+  // for the re-exported core/ui/adapter API (fixes #56).
+  types: './index.d.ts',
   exports: {
     '.': {
+      // `types` must come first so TypeScript resolves it before import/require.
+      types: './index.d.ts',
       import: './xrpl-connect.mjs',
       require: './xrpl-connect.umd.js',
     },
