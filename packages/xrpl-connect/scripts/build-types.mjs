@@ -21,8 +21,9 @@ const projectFolder = path.join(__dirname, '..');
  * `dist-publish/index.d.ts` — the type-level mirror of the JS bundle. `xrpl`
  * stays external (peer dependency installed by the consumer).
  *
- * Prerequisites (satisfied by `publish:build`, which runs `tsup` first, and by
- * the release flow building the whole workspace beforehand):
+ * Prerequisites (satisfied by `publish:build`, which runs
+ * `turbo run build --filter=xrpl-connect...` first — building this package *and*
+ * all its workspace dependencies in topological order):
  *   - `dist/index.d.ts` exists for this package.
  *   - Each `@xrpl-connect/*` workspace package has been built (its
  *     `dist/index.d.ts` exists) so api-extractor can follow its types.
