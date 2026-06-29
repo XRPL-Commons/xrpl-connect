@@ -48,7 +48,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "publish:build": "turbo run build --filter=xrpl-connect... && vite build -c vite.config.ts && node scripts/build-types.mjs && node scripts/prepare-publish.js",
+    "publish:build": "turbo run build --filter=xrpl-connect... && vite build -c vite.config.ts && node scripts/build-types.mjs && node scripts/prepare-publish.mjs",
     "clean": "rm -rf dist dist-publish"
   },
   "dependencies": {

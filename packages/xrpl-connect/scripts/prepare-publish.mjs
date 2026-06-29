@@ -9,6 +9,17 @@ const distPkgPath = path.join(__dirname, '../dist-publish/package.json');
 // Read main package.json
 const mainPkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf-8'));
 
+// The rolled-up `index.d.ts` keeps `import { SignClientTypes } from
+// '@walletconnect/types'` external (inlining it drags in an unbundleable cascade
+// of @walletconnect/* + node `events` types — see scripts/build-types.mjs). So
+// the published package must declare `@walletconnect/types` as a real dependency
+// for that import (and its transitive types) to resolve in the consumer's tree.
+// Read the version range from the WalletConnect adapter so the two stay in sync.
+const wcAdapterPkg = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '../../adapters/walletconnect/package.json'), 'utf-8')
+);
+const wcTypesRange = wcAdapterPkg.dependencies['@walletconnect/types'];
+
 // Create dist-publish package.json
 const distPkg = {
   name: mainPkg.name,
@@ -34,6 +45,17 @@ const distPkg = {
       require: './xrpl-connect.umd.js',
     },
   },
+  // `@walletconnect/types` is left external in the rolled types (see above), so
+  // it must be installed alongside the package for those declarations to resolve.
+  dependencies: {
+    '@walletconnect/types': wcTypesRange,
+  },
+  // Carry the `xrpl` peer dependency into the published manifest. The rolled
+  // `index.d.ts` keeps `import { SubmittableTransaction } from 'xrpl'` external,
+  // so consumers must install `xrpl` for the types (and the externalized runtime
+  // bundle) to resolve. Without this, npm gives no peer hint and a type-only
+  // consumer who hasn't installed `xrpl` gets an unresolved import.
+  peerDependencies: mainPkg.peerDependencies,
   keywords: mainPkg.keywords,
   repository: mainPkg.repository,
   bugs: mainPkg.bugs,
