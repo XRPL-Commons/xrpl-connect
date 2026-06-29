@@ -73,11 +73,24 @@ export function isSafari(): boolean {
 }
 
 /**
- * Detect if user is on mobile device
+ * Detect if user is on a mobile (phone/tablet) device.
+ *
+ * Beyond the usual user-agent sniff, this also catches iPadOS 13+ in its default
+ * "desktop" mode, which reports a `Macintosh` user-agent indistinguishable from a
+ * real Mac except that it is a touch device (`maxTouchPoints > 1`; desktop Safari
+ * reports `0`). Without this, iPads fall through to the desktop QR flow instead of
+ * the mobile deep-link/modal flow. (#16)
+ *
  * @returns true if mobile device
  */
 export function isMobile(): boolean {
-  return BROWSER_PATTERNS.MOBILE.test(navigator.userAgent);
+  if (typeof navigator === 'undefined') return false;
+  if (BROWSER_PATTERNS.MOBILE.test(navigator.userAgent)) return true;
+  return (
+    BROWSER_PATTERNS.MAC.test(navigator.userAgent) &&
+    typeof navigator.maxTouchPoints === 'number' &&
+    navigator.maxTouchPoints > 1
+  );
 }
 
 /**

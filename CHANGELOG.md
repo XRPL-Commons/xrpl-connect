@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- UI / WalletConnect: `isMobile()` now also detects iPadOS 13+ in its default "desktop" mode, which reports a `Macintosh` user-agent and was therefore treated as desktop — sending iPad users down the QR flow instead of the mobile deep-link/modal flow. Detection now pairs the user-agent check with a touch probe (`Macintosh` UA + `navigator.maxTouchPoints > 1`). Added unit coverage for phone/tablet/desktop detection (#16).
+
 ## [0.8.2] - 2026-05-21
 
 ### Fixed
