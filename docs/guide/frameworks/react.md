@@ -51,7 +51,11 @@ export function App() {
       ) : (
         <button onClick={open}>Connect Wallet</button>
       )}
-      {error && <p>Error [{error.code}]: {error.message}</p>}
+      {error && (
+        <p>
+          Error [{error.code}]: {error.message}
+        </p>
+      )}
       <WalletConnector theme="dark" onError={(e) => console.error(e.code, e.category)} />
     </>
   );

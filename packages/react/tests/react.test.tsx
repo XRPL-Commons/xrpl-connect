@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
-import { render, screen, act, waitFor, renderHook } from '@testing-library/react';
-import { StrictMode, useEffect, useRef } from 'react';
+import { render, act, waitFor, renderHook } from '@testing-library/react';
+import { StrictMode, useRef } from 'react';
 import {
   WalletManager,
   STANDARD_NETWORKS,
@@ -37,7 +37,9 @@ function makeAdapter(overrides: Partial<WalletAdapter> = {}): WalletAdapter {
 function wrapper(adapters: WalletAdapter[]) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     return (
-      <XrplConnectProvider config={{ adapters, autoConnect: false }}>{children}</XrplConnectProvider>
+      <XrplConnectProvider config={{ adapters, autoConnect: false }}>
+        {children}
+      </XrplConnectProvider>
     );
   };
 }
@@ -104,10 +106,9 @@ describe('XrplConnectProvider + hooks', () => {
         throw createWalletError.signRejected();
       },
     });
-    const { result } = renderHook(
-      () => ({ wallet: useWallet(), signer: useSigner() }),
-      { wrapper: wrapper([adapter]) }
-    );
+    const { result } = renderHook(() => ({ wallet: useWallet(), signer: useSigner() }), {
+      wrapper: wrapper([adapter]),
+    });
     await act(async () => {
       await result.current.wallet.connect('fake');
     });

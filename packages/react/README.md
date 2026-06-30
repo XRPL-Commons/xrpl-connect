@@ -54,7 +54,11 @@ export function App() {
         <button onClick={open}>Connect Wallet</button>
       )}
 
-      {error && <p>Error [{error.code}]: {error.message}</p>}
+      {error && (
+        <p>
+          Error [{error.code}]: {error.message}
+        </p>
+      )}
 
       {/* The modal itself — themeable, with typed event props */}
       <WalletConnector
@@ -71,22 +75,26 @@ export function App() {
 ## API
 
 ### `<XrplConnectProvider config={...}>`
+
 Builds **one** `WalletManager` from `config` (the core `WalletManagerOptions`:
 `adapters`, `network`, `autoConnect`, `storage`, `logger`) and shares it with the
 subtree. The manager is created once on mount; pass a React `key` to rebuild it.
 
 ### Hooks
+
 - `useWallet()` → `{ manager, connected, account, network, connecting, error, connect, disconnect }`
 - `useSigner()` → `{ sign, signAndSubmit, signMessage }` — each rejects with a typed
   `WalletError` (`error.code`, `error.category`), e.g. `SIGN_REJECTED` on user cancel.
 - `useWalletModal()` → `{ open, close }` — drive the `<WalletConnector>` modal.
 
 ### `<WalletConnector />`
+
 React wrapper around the web component. Props: `primaryWallet`, `wallets`, `theme`
 (`'dark' | 'light' | 'purple'`), `cssVars` (`--xc-*` overrides), `style`, `className`,
 and typed callbacks `onConnecting(walletId)`, `onConnect(account)`, `onError(WalletError)`.
 
 ### Errors
+
 `WalletError`, `WalletErrorCode`, `WalletErrorCategory`, and `isWalletError` are
 re-exported for convenience.
 
