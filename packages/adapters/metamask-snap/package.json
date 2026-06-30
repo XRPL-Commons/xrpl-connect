@@ -1,6 +1,6 @@
 {
   "name": "@xrpl-connect/adapter-metamask-snap",
-  "version": "0.4.0",
+  "version": "0.8.2",
   "description": "MetaMask Snap wallet adapter for XRPL Connect - Use XRPL via MetaMask Snaps",
   "author": "XRPL Connect Contributors",
   "license": "MIT",

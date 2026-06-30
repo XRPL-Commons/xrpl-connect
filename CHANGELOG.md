@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New adapter `@xrpl-connect/adapter-metamask-snap`: connect XRPL through MetaMask via the `xrpl-snap` Snap (provider RPC, no extra npm dependency). Wired into the `xrpl-connect` meta-package (`MetaMaskSnapAdapter`, `Adapters.MetaMaskSnap`). Adapter authored by @LeJamon; modernised to current conventions (shared tsup config, SVG icon asset, typed EIP-1193 provider) with added Vitest coverage (#46).
+
+### Fixed
+
+- MetaMask Snap adapter: `connect()` no longer re-wraps an already-typed `WalletError` (e.g. `WALLET_NOT_INSTALLED`) as a generic `CONNECTION_FAILED`.
+
 ## [0.8.2] - 2026-05-21
 
 ### Fixed
