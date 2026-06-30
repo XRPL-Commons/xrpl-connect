@@ -20,6 +20,7 @@ import type {
   SubmittedTransaction,
 } from '@xrpl-connect/core';
 import { createWalletError, resolveNetwork } from '@xrpl-connect/core';
+import type { SubmittableTransaction } from 'xrpl';
 import iconSvg from './assets/icon.svg';
 
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
@@ -134,7 +135,7 @@ export class GemWalletAdapter implements WalletAdapter {
       };
 
       const signResponse = await signTransaction({
-        transaction: tx as any,
+        transaction: tx as SubmittableTransaction,
       });
 
       if (!signResponse.result) {
@@ -169,7 +170,7 @@ export class GemWalletAdapter implements WalletAdapter {
       };
 
       const submitResponse = await submitTransaction({
-        transaction: tx as any,
+        transaction: tx as SubmittableTransaction,
       });
 
       if (!submitResponse.result || !submitResponse.result.hash) {

@@ -51,6 +51,17 @@ export enum XRPLMethod {
 }
 
 /**
+ * Signed transaction JSON returned by a wallet in response to an
+ * `xrpl_signTransaction` request. Only the fields the adapter reads are typed;
+ * the rest of the signed `tx_json` is preserved as additional keys.
+ */
+interface WalletConnectSignedTxJson {
+  hash?: string;
+  TxnSignature?: string;
+  [key: string]: unknown;
+}
+
+/**
  * WalletConnect adapter options
  */
 export interface WalletConnectAdapterOptions {
@@ -444,7 +455,10 @@ export class WalletConnectAdapter
   /**
    * Send a WalletConnect sign transaction request
    */
-  private async requestSignTransaction(transaction: Transaction, submit: boolean): Promise<any> {
+  private async requestSignTransaction(
+    transaction: Transaction,
+    submit: boolean
+  ): Promise<WalletConnectSignedTxJson> {
     if (!this.client || !this.session || !this.currentAccount) {
       throw createWalletError.notConnected();
     }
@@ -454,7 +468,7 @@ export class WalletConnectAdapter
       Account: transaction.Account || this.currentAccount.address,
     };
 
-    const result = await this.client.request({
+    const result = await this.client.request<{ tx_json: WalletConnectSignedTxJson }>({
       topic: this.session.topic,
       chainId:
         this.currentAccount.network.walletConnectId || `xrpl:${this.currentAccount.network.id}`,
@@ -468,7 +482,7 @@ export class WalletConnectAdapter
       },
     });
 
-    return (result as any).tx_json;
+    return result.tx_json;
   }
 
   /**
