@@ -18,7 +18,7 @@ import type {
   SupportsDeepLink,
   SupportsPreInitialize,
 } from '@xrpl-connect/core';
-import { createWalletError, resolveNetwork, createLogger } from '@xrpl-connect/core';
+import { createWalletError, resolveNetwork, createLogger, isMobile } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
 import {
   DISCONNECT_REASONS,
@@ -29,22 +29,6 @@ import {
 } from './constants';
 
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
-
-/**
- * Utility function to detect if user is on a mobile (phone/tablet) device.
- *
- * Also catches iPadOS 13+ in its default "desktop" mode, which reports a
- * `Macintosh` user-agent and is otherwise indistinguishable from a real Mac
- * except that it is a touch device (`maxTouchPoints > 1`). Without this, iPads
- * skip the mobile deep-link/modal path. (#16)
- */
-function isMobile(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
-    return true;
-  }
-  return /Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1;
-}
 
 /**
  * Logger instance for WalletConnect adapter

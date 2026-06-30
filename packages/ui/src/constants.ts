@@ -92,15 +92,14 @@ export const COLOR_ADJUSTMENT = {
 } as const;
 
 /**
- * Browser detection patterns
+ * Browser detection patterns.
+ *
+ * Mobile/tablet detection (incl. iPadOS desktop-mode) lives in
+ * `@xrpl-connect/core`'s `isMobile()`; this only retains the Safari probe used
+ * by `isSafari()` for user-gesture preservation.
  */
 export const BROWSER_PATTERNS = {
   SAFARI: /^((?!chrome|android).)*safari/i,
-  MOBILE: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i,
-  // iPadOS 13+ in the default "desktop" mode reports a macOS user-agent
-  // (`Macintosh`), so the MOBILE pattern alone misses it; pair this with a
-  // touch check to identify those tablets. See `isMobile()` in utils.ts.
-  MAC: /Macintosh/i,
 } as const;
 
 /**
