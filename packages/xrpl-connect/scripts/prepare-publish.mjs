@@ -18,7 +18,26 @@ const mainPkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf-8'));
 const wcAdapterPkg = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../../adapters/walletconnect/package.json'), 'utf-8')
 );
-const wcTypesRange = wcAdapterPkg.dependencies['@walletconnect/types'];
+const wcTypesRange = wcAdapterPkg.dependencies?.['@walletconnect/types'];
+
+// Fail loudly if the version range can't be found. Without this guard a missing
+// range is `undefined`, which `JSON.stringify` silently drops from `dependencies`
+// below — so the published manifest would declare NO `@walletconnect/types` even
+// though the rolled `index.d.ts` still imports from it, shipping unresolvable
+// types. The self-containment check in scripts/build-types.mjs would NOT catch it
+// either: it allow-lists `@walletconnect/types` unconditionally. Keep this in
+// lock-step with that allow-list — if the WalletConnect adapter ever stops
+// declaring `@walletconnect/types` as a dependency, both scripts must change.
+if (!wcTypesRange) {
+  console.error(
+    "✗ Could not read the '@walletconnect/types' version range from " +
+      'packages/adapters/walletconnect/package.json (dependencies). The rolled types ' +
+      'leave that import external, so the published manifest must declare it. Fix: restore ' +
+      "the dependency on the adapter, or update both scripts/prepare-publish.mjs and the " +
+      'ALLOWED_EXTERNAL_IMPORTS allow-list in scripts/build-types.mjs.'
+  );
+  process.exit(1);
+}
 
 // Create dist-publish package.json
 const distPkg = {
