@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import type { Theme, ThemeColors } from '../types';
-import { useWallet } from '../context/WalletContext';
+import { useDemo } from '../context/DemoContext';
 
 const THEMES: Record<Theme, ThemeColors> = {
   dark: {
@@ -37,12 +37,12 @@ const THEME_LABELS: Record<Theme, string> = {
 
 export function ThemeSelector() {
   const [currentTheme, setCurrentTheme] = useState<Theme>('dark');
-  const { addEvent } = useWallet();
+  const { addEvent } = useDemo();
   const walletConnectorRef = useRef<HTMLElement | null>(null);
 
-  // Get reference to the wallet connector element
+  // Get reference to the wallet connector element rendered by <WalletConnector>.
   useEffect(() => {
-    walletConnectorRef.current = document.getElementById('wallet-connector');
+    walletConnectorRef.current = document.querySelector('xrpl-wallet-connector');
   }, []);
 
   const handleThemeChange = (theme: Theme) => {

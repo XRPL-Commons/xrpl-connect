@@ -1,7 +1,7 @@
-import { useWallet } from '../context/WalletContext';
+import { useDemo } from '../context/DemoContext';
 
 export function EventLog() {
-  const { events, clearEvents } = useWallet();
+  const { events, clearEvents } = useDemo();
 
   return (
     <section id="events-section">

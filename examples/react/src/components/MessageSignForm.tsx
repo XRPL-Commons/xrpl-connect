@@ -1,20 +1,21 @@
 import { useState, FormEvent } from 'react';
-import { useWallet } from '../context/WalletContext';
+import { useWallet, useSigner } from '@xrpl-connect/react';
+import { useDemo } from '../context/DemoContext';
 
 export function MessageSignForm() {
-  const { walletManager, isConnected, addEvent } = useWallet();
+  const { connected } = useWallet();
+  const { signMessage } = useSigner();
+  const { addEvent } = useDemo();
   const [message, setMessage] = useState('');
   const [result, setResult] = useState('');
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
-    if (!walletManager) return;
-
     try {
       setResult('<div class="loading">Signing message...</div>');
 
-      const signed = await walletManager.signMessage(message);
+      const signed = await signMessage(message);
 
       setResult(`
         <div class="success">
@@ -25,13 +26,14 @@ export function MessageSignForm() {
       `);
 
       addEvent('Message Signed', signed);
-    } catch (error: any) {
-      setResult(`<div class="error">Failed: ${error.message}</div>`);
-      addEvent('Message Sign Failed', error);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      setResult(`<div class="error">Failed: ${msg}</div>`);
+      addEvent('Message Sign Failed', { message: msg });
     }
   };
 
-  if (!isConnected) {
+  if (!connected) {
     return null;
   }
 
