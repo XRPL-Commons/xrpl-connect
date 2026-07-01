@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - xrpl-connect (meta-package): re-export each adapter's full public surface, not just the adapter class. Consumers can now reach adapter-specific exports — including every `*AdapterOptions`/`*ConnectOptions` type — and the complete upstream Xaman, Xaman OAuth, Crossmark, and GemWallet APIs through the collision-safe `XamanSDK`, `XamanOAuth2`, `CrossmarkSDK`, and `GemWalletAPI` namespaces (#35).
+- UI: `<xrpl-wallet-connector>.openAndWait()` opens the modal and returns a `Promise<AccountInfo>` that resolves when a wallet connects and rejects if the user closes the modal first — so callers can `await` a connection in one call instead of wiring up `connected` / `close` listeners.
+- UI: the wallet list now surfaces the most-recently-used wallet first. The connector remembers the last-used wallets (localStorage) and orders the list by usage, keeping the original order for wallets with no history. An explicit `primary-wallet` still takes precedence.
 
 ### Fixed
 

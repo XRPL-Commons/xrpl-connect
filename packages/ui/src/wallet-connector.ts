@@ -3,7 +3,7 @@
  * A framework-agnostic web component for connecting to XRPL wallets
  */
 
-import type { WalletAdapter, WalletManager } from '@xrpl-connect/core';
+import type { AccountInfo, WalletAdapter, WalletManager } from '@xrpl-connect/core';
 import { createLogger, supportsPreInitialize, withTimeout, TIME } from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
 import { mainStyles } from './styles/main';
@@ -34,7 +34,7 @@ import {
   type QRCodeData,
   type WalletConnectorContext,
 } from './types';
-import { isXamanQRImage, adjustColorBrightness } from './utils';
+import { isXamanQRImage, adjustColorBrightness, orderWalletsByMru } from './utils';
 
 /**
  * Logger instance for wallet connector
@@ -271,6 +271,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       // Listen to wallet manager events — keep refs so we can detach on disconnect.
       this.walletManagerHandlers = {
         connect: () => {
+          // Remember the wallet just used so it surfaces first next time.
+          const connectedId = this.walletManager?.wallet?.id;
+          if (connectedId) this.recordMruId(connectedId);
           this.close();
           this.render(); // Re-render to update button
         },
@@ -424,6 +427,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
               false
           );
 
+        // Surface the most-recently-used wallets first, preserving the original
+        // order for wallets that have never been used.
+        this.availableWallets = this.orderByMru(this.availableWallets);
+
         logger.debug(
           'Available wallets:',
           this.availableWallets.map((w) => w.id)
@@ -438,6 +445,45 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.walletAvailabilityTimedOut = true;
         return true;
       }
+    }
+
+    /** localStorage key holding the most-recently-used wallet ids (newest first). */
+    private static readonly MRU_STORAGE_KEY = 'xrpl-connect:mru-wallets';
+
+    /**
+     * Read the most-recently-used wallet ids (newest first). Never throws —
+     * storage may be unavailable or hold malformed data.
+     */
+    private loadMruIds(): string[] {
+      try {
+        if (typeof localStorage === 'undefined') return [];
+        const raw = localStorage.getItem(WalletConnectorElementImpl.MRU_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed)
+          ? parsed.filter((id): id is string => typeof id === 'string')
+          : [];
+      } catch {
+        return [];
+      }
+    }
+
+    /** Move a wallet id to the front of the most-recently-used list. */
+    private recordMruId(id: string): void {
+      try {
+        if (typeof localStorage === 'undefined') return;
+        const next = [id, ...this.loadMruIds().filter((existing) => existing !== id)].slice(0, 10);
+        localStorage.setItem(WalletConnectorElementImpl.MRU_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // Ignore storage failures — MRU ordering is a non-critical enhancement.
+      }
+    }
+
+    /**
+     * Return wallets ordered by most-recently-used first, keeping the given
+     * (availability) order for wallets with no usage history.
+     */
+    private orderByMru(wallets: WalletAdapter[]): WalletAdapter[] {
+      return orderWalletsByMru(wallets, this.loadMruIds());
     }
 
     /**
@@ -467,6 +513,40 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       // Pre-initialize WalletConnect to reduce loading time
       this.preInitializeWalletConnect();
+    }
+
+    /**
+     * Open the modal and resolve once a wallet is connected, or reject if the
+     * user closes the modal first. Lets callers `await` a connection in one call
+     * instead of wiring up `connected` / `close` event listeners themselves.
+     */
+    openAndWait(): Promise<AccountInfo> {
+      return new Promise<AccountInfo>((resolve, reject) => {
+        const manager = this.walletManager;
+        const cleanup = () => {
+          manager?.off('connect', onConnect);
+          this.removeEventListener('close', onClose);
+        };
+        // Resolve off the manager's connect event (fires with the account),
+        // not the DOM 'connected' event — a successful connect dispatches
+        // 'close' first, so we must not treat that close as a cancellation.
+        const onConnect = (account: AccountInfo) => {
+          cleanup();
+          resolve(account);
+        };
+        const onClose = () => {
+          if (manager?.connected) return; // close that follows a successful connect
+          cleanup();
+          reject(new Error('Modal closed before a wallet was connected.'));
+        };
+
+        manager?.on('connect', onConnect);
+        this.addEventListener('close', onClose);
+        this.open().catch((error) => {
+          cleanup();
+          reject(error instanceof Error ? error : new Error(String(error)));
+        });
+      });
     }
 
     /**
