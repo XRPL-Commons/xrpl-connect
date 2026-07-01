@@ -149,12 +149,15 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       this.currentAdapter = adapter;
       this.currentAccount = account;
 
-      // Save to storage
+      // Save to storage. Persist the connect options too so reconnect() can
+      // replay them — notably the Ledger derivation path / account index, which
+      // would otherwise be lost and fall back to the default account.
       const state: StoredState = {
         walletId: adapter.id,
         account,
         network: account.network,
         timestamp: Date.now(),
+        connectOptions,
       };
       await this.storage.saveState(state);
 
@@ -212,7 +215,10 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     }
 
     try {
-      return await this.connect(stored.walletId);
+      // Replay the original connect options so wallet-specific selections
+      // (e.g. the Ledger derivation path / account index) are restored instead
+      // of reconnecting to the default account.
+      return await this.connect(stored.walletId, stored.connectOptions);
     } catch (error) {
       this.logger.warn('Reconnection failed:', error);
       await this.storage.clearState();

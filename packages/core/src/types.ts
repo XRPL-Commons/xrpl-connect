@@ -206,6 +206,14 @@ export interface StoredState {
   account: AccountInfo;
   network: NetworkInfo;
   timestamp: number;
+  /**
+   * Wallet-specific connect options used for the original connection, replayed
+   * on reconnect so the same account is restored. This is what lets a Ledger
+   * session reconnect to the selected derivation path / account index instead
+   * of silently falling back to the default account. Serialized as plain data
+   * (non-serializable values such as callbacks are dropped on write).
+   */
+  connectOptions?: ConnectOptions;
 }
 
 /**

@@ -3,8 +3,10 @@ import EventEmitter from 'eventemitter3';
 import { WalletManager } from '../src/wallet-manager';
 import { TIME } from '../src/constants';
 import { WalletErrorCode } from '../src/types';
+import { MemoryStorageAdapter } from '../src/storage';
 import type {
   AccountInfo,
+  ConnectOptions,
   NetworkInfo,
   SignedMessage,
   SignedTransaction,
@@ -164,5 +166,64 @@ describe('WalletManager.connect()', () => {
     await Promise.resolve();
     expect(hung.connect).not.toHaveBeenCalled();
     expect(manager.connected).toBe(false);
+  });
+});
+
+describe('WalletManager.reconnect()', () => {
+  /**
+   * Build an adapter that records every ConnectOptions it receives, so a test
+   * can assert what reconnect() replayed. Mirrors a hardware wallet where the
+   * derivation path / account index selects which account is returned.
+   */
+  function createRecordingAdapter(received: Array<ConnectOptions | undefined>): WalletAdapter {
+    return {
+      id: 'ledger',
+      name: 'Ledger',
+      isAvailable: async () => true,
+      connect: async (options) => {
+        received.push(options);
+        return ACCOUNT;
+      },
+      disconnect: async () => {},
+      getAccount: async () => ACCOUNT,
+      getNetwork: async () => NETWORK,
+      sign: async () => ({ hash: '' }) as SignedTransaction,
+      signAndSubmit: async () => ({ hash: '' }) as SubmittedTransaction,
+      signMessage: async () => ({ signature: '' }) as SignedMessage,
+    };
+  }
+
+  it('replays the wallet-specific connect options (e.g. Ledger derivation path) on reconnect', async () => {
+    // Shared storage models persistence surviving a page reload.
+    const storage = new MemoryStorageAdapter();
+    const received: Array<ConnectOptions | undefined> = [];
+
+    // First session: user picks a non-default derivation path.
+    const manager1 = new WalletManager({ adapters: [createRecordingAdapter(received)], storage });
+    await manager1.connect('ledger', { derivationPath: "44'/144'/3'/0/0" });
+
+    // Fresh manager + adapter (page reload), same storage.
+    const manager2 = new WalletManager({ adapters: [createRecordingAdapter(received)], storage });
+    const account = await manager2.reconnect();
+
+    expect(account).toEqual(ACCOUNT);
+    // The reconnect must carry the original path, not fall back to the default.
+    expect(received[received.length - 1]).toMatchObject({ derivationPath: "44'/144'/3'/0/0" });
+  });
+
+  it('reconnects without wallet-specific options when none were provided', async () => {
+    const storage = new MemoryStorageAdapter();
+    const received: Array<ConnectOptions | undefined> = [];
+
+    const manager1 = new WalletManager({ adapters: [createRecordingAdapter(received)], storage });
+    await manager1.connect('ledger');
+
+    const manager2 = new WalletManager({ adapters: [createRecordingAdapter(received)], storage });
+    await manager2.reconnect();
+
+    const replayed = received[received.length - 1] as
+      | (ConnectOptions & { derivationPath?: string })
+      | undefined;
+    expect(replayed?.derivationPath).toBeUndefined();
   });
 });
