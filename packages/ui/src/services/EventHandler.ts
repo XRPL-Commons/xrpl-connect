@@ -111,6 +111,14 @@ export class EventHandler {
       });
     });
 
+    // Install buttons for unavailable wallets — open the wallet's download page.
+    overlayRoot?.querySelectorAll('[data-install-url]').forEach((button: Element) => {
+      this.add(button, 'click', () => {
+        const url = (button as HTMLElement).dataset.installUrl;
+        if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      });
+    });
+
     // Back button (QR view, in overlay portal)
     this.add(overlayRoot?.querySelector('#back-button'), 'click', () => {
       this.component.showWalletList();

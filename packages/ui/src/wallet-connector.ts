@@ -100,6 +100,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private preGeneratedURI: string | null = null;
     private specifiedWalletIds: string[] = [];
     private availableWallets: WalletAdapter[] = [];
+    // Specified wallets that are NOT installed/available — shown with an
+    // "Install" affordance only when the `show-unavailable` attribute is set.
+    private unavailableWallets: WalletAdapter[] = [];
     private walletAvailabilityChecked: boolean = false;
     private accountModalOpen: boolean = false;
     private accountBalance: string | null = null;
@@ -114,7 +117,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     // Observed attributes
     static get observedAttributes() {
-      return ['primary-wallet', 'wallets'];
+      return ['primary-wallet', 'wallets', 'show-unavailable'];
+    }
+
+    /** Whether unavailable wallets are listed with an "Install" link. */
+    private get showUnavailable(): boolean {
+      return this.hasAttribute('show-unavailable');
     }
 
     constructor() {
@@ -345,15 +353,13 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           })
         );
 
-        // Filter to only available wallets and maintain order from specified list
-        this.availableWallets = this.specifiedWalletIds
-          .map((id) => availabilityChecks.find((check) => check.wallet.id === id)?.wallet)
-          .filter(
-            (wallet): wallet is WalletAdapter =>
-              (wallet !== undefined &&
-                availabilityChecks.find((c) => c.wallet.id === wallet.id)?.available) ??
-              false
-          );
+        // Split into available / unavailable, preserving the specified order.
+        const ordered = this.specifiedWalletIds
+          .map((id) => availabilityChecks.find((check) => check.wallet.id === id))
+          .filter((check): check is { wallet: WalletAdapter; available: boolean } => !!check);
+
+        this.availableWallets = ordered.filter((c) => c.available).map((c) => c.wallet);
+        this.unavailableWallets = ordered.filter((c) => !c.available).map((c) => c.wallet);
 
         logger.debug(
           'Available wallets:',
@@ -362,6 +368,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       } catch (error) {
         logger.error('Error checking wallet availability:', error);
         this.availableWallets = [];
+        this.unavailableWallets = [];
       }
     }
 
@@ -773,6 +780,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         ? (wallets.find((w) => w.id === this.primaryWalletId) ?? null)
         : null;
       const otherWallets = wallets.filter((w) => w.id !== this.primaryWalletId);
+      // Only surface unavailable wallets (with an Install link) when opted in.
+      const unavailableWallets = this.showUnavailable
+        ? this.unavailableWallets.filter((w) => w.id !== this.primaryWalletId)
+        : [];
 
       // Render based on view state
       let contentHTML = '';
@@ -791,7 +802,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           this.accountSelectionData.accounts
         );
       } else {
-        contentHTML = renderWalletListView(primaryWallet, otherWallets);
+        contentHTML = renderWalletListView(primaryWallet, otherWallets, unavailableWallets);
       }
 
       const overlayClass = this.isFirstOpen ? 'overlay fade-in' : 'overlay';

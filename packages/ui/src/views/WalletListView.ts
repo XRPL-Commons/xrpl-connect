@@ -2,7 +2,8 @@ import type { WalletAdapter } from '@xrpl-connect/core';
 
 export function renderWalletListView(
   primaryWallet: WalletAdapter | null,
-  otherWallets: WalletAdapter[]
+  otherWallets: WalletAdapter[],
+  unavailableWallets: WalletAdapter[] = []
 ): string {
   return `
       <div class="header">
@@ -27,6 +28,16 @@ export function renderWalletListView(
               (wallet) => `
             <button class="wallet-button" data-wallet-id="${wallet.id}">
               <span>${wallet.name}</span>
+              ${wallet.icon ? `<img src="${wallet.icon}" width="28" height="28" alt="${wallet.name}">` : ''}
+            </button>`
+            )
+            .join('')}
+          ${unavailableWallets
+            .map(
+              (wallet) => `
+            <button class="wallet-button wallet-button--unavailable" data-install-url="${wallet.url ?? ''}" aria-label="Install ${wallet.name}">
+              <span>${wallet.name}</span>
+              <span class="wallet-install-label">Install</span>
               ${wallet.icon ? `<img src="${wallet.icon}" width="28" height="28" alt="${wallet.name}">` : ''}
             </button>`
             )
