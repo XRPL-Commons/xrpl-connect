@@ -67,3 +67,6 @@ export { resolveNetwork } from './network';
 
 // Device detection
 export { isMobile } from './device';
+
+// Async helpers
+export { withTimeout } from './async';

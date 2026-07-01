@@ -4,7 +4,7 @@
  */
 
 import type { WalletAdapter, WalletManager } from '@xrpl-connect/core';
-import { createLogger, supportsPreInitialize } from '@xrpl-connect/core';
+import { createLogger, supportsPreInitialize, withTimeout, TIME } from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
 import { mainStyles } from './styles/main';
 import {
@@ -331,17 +331,19 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           this.specifiedWalletIds.includes(w.id)
         );
 
-        // Check availability for each wallet in parallel
+        // Check availability for each wallet in parallel. Each check is capped
+        // with a timeout so one slow or hung wallet (e.g. a network probe on a
+        // flaky mobile connection) can't block the modal from rendering the
+        // rest of the list — Promise.all otherwise waits for the slowest one.
         const availabilityChecks = await Promise.all(
           walletsToCheck.map(async (wallet) => {
-            try {
-              const available = await wallet.isAvailable();
-              logger.debug(`Wallet ${wallet.id} availability: ${available}`);
-              return { wallet, available };
-            } catch (error) {
-              logger.warn(`Error checking availability for ${wallet.id}:`, error);
-              return { wallet, available: false };
-            }
+            const available = await withTimeout(
+              wallet.isAvailable(),
+              TIME.AVAILABILITY_TIMEOUT,
+              false
+            );
+            logger.debug(`Wallet ${wallet.id} availability: ${available}`);
+            return { wallet, available };
           })
         );
 

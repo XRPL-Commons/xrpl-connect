@@ -22,6 +22,7 @@ import { createWalletError, isWalletError } from './errors';
 import { Logger, configureLogger, isLoggerInstance } from './logger';
 import { Storage } from './storage';
 import { TIME } from './constants';
+import { withTimeout } from './async';
 
 /**
  * Main class for managing wallet connections
@@ -271,20 +272,17 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * Get list of available wallets (installed/accessible)
    */
   async getAvailableWallets(): Promise<WalletAdapter[]> {
-    const available: WalletAdapter[] = [];
+    const adapters = Array.from(this.adapters.values());
 
-    for (const adapter of this.adapters.values()) {
-      try {
-        const isAvailable = await adapter.isAvailable();
-        if (isAvailable) {
-          available.push(adapter);
-        }
-      } catch (error) {
-        this.logger.warn(`Failed to check availability for ${adapter.name}:`, error);
-      }
-    }
+    // Check availability in parallel, capping each adapter with a timeout so a
+    // single slow or hung `isAvailable()` can't stall the whole list.
+    const results = await Promise.all(
+      adapters.map((adapter) =>
+        withTimeout(adapter.isAvailable(), TIME.AVAILABILITY_TIMEOUT, false)
+      )
+    );
 
-    return available;
+    return adapters.filter((_, index) => results[index]);
   }
 
   /**
