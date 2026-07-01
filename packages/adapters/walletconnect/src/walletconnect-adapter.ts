@@ -17,6 +17,7 @@ import type {
   SubmittedTransaction,
   SupportsDeepLink,
   SupportsPreInitialize,
+  WalletCapabilities,
 } from '@xrpl-connect/core';
 import { createWalletError, resolveNetwork, createLogger } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
@@ -91,6 +92,9 @@ export class WalletConnectAdapter
   readonly name = 'WalletConnect';
   readonly icon = ICON_DATA_URL;
   readonly url = 'https://walletconnect.com';
+  // The XRPL WalletConnect namespace exposes no message-signing method, so
+  // signMessage() throws UNSUPPORTED_METHOD — advertise it as unsupported.
+  readonly capabilities: WalletCapabilities = { signMessage: false };
 
   private client: SignClient | null = null;
   private session: SessionTypes.Struct | null = null;

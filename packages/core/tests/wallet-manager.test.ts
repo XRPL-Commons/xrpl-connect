@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import EventEmitter from 'eventemitter3';
 import { WalletManager } from '../src/wallet-manager';
+import { WalletErrorCode } from '../src/types';
 import type {
   AccountInfo,
   NetworkInfo,
@@ -10,6 +11,7 @@ import type {
   Transaction,
   WalletAdapter,
   WalletAdapterEvent,
+  WalletCapabilities,
 } from '../src/types';
 
 const NETWORK: NetworkInfo = { id: 'testnet', name: 'Testnet', wss: 'wss://example' };
@@ -94,5 +96,106 @@ describe('WalletManager.disconnect()', () => {
     expect(adapter.listenerCount('disconnect')).toBe(0);
     expect(adapter.listenerCount('accountChanged')).toBe(0);
     expect(adapter.listenerCount('networkChanged')).toBe(0);
+  });
+});
+
+describe('WalletManager capabilities', () => {
+  it('reports capability support for the connected wallet', async () => {
+    const adapter: WalletAdapter = {
+      ...createFakeAdapter(),
+      capabilities: { signMessage: false } satisfies WalletCapabilities,
+    };
+    const manager = new WalletManager({ adapters: [adapter] });
+
+    // Not connected yet → nothing supported.
+    expect(manager.supports('signMessage')).toBe(false);
+
+    await manager.connect('fake');
+    expect(manager.supports('signMessage')).toBe(false); // explicitly declared false
+    expect(manager.supports('sign')).toBe(true); // undefined → default true
+    expect(manager.supports('signAndSubmit')).toBe(true);
+  });
+
+  it('throws a typed UNSUPPORTED_METHOD error for a declared-unsupported operation', async () => {
+    const adapter: WalletAdapter = {
+      ...createFakeAdapter(),
+      capabilities: { signMessage: false },
+    };
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    await expect(manager.signMessage('hello')).rejects.toMatchObject({
+      code: WalletErrorCode.UNSUPPORTED_METHOD,
+    });
+    // The adapter's signMessage must not even be called.
+    expect(adapter.signMessage).not.toHaveBeenCalled();
+  });
+
+  it('allows operations that are not declared unsupported', async () => {
+    const adapter = createFakeAdapter();
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    await expect(manager.signMessage('hello')).resolves.toBeDefined();
+    expect(adapter.signMessage).toHaveBeenCalled();
+  });
+});
+
+describe('WalletManager signerAddress stamping', () => {
+  it('stamps the connected account address on sign results when the adapter omits it', async () => {
+    const adapter = createFakeAdapter();
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    const signed = await manager.sign({} as Transaction);
+    const message = await manager.signMessage('hello');
+
+    expect(signed.signerAddress).toBe(ACCOUNT.address);
+    expect(message.signerAddress).toBe(ACCOUNT.address);
+  });
+
+  it('does not overwrite a signerAddress the adapter already provided', async () => {
+    const adapter: WalletAdapter = {
+      ...createFakeAdapter(),
+      sign: vi.fn(
+        async () => ({ hash: '0xhash', signerAddress: 'rExplicit' }) as SignedTransaction
+      ),
+    };
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    const signed = await manager.sign({} as Transaction);
+    expect(signed.signerAddress).toBe('rExplicit');
+  });
+});
+
+describe('WalletManager.fetchAccount()', () => {
+  it('re-fetches the live account and emits accountChanged when it differs', async () => {
+    const CHANGED: AccountInfo = {
+      address: 'rChanged00000000000000000000000000',
+      network: NETWORK,
+    };
+    const adapter: WalletAdapter = {
+      ...createFakeAdapter(),
+      getAccount: vi.fn(async () => CHANGED),
+    };
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    const onAccountChanged = vi.fn();
+    manager.on('accountChanged', onAccountChanged);
+
+    const fetched = await manager.fetchAccount();
+
+    expect(fetched).toEqual(CHANGED);
+    expect(manager.account).toEqual(CHANGED);
+    expect(onAccountChanged).toHaveBeenCalledWith(CHANGED);
+  });
+
+  it('throws when not connected', async () => {
+    const manager = new WalletManager({ adapters: [createFakeAdapter()] });
+    await expect(manager.fetchAccount()).rejects.toMatchObject({
+      code: WalletErrorCode.NOT_CONNECTED,
+    });
   });
 });

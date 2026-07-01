@@ -13,6 +13,7 @@ import {
   SignedMessage,
   SubmittedTransaction,
   SupportsDeepLink,
+  WalletCapabilities,
 } from '@xrpl-connect/core';
 import { createWalletError, createLogger, resolveNetwork } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
@@ -48,6 +49,9 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
   readonly name = 'Xaman';
   readonly icon = ICON_DATA_URL;
   readonly url = 'https://xaman.app';
+  // Xaman has no native arbitrary-message signing; signMessage() is a stub that
+  // returns an empty signature, so advertise it as unsupported.
+  readonly capabilities: WalletCapabilities = { signMessage: false };
 
   private client: Xumm | null = null;
   private currentAccount: AccountInfo | null = null;

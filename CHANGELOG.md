@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Core: declarative adapter capabilities. `WalletAdapter` gains an optional `capabilities` map (`sign` / `signAndSubmit` / `signMessage`), and `WalletManager.supports(capability)` lets apps know up-front what the connected wallet can do instead of discovering it when a call fails. Operations an adapter declares unsupported now throw a typed `UNSUPPORTED_METHOD` error before the adapter is invoked. Xaman and WalletConnect declare `signMessage: false` (their message signing is a stub / unsupported). Undeclared capabilities default to `true`, so existing adapters are unaffected. Exposed via `adapterSupports()` / `CAPABILITY_DEFAULTS`.
+- Core: `SignedTransaction` and `SignedMessage` now carry `signerAddress`; `WalletManager` stamps it with the connected account when the adapter omits it, so callers always know which account produced a signature.
+- Core: `WalletManager.fetchAccount()` re-fetches the account live from the wallet and refreshes the cached `account`, emitting `accountChanged` on difference (complements the cached `account` getter). `ConnectOptions.skipRequestAccess` is now a documented first-class option.
+
 ### Fixed
 
 - xrpl-connect (meta-bundle): the published npm package now ships TypeScript types. The self-contained Vite bundle previously emitted no `.d.ts` and the generated `package.json` had no `types`/`exports.types`, so `npm install xrpl-connect` consumers got zero IntelliSense for the re-exported core/UI/adapter API. `publish:build` now rolls a single inlined `dist-publish/index.d.ts` via api-extractor (mirroring the JS bundle, with `@xrpl-connect/*` and `eventemitter3` types inlined) and `prepare-publish.mjs` wires up `types` + `exports.types`. The rolled declarations are verified self-contained: only `xrpl` (peer dependency) and `@walletconnect/types` (dependency, used by `WalletConnectAdapterOptions.metadata`) are left external, and both are now declared in the published manifest so they resolve for consumers. The manifest also drops the erroneous `"type": "module"` so CommonJS `require()` works, and the `publish:build` step is self-sufficient on a clean checkout (#56).

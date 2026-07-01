@@ -17,7 +17,9 @@ import type {
   NetworkConfig,
   NetworkInfo,
   StoredState,
+  WalletCapabilities,
 } from './types';
+import { adapterSupports } from './types';
 import { createWalletError, isWalletError } from './errors';
 import { Logger, configureLogger, isLoggerInstance } from './logger';
 import { Storage } from './storage';
@@ -203,11 +205,13 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     if (!this.currentAdapter) {
       throw createWalletError.notConnected();
     }
+    this.assertSupports('sign');
 
     this.logger.debug('Signing transaction', transaction);
 
     try {
       const result = await this.currentAdapter.sign(transaction);
+      this.stampSigner(result);
       this.logger.info('Transaction signed', result.tx_blob || result.signature);
       return result;
     } catch (error) {
@@ -228,6 +232,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     if (!this.currentAdapter) {
       throw createWalletError.notConnected();
     }
+    this.assertSupports('signAndSubmit');
 
     this.logger.debug('Signing and submitting transaction', transaction);
 
@@ -251,11 +256,13 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     if (!this.currentAdapter) {
       throw createWalletError.notConnected();
     }
+    this.assertSupports('signMessage');
 
     this.logger.debug('Signing message');
 
     try {
       const signed = await this.currentAdapter.signMessage(message);
+      this.stampSigner(signed);
       this.logger.info('Message signed');
       return signed;
     } catch (error) {
@@ -285,6 +292,41 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     }
 
     return available;
+  }
+
+  /**
+   * Whether the connected wallet (or a given adapter) supports a capability.
+   * Returns `false` when no wallet is connected and no adapter is passed.
+   *
+   * Lets callers hide/disable UI for operations a wallet can't perform (e.g.
+   * a "Sign message" button for Xaman/WalletConnect) instead of letting the
+   * call fail at runtime.
+   */
+  supports(
+    capability: keyof WalletCapabilities,
+    adapter: WalletAdapter | null = this.currentAdapter
+  ): boolean {
+    return adapter ? adapterSupports(adapter, capability) : false;
+  }
+
+  /**
+   * Re-fetch the account live from the connected wallet and refresh the cached
+   * value, emitting `accountChanged` if it changed. Use this when you need the
+   * current on-wallet account rather than the cached `account` getter (e.g. the
+   * user may have switched accounts in the wallet).
+   */
+  async fetchAccount(): Promise<AccountInfo | null> {
+    if (!this.currentAdapter) {
+      throw createWalletError.notConnected();
+    }
+
+    const account = await this.currentAdapter.getAccount();
+    if (account && account.address !== this.currentAccount?.address) {
+      this.handleAccountChanged(account);
+    } else if (account) {
+      this.currentAccount = account;
+    }
+    return account;
   }
 
   /**
@@ -320,6 +362,29 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    */
   get defaultNetwork(): NetworkConfig | undefined {
     return this.options.network;
+  }
+
+  /**
+   * Throw a typed `UNSUPPORTED_METHOD` error if the connected wallet declares
+   * it can't perform the given capability.
+   */
+  private assertSupports(capability: keyof WalletCapabilities): void {
+    if (this.currentAdapter && !adapterSupports(this.currentAdapter, capability)) {
+      throw createWalletError.unsupportedMethod(
+        `${this.currentAdapter.name} does not support "${capability}"`
+      );
+    }
+  }
+
+  /**
+   * Populate `signerAddress` on a sign result with the connected account when
+   * the adapter didn't already set it, so callers always know which account
+   * produced the signature.
+   */
+  private stampSigner(result: { signerAddress?: string }): void {
+    if (result.signerAddress == null && this.currentAccount) {
+      result.signerAddress = this.currentAccount.address;
+    }
   }
 
   /**
