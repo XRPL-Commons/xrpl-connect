@@ -166,3 +166,52 @@ describe('WalletManager.connect()', () => {
     expect(manager.connected).toBe(false);
   });
 });
+
+describe('WalletManager.switchNetwork()', () => {
+  it('updates the active network locally and emits networkChanged for adapters without native switching', async () => {
+    const adapter = createFakeAdapter();
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    const onNetworkChanged = vi.fn();
+    manager.on('networkChanged', onNetworkChanged);
+
+    const applied = await manager.switchNetwork('mainnet');
+
+    expect(applied.id).toBe('mainnet');
+    expect(manager.account?.network.id).toBe('mainnet');
+    expect(onNetworkChanged).toHaveBeenCalledWith(applied);
+  });
+
+  it('delegates to an adapter that supports native network switching', async () => {
+    const CUSTOM: NetworkInfo = { id: 'custom', name: 'Custom', wss: 'wss://custom' };
+    const switchNetwork = vi.fn(async () => CUSTOM);
+    const adapter: WalletAdapter = { ...createFakeAdapter(), switchNetwork };
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    const applied = await manager.switchNetwork('devnet');
+
+    expect(switchNetwork).toHaveBeenCalledWith('devnet');
+    expect(applied).toEqual(CUSTOM);
+    expect(manager.account?.network).toEqual(CUSTOM);
+  });
+
+  it('throws when not connected', async () => {
+    const manager = new WalletManager({ adapters: [createFakeAdapter()] });
+    await expect(manager.switchNetwork('testnet')).rejects.toMatchObject({
+      code: 'NOT_CONNECTED',
+    });
+  });
+});
+
+describe('WalletManager.getNetwork()', () => {
+  it('returns the live network from the connected adapter', async () => {
+    const adapter = createFakeAdapter();
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    await expect(manager.getNetwork()).resolves.toEqual(NETWORK);
+    expect(adapter.getNetwork).toHaveBeenCalled();
+  });
+});

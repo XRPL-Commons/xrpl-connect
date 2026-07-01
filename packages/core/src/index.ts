@@ -27,6 +27,7 @@ export type {
   LogLevel,
   SupportsPreInitialize,
   SupportsDeepLink,
+  SupportsNetworkSwitch,
 } from './types';
 
 export {
@@ -35,6 +36,7 @@ export {
   WalletErrorCategory,
   supportsPreInitialize,
   supportsDeepLink,
+  supportsNetworkSwitch,
 } from './types';
 
 // Errors

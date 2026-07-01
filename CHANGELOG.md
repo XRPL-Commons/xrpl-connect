@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - xrpl-connect (meta-package): re-export each adapter's full public surface, not just the adapter class. Consumers can now reach adapter-specific exports — including every `*AdapterOptions`/`*ConnectOptions` type — and the complete upstream Xaman, Xaman OAuth, Crossmark, and GemWallet APIs through the collision-safe `XamanSDK`, `XamanOAuth2`, `CrossmarkSDK`, and `GemWalletAPI` namespaces (#35).
+- Core: runtime network switching. `WalletManager.switchNetwork(network)` delegates to adapters that can switch natively (new opt-in `SupportsNetworkSwitch` capability + `supportsNetworkSwitch()` guard) and otherwise updates the network the manager reports/uses locally; either way it persists the change and emits `networkChanged`. `WalletManager.getNetwork()` returns the live network from the connected wallet. Previously the network could only be set at connect time.
 
 ### Fixed
 

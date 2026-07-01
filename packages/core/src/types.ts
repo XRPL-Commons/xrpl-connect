@@ -173,6 +173,22 @@ export function supportsDeepLink(
 }
 
 /**
+ * Capability: adapter can switch the active network at runtime on the user's
+ * behalf (e.g. an extension exposing a switch-network request), returning the
+ * network it settled on. Adapters that don't implement this leave network
+ * selection to the wallet UI (surfaced via the `networkChanged` event).
+ */
+export interface SupportsNetworkSwitch {
+  switchNetwork(network: NetworkConfig): Promise<NetworkInfo>;
+}
+
+export function supportsNetworkSwitch(
+  adapter: WalletAdapter
+): adapter is WalletAdapter & SupportsNetworkSwitch {
+  return typeof (adapter as Partial<SupportsNetworkSwitch>).switchNetwork === 'function';
+}
+
+/**
  * Events emitted by WalletManager
  */
 export type WalletEvent = 'connect' | 'disconnect' | 'accountChanged' | 'networkChanged' | 'error';

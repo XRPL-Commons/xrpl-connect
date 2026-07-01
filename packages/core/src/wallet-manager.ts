@@ -18,6 +18,7 @@ import type {
   NetworkInfo,
   StoredState,
 } from './types';
+import { supportsNetworkSwitch } from './types';
 import { createWalletError, isWalletError } from './errors';
 import { Logger, configureLogger, isLoggerInstance } from './logger';
 import { Storage } from './storage';
@@ -25,6 +26,7 @@ import { TIME } from './constants';
 import { withTimeout } from './async';
 
 const AVAILABILITY_TIMED_OUT = Symbol('availability-timed-out');
+import { resolveNetwork } from './network';
 
 /**
  * Main class for managing wallet connections
@@ -294,6 +296,45 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
+   * Get the current network live from the connected wallet.
+   */
+  async getNetwork(): Promise<NetworkInfo> {
+    if (!this.currentAdapter) {
+      throw createWalletError.notConnected();
+    }
+    return this.currentAdapter.getNetwork();
+  }
+
+  /**
+   * Switch the active network at runtime.
+   *
+   * If the connected adapter can switch natively (implements
+   * {@link SupportsNetworkSwitch}, e.g. an extension exposing a switch-network
+   * request) the request is delegated to it. Otherwise the manager updates the
+   * network it reports and uses locally — the wallet may still override this via
+   * its own `networkChanged` event. Either way, listeners get `networkChanged`.
+   *
+   * @returns the network that was applied.
+   */
+  async switchNetwork(network: NetworkConfig): Promise<NetworkInfo> {
+    if (!this.currentAdapter) {
+      throw createWalletError.notConnected();
+    }
+
+    let applied: NetworkInfo;
+    if (supportsNetworkSwitch(this.currentAdapter)) {
+      this.logger.info('Switching network via adapter', network);
+      applied = await this.currentAdapter.switchNetwork(network);
+    } else {
+      this.logger.info('Switching active network locally', network);
+      applied = resolveNetwork(network);
+    }
+
+    await this.applyNetwork(applied);
+    return applied;
+  }
+
+  /**
    * Get registered wallets whose availability check succeeds within the
    * configured availability timeout.
    */
@@ -389,6 +430,27 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     this.logger.info('Network changed', network);
     if (this.currentAccount) {
       this.currentAccount.network = network;
+    }
+    this.emit('networkChanged', network);
+  }
+
+  /**
+   * Apply a network change initiated by the manager: update the cached account,
+   * persist it (preserving any other stored fields), and emit `networkChanged`.
+   */
+  private async applyNetwork(network: NetworkInfo): Promise<void> {
+    if (this.currentAccount) {
+      this.currentAccount.network = network;
+    }
+    if (this.currentAdapter && this.currentAccount) {
+      const existing = await this.storage.loadState();
+      await this.storage.saveState({
+        ...(existing ?? {}),
+        walletId: this.currentAdapter.id,
+        account: this.currentAccount,
+        network,
+        timestamp: Date.now(),
+      });
     }
     this.emit('networkChanged', network);
   }
