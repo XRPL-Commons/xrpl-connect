@@ -121,6 +121,16 @@ export interface WalletAdapter {
   // Availability
   isAvailable(): Promise<boolean>; // Check if wallet is installed/accessible
 
+  /**
+   * Optionally report whether the dApp is currently running *inside* this
+   * wallet's in-app browser (e.g. a mobile wallet's built-in browser). When an
+   * adapter returns `true`, the UI promotes it to the top of the wallet list so
+   * the user connects with the wallet they're already in. Omit when not
+   * applicable. Must resolve quickly — the manager bounds it with a short
+   * timeout ({@link TIME.PLATFORM_WRAPPER_TIMEOUT}).
+   */
+  isPlatformWrapper?(): Promise<boolean>;
+
   // Connection lifecycle
   connect(options?: ConnectOptions): Promise<AccountInfo>;
   disconnect(): Promise<void>;

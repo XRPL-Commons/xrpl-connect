@@ -96,3 +96,46 @@ describe('WalletManager.disconnect()', () => {
     expect(adapter.listenerCount('networkChanged')).toBe(0);
   });
 });
+
+describe('WalletManager.getPlatformWrapper()', () => {
+  it('returns the adapter reporting it is the in-app browser', async () => {
+    const other: WalletAdapter = { ...createFakeAdapter(), id: 'other', name: 'Other' };
+    const wrapper: WalletAdapter = {
+      ...createFakeAdapter(),
+      id: 'wrap',
+      name: 'Wrap',
+      isPlatformWrapper: async () => true,
+    };
+    const manager = new WalletManager({ adapters: [other, wrapper] });
+
+    expect(await manager.getPlatformWrapper()).toBe(wrapper);
+  });
+
+  it('returns null when no adapter reports being the in-app browser', async () => {
+    const a: WalletAdapter = {
+      ...createFakeAdapter(),
+      id: 'a',
+      isPlatformWrapper: async () => false,
+    };
+    const b: WalletAdapter = { ...createFakeAdapter(), id: 'b' }; // no method at all
+    const manager = new WalletManager({ adapters: [a, b] });
+
+    expect(await manager.getPlatformWrapper()).toBeNull();
+  });
+
+  it('treats a hung isPlatformWrapper() as "not the wrapper" after the timeout', async () => {
+    vi.useFakeTimers();
+    const hang: WalletAdapter = {
+      ...createFakeAdapter(),
+      id: 'hang',
+      isPlatformWrapper: () => new Promise<boolean>(() => {}),
+    };
+    const manager = new WalletManager({ adapters: [hang] });
+
+    const pending = manager.getPlatformWrapper();
+    await vi.advanceTimersByTimeAsync(500);
+
+    await expect(pending).resolves.toBeNull();
+    vi.useRealTimers();
+  });
+});

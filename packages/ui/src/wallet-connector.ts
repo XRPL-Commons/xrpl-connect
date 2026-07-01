@@ -90,6 +90,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private isOpen = false;
     private isFirstOpen = true;
     private primaryWalletId: string | null = null;
+    // Wallet whose in-app browser we're running inside (detected on open);
+    // promoted to the top of the list unless a primary-wallet attribute is set.
+    private detectedWrapperId: string | null = null;
     private viewState: 'list' | 'qr' | 'loading' | 'error' | 'account-selection' = 'list';
     public qrCodeData: QRCodeData | null = null;
     private loadingData: LoadingData | null = null;
@@ -359,6 +362,20 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           'Available wallets:',
           this.availableWallets.map((w) => w.id)
         );
+
+        // If we're running inside a wallet's in-app browser, remember it so the
+        // list can promote it to the top (unless a primary-wallet is set).
+        try {
+          const wrapper = await this.walletManager.getPlatformWrapper();
+          this.detectedWrapperId =
+            wrapper && this.availableWallets.some((w) => w.id === wrapper.id) ? wrapper.id : null;
+          if (this.detectedWrapperId) {
+            logger.debug('Detected in-app browser wallet:', this.detectedWrapperId);
+          }
+        } catch (error) {
+          logger.warn('Platform wrapper detection failed:', error);
+          this.detectedWrapperId = null;
+        }
       } catch (error) {
         logger.error('Error checking wallet availability:', error);
         this.availableWallets = [];
@@ -753,7 +770,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.previousModalHeight = existingModal.offsetHeight;
       }
 
-      this.primaryWalletId = this.getAttribute('primary-wallet');
+      // An explicit primary-wallet attribute wins; otherwise promote the
+      // detected in-app-browser wallet, if any.
+      this.primaryWalletId = this.getAttribute('primary-wallet') ?? this.detectedWrapperId;
 
       // Check connection state
       const isConnected = this.walletManager?.connected || false;

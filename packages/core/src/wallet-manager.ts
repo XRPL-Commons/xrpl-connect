@@ -268,6 +268,36 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
+   * Detect whether the dApp is running inside a wallet's in-app browser and, if
+   * so, return that adapter — so the UI can promote or auto-select it. Adapters
+   * opt in by implementing `isPlatformWrapper()`. Each check is bounded by a
+   * short timeout so a slow adapter can't delay detection; the first adapter
+   * that reports `true` wins.
+   */
+  async getPlatformWrapper(): Promise<WalletAdapter | null> {
+    const candidates = this.wallets.filter((a) => typeof a.isPlatformWrapper === 'function');
+
+    const results = await Promise.all(
+      candidates.map(async (adapter) => {
+        try {
+          const isWrapper = await Promise.race([
+            adapter.isPlatformWrapper!(),
+            new Promise<boolean>((resolve) =>
+              setTimeout(() => resolve(false), TIME.PLATFORM_WRAPPER_TIMEOUT)
+            ),
+          ]);
+          return isWrapper ? adapter : null;
+        } catch (error) {
+          this.logger.warn(`isPlatformWrapper check failed for ${adapter.name}:`, error);
+          return null;
+        }
+      })
+    );
+
+    return results.find((a): a is WalletAdapter => a !== null) ?? null;
+  }
+
+  /**
    * Get list of available wallets (installed/accessible)
    */
   async getAvailableWallets(): Promise<WalletAdapter[]> {
