@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- UI / WalletConnect: `isMobile()` now also detects iPadOS 13+ in its default "desktop" mode, which reports a `Macintosh` user-agent and was therefore treated as desktop — sending iPad users down the QR flow instead of the mobile deep-link/modal flow. Detection now pairs the user-agent check with a touch probe (`Macintosh` UA + `navigator.maxTouchPoints > 1`). The detection is now provided by a single `isMobile()` helper in `@xrpl-connect/core` (re-exported from `@xrpl-connect/ui`) so the UI and WalletConnect adapter share one implementation. Added unit coverage for phone/tablet/desktop/SSR detection (#16).
+- xrpl-connect (meta-bundle): the published npm package now ships TypeScript types. The self-contained Vite bundle previously emitted no `.d.ts` and the generated `package.json` had no `types`/`exports.types`, so `npm install xrpl-connect` consumers got zero IntelliSense for the re-exported core/UI/adapter API. `publish:build` now rolls a single inlined `dist-publish/index.d.ts` via api-extractor (mirroring the JS bundle, with `@xrpl-connect/*` and `eventemitter3` types inlined) and `prepare-publish.mjs` wires up `types` + `exports.types`. The rolled declarations are verified self-contained: only `xrpl` (peer dependency) and `@walletconnect/types` (dependency, used by `WalletConnectAdapterOptions.metadata`) are left external, and both are now declared in the published manifest so they resolve for consumers. The manifest also drops the erroneous `"type": "module"` so CommonJS `require()` works, and the `publish:build` step is self-sufficient on a clean checkout (#56).
 
 ## [0.8.2] - 2026-05-21
 
