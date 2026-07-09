@@ -48,7 +48,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "publish:build": "vite build -c vite.config.ts && node scripts/prepare-publish.js",
+    "publish:build": "turbo run build --filter=xrpl-connect... && vite build -c vite.config.ts && node scripts/build-types.mjs && node scripts/prepare-publish.mjs",
     "clean": "rm -rf dist dist-publish"
   },
   "dependencies": {
@@ -71,6 +71,7 @@
     "buffer": "^6.0.3",
     "global": "^4.4.0",
     "process": "^0.11.10",
+    "@microsoft/api-extractor": "^7.47.0",
     "tsup": "^8.1.0",
     "typescript": "^5.5.0",
     "vite": "^5.0.0",

@@ -18,7 +18,7 @@ import type {
   SupportsDeepLink,
   SupportsPreInitialize,
 } from '@xrpl-connect/core';
-import { createWalletError, resolveNetwork, createLogger } from '@xrpl-connect/core';
+import { createWalletError, resolveNetwork, createLogger, isMobile } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
 import {
   DISCONNECT_REASONS,
@@ -31,13 +31,6 @@ import {
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
 
 /**
- * Utility function to detect if user is on mobile device
- */
-function isMobile(): boolean {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-}
-
-/**
  * Logger instance for WalletConnect adapter
  */
 const logger = createLogger('[WalletConnect]');
@@ -48,6 +41,17 @@ const logger = createLogger('[WalletConnect]');
 export enum XRPLMethod {
   SIGN_TRANSACTION = 'xrpl_signTransaction',
   SIGN_TRANSACTION_FOR = 'xrpl_signTransactionFor', // Multi-sig
+}
+
+/**
+ * Signed transaction JSON returned by a wallet in response to an
+ * `xrpl_signTransaction` request. Only the fields the adapter reads are typed;
+ * the rest of the signed `tx_json` is preserved as additional keys.
+ */
+interface WalletConnectSignedTxJson {
+  hash?: string;
+  TxnSignature?: string;
+  [key: string]: unknown;
 }
 
 /**
@@ -444,7 +448,10 @@ export class WalletConnectAdapter
   /**
    * Send a WalletConnect sign transaction request
    */
-  private async requestSignTransaction(transaction: Transaction, submit: boolean): Promise<any> {
+  private async requestSignTransaction(
+    transaction: Transaction,
+    submit: boolean
+  ): Promise<WalletConnectSignedTxJson> {
     if (!this.client || !this.session || !this.currentAccount) {
       throw createWalletError.notConnected();
     }
@@ -454,7 +461,7 @@ export class WalletConnectAdapter
       Account: transaction.Account || this.currentAccount.address,
     };
 
-    const result = await this.client.request({
+    const result = await this.client.request<{ tx_json: WalletConnectSignedTxJson }>({
       topic: this.session.topic,
       chainId:
         this.currentAccount.network.walletConnectId || `xrpl:${this.currentAccount.network.id}`,
@@ -468,7 +475,7 @@ export class WalletConnectAdapter
       },
     });
 
-    return (result as any).tx_json;
+    return result.tx_json;
   }
 
   /**

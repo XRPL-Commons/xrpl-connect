@@ -198,12 +198,12 @@ export class LedgerAdapter implements WalletAdapter {
       Account: transaction.Account || this.currentAccount.address,
     };
 
-    const prepared = await client.autofill(tx as any);
+    const prepared = await client.autofill(tx as Transaction);
 
     // Prepare transaction for signing - remove fields that shouldn't be in the signing blob
     const txForSigning = { ...prepared };
-    delete (txForSigning as any).TxnSignature;
-    delete (txForSigning as any).Signers;
+    delete txForSigning.TxnSignature;
+    delete txForSigning.Signers;
 
     // Check if this is a multisig transaction
     const isMultisig = txForSigning.SigningPubKey === '';
@@ -234,7 +234,7 @@ export class LedgerAdapter implements WalletAdapter {
       TxnSignature: signature.toUpperCase(),
     };
 
-    const tx_blob = encode(signedTx as any);
+    const tx_blob = encode(signedTx as Transaction);
 
     return { tx_blob, client };
   }
