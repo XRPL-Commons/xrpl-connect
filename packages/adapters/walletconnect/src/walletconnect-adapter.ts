@@ -18,7 +18,7 @@ import type {
   SupportsDeepLink,
   SupportsPreInitialize,
 } from '@xrpl-connect/core';
-import { createWalletError, resolveNetwork, createLogger } from '@xrpl-connect/core';
+import { createWalletError, resolveNetwork, createLogger, isMobile } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
 import {
   DISCONNECT_REASONS,
@@ -29,13 +29,6 @@ import {
 } from './constants';
 
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
-
-/**
- * Utility function to detect if user is on mobile device
- */
-function isMobile(): boolean {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-}
 
 /**
  * Logger instance for WalletConnect adapter
