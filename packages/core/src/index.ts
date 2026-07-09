@@ -64,3 +64,6 @@ export { TIME } from './constants';
 
 // Network helpers
 export { resolveNetwork } from './network';
+
+// Device detection
+export { isMobile } from './device';

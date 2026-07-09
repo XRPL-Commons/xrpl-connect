@@ -47,7 +47,7 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@xrpl-connect/core": "^0.8.0"
+    "@xrpl-connect/core": "^0.8.3"
   },
   "devDependencies": {
     "@xrpl-connect/core": "workspace:*",

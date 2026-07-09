@@ -5,6 +5,13 @@
 import { LUMINANCE, COLOR_ADJUSTMENT, BROWSER_PATTERNS } from './constants';
 
 /**
+ * Re-export the shared mobile/tablet detection (incl. iPadOS desktop-mode, #16)
+ * so the UI package and the WalletConnect adapter use one implementation that
+ * cannot drift. Kept on the UI's public surface for backwards compatibility.
+ */
+export { isMobile } from '@xrpl-connect/core';
+
+/**
  * Calculate luminance to determine if text should be black or white
  * Based on WCAG relative luminance formula
  * @param hex - Hex color string (with or without #)
@@ -70,14 +77,6 @@ export function adjustColorBrightness(hex: string, amount: number): string {
  */
 export function isSafari(): boolean {
   return BROWSER_PATTERNS.SAFARI.test(navigator.userAgent);
-}
-
-/**
- * Detect if user is on mobile device
- * @returns true if mobile device
- */
-export function isMobile(): boolean {
-  return BROWSER_PATTERNS.MOBILE.test(navigator.userAgent);
 }
 
 /**

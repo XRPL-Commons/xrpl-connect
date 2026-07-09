@@ -135,7 +135,9 @@ export class CrossmarkAdapter implements WalletAdapter {
         ...transaction,
         Account: transaction.Account || this.currentAccount.address,
       };
-      const signResponse = await sdk.methods.signAndWait(tx as any);
+      const signResponse = await sdk.methods.signAndWait(
+        tx as Parameters<typeof sdk.methods.signAndWait>[0]
+      );
 
       if (!signResponse.response.data.txBlob) {
         throw new Error('Failed to sign transaction with Crossmark');
@@ -166,7 +168,9 @@ export class CrossmarkAdapter implements WalletAdapter {
         ...transaction,
         Account: transaction.Account || this.currentAccount.address,
       };
-      const signResponse = await sdk.methods.signAndSubmitAndWait(tx as any);
+      const signResponse = await sdk.methods.signAndSubmitAndWait(
+        tx as Parameters<typeof sdk.methods.signAndSubmitAndWait>[0]
+      );
 
       if (!signResponse.response.data.resp.result.hash) {
         throw new Error('Failed to sign transaction with Crossmark');
