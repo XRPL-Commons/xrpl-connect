@@ -168,3 +168,23 @@ describe('LedgerAdapter.disconnect', () => {
     expect(await adapter.getAccount()).toBeNull();
   });
 });
+
+describe('LedgerAdapter reconnect options', () => {
+  it('serializes only an explicit derivation path', () => {
+    const adapter = new LedgerAdapter();
+    expect(
+      adapter.serializeReconnectOptions({
+        derivationPath: "44'/144'/3'/0/0",
+        network: 'testnet',
+        autoReconnect: true,
+      })
+    ).toEqual({ derivationPath: "44'/144'/3'/0/0" });
+  });
+
+  it('serializes an account index and ignores unrelated options', () => {
+    const adapter = new LedgerAdapter();
+    expect(adapter.serializeReconnectOptions({ accountIndex: 7, autoReconnect: true })).toEqual({
+      accountIndex: 7,
+    });
+  });
+});

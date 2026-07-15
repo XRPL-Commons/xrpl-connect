@@ -3,7 +3,7 @@ import EventEmitter from 'eventemitter3';
 import { WalletManager } from '../src/wallet-manager';
 import { TIME } from '../src/constants';
 import { WalletErrorCode } from '../src/types';
-import { MemoryStorageAdapter } from '../src/storage';
+import { MemoryStorageAdapter, Storage } from '../src/storage';
 import type {
   AccountInfo,
   ConnectOptions,
@@ -179,6 +179,11 @@ describe('WalletManager.reconnect()', () => {
     return {
       id: 'ledger',
       name: 'Ledger',
+      serializeReconnectOptions: (options: ConnectOptions) => {
+        const derivationPath = (options as ConnectOptions & { derivationPath?: string })
+          .derivationPath;
+        return derivationPath ? { derivationPath } : undefined;
+      },
       isAvailable: async () => true,
       connect: async (options) => {
         received.push(options);
@@ -225,5 +230,17 @@ describe('WalletManager.reconnect()', () => {
       | (ConnectOptions & { derivationPath?: string })
       | undefined;
     expect(replayed?.derivationPath).toBeUndefined();
+  });
+
+  it('does not persist arbitrary options for adapters that do not opt in', async () => {
+    const storage = new MemoryStorageAdapter();
+    const adapter = createRecordingAdapter([]);
+    delete (adapter as Partial<typeof adapter>).serializeReconnectOptions;
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    await manager.connect('ledger', { secret: 'must-not-be-stored' });
+
+    const stored = await new Storage(storage).loadState();
+    expect(stored?.connectOptions).toBeUndefined();
   });
 });

@@ -18,6 +18,7 @@ import type {
   NetworkInfo,
   StoredState,
 } from './types';
+import { supportsReconnectOptions } from './types';
 import { createWalletError, isWalletError } from './errors';
 import { Logger, configureLogger, isLoggerInstance } from './logger';
 import { Storage } from './storage';
@@ -149,15 +150,17 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       this.currentAdapter = adapter;
       this.currentAccount = account;
 
-      // Save to storage. Persist the connect options too so reconnect() can
-      // replay them — notably the Ledger derivation path / account index, which
-      // would otherwise be lost and fall back to the default account.
+      // Let adapters explicitly select the minimal JSON-safe reconnect state.
+      // Never persist arbitrary caller-provided options.
+      const reconnectOptions = supportsReconnectOptions(adapter)
+        ? adapter.serializeReconnectOptions(connectOptions)
+        : undefined;
       const state: StoredState = {
         walletId: adapter.id,
         account,
         network: account.network,
         timestamp: Date.now(),
-        connectOptions,
+        ...(reconnectOptions ? { connectOptions: reconnectOptions } : {}),
       };
       await this.storage.saveState(state);
 
@@ -218,7 +221,10 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       // Replay the original connect options so wallet-specific selections
       // (e.g. the Ledger derivation path / account index) are restored instead
       // of reconnecting to the default account.
-      return await this.connect(stored.walletId, stored.connectOptions);
+      return await this.connect(stored.walletId, {
+        network: stored.network,
+        ...stored.connectOptions,
+      });
     } catch (error) {
       this.logger.warn('Reconnection failed:', error);
       await this.storage.clearState();
