@@ -19,6 +19,10 @@ const wcAdapterPkg = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../../adapters/walletconnect/package.json'), 'utf-8')
 );
 const wcTypesRange = wcAdapterPkg.dependencies?.['@walletconnect/types'];
+const xyraAdapterPkg = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '../../adapters/xyra/package.json'), 'utf-8')
+);
+const xyraSdkRange = xyraAdapterPkg.dependencies?.['@xyrawallet/sdk'];
 
 // Fail loudly if the version range can't be found. Without this guard a missing
 // range is `undefined`, which `JSON.stringify` silently drops from `dependencies`
@@ -33,8 +37,17 @@ if (!wcTypesRange) {
     "✗ Could not read the '@walletconnect/types' version range from " +
       'packages/adapters/walletconnect/package.json (dependencies). The rolled types ' +
       'leave that import external, so the published manifest must declare it. Fix: restore ' +
-      "the dependency on the adapter, or update both scripts/prepare-publish.mjs and the " +
+      'the dependency on the adapter, or update both scripts/prepare-publish.mjs and the ' +
       'ALLOWED_EXTERNAL_IMPORTS allow-list in scripts/build-types.mjs.'
+  );
+  process.exit(1);
+}
+
+if (!xyraSdkRange) {
+  console.error(
+    "✗ Could not read the '@xyrawallet/sdk' version range from " +
+      'packages/adapters/xyra/package.json (dependencies). The rolled types expose Xyra SDK ' +
+      'types, so the published manifest must declare it.'
   );
   process.exit(1);
 }
@@ -68,6 +81,7 @@ const distPkg = {
   // it must be installed alongside the package for those declarations to resolve.
   dependencies: {
     '@walletconnect/types': wcTypesRange,
+    '@xyrawallet/sdk': xyraSdkRange,
   },
   // Carry the `xrpl` peer dependency into the published manifest. The rolled
   // `index.d.ts` keeps `import { SubmittableTransaction } from 'xrpl'` external,

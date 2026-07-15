@@ -101,6 +101,7 @@ if (!result.succeeded || result.warningCount > 0) {
 const ALLOWED_EXTERNAL_IMPORTS = new Set([
   'xrpl', // peerDependency
   '@walletconnect/types', // dependency
+  '@xyrawallet/sdk', // dependency (public Xyra option/network types)
 ]);
 const rolled = readFileSync(path.join(projectFolder, 'dist-publish', 'index.d.ts'), 'utf-8');
 const importedModules = new Set();
@@ -119,5 +120,8 @@ if (leaked.length > 0) {
   process.exit(1);
 }
 
-console.log('✓ Rolled up types to dist-publish/index.d.ts (self-contained: only ' +
-  [...ALLOWED_EXTERNAL_IMPORTS].join(', ') + ' left external)');
+console.log(
+  '✓ Rolled up types to dist-publish/index.d.ts (self-contained: only ' +
+    [...ALLOWED_EXTERNAL_IMPORTS].join(', ') +
+    ' left external)'
+);

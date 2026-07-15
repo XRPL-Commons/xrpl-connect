@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - xrpl-connect (meta-package): re-export each adapter's full public surface, not just the adapter class. Consumers of `xrpl-connect` can now reach adapter-specific exports — `XRPLMethod`, `LedgerDeviceState`, `LEDGER_STATE_MESSAGES`, `OTSU_NETWORK_MAP`, `XRPL_CONNECT_TO_XYRA_NETWORK`/`XYRA_TO_XRPL_CONNECT_NETWORK`, and every `*AdapterOptions`/`*ConnectOptions` type — without adding a direct dependency on the sub-package (#35).
+
 ### Fixed
 
 - xrpl-connect (meta-bundle): the published npm package now ships TypeScript types. The self-contained Vite bundle previously emitted no `.d.ts` and the generated `package.json` had no `types`/`exports.types`, so `npm install xrpl-connect` consumers got zero IntelliSense for the re-exported core/UI/adapter API. `publish:build` now rolls a single inlined `dist-publish/index.d.ts` via api-extractor (mirroring the JS bundle, with `@xrpl-connect/*` and `eventemitter3` types inlined) and `prepare-publish.mjs` wires up `types` + `exports.types`. The rolled declarations are verified self-contained: only `xrpl` (peer dependency) and `@walletconnect/types` (dependency, used by `WalletConnectAdapterOptions.metadata`) are left external, and both are now declared in the published manifest so they resolve for consumers. The manifest also drops the erroneous `"type": "module"` so CommonJS `require()` works, and the `publish:build` step is self-sufficient on a clean checkout (#56).
