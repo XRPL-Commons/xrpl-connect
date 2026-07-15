@@ -278,7 +278,18 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     // single slow or hung `isAvailable()` can't stall the whole list.
     const results = await Promise.all(
       adapters.map((adapter) =>
-        withTimeout(adapter.isAvailable(), TIME.AVAILABILITY_TIMEOUT, false)
+        withTimeout(
+          async () => {
+            try {
+              return await adapter.isAvailable();
+            } catch (error) {
+              this.logger.warn(`Failed to check availability for ${adapter.name}:`, error);
+              return false;
+            }
+          },
+          TIME.AVAILABILITY_TIMEOUT,
+          false
+        )
       )
     );
 

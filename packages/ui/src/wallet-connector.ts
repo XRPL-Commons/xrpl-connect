@@ -338,7 +338,14 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         const availabilityChecks = await Promise.all(
           walletsToCheck.map(async (wallet) => {
             const available = await withTimeout(
-              wallet.isAvailable(),
+              async () => {
+                try {
+                  return await wallet.isAvailable();
+                } catch (error) {
+                  logger.warn(`Error checking availability for ${wallet.id}:`, error);
+                  return false;
+                }
+              },
               TIME.AVAILABILITY_TIMEOUT,
               false
             );

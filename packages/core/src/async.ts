@@ -12,11 +12,12 @@
  * `Promise.all` over unbounded `isAvailable()` calls waits for the slowest
  * one; wrapping each call here caps that wait.
  *
- * @param promise - The promise to bound.
+ * @param operation - Function that starts the promise to bound. Synchronous
+ * throws are treated like rejected promises.
  * @param ms - Maximum time to wait, in milliseconds.
  * @param fallback - Value to resolve with on timeout or rejection.
  */
-export function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+export function withTimeout<T>(operation: () => Promise<T>, ms: number, fallback: T): Promise<T> {
   return new Promise<T>((resolve) => {
     let settled = false;
 
@@ -29,9 +30,13 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Pr
 
     const timer = setTimeout(() => finish(fallback), ms);
 
-    promise.then(
-      (value) => finish(value),
-      () => finish(fallback)
-    );
+    try {
+      operation().then(
+        (value) => finish(value),
+        () => finish(fallback)
+      );
+    } catch {
+      finish(fallback);
+    }
   });
 }
