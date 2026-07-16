@@ -152,6 +152,15 @@ importers:
       '@crossmarkio/sdk':
         specifier: ^0.4.0
         version: 0.4.0(bufferutil@4.0.9)(utf-8-validate@5.0.10)
+      '@crossmarkio/typings':
+        specifier: 0.0.6
+        version: 0.0.6(bufferutil@4.0.9)(utf-8-validate@5.0.10)
+      '@types/chrome':
+        specifier: ^0.0.253
+        version: 0.0.253
+      '@types/node-forge':
+        specifier: ^1.3.10
+        version: 1.3.14
       '@xrpl-connect/core':
         specifier: workspace:*
         version: link:../../core
@@ -1426,6 +1435,9 @@ packages:
 
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
+
+  '@types/node-forge@1.3.14':
+    resolution: {integrity: sha512-mhVF2BnD4BO+jtOp7z1CdzaK4mbuK0LLQYAvdOLqHTavxFNq4zA1EmYkpnFjP8HOUzedfQkRnp0E2ulSAYSzAw==}
 
   '@types/node@10.12.18':
     resolution: {integrity: sha512-fh+pAqt4xRzPfqA6eh3Z2y6fyZavRIumvjhaCL753+TVkGKGhpPeyrJG2JftD0T9q4GF00KjefsQ+PQNDdWQaQ==}
@@ -5341,6 +5353,10 @@ snapshots:
   '@types/mdurl@2.0.0': {}
 
   '@types/ms@2.1.0': {}
+
+  '@types/node-forge@1.3.14':
+    dependencies:
+      '@types/node': 20.19.21
 
   '@types/node@10.12.18': {}
 

@@ -9,48 +9,50 @@ const distPkgPath = path.join(__dirname, '../dist-publish/package.json');
 // Read main package.json
 const mainPkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf-8'));
 
-// The rolled-up `index.d.ts` keeps `import { SignClientTypes } from
-// '@walletconnect/types'` external (inlining it drags in an unbundleable cascade
-// of @walletconnect/* + node `events` types — see scripts/build-types.mjs). So
-// the published package must declare `@walletconnect/types` as a real dependency
-// for that import (and its transitive types) to resolve in the consumer's tree.
-// Read the version range from the WalletConnect adapter so the two stay in sync.
-const wcAdapterPkg = JSON.parse(
-  fs.readFileSync(path.join(__dirname, '../../adapters/walletconnect/package.json'), 'utf-8')
-);
-const wcTypesRange = wcAdapterPkg.dependencies?.['@walletconnect/types'];
-const xyraAdapterPkg = JSON.parse(
-  fs.readFileSync(path.join(__dirname, '../../adapters/xyra/package.json'), 'utf-8')
-);
-const xyraSdkRange = xyraAdapterPkg.dependencies?.['@xyrawallet/sdk'];
+// These packages remain external in the rolled declarations. The wallet SDKs
+// are intentional namespace exports; the other packages provide public types.
+// Source every range from its owning adapter so the published facade cannot drift.
+const externalDependencySources = [
+  ['@walletconnect/types', 'walletconnect'],
+  ['@xyrawallet/sdk', 'xyra'],
+  ['xumm', 'xaman'],
+  ['xumm-oauth2-pkce', 'xaman'],
+  ['@gemwallet/api', 'gemwallet'],
+  ['@crossmarkio/typings', 'crossmark'],
+  ['@types/chrome', 'crossmark'],
+  ['@types/node-forge', 'crossmark'],
+];
 
-// Fail loudly if the version range can't be found. Without this guard a missing
-// range is `undefined`, which `JSON.stringify` silently drops from `dependencies`
-// below — so the published manifest would declare NO `@walletconnect/types` even
-// though the rolled `index.d.ts` still imports from it, shipping unresolvable
-// types. The self-containment check in scripts/build-types.mjs would NOT catch it
-// either: it allow-lists `@walletconnect/types` unconditionally. Keep this in
-// lock-step with that allow-list — if the WalletConnect adapter ever stops
-// declaring `@walletconnect/types` as a dependency, both scripts must change.
-if (!wcTypesRange) {
+const externalDependencies = {};
+for (const [packageName, adapterName] of externalDependencySources) {
+  const manifestPath = path.join(__dirname, `../../adapters/${adapterName}/package.json`);
+  const adapterPkg = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+  const range = adapterPkg.dependencies?.[packageName];
+
+  if (!range) {
+    console.error(
+      `✗ Could not read the '${packageName}' version range from ` +
+        `packages/adapters/${adapterName}/package.json (dependencies). The rolled types ` +
+        'leave that import external, so the published manifest must declare it. Update the ' +
+        'adapter dependency or both publish scripts together.'
+    );
+    process.exit(1);
+  }
+
+  externalDependencies[packageName] = range;
+}
+
+// Several public SDK declaration graphs reference Node built-ins. Their own
+// manifests treat `@types/node` as a development-only package, so carry our
+// pinned range into the published facade to keep strict consumers self-contained.
+const nodeTypesRange = mainPkg.devDependencies?.['@types/node'];
+if (!nodeTypesRange) {
   console.error(
-    "✗ Could not read the '@walletconnect/types' version range from " +
-      'packages/adapters/walletconnect/package.json (dependencies). The rolled types ' +
-      'leave that import external, so the published manifest must declare it. Fix: restore ' +
-      'the dependency on the adapter, or update both scripts/prepare-publish.mjs and the ' +
-      'ALLOWED_EXTERNAL_IMPORTS allow-list in scripts/build-types.mjs.'
+    "✗ Could not read the '@types/node' version range from packages/xrpl-connect/package.json."
   );
   process.exit(1);
 }
-
-if (!xyraSdkRange) {
-  console.error(
-    "✗ Could not read the '@xyrawallet/sdk' version range from " +
-      'packages/adapters/xyra/package.json (dependencies). The rolled types expose Xyra SDK ' +
-      'types, so the published manifest must declare it.'
-  );
-  process.exit(1);
-}
+externalDependencies['@types/node'] = nodeTypesRange;
 
 // Create dist-publish package.json
 const distPkg = {
@@ -77,12 +79,8 @@ const distPkg = {
       require: './xrpl-connect.umd.js',
     },
   },
-  // `@walletconnect/types` is left external in the rolled types (see above), so
-  // it must be installed alongside the package for those declarations to resolve.
-  dependencies: {
-    '@walletconnect/types': wcTypesRange,
-    '@xyrawallet/sdk': xyraSdkRange,
-  },
+  // External declaration imports must be installed alongside the package.
+  dependencies: externalDependencies,
   // Carry the `xrpl` peer dependency into the published manifest. The rolled
   // `index.d.ts` keeps `import { SubmittableTransaction } from 'xrpl'` external,
   // so consumers must install `xrpl` for the types (and the externalized runtime

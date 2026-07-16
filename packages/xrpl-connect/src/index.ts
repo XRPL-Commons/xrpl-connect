@@ -21,12 +21,9 @@
 export * from '@xrpl-connect/core';
 export * from '@xrpl-connect/ui';
 
-// Re-export each adapter's FULL public surface — not just the adapter class, but
-// every enum, option type, helper and network map it exports. Previously only the
-// classes were re-exported, so consumers of the meta-package could not reach e.g.
-// `XRPLMethod`, `LedgerDeviceState`, `LEDGER_STATE_MESSAGES`, `OTSU_NETWORK_MAP`,
-// the Xyra network maps, or the per-adapter `*AdapterOptions` types without adding
-// a direct dependency on the sub-package. (#35)
+// Re-export each adapter's full public surface — adapter classes, option types,
+// helpers, network maps, and collision-safe namespaces for the underlying wallet
+// SDKs. Consumers can access every adapter and upstream API from this package.
 // Adapter exports are uniquely named, so these `export *` re-exports do not collide
 // with each other or with the core/ui surfaces above.
 export * from '@xrpl-connect/adapter-xaman';
