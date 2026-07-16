@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { render, act, waitFor, renderHook } from '@testing-library/react';
 import { StrictMode, useRef } from 'react';
+import { renderToString } from 'react-dom/server';
 import {
   WalletManager,
   STANDARD_NETWORKS,
@@ -45,6 +46,16 @@ function wrapper(adapters: WalletAdapter[]) {
 }
 
 describe('XrplConnectProvider + hooks', () => {
+  it('renders on the server without accessing browser-only globals', () => {
+    expect(() =>
+      renderToString(
+        <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+          <div>SSR</div>
+        </XrplConnectProvider>
+      )
+    ).not.toThrow();
+  });
+
   it('throws when a hook is used outside the provider', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => renderHook(() => useWallet())).toThrow(/XrplConnectProvider/);
