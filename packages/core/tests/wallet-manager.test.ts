@@ -198,4 +198,28 @@ describe('WalletManager.fetchAccount()', () => {
       code: WalletErrorCode.NOT_CONNECTED,
     });
   });
+
+  it('emits networkChanged and refreshes the cache when only the network changes', async () => {
+    const CHANGED_NETWORK: NetworkInfo = {
+      id: 'mainnet',
+      name: 'Mainnet',
+      wss: 'wss://mainnet.example',
+    };
+    const adapter: WalletAdapter = {
+      ...createFakeAdapter(),
+      getAccount: vi.fn(async () => ({ ...ACCOUNT, network: CHANGED_NETWORK })),
+    };
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+    const onAccountChanged = vi.fn();
+    const onNetworkChanged = vi.fn();
+    manager.on('accountChanged', onAccountChanged);
+    manager.on('networkChanged', onNetworkChanged);
+
+    await manager.fetchAccount();
+
+    expect(manager.account?.network).toEqual(CHANGED_NETWORK);
+    expect(onNetworkChanged).toHaveBeenCalledWith(CHANGED_NETWORK);
+    expect(onAccountChanged).not.toHaveBeenCalled();
+  });
 });

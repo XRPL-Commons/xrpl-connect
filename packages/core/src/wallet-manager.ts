@@ -321,11 +321,28 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     }
 
     const account = await this.currentAdapter.getAccount();
-    if (account && account.address !== this.currentAccount?.address) {
-      this.handleAccountChanged(account);
-    } else if (account) {
-      this.currentAccount = account;
-    }
+    if (!account) return null;
+
+    const previous = this.currentAccount;
+    const addressChanged = previous?.address !== account.address;
+    const networkChanged =
+      previous !== null &&
+      (previous.network.id !== account.network.id ||
+        previous.network.wss !== account.network.wss ||
+        previous.network.rpc !== account.network.rpc);
+
+    this.currentAccount = account;
+    const existing = await this.storage.loadState();
+    await this.storage.saveState({
+      ...(existing ?? {}),
+      walletId: this.currentAdapter.id,
+      account,
+      network: account.network,
+      timestamp: Date.now(),
+    });
+
+    if (addressChanged) this.emit('accountChanged', account);
+    if (networkChanged) this.emit('networkChanged', account.network);
     return account;
   }
 
