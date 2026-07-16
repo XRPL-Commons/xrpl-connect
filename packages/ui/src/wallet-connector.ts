@@ -770,11 +770,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           ? this.truncateAddress(currentAccount.address, ADDRESS_DISPLAY.TRUNCATE_CHARS_BUTTON)
           : 'Connect Wallet';
 
-      // Use available wallets if any have been checked, otherwise fallback to all wallets
-      const wallets =
-        this.walletAvailabilityChecked && this.availableWallets.length > 0
-          ? this.availableWallets
-          : this.walletManager?.wallets || [];
+      // Before the availability check completes, render the configured wallets.
+      // Afterwards, an empty result must stay empty: falling back to every wallet
+      // would make unavailable wallets look connectable.
+      const wallets = this.walletAvailabilityChecked
+        ? this.availableWallets
+        : this.walletManager?.wallets || [];
 
       const primaryWallet = this.primaryWalletId
         ? (wallets.find((w) => w.id === this.primaryWalletId) ?? null)
