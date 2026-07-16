@@ -24,6 +24,8 @@ import { Storage } from './storage';
 import { TIME } from './constants';
 import { withTimeout } from './async';
 
+const AVAILABILITY_TIMED_OUT = Symbol('availability-timed-out');
+
 /**
  * Main class for managing wallet connections
  */
@@ -269,7 +271,8 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
-   * Get list of available wallets (installed/accessible)
+   * Get registered wallets whose availability check succeeds within the
+   * configured availability timeout.
    */
   async getAvailableWallets(): Promise<WalletAdapter[]> {
     const adapters = Array.from(this.adapters.values());
@@ -277,8 +280,8 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     // Check availability in parallel, capping each adapter with a timeout so a
     // single slow or hung `isAvailable()` can't stall the whole list.
     const results = await Promise.all(
-      adapters.map((adapter) =>
-        withTimeout(
+      adapters.map(async (adapter) => {
+        const result = await withTimeout<boolean | typeof AVAILABILITY_TIMED_OUT>(
           async () => {
             try {
               return await adapter.isAvailable();
@@ -288,9 +291,16 @@ export class WalletManager extends EventEmitter<WalletEvent> {
             }
           },
           TIME.AVAILABILITY_TIMEOUT,
-          false
-        )
-      )
+          AVAILABILITY_TIMED_OUT
+        );
+        if (result === AVAILABILITY_TIMED_OUT) {
+          this.logger.warn(
+            `Timed out checking availability for ${adapter.name} after ${TIME.AVAILABILITY_TIMEOUT}ms`
+          );
+          return false;
+        }
+        return result;
+      })
     );
 
     return adapters.filter((_, index) => results[index]);

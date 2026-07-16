@@ -86,7 +86,7 @@ Sign a message using the connected wallet.
 async getAvailableWallets(): Promise<WalletAdapter[]>
 ```
 
-Return the registered adapters whose `isAvailable()` resolves to `true`.
+Check registered adapters in parallel and return those whose `isAvailable()` resolves to `true` within `TIME.AVAILABILITY_TIMEOUT` (one second). Rejected or timed-out checks are treated as unavailable.
 
 #### disconnect()
 

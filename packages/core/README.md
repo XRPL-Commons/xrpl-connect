@@ -202,9 +202,9 @@ console.log('Public Key:', signed.publicKey);
 
 #### `getAvailableWallets(): Promise<WalletAdapter[]>`
 
-Returns a filtered list of available (installed/accessible) wallets.
+Checks registered wallets in parallel and returns those that report available within one second.
 
-**Returns**: Array of `WalletAdapter` objects whose `isAvailable()` method returns `true`
+**Returns**: Array of `WalletAdapter` objects whose `isAvailable()` method resolves to `true` before `TIME.AVAILABILITY_TIMEOUT`
 
 **Example**:
 

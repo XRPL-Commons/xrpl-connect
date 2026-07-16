@@ -57,7 +57,7 @@ await walletManager.disconnect();
 - `sign(transaction)` - Sign a transaction and return the signed blob
 - `signAndSubmit(transaction)` - Sign and submit transaction to ledger
 - `signMessage(message)` - Sign a message (string or `Uint8Array`)
-- `getAvailableWallets()` - List adapters whose `isAvailable()` resolves true
+- `getAvailableWallets()` - List adapters whose `isAvailable()` resolves true within one second
 - `disconnect()` - Disconnect current wallet
 - `on(event, listener)` - Listen to events
 - `off(event, listener)` - Remove event listener
