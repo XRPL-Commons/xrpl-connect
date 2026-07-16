@@ -27,6 +27,8 @@ import iconSvg from './assets/icon.svg';
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
 const SIGNING_TIMEOUT_MS = 5 * 60 * 1000;
 const RESOLVED_PAYLOAD_RETRY_MAX_MS = 5_000;
+const RESOLVED_PAYLOAD_RETRY_TIMEOUT_MS = 30_000;
+const SIGNING_OUTPUT_FIELDS = new Set(['TxnSignature', 'Signers']);
 
 const XAMAN_NETWORKS_BY_ID = new Map<number, XamanNetwork>([
   [0, { forceNetwork: 'MAINNET', networkId: 0, id: 'mainnet', name: 'Mainnet' }],
@@ -565,6 +567,8 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
         throw new Error('Xaman payload signer did not match the connected account');
       }
 
+      this.validateRequestedTransaction(transaction, resolved.payload?.request_json);
+
       const { response } = resolved;
       if (typeof response.hex !== 'string' || response.hex.length === 0) {
         throw new Error('Xaman did not return a signed transaction blob');
@@ -609,6 +613,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
           response.multisign_account,
           xamanNetwork
         );
+        this.validateRequestedTransaction(transaction, tx_json);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(`Xaman returned an invalid signed transaction blob: ${message}`);
@@ -885,6 +890,34 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
     }
   }
 
+  private validateRequestedTransaction(
+    requested: Transaction,
+    actual: Record<string, unknown> | undefined
+  ): void {
+    if (!actual || !this.containsRequestedValue(requested, actual)) {
+      throw new Error('Xaman returned a transaction that did not match the signing request');
+    }
+  }
+
+  private containsRequestedValue(expected: unknown, actual: unknown, field?: string): boolean {
+    if (field && SIGNING_OUTPUT_FIELDS.has(field)) return true;
+    if (Array.isArray(expected)) {
+      return (
+        Array.isArray(actual) &&
+        expected.length === actual.length &&
+        expected.every((value, index) => this.containsRequestedValue(value, actual[index]))
+      );
+    }
+    if (expected !== null && typeof expected === 'object') {
+      if (actual === null || typeof actual !== 'object' || Array.isArray(actual)) return false;
+      const actualRecord = actual as Record<string, unknown>;
+      return Object.entries(expected).every(([key, value]) =>
+        this.containsRequestedValue(value, actualRecord[key], key)
+      );
+    }
+    return Object.is(expected, actual);
+  }
+
   private createPayloadOperation(client: Xumm, submit: boolean): ActivePayloadOperation {
     const ready = deferred<void>();
     const stopDecision = deferred<void>();
@@ -918,6 +951,12 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
     operation.stopRequested = true;
     await Promise.race([operation.ready, operation.done]);
     if (operation.phase === 'done') return;
+
+    if (operation.phase === 'fetching') {
+      operation.controller.abort();
+      await operation.done;
+      return;
+    }
 
     if (operation.phase !== 'waiting' || !operation.uuid) {
       operation.resolveStopDecision();
@@ -997,19 +1036,49 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
     signal: AbortSignal
   ) {
     let retryDelay = 250;
+    const retryDeadline = Date.now() + RESOLVED_PAYLOAD_RETRY_TIMEOUT_MS;
     while (true) {
       try {
         const request = client.payload?.get(uuid, true);
         if (!request) throw new Error('Failed to retrieve the resolved Xaman payload');
-        const resolved = await this.waitForOperation(request, signal);
+        const resolved = await this.waitForOperationUntil(
+          request,
+          signal,
+          retryDeadline,
+          'Timed out retrieving the resolved Xaman payload'
+        );
         if (!resolved) throw new Error('Failed to retrieve the resolved Xaman payload');
         return resolved;
       } catch (error) {
-        if (!retryUntilKnown || signal.aborted) throw error;
+        if (!retryUntilKnown || signal.aborted || Date.now() >= retryDeadline) throw error;
         logger.debug('Unable to retrieve submitted Xaman payload; retrying', error);
-        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        const delay = Math.min(retryDelay, retryDeadline - Date.now());
+        await this.waitForOperation(
+          new Promise<void>((resolve) => setTimeout(resolve, delay)),
+          signal
+        );
         retryDelay = Math.min(retryDelay * 2, RESOLVED_PAYLOAD_RETRY_MAX_MS);
       }
+    }
+  }
+
+  private async waitForOperationUntil<T>(
+    promise: Promise<T>,
+    signal: AbortSignal,
+    deadline: number,
+    timeoutMessage: string
+  ): Promise<T> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(
+        () => reject(new Error(timeoutMessage)),
+        Math.max(0, deadline - Date.now())
+      );
+    });
+    try {
+      return await this.waitForOperation(Promise.race([promise, timeoutPromise]), signal);
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
   }
 
