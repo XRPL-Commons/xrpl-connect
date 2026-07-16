@@ -10,6 +10,7 @@ import type {
   AccountInfo,
   ConnectOptions,
   NetworkInfo,
+  NetworkConfig,
   Transaction,
   SignedTransaction,
   SignedMessage,
@@ -128,15 +129,7 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
         params: { [this.snapId]: {} },
       });
 
-      // Switch the snap to the correct network
-      const chainId = NETWORK_TO_CHAIN_ID[network.id];
-      if (chainId !== undefined) {
-        try {
-          await this.invokeSnap('xrpl_changeNetwork', { chainId });
-        } catch {
-          // Snap may already be on this network, ignore "already active" errors
-        }
-      }
+      const appliedNetwork = await this.selectNetwork(network);
 
       // Get account info from the snap
       const accountResponse = (await this.invokeSnap('xrpl_getAccount')) as {
@@ -151,7 +144,7 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
       this.currentAccount = {
         address: accountResponse.account,
         publicKey: accountResponse.publicKey,
-        network,
+        network: appliedNetwork,
       };
 
       return this.currentAccount;
@@ -190,28 +183,17 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
       throw createWalletError.notConnected();
     }
 
-    try {
-      const snapNetwork = (await this.invokeSnap('xrpl_getActiveNetwork')) as {
-        chainId: number;
-        name: string;
-        nodeUrl: string;
-      };
+    return this.readActiveNetwork();
+  }
 
-      const networkId = CHAIN_ID_TO_NETWORK[snapNetwork.chainId];
-      if (networkId && STANDARD_NETWORKS[networkId]) {
-        return STANDARD_NETWORKS[networkId];
-      }
-
-      // Custom network from the snap
-      return {
-        id: `snap-chain-${snapNetwork.chainId}`,
-        name: snapNetwork.name,
-        wss: '',
-        rpc: snapNetwork.nodeUrl,
-      };
-    } catch {
-      return this.currentAccount.network;
+  /** Switch the Snap network and verify the active network before returning. */
+  async switchNetwork(network: NetworkConfig): Promise<NetworkInfo> {
+    if (!this.currentAccount) {
+      throw createWalletError.notConnected();
     }
+    const applied = await this.selectNetwork(resolveNetwork(network));
+    this.currentAccount.network = applied;
+    return applied;
   }
 
   /**
@@ -321,5 +303,41 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
         },
       },
     });
+  }
+
+  private async readActiveNetwork(): Promise<NetworkInfo> {
+    const snapNetwork = (await this.invokeSnap('xrpl_getActiveNetwork')) as {
+      chainId: number;
+      name: string;
+      nodeUrl: string;
+    };
+    const networkId = CHAIN_ID_TO_NETWORK[snapNetwork.chainId];
+    if (networkId && STANDARD_NETWORKS[networkId]) {
+      return STANDARD_NETWORKS[networkId];
+    }
+    return {
+      id: `snap-chain-${snapNetwork.chainId}`,
+      name: snapNetwork.name,
+      wss: '',
+      rpc: snapNetwork.nodeUrl,
+    };
+  }
+
+  private async selectNetwork(network: NetworkInfo): Promise<NetworkInfo> {
+    const chainId = NETWORK_TO_CHAIN_ID[network.id];
+    if (chainId === undefined) {
+      throw createWalletError.networkNotSupported(network.id, this.name);
+    }
+
+    const current = await this.readActiveNetwork();
+    if (current.id !== network.id) {
+      await this.invokeSnap('xrpl_changeNetwork', { chainId });
+    }
+
+    const applied = await this.readActiveNetwork();
+    if (applied.id !== network.id) {
+      throw createWalletError.networkMismatch(network.id, applied.id);
+    }
+    return applied;
   }
 }

@@ -77,6 +77,7 @@ describe('MetaMaskSnapAdapter.connect', () => {
       mockProvider({
         snapHandlers: {
           xrpl_changeNetwork: () => ({}),
+          xrpl_getActiveNetwork: () => ({ chainId: 1, name: 'Testnet', nodeUrl: '' }),
           xrpl_getAccount: () => ({ account: 'rSNAP', publicKey: 'PUBKEY' }),
         },
       })
@@ -98,6 +99,7 @@ describe('MetaMaskSnapAdapter.connect', () => {
       mockProvider({
         snapHandlers: {
           xrpl_changeNetwork: () => ({}),
+          xrpl_getActiveNetwork: () => ({ chainId: 0, name: 'Mainnet', nodeUrl: '' }),
           xrpl_getAccount: () => {
             throw new Error('User rejected the request');
           },
@@ -116,6 +118,7 @@ describe('MetaMaskSnapAdapter signing', () => {
       mockProvider({
         snapHandlers: {
           xrpl_changeNetwork: () => ({}),
+          xrpl_getActiveNetwork: () => ({ chainId: 0, name: 'Mainnet', nodeUrl: '' }),
           xrpl_getAccount: () => ({ account: 'rSNAP', publicKey: 'PUBKEY' }),
           ...snapHandlers,
         },
@@ -165,5 +168,45 @@ describe('MetaMaskSnapAdapter signing', () => {
     await expect(
       new MetaMaskSnapAdapter().sign({ TransactionType: 'Payment' } as never)
     ).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+  });
+});
+
+describe('MetaMaskSnapAdapter network switching', () => {
+  it('switches and verifies the active Snap network', async () => {
+    let chainId = 0;
+    setProvider(
+      mockProvider({
+        snapHandlers: {
+          xrpl_getActiveNetwork: () => ({ chainId, name: 'Network', nodeUrl: '' }),
+          xrpl_changeNetwork: (params) => {
+            chainId = (params as { chainId: number }).chainId;
+            return {};
+          },
+          xrpl_getAccount: () => ({ account: 'rSNAP', publicKey: 'PUBKEY' }),
+        },
+      })
+    );
+    const adapter = new MetaMaskSnapAdapter();
+    await adapter.connect();
+
+    await expect(adapter.switchNetwork('testnet')).resolves.toMatchObject({ id: 'testnet' });
+    await expect(adapter.getNetwork()).resolves.toMatchObject({ id: 'testnet' });
+  });
+
+  it('does not hide a rejected network change during connect', async () => {
+    setProvider(
+      mockProvider({
+        snapHandlers: {
+          xrpl_getActiveNetwork: () => ({ chainId: 0, name: 'Mainnet', nodeUrl: '' }),
+          xrpl_changeNetwork: () => {
+            throw new Error('User rejected network change');
+          },
+        },
+      })
+    );
+
+    await expect(new MetaMaskSnapAdapter().connect({ network: 'testnet' })).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_REJECTED,
+    });
   });
 });
