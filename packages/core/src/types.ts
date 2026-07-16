@@ -68,6 +68,7 @@ export interface SignedTransaction {
   hash: string; // Transaction hash
   tx_blob?: string; // Signed transaction blob
   signature?: string; // Signature
+  tx_json?: Transaction; // Complete signed transaction JSON
   [key: string]: unknown; // Allow additional wallet-specific fields
 }
 
@@ -86,6 +87,8 @@ export interface SignedMessage {
 export interface SubmittedTransaction {
   hash: string; // Transaction hash
   id?: string; // Request/submission ID (wallet-specific)
+  signature?: string; // Signature
+  tx_json?: Transaction; // Complete signed transaction JSON
   [key: string]: unknown; // Allow additional wallet-specific fields
 }
 
