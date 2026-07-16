@@ -26,7 +26,6 @@ import { TIME } from './constants';
 import { withTimeout } from './async';
 
 const AVAILABILITY_TIMED_OUT = Symbol('availability-timed-out');
-import { resolveNetwork } from './network';
 
 /**
  * Main class for managing wallet connections
@@ -308,11 +307,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   /**
    * Switch the active network at runtime.
    *
-   * If the connected adapter can switch natively (implements
-   * {@link SupportsNetworkSwitch}, e.g. an extension exposing a switch-network
-   * request) the request is delegated to it. Otherwise the manager updates the
-   * network it reports and uses locally — the wallet may still override this via
-   * its own `networkChanged` event. Either way, listeners get `networkChanged`.
+   * The connected adapter must implement {@link SupportsNetworkSwitch}. The
+   * manager never simulates a switch locally because that could make the dApp
+   * report a different network from the wallet that will sign the transaction.
    *
    * @returns the network that was applied.
    */
@@ -321,16 +318,19 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       throw createWalletError.notConnected();
     }
 
-    let applied: NetworkInfo;
-    if (supportsNetworkSwitch(this.currentAdapter)) {
-      this.logger.info('Switching network via adapter', network);
-      applied = await this.currentAdapter.switchNetwork(network);
-    } else {
-      this.logger.info('Switching active network locally', network);
-      applied = resolveNetwork(network);
+    if (!supportsNetworkSwitch(this.currentAdapter)) {
+      throw createWalletError.unsupportedMethod(
+        `${this.currentAdapter.name} does not support runtime network switching`
+      );
     }
 
-    await this.applyNetwork(applied);
+    this.logger.info('Switching network via adapter', network);
+    const applied = await this.currentAdapter.switchNetwork(network);
+    const shouldEmit =
+      this.currentAccount?.network.id !== applied.id ||
+      this.currentAccount?.network.wss !== applied.wss ||
+      this.currentAccount?.network.rpc !== applied.rpc;
+    await this.applyNetwork(applied, shouldEmit);
     return applied;
   }
 
@@ -438,7 +438,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * Apply a network change initiated by the manager: update the cached account,
    * persist it (preserving any other stored fields), and emit `networkChanged`.
    */
-  private async applyNetwork(network: NetworkInfo): Promise<void> {
+  private async applyNetwork(network: NetworkInfo, emitEvent: boolean): Promise<void> {
     if (this.currentAccount) {
       this.currentAccount.network = network;
     }
@@ -452,7 +452,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         timestamp: Date.now(),
       });
     }
-    this.emit('networkChanged', network);
+    if (emitEvent) this.emit('networkChanged', network);
   }
 
   /**

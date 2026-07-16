@@ -168,19 +168,15 @@ describe('WalletManager.connect()', () => {
 });
 
 describe('WalletManager.switchNetwork()', () => {
-  it('updates the active network locally and emits networkChanged for adapters without native switching', async () => {
+  it('rejects adapters without native switching instead of changing only local state', async () => {
     const adapter = createFakeAdapter();
     const manager = new WalletManager({ adapters: [adapter] });
     await manager.connect('fake');
 
-    const onNetworkChanged = vi.fn();
-    manager.on('networkChanged', onNetworkChanged);
-
-    const applied = await manager.switchNetwork('mainnet');
-
-    expect(applied.id).toBe('mainnet');
-    expect(manager.account?.network.id).toBe('mainnet');
-    expect(onNetworkChanged).toHaveBeenCalledWith(applied);
+    await expect(manager.switchNetwork('mainnet')).rejects.toMatchObject({
+      code: 'UNSUPPORTED_METHOD',
+    });
+    expect(manager.account?.network).toEqual(NETWORK);
   });
 
   it('delegates to an adapter that supports native network switching', async () => {
