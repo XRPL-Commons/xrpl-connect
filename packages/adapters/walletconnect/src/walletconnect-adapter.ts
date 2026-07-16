@@ -45,14 +45,10 @@ export enum XRPLMethod {
 
 /**
  * Signed transaction JSON returned by a wallet in response to an
- * `xrpl_signTransaction` request. Only the fields the adapter reads are typed;
- * the rest of the signed `tx_json` is preserved as additional keys.
+ * `xrpl_signTransaction` request. WalletConnect includes the transaction hash
+ * alongside the standard XRPL transaction fields.
  */
-interface WalletConnectSignedTxJson {
-  hash?: string;
-  TxnSignature?: string;
-  [key: string]: unknown;
-}
+type WalletConnectSignedTxJson = Transaction & { hash?: string };
 
 /**
  * WalletConnect adapter options
@@ -480,6 +476,13 @@ export class WalletConnectAdapter
 
   /**
    * Sign a transaction without submitting it to the ledger
+   *
+   * The wallet returns a signed `tx_json` (with `SigningPubKey` / `TxnSignature`
+   * populated), not a serialized `tx_blob`. We surface that full `tx_json` (and
+   * the raw signature under `signature`, per the `SignedTransaction` contract)
+   * rather than mislabeling `TxnSignature` as `tx_blob` — the latter is not a
+   * valid signed transaction blob and cannot be submitted as one.
+   *
    * @param transaction - The transaction to sign
    */
   async sign(transaction: Transaction): Promise<SignedTransaction> {
@@ -487,8 +490,9 @@ export class WalletConnectAdapter
       const resultTx = await this.requestSignTransaction(transaction, false);
 
       return {
-        hash: '',
-        tx_blob: resultTx.TxnSignature,
+        hash: resultTx.hash || '',
+        signature: resultTx.TxnSignature,
+        tx_json: resultTx,
       };
     } catch (error) {
       if (error instanceof Error && error.message.toLowerCase().includes('reject')) {
@@ -508,7 +512,8 @@ export class WalletConnectAdapter
 
       return {
         hash: resultTx.hash || '',
-        tx_blob: resultTx.TxnSignature,
+        signature: resultTx.TxnSignature,
+        tx_json: resultTx,
       };
     } catch (error) {
       if (error instanceof Error && error.message.toLowerCase().includes('reject')) {

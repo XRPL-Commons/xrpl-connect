@@ -62,7 +62,7 @@ Reconnect to the previously connected wallet using stored state. Returns `null` 
 async sign(transaction: Transaction): Promise<SignedTransaction>
 ```
 
-Sign a transaction without submitting it to the ledger. Returns the signed transaction blob (`tx_blob`).
+Sign a transaction without submitting it to the ledger. Depending on the adapter, the result contains the complete signed transaction JSON (`tx_json`), a serialized transaction blob (`tx_blob`), and/or the raw signature.
 
 #### signAndSubmit()
 
@@ -387,6 +387,7 @@ interface SignedTransaction {
   hash: string;
   tx_blob?: string;
   signature?: string;
+  tx_json?: Transaction;
   [key: string]: unknown;
 }
 ```
@@ -397,6 +398,8 @@ interface SignedTransaction {
 interface SubmittedTransaction {
   hash: string;
   id?: string;
+  signature?: string;
+  tx_json?: Transaction;
   [key: string]: unknown;
 }
 ```
