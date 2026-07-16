@@ -521,10 +521,17 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * instead of wiring up `connected` / `close` event listeners themselves.
      */
     openAndWait(): Promise<AccountInfo> {
+      const manager = this.walletManager;
+      if (!manager) {
+        return Promise.reject(new Error('WalletManager must be set before opening the modal.'));
+      }
+      if (manager.connected && manager.account) {
+        return Promise.resolve(manager.account);
+      }
+
       return new Promise<AccountInfo>((resolve, reject) => {
-        const manager = this.walletManager;
         const cleanup = () => {
-          manager?.off('connect', onConnect);
+          manager.off('connect', onConnect);
           this.removeEventListener('close', onClose);
         };
         // Resolve off the manager's connect event (fires with the account),
@@ -540,7 +547,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           reject(new Error('Modal closed before a wallet was connected.'));
         };
 
-        manager?.on('connect', onConnect);
+        manager.on('connect', onConnect);
         this.addEventListener('close', onClose);
         this.open().catch((error) => {
           cleanup();

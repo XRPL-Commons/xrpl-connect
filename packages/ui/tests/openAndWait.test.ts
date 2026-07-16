@@ -64,4 +64,19 @@ describe('<xrpl-wallet-connector>.openAndWait()', () => {
 
     await expect(promise).rejects.toThrow(/closed/i);
   });
+
+  it('resolves immediately when a wallet is already connected', async () => {
+    const manager = new WalletManager({ adapters: [fakeAdapter()] });
+    await manager.connect('fake');
+    const el = mountConnector(manager);
+
+    await expect(el.openAndWait()).resolves.toEqual(ACCOUNT);
+  });
+
+  it('rejects immediately when no WalletManager has been set', async () => {
+    const el = document.createElement('xrpl-wallet-connector') as ConnectorEl;
+    document.body.appendChild(el);
+
+    await expect(el.openAndWait()).rejects.toThrow(/WalletManager/i);
+  });
 });
