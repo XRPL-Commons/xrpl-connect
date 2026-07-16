@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { WalletErrorCode } from '@xrpl-connect/core';
+import { describe, it, expect, expectTypeOf, vi, beforeEach } from 'vitest';
+import { WalletErrorCode, type Transaction } from '@xrpl-connect/core';
 
 const mockClient = {
   connect: vi.fn(),
@@ -99,7 +99,12 @@ describe('WalletConnectAdapter.sign', () => {
   it('returns the signed tx_json and signature when no tx_blob is provided', async () => {
     const adapter = await connected();
     mockClient.request.mockResolvedValue({
-      tx_json: { TransactionType: 'Payment', SigningPubKey: 'PUB', TxnSignature: 'SIG' },
+      tx_json: {
+        hash: 'ABCDEF0123456789',
+        TransactionType: 'Payment',
+        SigningPubKey: 'PUB',
+        TxnSignature: 'SIG',
+      },
     });
 
     const result = await adapter.sign({ TransactionType: 'Payment' } as never);
@@ -114,18 +119,8 @@ describe('WalletConnectAdapter.sign', () => {
       SigningPubKey: 'PUB',
       TxnSignature: 'SIG',
     });
-    expect(result.hash).toBe('');
-  });
-
-  it('passes through a real tx_blob if the wallet provides one', async () => {
-    const adapter = await connected();
-    mockClient.request.mockResolvedValue({
-      tx_json: { TransactionType: 'Payment', TxnSignature: 'SIG', tx_blob: 'DEADBEEF' },
-    });
-
-    const result = await adapter.sign({ TransactionType: 'Payment' } as never);
-
-    expect(result.tx_blob).toBe('DEADBEEF');
+    expect(result.hash).toBe('ABCDEF0123456789');
+    expectTypeOf(result.tx_json).toEqualTypeOf<Transaction | undefined>();
   });
 
   it('maps a rejected request to sign-rejected', async () => {
@@ -176,6 +171,8 @@ describe('WalletConnectAdapter.signAndSubmit', () => {
     expect(result.signature).toBe('SIG');
     expect(result.tx_json).toMatchObject({ TransactionType: 'Payment', TxnSignature: 'SIG' });
     expect(result.tx_blob).toBeUndefined();
+    expectTypeOf(result.signature).toEqualTypeOf<string | undefined>();
+    expectTypeOf(result.tx_json).toEqualTypeOf<Transaction | undefined>();
   });
 
   it('maps a rejected request to sign-rejected', async () => {

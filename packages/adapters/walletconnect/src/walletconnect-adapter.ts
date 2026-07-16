@@ -45,14 +45,10 @@ export enum XRPLMethod {
 
 /**
  * Signed transaction JSON returned by a wallet in response to an
- * `xrpl_signTransaction` request. Only the fields the adapter reads are typed;
- * the rest of the signed `tx_json` is preserved as additional keys.
+ * `xrpl_signTransaction` request. WalletConnect includes the transaction hash
+ * alongside the standard XRPL transaction fields.
  */
-interface WalletConnectSignedTxJson {
-  hash?: string;
-  TxnSignature?: string;
-  [key: string]: unknown;
-}
+type WalletConnectSignedTxJson = Transaction & { hash?: string };
 
 /**
  * WalletConnect adapter options
@@ -494,8 +490,7 @@ export class WalletConnectAdapter
       const resultTx = await this.requestSignTransaction(transaction, false);
 
       return {
-        hash: '',
-        tx_blob: typeof resultTx.tx_blob === 'string' ? resultTx.tx_blob : undefined,
+        hash: resultTx.hash || '',
         signature: resultTx.TxnSignature,
         tx_json: resultTx,
       };
