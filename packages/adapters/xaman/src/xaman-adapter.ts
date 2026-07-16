@@ -3,6 +3,7 @@
  */
 
 import { Xumm } from 'xumm';
+import { decode } from 'xrpl';
 import {
   WalletAdapter,
   AccountInfo,
@@ -219,18 +220,37 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
   }
 
   /**
-   * Create a Xaman payload, open the signing popup, and wait for the result.
-   * Shared logic used by both sign() and signAndSubmit().
+   * Create a Xaman payload, open the signing popup, wait for the websocket to report
+   * `signed`, then fetch the resolved payload for the actual signed data.
+   *
+   * `submit` is passed through as `options.submit` on the payload body — Xaman's
+   * payload API only submits to the ledger when this is true. Previously the bare
+   * transaction was sent with no `options` at all, so submission was silently left
+   * up to the connected account's own "auto-submit" app setting, regardless of
+   * whether the caller asked for sign() or signAndSubmit().
+   *
+   * The websocket push that resolves `waitForSignature()` only ever carries
+   * `{ signed, txid, ... }` (see XummWebsocketBody) — it never includes the signed
+   * blob. The actual `hex` / `txid` / `signer_pubkey` only exist on the resolved
+   * payload, fetched via `payload.get()`.
    */
   private async createAndWaitForPayload(
-    transaction: Transaction
-  ): Promise<{ txid: string; tx_blob: string; signature: string }> {
+    transaction: Transaction,
+    submit: boolean
+  ): Promise<{
+    txid: string;
+    tx_blob: string;
+    signature: string;
+    tx_json?: Record<string, unknown>;
+  }> {
     if (!this.client || !this.currentAccount) {
       throw createWalletError.notConnected();
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const payload: any = await this.client.payload?.createAndSubscribe(transaction as any);
+    const payloadBody: any = { txjson: transaction, options: { submit } };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const payload: any = await this.client.payload?.createAndSubscribe(payloadBody);
 
     if (!payload) {
       throw new Error('Failed to create payload');
@@ -244,25 +264,44 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
       throw createWalletError.signRejected();
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resolved: any = await this.client.payload?.get(payload.created.uuid);
+    const response = resolved?.response;
+    const hex: string = typeof response?.hex === 'string' ? response.hex : '';
+
+    let tx_json: Record<string, unknown> | undefined;
+    let signature = '';
+    if (hex) {
+      try {
+        tx_json = decode(hex) as Record<string, unknown>;
+        signature = typeof tx_json.TxnSignature === 'string' ? tx_json.TxnSignature : '';
+      } catch {
+        // Leave tx_json/signature unset if the hex doesn't decode — callers still
+        // get the raw tx_blob below.
+      }
+    }
+
     return {
-      txid: result.txid || '',
-      tx_blob: result.tx_blob || '',
-      signature: result.signature || '',
+      txid: response?.txid || result.txid || '',
+      tx_blob: hex,
+      signature,
+      tx_json,
     };
   }
 
   /**
-   * Sign a transaction without submitting it to the ledger
+   * Sign a transaction without submitting it to the ledger.
    * Note: Xaman uses a popup flow for signing.
    */
   async sign(transaction: Transaction): Promise<SignedTransaction> {
     try {
-      const result = await this.createAndWaitForPayload(transaction);
+      const result = await this.createAndWaitForPayload(transaction, false);
 
       return {
         hash: '',
-        tx_blob: result.tx_blob,
-        signature: result.signature,
+        tx_blob: result.tx_blob || undefined,
+        signature: result.signature || undefined,
+        tx_json: result.tx_json,
       };
     } catch (error) {
       if (error instanceof Error && error.message.includes('rejected')) {
@@ -273,17 +312,17 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
   }
 
   /**
-   * Sign and submit a transaction to the ledger
-   * Note: Xaman handles submission internally based on user's wallet settings.
+   * Sign and submit a transaction to the ledger.
    */
   async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
     try {
-      const result = await this.createAndWaitForPayload(transaction);
+      const result = await this.createAndWaitForPayload(transaction, true);
 
       return {
         hash: result.txid,
-        tx_blob: result.tx_blob,
-        signature: result.signature,
+        tx_blob: result.tx_blob || undefined,
+        signature: result.signature || undefined,
+        tx_json: result.tx_json,
       };
     } catch (error) {
       if (error instanceof Error && error.message.includes('rejected')) {
