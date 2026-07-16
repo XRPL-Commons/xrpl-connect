@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import EventEmitter from 'eventemitter3';
 import { WalletManager } from '../src/wallet-manager';
+import { MemoryStorageAdapter, Storage } from '../src/storage';
 import { WalletErrorCode } from '../src/types';
 import type {
   AccountInfo,
@@ -49,6 +50,32 @@ function createFakeAdapter(): WalletAdapter & {
 }
 
 describe('WalletManager.disconnect()', () => {
+  it('persists account and network changes emitted by the adapter', async () => {
+    const storageAdapter = new MemoryStorageAdapter();
+    const adapter = createFakeAdapter();
+    const manager = new WalletManager({ adapters: [adapter], storage: storageAdapter });
+    await manager.connect('fake');
+
+    const changedNetwork: NetworkInfo = {
+      id: 'mainnet',
+      name: 'Mainnet',
+      wss: 'wss://mainnet.example',
+    };
+    const changedAccount: AccountInfo = {
+      address: 'rChanged00000000000000000000000000',
+      network: changedNetwork,
+    };
+    adapter.emitAdapterEvent('accountChanged', changedAccount);
+    adapter.emitAdapterEvent('networkChanged', changedNetwork);
+
+    const storage = new Storage(storageAdapter);
+    await vi.waitFor(async () => {
+      const stored = await storage.loadState();
+      expect(stored?.account).toEqual(changedAccount);
+      expect(stored?.network).toEqual(changedNetwork);
+    });
+  });
+
   it('removes adapter event listeners so late events do not reach manager subscribers', async () => {
     const adapter = createFakeAdapter();
     const manager = new WalletManager({ adapters: [adapter] });

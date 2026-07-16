@@ -419,6 +419,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   private handleAccountChanged(account: AccountInfo): void {
     this.logger.info('Account changed', account);
     this.currentAccount = account;
+    void this.persistCurrentState();
     this.emit('accountChanged', account);
   }
 
@@ -430,7 +431,22 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     if (this.currentAccount) {
       this.currentAccount.network = network;
     }
+    void this.persistCurrentState();
     this.emit('networkChanged', network);
+  }
+
+  /** Persist adapter-driven account/network changes without dropping stored metadata. */
+  private async persistCurrentState(): Promise<void> {
+    if (!this.currentAdapter || !this.currentAccount) return;
+
+    const existing = await this.storage.loadState();
+    await this.storage.saveState({
+      ...existing,
+      walletId: this.currentAdapter.id,
+      account: this.currentAccount,
+      network: this.currentAccount.network,
+      timestamp: Date.now(),
+    });
   }
 
   /**
