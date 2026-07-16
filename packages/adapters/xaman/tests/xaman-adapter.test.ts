@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { WalletErrorCode } from '@xrpl-connect/core';
+import { describe, it, expect, expectTypeOf, vi, beforeEach } from 'vitest';
+import { WalletErrorCode, type Transaction } from '@xrpl-connect/core';
 import { encode } from 'xrpl';
 
 const mockXummInstance = {
@@ -18,24 +18,75 @@ vi.mock('xumm', () => ({
 
 import { XamanAdapter } from '../src/xaman-adapter';
 
-/**
- * Minimal fake of the browser WebSocket API used by waitForSignature(). Xaman's
- * real websocket push only ever carries `{ signed, txid, ... }` — no tx_blob/hex —
- * so tests drive it with exactly that shape and let the adapter's payload.get()
- * follow-up (also mocked) supply the actual signed data.
- */
-class FakeWebSocket {
-  static instances: FakeWebSocket[] = [];
-  onmessage: ((event: { data: string }) => void) | null = null;
-  onerror: ((event: unknown) => void) | null = null;
-  onclose: (() => void) | null = null;
-  constructor(public url: string) {
-    FakeWebSocket.instances.push(this);
-  }
-  close() {}
-  emit(data: Record<string, unknown>) {
-    this.onmessage?.({ data: JSON.stringify(data) });
-  }
+const SIGNED_TX_JSON = {
+  TransactionType: 'Payment',
+  Account: 'rG31cLyErnqeVj2eomEjBZtq7PYaupGYzL',
+  Destination: 'rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe',
+  Amount: '1000000',
+  Fee: '10',
+  Sequence: 1,
+  Flags: 0,
+  SigningPubKey: 'EDA57EBBCB502C2009EFE17229E8DC865DCCB192C52D7888D624DC9EBADDB815F0',
+  TxnSignature:
+    'CF299AC2C61FA6093198E3CA5D72EE4C6C77757FC7F7B6D6E1F07AAE66BE064A537DD2AD2D0A9C8B3E95ED66E4AFE71ED0B2F3EB9365AF7F7EBCD763A20A7106',
+};
+const SIGNED_TX_HEX = encode(SIGNED_TX_JSON as never);
+
+type PayloadEventCallback = (event: {
+  data: Record<string, unknown>;
+}) => unknown | Promise<unknown>;
+
+function createSubscriptionHarness() {
+  let callback: PayloadEventCallback | undefined;
+  let resolveOutcome: ((outcome: unknown) => void) | undefined;
+  const resolved = new Promise<unknown>((resolve) => {
+    resolveOutcome = resolve;
+  });
+  const close = vi.fn();
+
+  mockXummInstance.payload.createAndSubscribe.mockImplementation(async (_body, onEvent) => {
+    callback = onEvent as PayloadEventCallback;
+    return {
+      created: {
+        uuid: 'payload-uuid',
+        next: { always: 'https://xaman.app/sign/payload-uuid' },
+      },
+      resolved,
+      resolve: close,
+    };
+  });
+
+  return {
+    close,
+    async emit(data: Record<string, unknown>) {
+      await vi.waitFor(() => expect(callback).toBeDefined());
+      const outcome = await callback?.({ data });
+      if (outcome !== undefined) resolveOutcome?.(outcome);
+    },
+  };
+}
+
+function resolvedPayload(
+  submit: boolean,
+  responseOverrides: Record<string, unknown> = {},
+  metaOverrides: Record<string, unknown> = {}
+) {
+  return {
+    meta: {
+      resolved: true,
+      signed: true,
+      submit,
+      ...metaOverrides,
+    },
+    response: {
+      hex: SIGNED_TX_HEX,
+      txid: 'REALHASH',
+      signer_pubkey: SIGNED_TX_JSON.SigningPubKey,
+      dispatched_to_node: submit ? true : null,
+      dispatched_result: submit ? 'tesSUCCESS' : null,
+      ...responseOverrides,
+    },
+  };
 }
 
 beforeEach(() => {
@@ -44,26 +95,17 @@ beforeEach(() => {
   mockXummInstance.payload.createAndSubscribe.mockReset();
   mockXummInstance.payload.create.mockReset();
   mockXummInstance.payload.get.mockReset();
-  FakeWebSocket.instances = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (globalThis as any).WebSocket = FakeWebSocket;
 });
 
-/** Connect an adapter and stand up a payload whose websocket push resolves `signed`. */
 async function signedAdapter() {
   mockXummInstance.authorize.mockResolvedValue({ me: { account: 'rXamanUser' } });
   const adapter = new XamanAdapter({ apiKey: 'test-key' });
   // Without an onQRCode callback, openSignWindow() falls back to window.open(),
   // which doesn't exist in this (Node) test environment — supply a no-op so
-  // signing proceeds straight to the websocket wait, same as a headless caller.
+  // signing proceeds straight to the subscription wait, same as a headless caller.
   await adapter.connect({ onQRCode: () => {} });
 
-  mockXummInstance.payload.createAndSubscribe.mockImplementation(async () => ({
-    created: { uuid: 'payload-uuid', next: { always: 'https://xaman.app/sign/payload-uuid' } },
-    websocket: { url: 'wss://fake.xaman/payload-uuid' },
-  }));
-
-  return adapter;
+  return { adapter, subscription: createSubscriptionHarness() };
 }
 
 describe('XamanAdapter.isAvailable', () => {
@@ -110,89 +152,163 @@ describe('XamanAdapter.sign', () => {
   });
 
   it('maps a rejected payload to a sign-rejected error', async () => {
-    mockXummInstance.authorize.mockResolvedValue({ me: { account: 'rXamanUser' } });
-    const adapter = new XamanAdapter({ apiKey: 'test-key' });
-    await adapter.connect();
-
-    // Spy on the private waitForSignature step indirectly by faking the payload result
-    mockXummInstance.payload.createAndSubscribe.mockImplementation(async (_tx, _cb) => {
-      // Simulate the SDK invoking the subscription with a rejection.
-      // The adapter then awaits a websocket; we short-circuit by throwing.
-      throw new Error('Sign rejected by user');
-    });
-
-    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+    const { adapter, subscription } = await signedAdapter();
+    const signPromise = adapter.sign({ TransactionType: 'Payment' } as never);
+    const rejection = expect(signPromise).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_REJECTED,
     });
+
+    await subscription.emit({ signed: false });
+    await rejection;
+    expect(mockXummInstance.payload.get).not.toHaveBeenCalled();
+    expect(subscription.close).toHaveBeenCalledTimes(1);
   });
 
-  it('requests options.submit: false, so Xaman does not submit on sign()', async () => {
-    const adapter = await signedAdapter();
-    mockXummInstance.payload.get.mockResolvedValue({ response: { hex: null, txid: null } });
-
+  it('closes an expired subscription and reports a sign failure', async () => {
+    const { adapter, subscription } = await signedAdapter();
     const signPromise = adapter.sign({ TransactionType: 'Payment' } as never);
-    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBe(1));
-    FakeWebSocket.instances[0].emit({ signed: true, txid: 'ABC123' });
-    await signPromise.catch(() => {});
-
-    expect(mockXummInstance.payload.createAndSubscribe).toHaveBeenCalledWith(
-      expect.objectContaining({ options: { submit: false } })
-    );
-  });
-
-  it('returns the decoded tx_json/signature/tx_blob from payload.get(), not the websocket push', async () => {
-    const adapter = await signedAdapter();
-    const signedTxJson = {
-      TransactionType: 'Payment',
-      Account: 'rG31cLyErnqeVj2eomEjBZtq7PYaupGYzL',
-      Destination: 'rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe',
-      Amount: '1000000',
-      Fee: '10',
-      Sequence: 1,
-      Flags: 0,
-      SigningPubKey: 'EDA57EBBCB502C2009EFE17229E8DC865DCCB192C52D7888D624DC9EBADDB815F0',
-      TxnSignature:
-        'CF299AC2C61FA6093198E3CA5D72EE4C6C77757FC7F7B6D6E1F07AAE66BE064A537DD2AD2D0A9C8B3E95ED66E4AFE71ED0B2F3EB9365AF7F7EBCD763A20A7106',
-    };
-    const hex = encode(signedTxJson as never);
-    mockXummInstance.payload.get.mockResolvedValue({
-      response: { hex, txid: 'REALHASH', signer_pubkey: signedTxJson.SigningPubKey },
+    const rejection = expect(signPromise).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
     });
 
+    await subscription.emit({ expired: true, signed: false });
+    await rejection;
+    expect(mockXummInstance.payload.get).not.toHaveBeenCalled();
+    expect(subscription.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses one SDK subscription and returns authoritative signed data without submitting', async () => {
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false));
+
     const signPromise = adapter.sign({ TransactionType: 'Payment' } as never);
-    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBe(1));
-    // The websocket push never carries tx_blob/hex — only signed + txid.
-    FakeWebSocket.instances[0].emit({ signed: true, txid: 'ABC123' });
+    await subscription.emit({ opened: true });
+    expect(subscription.close).not.toHaveBeenCalled();
+    await subscription.emit({ signed: true, txid: 'UNTRUSTED_WEBSOCKET_HASH' });
     const result = await signPromise;
 
-    expect(mockXummInstance.payload.get).toHaveBeenCalledWith('payload-uuid');
-    expect(result.tx_blob).toBe(hex);
-    expect(result.signature).toBe(signedTxJson.TxnSignature);
+    expect(mockXummInstance.payload.createAndSubscribe).toHaveBeenCalledWith(
+      expect.objectContaining({ options: { submit: false } }),
+      expect.any(Function)
+    );
+    expect(mockXummInstance.payload.get).toHaveBeenCalledWith('payload-uuid', true);
+    expect(result.hash).toBe('REALHASH');
+    expect(result.tx_blob).toBe(SIGNED_TX_HEX);
+    expect(result.signature).toBe(SIGNED_TX_JSON.TxnSignature);
     expect(result.tx_json).toMatchObject({
       TransactionType: 'Payment',
-      TxnSignature: signedTxJson.TxnSignature,
+      TxnSignature: SIGNED_TX_JSON.TxnSignature,
     });
-    expect(result.hash).toBe(''); // sign() never reports a ledger hash
+    expect(subscription.close).toHaveBeenCalledTimes(1);
+    expectTypeOf(result.tx_blob).toEqualTypeOf<string | undefined>();
+    expectTypeOf(result.signature).toEqualTypeOf<string | undefined>();
+    expectTypeOf(result.tx_json).toEqualTypeOf<Transaction | undefined>();
+  });
+
+  it.each([
+    ['a missing resolved payload', null],
+    ['an unresolved payload', resolvedPayload(false, {}, { resolved: false })],
+    ['a missing signed blob', resolvedPayload(false, { hex: null })],
+    ['a malformed signed blob', resolvedPayload(false, { hex: 'NOT_HEX' })],
+    ['a missing transaction hash', resolvedPayload(false, { txid: null })],
+  ])('fails when payload.get() returns %s', async (_description, resolved) => {
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(resolved);
+
+    const signPromise = adapter.sign({ TransactionType: 'Payment' } as never);
+    const rejection = expect(signPromise).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    await subscription.emit({ signed: true });
+
+    await rejection;
+    expect(subscription.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails if Xaman dispatches a sign-only transaction', async () => {
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(
+      resolvedPayload(false, { dispatched_to_node: true, dispatched_result: 'tesSUCCESS' })
+    );
+
+    const signPromise = adapter.sign({ TransactionType: 'Payment' } as never);
+    const rejection = expect(signPromise).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    await subscription.emit({ signed: true });
+
+    await rejection;
+    expect(subscription.close).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('XamanAdapter.signAndSubmit', () => {
-  it('requests options.submit: true and reports the ledger hash', async () => {
-    const adapter = await signedAdapter();
-    mockXummInstance.payload.get.mockResolvedValue({
-      response: { hex: null, txid: 'SUBMITTEDHASH' },
-    });
+  it('returns signed data only after Xaman reports a successful node dispatch', async () => {
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(
+      resolvedPayload(true, { txid: 'SUBMITTEDHASH' })
+    );
 
     const submitPromise = adapter.signAndSubmit({ TransactionType: 'Payment' } as never);
-    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBe(1));
-    FakeWebSocket.instances[0].emit({ signed: true, txid: 'SUBMITTEDHASH' });
+    await subscription.emit({ signed: true, txid: 'UNTRUSTED_WEBSOCKET_HASH' });
     const result = await submitPromise;
 
     expect(mockXummInstance.payload.createAndSubscribe).toHaveBeenCalledWith(
-      expect.objectContaining({ options: { submit: true } })
+      expect.objectContaining({ options: { submit: true } }),
+      expect.any(Function)
     );
     expect(result.hash).toBe('SUBMITTEDHASH');
+    expect(result.tx_blob).toBe(SIGNED_TX_HEX);
+    expect(result.signature).toBe(SIGNED_TX_JSON.TxnSignature);
+    expect(result.tx_json).toMatchObject({ TransactionType: 'Payment' });
+    expect(subscription.close).toHaveBeenCalledTimes(1);
+    expectTypeOf(result.tx_blob).toEqualTypeOf<string | undefined>();
+    expectTypeOf(result.signature).toEqualTypeOf<string | undefined>();
+    expectTypeOf(result.tx_json).toEqualTypeOf<Transaction | undefined>();
   });
+
+  it.each(['terQUEUED', 'tecPATH_DRY'])(
+    'preserves the transaction hash for an accepted %s result',
+    async (dispatchResult) => {
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.payload.get.mockResolvedValue(
+        resolvedPayload(true, { dispatched_result: dispatchResult })
+      );
+
+      const submitPromise = adapter.signAndSubmit({ TransactionType: 'Payment' } as never);
+      await subscription.emit({ signed: true });
+
+      await expect(submitPromise).resolves.toMatchObject({ hash: 'REALHASH' });
+      expect(subscription.close).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it.each([
+    ['no node dispatch', false, null],
+    ['a tef failure', true, 'tefPAST_SEQ'],
+    ['a malformed transaction', true, 'temBAD_FEE'],
+    ['a non-queued retry result', true, 'terPRE_SEQ'],
+  ])(
+    'fails submission after %s even when a txid exists',
+    async (_description, dispatched, result) => {
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.payload.get.mockResolvedValue(
+        resolvedPayload(true, {
+          dispatched_to_node: dispatched,
+          dispatched_result: result,
+        })
+      );
+
+      const submitPromise = adapter.signAndSubmit({ TransactionType: 'Payment' } as never);
+      const rejection = expect(submitPromise).rejects.toMatchObject({
+        code: WalletErrorCode.SIGN_FAILED,
+      });
+      await subscription.emit({ signed: true });
+
+      await rejection;
+      expect(subscription.close).toHaveBeenCalledTimes(1);
+    }
+  );
 });
 
 describe('XamanAdapter.disconnect', () => {

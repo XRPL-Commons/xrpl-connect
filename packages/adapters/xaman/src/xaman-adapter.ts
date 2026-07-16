@@ -14,11 +14,15 @@ import {
   SignedMessage,
   SubmittedTransaction,
   SupportsDeepLink,
+  WalletErrorCode,
 } from '@xrpl-connect/core';
-import { createWalletError, createLogger, resolveNetwork } from '@xrpl-connect/core';
+import { createWalletError, createLogger, isWalletError, resolveNetwork } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
 
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
+const SIGNING_TIMEOUT_MS = 5 * 60 * 1000;
+
+type XamanPayloadOutcome = 'signed' | 'rejected' | 'expired';
 
 /**
  * Logger instance for Xaman adapter
@@ -220,19 +224,16 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
   }
 
   /**
-   * Create a Xaman payload, open the signing popup, wait for the websocket to report
-   * `signed`, then fetch the resolved payload for the actual signed data.
+   * Create a Xaman payload, open the signing popup, wait for Xaman's SDK subscription,
+   * then fetch and validate the authoritative resolved payload.
    *
    * `submit` is passed through as `options.submit` on the payload body — Xaman's
    * payload API only submits to the ledger when this is true. Previously the bare
-   * transaction was sent with no `options` at all, so submission was silently left
-   * up to the connected account's own "auto-submit" app setting, regardless of
-   * whether the caller asked for sign() or signAndSubmit().
+   * transaction was sent with no `options`, so `sign()` could submit despite being
+   * the sign-only operation.
    *
-   * The websocket push that resolves `waitForSignature()` only ever carries
-   * `{ signed, txid, ... }` (see XummWebsocketBody) — it never includes the signed
-   * blob. The actual `hex` / `txid` / `signer_pubkey` only exist on the resolved
-   * payload, fetched via `payload.get()`.
+   * Subscription events only contain status metadata, never the signed blob. The
+   * actual signed data and dispatch result come from `payload.get()`.
    */
   private async createAndWaitForPayload(
     transaction: Transaction,
@@ -240,8 +241,8 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
   ): Promise<{
     txid: string;
     tx_blob: string;
-    signature: string;
-    tx_json?: Record<string, unknown>;
+    signature?: string;
+    tx_json: Transaction;
   }> {
     if (!this.client || !this.currentAccount) {
       throw createWalletError.notConnected();
@@ -249,41 +250,80 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const payloadBody: any = { txjson: transaction, options: { submit } };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const payload: any = await this.client.payload?.createAndSubscribe(payloadBody);
+    const payload = await this.client.payload?.createAndSubscribe(payloadBody, ({ data }) => {
+      if (data.signed === true) return 'signed' satisfies XamanPayloadOutcome;
+      if (data.expired === true || data.cancelled === true) {
+        return 'expired' satisfies XamanPayloadOutcome;
+      }
+      if (data.signed === false) return 'rejected' satisfies XamanPayloadOutcome;
+      return undefined;
+    });
 
-    if (!payload) {
+    if (!payload?.resolved) {
       throw new Error('Failed to create payload');
     }
 
-    this.openSignWindow(payload.created.next.always);
-
-    const result = await this.waitForSignature(payload.websocket.url);
-
-    if (!result.signed) {
+    let outcome: unknown;
+    try {
+      this.openSignWindow(payload.created.next.always);
+      outcome = await this.waitForPayloadOutcome(payload.resolved);
+    } finally {
+      payload.resolve();
+    }
+    if (outcome === 'rejected') {
       throw createWalletError.signRejected();
     }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const resolved: any = await this.client.payload?.get(payload.created.uuid);
-    const response = resolved?.response;
-    const hex: string = typeof response?.hex === 'string' ? response.hex : '';
-
-    let tx_json: Record<string, unknown> | undefined;
-    let signature = '';
-    if (hex) {
-      try {
-        tx_json = decode(hex) as Record<string, unknown>;
-        signature = typeof tx_json.TxnSignature === 'string' ? tx_json.TxnSignature : '';
-      } catch {
-        // Leave tx_json/signature unset if the hex doesn't decode — callers still
-        // get the raw tx_blob below.
-      }
+    if (outcome !== 'signed') {
+      throw new Error(
+        outcome === 'expired' ? 'Xaman signing request expired' : 'Unexpected Xaman payload result'
+      );
     }
 
+    const resolved = await this.client.payload?.get(payload.created.uuid, true);
+    if (!resolved?.meta.resolved || !resolved.meta.signed) {
+      throw new Error('Xaman returned an unresolved or unsigned payload');
+    }
+
+    if (resolved.meta.submit !== submit) {
+      throw new Error('Xaman payload submission mode did not match the requested operation');
+    }
+
+    const { response } = resolved;
+    if (typeof response.hex !== 'string' || response.hex.length === 0) {
+      throw new Error('Xaman did not return a signed transaction blob');
+    }
+    if (typeof response.txid !== 'string' || response.txid.length === 0) {
+      throw new Error('Xaman did not return a signed transaction hash');
+    }
+
+    if (submit) {
+      const dispatchResult = response.dispatched_result;
+      const acceptedByNode =
+        dispatchResult === 'tesSUCCESS' ||
+        dispatchResult === 'terQUEUED' ||
+        dispatchResult?.startsWith('tec') === true;
+      if (response.dispatched_to_node !== true || !acceptedByNode) {
+        throw new Error(
+          `Xaman failed to submit the transaction: ${dispatchResult || 'not dispatched'}`
+        );
+      }
+    } else if (response.dispatched_to_node === true) {
+      throw new Error('Xaman unexpectedly submitted a sign-only transaction');
+    }
+
+    let tx_json: Transaction;
+    try {
+      tx_json = decode(response.hex) as Transaction;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Xaman returned an invalid signed transaction blob: ${message}`);
+    }
+
+    const signature = typeof tx_json.TxnSignature === 'string' ? tx_json.TxnSignature : undefined;
+
     return {
-      txid: response?.txid || result.txid || '',
-      tx_blob: hex,
+      txid: response.txid,
+      tx_blob: response.hex,
       signature,
       tx_json,
     };
@@ -298,14 +338,14 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
       const result = await this.createAndWaitForPayload(transaction, false);
 
       return {
-        hash: '',
-        tx_blob: result.tx_blob || undefined,
-        signature: result.signature || undefined,
+        hash: result.txid,
+        tx_blob: result.tx_blob,
+        signature: result.signature,
         tx_json: result.tx_json,
       };
     } catch (error) {
-      if (error instanceof Error && error.message.includes('rejected')) {
-        throw createWalletError.signRejected();
+      if (isWalletError(error) && error.code === WalletErrorCode.SIGN_REJECTED) {
+        throw error;
       }
       throw createWalletError.signFailed(error as Error);
     }
@@ -320,13 +360,13 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
 
       return {
         hash: result.txid,
-        tx_blob: result.tx_blob || undefined,
-        signature: result.signature || undefined,
+        tx_blob: result.tx_blob,
+        signature: result.signature,
         tx_json: result.tx_json,
       };
     } catch (error) {
-      if (error instanceof Error && error.message.includes('rejected')) {
-        throw createWalletError.signRejected();
+      if (isWalletError(error) && error.code === WalletErrorCode.SIGN_REJECTED) {
+        throw error;
       }
       throw createWalletError.signFailed(error as Error);
     }
@@ -445,61 +485,20 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
     return `xumm://xumm.app/sign/${url.split('/').pop()}`;
   }
 
-  /**
-   * Wait for signature via WebSocket
-   */
-  private waitForSignature(wsUrl: string): Promise<{
-    signed: boolean;
-    txid?: string;
-    tx_blob?: string;
-    signature?: string;
-    account?: string;
-  }> {
-    return new Promise((resolve, reject) => {
-      const ws = new WebSocket(wsUrl);
-      const timeout = setTimeout(
-        () => {
-          ws.close();
-          reject(new Error('Signing timeout - user did not respond'));
-        },
-        5 * 60 * 1000
-      ); // 5 minute timeout
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-
-          if (data.signed === true) {
-            clearTimeout(timeout);
-            ws.close();
-            resolve({
-              signed: true,
-              txid: data.txid,
-              tx_blob: data.tx_blob,
-              signature: data.signature,
-              account: data.account,
-            });
-          } else if (data.signed === false) {
-            clearTimeout(timeout);
-            ws.close();
-            reject(new Error('Transaction signing was rejected by user'));
-          }
-        } catch (error) {
-          clearTimeout(timeout);
-          ws.close();
-          reject(error);
-        }
-      };
-
-      ws.onerror = (error) => {
-        clearTimeout(timeout);
-        reject(new Error('WebSocket error: ' + error));
-      };
-
-      ws.onclose = () => {
-        clearTimeout(timeout);
-      };
+  private async waitForPayloadOutcome(resolved: Promise<unknown>): Promise<unknown> {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeout = setTimeout(
+        () => reject(new Error('Signing timeout - user did not respond')),
+        SIGNING_TIMEOUT_MS
+      );
     });
+
+    try {
+      return await Promise.race([resolved, timeoutPromise]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
   }
 
   /**

@@ -144,7 +144,7 @@ Signs a transaction and optionally submits it to the network.
 **Returns**:
 
 - `SignedTransaction` if `submit=false` (may contain `tx_blob`, `tx_json`, `signature`, etc.)
-- `SubmittedTransaction` if `submit=true` (may contain `hash`, `id`, `tx_json`, etc.)
+- `SubmittedTransaction` if `submit=true` (may contain `hash`, `id`, `tx_blob`, `tx_json`, etc.)
 
 **Throws**: `WalletError` with `SIGN_FAILED`, `SIGN_REJECTED`, or `NOT_CONNECTED` error codes
 
@@ -403,6 +403,7 @@ Result from `signAndSubmit(txn, true)`:
 interface SubmittedTransaction {
   hash: string; // Transaction hash
   id?: string; // Optional transaction ID
+  tx_blob?: string; // Signed transaction blob
   signature?: string; // Transaction signature
   tx_json?: Transaction; // Complete signed transaction JSON
   [key: string]: unknown; // Additional submission response data
