@@ -31,4 +31,11 @@ describe('renderWalletListView', () => {
     // Unavailable wallets must not be connectable.
     expect(html).not.toContain('data-wallet-id="crossmark"');
   });
+
+  it('disables unavailable wallets that have no install URL', () => {
+    const html = renderWalletListView(null, [], [wallet('ledger')]);
+    expect(html).toContain('disabled aria-disabled="true"');
+    expect(html).toContain('Unavailable');
+    expect(html).not.toContain('data-install-url=""');
+  });
 });

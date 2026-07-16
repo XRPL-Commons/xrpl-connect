@@ -33,14 +33,18 @@ export function renderWalletListView(
             )
             .join('')}
           ${unavailableWallets
-            .map(
-              (wallet) => `
-            <button class="wallet-button wallet-button--unavailable" data-install-url="${wallet.url ?? ''}" aria-label="Install ${wallet.name}">
+            .map((wallet) => {
+              const installAttribute = wallet.url
+                ? `data-install-url="${wallet.url}"`
+                : 'disabled aria-disabled="true"';
+              const label = wallet.url ? 'Install' : 'Unavailable';
+              return `
+            <button class="wallet-button wallet-button--unavailable" ${installAttribute} aria-label="${label} ${wallet.name}">
               <span>${wallet.name}</span>
-              <span class="wallet-install-label">Install</span>
+              <span class="wallet-install-label">${label}</span>
               ${wallet.icon ? `<img src="${wallet.icon}" width="28" height="28" alt="${wallet.name}">` : ''}
-            </button>`
-            )
+            </button>`;
+            })
             .join('')}
         </div>
       </div>

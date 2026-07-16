@@ -782,7 +782,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       const otherWallets = wallets.filter((w) => w.id !== this.primaryWalletId);
       // Only surface unavailable wallets (with an Install link) when opted in.
       const unavailableWallets = this.showUnavailable
-        ? this.unavailableWallets.filter((w) => w.id !== this.primaryWalletId)
+        ? this.unavailableWallets.filter(
+            (w) => primaryWallet === null || w.id !== this.primaryWalletId
+          )
         : [];
 
       // Render based on view state
