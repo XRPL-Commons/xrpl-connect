@@ -480,6 +480,13 @@ export class WalletConnectAdapter
 
   /**
    * Sign a transaction without submitting it to the ledger
+   *
+   * The wallet returns a signed `tx_json` (with `SigningPubKey` / `TxnSignature`
+   * populated), not a serialized `tx_blob`. We surface that full `tx_json` (and
+   * the raw signature under `signature`, per the `SignedTransaction` contract)
+   * rather than mislabeling `TxnSignature` as `tx_blob` — the latter is not a
+   * valid signed transaction blob and cannot be submitted as one.
+   *
    * @param transaction - The transaction to sign
    */
   async sign(transaction: Transaction): Promise<SignedTransaction> {
@@ -488,7 +495,9 @@ export class WalletConnectAdapter
 
       return {
         hash: '',
-        tx_blob: resultTx.TxnSignature,
+        tx_blob: typeof resultTx.tx_blob === 'string' ? resultTx.tx_blob : undefined,
+        signature: resultTx.TxnSignature,
+        tx_json: resultTx,
       };
     } catch (error) {
       if (error instanceof Error && error.message.toLowerCase().includes('reject')) {
@@ -508,7 +517,8 @@ export class WalletConnectAdapter
 
       return {
         hash: resultTx.hash || '',
-        tx_blob: resultTx.TxnSignature,
+        signature: resultTx.TxnSignature,
+        tx_json: resultTx,
       };
     } catch (error) {
       if (error instanceof Error && error.message.toLowerCase().includes('reject')) {

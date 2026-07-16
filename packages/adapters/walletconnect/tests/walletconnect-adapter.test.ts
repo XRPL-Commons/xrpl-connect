@@ -96,13 +96,36 @@ describe('WalletConnectAdapter.sign', () => {
     return adapter;
   }
 
-  it('returns a signed tx blob on success', async () => {
+  it('returns the signed tx_json and signature when no tx_blob is provided', async () => {
     const adapter = await connected();
-    mockClient.request.mockResolvedValue({ tx_json: { TxnSignature: 'SIG' } });
+    mockClient.request.mockResolvedValue({
+      tx_json: { TransactionType: 'Payment', SigningPubKey: 'PUB', TxnSignature: 'SIG' },
+    });
 
     const result = await adapter.sign({ TransactionType: 'Payment' } as never);
 
-    expect(result.tx_blob).toBe('SIG');
+    // TxnSignature is a raw signature, not a serialized transaction blob — it
+    // must not be reported as tx_blob (there is none, since the wallet only
+    // signed; it did not encode/submit anything).
+    expect(result.tx_blob).toBeUndefined();
+    expect(result.signature).toBe('SIG');
+    expect(result.tx_json).toMatchObject({
+      TransactionType: 'Payment',
+      SigningPubKey: 'PUB',
+      TxnSignature: 'SIG',
+    });
+    expect(result.hash).toBe('');
+  });
+
+  it('passes through a real tx_blob if the wallet provides one', async () => {
+    const adapter = await connected();
+    mockClient.request.mockResolvedValue({
+      tx_json: { TransactionType: 'Payment', TxnSignature: 'SIG', tx_blob: 'DEADBEEF' },
+    });
+
+    const result = await adapter.sign({ TransactionType: 'Payment' } as never);
+
+    expect(result.tx_blob).toBe('DEADBEEF');
   });
 
   it('maps a rejected request to sign-rejected', async () => {
@@ -118,6 +141,51 @@ describe('WalletConnectAdapter.sign', () => {
     const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
     await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_FAILED,
+    });
+  });
+});
+
+describe('WalletConnectAdapter.signAndSubmit', () => {
+  async function connected() {
+    mockClient.connect.mockResolvedValue({
+      uri: 'wc:example',
+      approval: vi.fn().mockResolvedValue({
+        topic: 'topic-1',
+        namespaces: { xrpl: { accounts: ['xrpl:0:rWCAddress'] } },
+      }),
+    });
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+    await adapter.connect();
+    return adapter;
+  }
+
+  it('returns the ledger hash and signed tx_json when no tx_blob is provided', async () => {
+    const adapter = await connected();
+    mockClient.request.mockResolvedValue({
+      tx_json: {
+        hash: 'ABCDEF0123456789',
+        TransactionType: 'Payment',
+        SigningPubKey: 'PUB',
+        TxnSignature: 'SIG',
+      },
+    });
+
+    const result = await adapter.signAndSubmit({ TransactionType: 'Payment' } as never);
+
+    expect(result.hash).toBe('ABCDEF0123456789');
+    expect(result.signature).toBe('SIG');
+    expect(result.tx_json).toMatchObject({ TransactionType: 'Payment', TxnSignature: 'SIG' });
+    expect(result.tx_blob).toBeUndefined();
+  });
+
+  it('maps a rejected request to sign-rejected', async () => {
+    const adapter = await connected();
+    mockClient.request.mockRejectedValue(new Error('User rejected the request'));
+
+    await expect(
+      adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+    ).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_REJECTED,
     });
   });
 });
