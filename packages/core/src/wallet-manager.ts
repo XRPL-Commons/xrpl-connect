@@ -197,7 +197,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   /**
    * Sign a transaction without submitting it to the ledger
    * @param transaction - The transaction to sign
-   * @returns SignedTransaction with tx_blob and/or signature
+   * @returns SignedTransaction with signed transaction JSON, a blob, and/or a signature
    */
   async sign(transaction: Transaction): Promise<SignedTransaction> {
     if (!this.currentAdapter) {
