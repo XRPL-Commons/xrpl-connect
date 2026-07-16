@@ -132,19 +132,15 @@ const account = await walletManager.reconnect();
 
 ### Signing Methods
 
-#### `signAndSubmit(transaction: Transaction, submit?: boolean): Promise<SignedTransaction | SubmittedTransaction>`
+#### `sign(transaction: Transaction): Promise<SignedTransaction>`
 
-Signs a transaction and optionally submits it to the network.
+Signs a transaction without submitting it to the network.
 
 **Parameters**:
 
 - `transaction` (Transaction): An XRPL transaction object
-- `submit` (boolean, optional): If `true`, automatically submit after signing. Default: `false`
 
-**Returns**:
-
-- `SignedTransaction` if `submit=false` (may contain `tx_blob`, `tx_json`, `signature`, etc.)
-- `SubmittedTransaction` if `submit=true` (may contain `hash`, `id`, `tx_blob`, `tx_json`, etc.)
+**Returns**: `SignedTransaction` (may contain `tx_blob`, `tx_json`, `signature`, etc.)
 
 **Throws**: `WalletError` with `SIGN_FAILED`, `SIGN_REJECTED`, or `NOT_CONNECTED` error codes
 
@@ -162,12 +158,39 @@ const txn = {
   Sequence: 1,
 };
 
-// Sign only
-const signed = await walletManager.signAndSubmit(txn, false);
+const signed = await walletManager.sign(txn);
 console.log('Signature:', signed.signature);
+```
 
-// Sign and submit
-const submitted = await walletManager.signAndSubmit(txn, true);
+---
+
+#### `signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction>`
+
+Signs a transaction and submits it to the network.
+
+**Parameters**:
+
+- `transaction` (Transaction): An XRPL transaction object
+
+**Returns**: `SubmittedTransaction` (may contain `hash`, `id`, `tx_blob`, `tx_json`, etc.)
+
+**Throws**: `WalletError` with `SIGN_FAILED`, `SIGN_REJECTED`, or `NOT_CONNECTED` error codes
+
+**Requires**: Active connection (`walletManager.connected === true`)
+
+**Example**:
+
+```typescript
+const txn = {
+  TransactionType: 'Payment',
+  Account: walletManager.account.address,
+  Destination: 'rN7n7otQDd6FczFgLdkqsL...',
+  Amount: '1000000',
+  Fee: '12',
+  Sequence: 1,
+};
+
+const submitted = await walletManager.signAndSubmit(txn);
 console.log('Transaction hash:', submitted.hash);
 ```
 
@@ -381,7 +404,7 @@ interface NetworkInfo {
 
 #### SignedTransaction
 
-Result from `signAndSubmit(txn, false)`:
+Result from `sign(transaction)`:
 
 ```typescript
 interface SignedTransaction {
@@ -397,7 +420,7 @@ interface SignedTransaction {
 
 #### SubmittedTransaction
 
-Result from `signAndSubmit(txn, true)`:
+Result from `signAndSubmit(transaction)`:
 
 ```typescript
 interface SubmittedTransaction {
@@ -763,7 +786,7 @@ const txn = {
 };
 
 try {
-  const result = await walletManager.signAndSubmit(txn, true);
+  const result = await walletManager.signAndSubmit(txn);
   console.log('Submitted:', result.hash);
 } catch (error) {
   console.error('Transaction failed:', error.message);

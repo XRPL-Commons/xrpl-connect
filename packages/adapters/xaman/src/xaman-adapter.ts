@@ -3,7 +3,7 @@
  */
 
 import { Xumm } from 'xumm';
-import { decode } from 'xrpl';
+import { decode, hashes } from 'xrpl';
 import {
   WalletAdapter,
   AccountInfo,
@@ -14,7 +14,6 @@ import {
   SignedMessage,
   SubmittedTransaction,
   SupportsDeepLink,
-  WalletErrorCode,
 } from '@xrpl-connect/core';
 import { createWalletError, createLogger, isWalletError, resolveNetwork } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
@@ -57,6 +56,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
   private client: Xumm | null = null;
   private currentAccount: AccountInfo | null = null;
   private options: XamanAdapterOptions;
+  private activePayloadOperations = new Set<AbortController>();
   // Per-connection callback overrides. Populated by connect() and cleared by
   // cleanup(); avoids mutating constructor-supplied options across calls.
   private activeCallbacks: {
@@ -197,12 +197,13 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
       return;
     }
 
+    const client = this.client;
+    this.cleanup();
+
     try {
-      await this.client.logout();
-      this.cleanup();
+      await client.logout();
     } catch (error) {
       // Logout might fail if already logged out, that's okay
-      this.cleanup();
     }
   }
 
@@ -248,85 +249,164 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
       throw createWalletError.notConnected();
     }
 
+    const client = this.client;
+    const network = this.currentAccount.network;
+    const forceNetwork = network.id.toUpperCase();
+    let payloadOpened = false;
+    const operation = new AbortController();
+    let handleAbort: (() => void) | undefined;
+    this.activePayloadOperations.add(operation);
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const payloadBody: any = { txjson: transaction, options: { submit } };
-    const payload = await this.client.payload?.createAndSubscribe(payloadBody, ({ data }) => {
-      if (data.signed === true) return 'signed' satisfies XamanPayloadOutcome;
-      if (data.expired === true || data.cancelled === true) {
-        return 'expired' satisfies XamanPayloadOutcome;
-      }
-      if (data.signed === false) return 'rejected' satisfies XamanPayloadOutcome;
-      return undefined;
-    });
+    const payloadBody: any = {
+      txjson: transaction,
+      options: { submit, force_network: forceNetwork },
+    };
 
-    if (!payload?.resolved) {
-      throw new Error('Failed to create payload');
-    }
-
-    let outcome: unknown;
     try {
-      this.openSignWindow(payload.created.next.always);
-      outcome = await this.waitForPayloadOutcome(payload.resolved);
-    } finally {
-      payload.resolve();
-    }
-    if (outcome === 'rejected') {
-      throw createWalletError.signRejected();
-    }
-    if (outcome !== 'signed') {
-      throw new Error(
-        outcome === 'expired' ? 'Xaman signing request expired' : 'Unexpected Xaman payload result'
-      );
-    }
+      const creation = client.payload?.createAndSubscribe(payloadBody, ({ data, payload }) => {
+        if (data.opened === true || data.pre_signed === true || payload.meta.app_opened === true) {
+          payloadOpened = true;
+        }
+        if (data.signed === true) return 'signed' satisfies XamanPayloadOutcome;
+        if (data.signed === false) return 'rejected' satisfies XamanPayloadOutcome;
+        if (data.cancelled === true) return 'expired' satisfies XamanPayloadOutcome;
+        if (data.expired === true && !payloadOpened) {
+          return 'expired' satisfies XamanPayloadOutcome;
+        }
+        return undefined;
+      });
 
-    const resolved = await this.client.payload?.get(payload.created.uuid, true);
-    if (!resolved?.meta.resolved || !resolved.meta.signed) {
-      throw new Error('Xaman returned an unresolved or unsigned payload');
-    }
+      if (!creation) {
+        throw new Error('Failed to create payload');
+      }
 
-    if (resolved.meta.submit !== submit) {
-      throw new Error('Xaman payload submission mode did not match the requested operation');
-    }
+      let payload: Awaited<typeof creation>;
+      try {
+        payload = await this.waitForOperation(creation, operation.signal);
+      } catch (error) {
+        if (operation.signal.aborted) {
+          void creation
+            .then(async (latePayload) => {
+              const createdPayload = await latePayload;
+              createdPayload.resolve();
+              this.cancelXamanPayload(client, createdPayload.created.uuid);
+            })
+            .catch(() => {});
+        }
+        throw error;
+      }
 
-    const { response } = resolved;
-    if (typeof response.hex !== 'string' || response.hex.length === 0) {
-      throw new Error('Xaman did not return a signed transaction blob');
-    }
-    if (typeof response.txid !== 'string' || response.txid.length === 0) {
-      throw new Error('Xaman did not return a signed transaction hash');
-    }
+      if (!payload.resolved) {
+        payload.resolve();
+        throw new Error('Failed to create payload');
+      }
 
-    if (submit) {
-      const dispatchResult = response.dispatched_result;
-      const acceptedByNode =
-        dispatchResult === 'tesSUCCESS' ||
-        dispatchResult === 'terQUEUED' ||
-        dispatchResult?.startsWith('tec') === true;
-      if (response.dispatched_to_node !== true || !acceptedByNode) {
+      let subscriptionClosed = false;
+      const closeSubscription = () => {
+        if (subscriptionClosed) return;
+        subscriptionClosed = true;
+        payload.resolve();
+      };
+      handleAbort = () => this.cancelXamanPayload(client, payload.created.uuid);
+      operation.signal.addEventListener('abort', handleAbort, { once: true });
+      if (operation.signal.aborted) {
+        handleAbort();
+        closeSubscription();
+        throw new Error('Xaman signing operation was cancelled');
+      }
+
+      let outcome: unknown;
+      try {
+        this.openSignWindow(payload.created.next.always);
+        outcome = await this.waitForPayloadOutcome(
+          payload.resolved,
+          () => payloadOpened,
+          operation.signal
+        );
+      } finally {
+        closeSubscription();
+      }
+      if (outcome === 'rejected') {
+        throw createWalletError.signRejected();
+      }
+      if (outcome !== 'signed') {
         throw new Error(
-          `Xaman failed to submit the transaction: ${dispatchResult || 'not dispatched'}`
+          outcome === 'expired'
+            ? 'Xaman signing request expired'
+            : 'Unexpected Xaman payload result'
         );
       }
-    } else if (response.dispatched_to_node === true) {
-      throw new Error('Xaman unexpectedly submitted a sign-only transaction');
+
+      const resolvedPayload = client.payload?.get(payload.created.uuid, true);
+      if (!resolvedPayload) {
+        throw new Error('Failed to retrieve the resolved Xaman payload');
+      }
+      const resolved = await this.waitForOperation(resolvedPayload, operation.signal);
+      if (!resolved?.meta.resolved || !resolved.meta.signed) {
+        throw new Error('Xaman returned an unresolved or unsigned payload');
+      }
+
+      if (resolved.meta.submit !== submit) {
+        throw new Error('Xaman payload submission mode did not match the requested operation');
+      }
+
+      const { response } = resolved;
+      if (typeof response.hex !== 'string' || response.hex.length === 0) {
+        throw new Error('Xaman did not return a signed transaction blob');
+      }
+      if (typeof response.txid !== 'string' || response.txid.length === 0) {
+        throw new Error('Xaman did not return a signed transaction hash');
+      }
+
+      this.validateXamanNetwork(
+        network,
+        response.environment_networkid,
+        response.environment_nodetype,
+        submit ? response.dispatched_nodetype : undefined
+      );
+
+      if (submit) {
+        const dispatchResult = response.dispatched_result;
+        const acceptedByNode =
+          dispatchResult === 'tesSUCCESS' ||
+          dispatchResult === 'terQUEUED' ||
+          dispatchResult?.startsWith('tec') === true;
+        if (response.dispatched_to_node !== true || !acceptedByNode) {
+          throw new Error(
+            `Xaman failed to submit the transaction: ${dispatchResult || 'not dispatched'}`
+          );
+        }
+      } else if (response.dispatched_to_node === true) {
+        throw new Error('Xaman unexpectedly submitted a sign-only transaction');
+      }
+
+      let tx_json: Transaction;
+      let txid: string;
+      try {
+        tx_json = decode(response.hex) as Transaction;
+        txid = hashes.hashSignedTx(response.hex);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Xaman returned an invalid signed transaction blob: ${message}`);
+      }
+
+      if (txid.toUpperCase() !== response.txid.toUpperCase()) {
+        throw new Error('Xaman returned a transaction hash that does not match the signed blob');
+      }
+
+      const signature = typeof tx_json.TxnSignature === 'string' ? tx_json.TxnSignature : undefined;
+
+      return {
+        txid,
+        tx_blob: response.hex,
+        signature,
+        tx_json,
+      };
+    } finally {
+      if (handleAbort) operation.signal.removeEventListener('abort', handleAbort);
+      this.activePayloadOperations.delete(operation);
     }
-
-    let tx_json: Transaction;
-    try {
-      tx_json = decode(response.hex) as Transaction;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Xaman returned an invalid signed transaction blob: ${message}`);
-    }
-
-    const signature = typeof tx_json.TxnSignature === 'string' ? tx_json.TxnSignature : undefined;
-
-    return {
-      txid: response.txid,
-      tx_blob: response.hex,
-      signature,
-      tx_json,
-    };
   }
 
   /**
@@ -344,7 +424,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
         tx_json: result.tx_json,
       };
     } catch (error) {
-      if (isWalletError(error) && error.code === WalletErrorCode.SIGN_REJECTED) {
+      if (isWalletError(error)) {
         throw error;
       }
       throw createWalletError.signFailed(error as Error);
@@ -365,7 +445,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
         tx_json: result.tx_json,
       };
     } catch (error) {
-      if (isWalletError(error) && error.code === WalletErrorCode.SIGN_REJECTED) {
+      if (isWalletError(error)) {
         throw error;
       }
       throw createWalletError.signFailed(error as Error);
@@ -485,17 +565,83 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
     return `xumm://xumm.app/sign/${url.split('/').pop()}`;
   }
 
-  private async waitForPayloadOutcome(resolved: Promise<unknown>): Promise<unknown> {
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeout = setTimeout(
-        () => reject(new Error('Signing timeout - user did not respond')),
-        SIGNING_TIMEOUT_MS
+  private validateXamanNetwork(
+    expected: NetworkInfo,
+    environmentNetworkId: number | null,
+    environmentNodeType: string | null,
+    dispatchedNodeType?: string | null
+  ): void {
+    const expectedNodeType = expected.id.toUpperCase();
+    const chainId = expected.walletConnectId?.match(/^xrpl:(\d+)$/)?.[1];
+    const expectedNetworkId = chainId === undefined ? undefined : Number(chainId);
+    if (expectedNetworkId !== undefined) {
+      if (environmentNetworkId !== expectedNetworkId) {
+        const actual = environmentNetworkId === null ? 'unknown' : String(environmentNetworkId);
+        throw createWalletError.networkMismatch(expected.id, actual);
+      }
+    }
+
+    if (environmentNodeType !== null && environmentNodeType.toUpperCase() !== expectedNodeType) {
+      throw createWalletError.networkMismatch(expected.id, environmentNodeType || 'unknown');
+    }
+    if (expectedNetworkId === undefined && environmentNodeType === null) {
+      throw createWalletError.networkMismatch(expected.id, 'unknown');
+    }
+    if (
+      dispatchedNodeType !== undefined &&
+      dispatchedNodeType?.toUpperCase() !== expectedNodeType
+    ) {
+      throw createWalletError.networkMismatch(expected.id, dispatchedNodeType || 'unknown');
+    }
+  }
+
+  private async waitForOperation<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+    if (signal.aborted) {
+      throw new Error('Xaman signing operation was cancelled');
+    }
+
+    return await new Promise<T>((resolve, reject) => {
+      const handleAbort = () => reject(new Error('Xaman signing operation was cancelled'));
+      signal.addEventListener('abort', handleAbort, { once: true });
+      promise.then(
+        (value) => {
+          signal.removeEventListener('abort', handleAbort);
+          resolve(value);
+        },
+        (error) => {
+          signal.removeEventListener('abort', handleAbort);
+          reject(error);
+        }
       );
+    });
+  }
+
+  private cancelXamanPayload(client: Xumm, uuid: string): void {
+    const cancellation = client.payload?.cancel(uuid, true);
+    if (cancellation) void cancellation.catch(() => {});
+  }
+
+  private async waitForPayloadOutcome(
+    resolved: Promise<unknown>,
+    wasOpened: () => boolean,
+    signal: AbortSignal
+  ): Promise<unknown> {
+    const timedOut = Symbol('timedOut');
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<typeof timedOut>((resolve) => {
+      timeout = setTimeout(() => resolve(timedOut), SIGNING_TIMEOUT_MS);
     });
 
     try {
-      return await Promise.race([resolved, timeoutPromise]);
+      const outcome = await this.waitForOperation(Promise.race([resolved, timeoutPromise]), signal);
+      if (outcome !== timedOut) return outcome;
+      if (!wasOpened()) {
+        throw new Error('Signing timeout - user did not respond');
+      }
+      // Xaman expiration is an open-before deadline, not a resolve-before deadline.
+      // Once opened, the operation remains active until the wallet resolves it or
+      // connect()/disconnect() aborts the registered operation.
+      return await this.waitForOperation(resolved, signal);
     } finally {
       if (timeout) clearTimeout(timeout);
     }
@@ -505,6 +651,8 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
    * Cleanup adapter state
    */
   private cleanup(): void {
+    for (const operation of this.activePayloadOperations) operation.abort();
+    this.activePayloadOperations.clear();
     this.client = null;
     this.currentAccount = null;
     this.activeCallbacks = {};
