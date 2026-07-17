@@ -70,7 +70,7 @@ Sign a transaction without submitting it to the ledger. Depending on the adapter
 async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction>
 ```
 
-Sign and submit a transaction to the ledger. Returns the transaction hash.
+Sign and submit a transaction to the ledger. Returns the transaction hash and, depending on the adapter, the signed transaction JSON (`tx_json`), serialized transaction blob (`tx_blob`), and/or raw signature.
 
 #### signMessage()
 
@@ -379,6 +379,7 @@ interface SignedTransaction {
 interface SubmittedTransaction {
   hash: string;
   id?: string;
+  tx_blob?: string;
   signature?: string;
   tx_json?: Transaction;
   [key: string]: unknown;
