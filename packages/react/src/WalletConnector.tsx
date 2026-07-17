@@ -44,7 +44,8 @@ export function WalletConnector({
   onConnect,
   onError,
 }: WalletConnectorProps) {
-  const { manager, registerConnector } = useXrplConnectContext();
+  const { manager, registerConnector, reportModalConnecting, reportModalError } =
+    useXrplConnectContext();
   const elRef = useRef<WalletConnectorElement | null>(null);
 
   // Keep the latest callbacks in a ref so the binding effect can stay stable
@@ -65,25 +66,30 @@ export function WalletConnector({
 
       const onWcConnecting = (e: Event) => {
         const walletId = (e as CustomEvent<{ walletId: string }>).detail?.walletId;
-        if (walletId) callbacksRef.current.onConnecting?.(walletId);
+        if (walletId) {
+          reportModalConnecting();
+          callbacksRef.current.onConnecting?.(walletId);
+        }
       };
-      // Source connect/error from the manager (authoritative: full account /
-      // typed WalletError) rather than the web component's lighter CustomEvents.
+      const onWcError = (e: Event) => {
+        const error = (e as CustomEvent<{ error?: unknown }>).detail?.error;
+        if (!isWalletError(error)) return;
+        reportModalError(error);
+        callbacksRef.current.onError?.(error);
+      };
+      // Source connect from the manager because it carries the authoritative account.
       const onMgrConnect = () => {
         if (manager.account) callbacksRef.current.onConnect?.(manager.account);
       };
-      const onMgrError = (err: unknown) => {
-        if (isWalletError(err)) callbacksRef.current.onError?.(err);
-      };
 
       el.addEventListener('connecting', onWcConnecting);
+      el.addEventListener('error', onWcError);
       manager.on('connect', onMgrConnect);
-      manager.on('error', onMgrError);
 
       detach = () => {
         el.removeEventListener('connecting', onWcConnecting);
+        el.removeEventListener('error', onWcError);
         manager.off('connect', onMgrConnect);
-        manager.off('error', onMgrError);
       };
     });
 
@@ -92,7 +98,7 @@ export function WalletConnector({
       registerConnector(null);
       detach?.();
     };
-  }, [manager, registerConnector]);
+  }, [manager, registerConnector, reportModalConnecting, reportModalError]);
 
   const mergedStyle = {
     ...(theme ? THEMES[theme] : {}),
@@ -105,7 +111,7 @@ export function WalletConnector({
       ref={elRef}
       primary-wallet={primaryWallet}
       wallets={wallets?.join(',')}
-      className={className}
+      class={className}
       style={mergedStyle}
     />
   );

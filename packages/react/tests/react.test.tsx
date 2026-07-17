@@ -176,4 +176,40 @@ describe('<WalletConnector>', () => {
     });
     await waitFor(() => expect(onConnect).toHaveBeenCalledWith(ACCOUNT));
   });
+
+  it('propagates modal lifecycle and typed errors to callbacks and provider state', async () => {
+    const onError = vi.fn();
+    let walletState: ReturnType<typeof useWallet> | null = null;
+    function Capture() {
+      walletState = useWallet();
+      return null;
+    }
+    render(
+      <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+        <Capture />
+        <WalletConnector className="connector" onError={onError} />
+      </XrplConnectProvider>
+    );
+
+    const el = document.querySelector('xrpl-wallet-connector') as HTMLElement & {
+      manager: unknown;
+    };
+    await waitFor(() => expect(el.manager).not.toBeNull());
+    expect(el.getAttribute('class')).toBe('connector');
+    expect(el.getAttribute('classname')).toBeNull();
+
+    act(() => {
+      el.dispatchEvent(new CustomEvent('connecting', { detail: { walletId: 'fake' } }));
+    });
+    await waitFor(() => expect(walletState!.connecting).toBe(true));
+
+    const error = createWalletError.connectionRejected('Fake');
+    act(() => {
+      el.dispatchEvent(new CustomEvent('error', { detail: { error, walletId: 'fake' } }));
+    });
+
+    await waitFor(() => expect(walletState!.error).toBe(error));
+    expect(walletState!.connecting).toBe(false);
+    expect(onError).toHaveBeenCalledWith(error);
+  });
 });

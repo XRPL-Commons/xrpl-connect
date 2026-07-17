@@ -32,6 +32,10 @@ export interface XrplConnectContextValue {
   disconnect: () => Promise<void>;
   /** @internal — used by `<WalletConnector>` to register/clear its element. */
   registerConnector: (el: WalletConnectorElement | null) => void;
+  /** @internal — mirrors modal lifecycle events into provider state. */
+  reportModalConnecting: () => void;
+  /** @internal — mirrors typed modal failures into provider state. */
+  reportModalError: (error: WalletError) => void;
   openModal: () => void;
   closeModal: () => void;
 }

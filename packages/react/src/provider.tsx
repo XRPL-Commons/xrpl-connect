@@ -100,6 +100,14 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
   const registerConnector = useCallback((el: WalletConnectorElement | null) => {
     connectorRef.current = el;
   }, []);
+  const reportModalConnecting = useCallback(() => {
+    setConnecting(true);
+    setError(null);
+  }, []);
+  const reportModalError = useCallback((modalError: WalletError) => {
+    setConnecting(false);
+    setError(modalError);
+  }, []);
 
   const openModal = useCallback(() => connectorRef.current?.open(), []);
   const closeModal = useCallback(() => connectorRef.current?.close(), []);
@@ -115,6 +123,8 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
       connect,
       disconnect,
       registerConnector,
+      reportModalConnecting,
+      reportModalError,
       openModal,
       closeModal,
     }),
@@ -128,6 +138,8 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
       connect,
       disconnect,
       registerConnector,
+      reportModalConnecting,
+      reportModalError,
       openModal,
       closeModal,
     ]

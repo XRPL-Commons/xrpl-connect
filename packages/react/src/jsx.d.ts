@@ -13,6 +13,7 @@ declare global {
           'primary-wallet'?: string;
           wallets?: string;
           'background-color'?: string;
+          class?: string;
         },
         HTMLElement
       >;
