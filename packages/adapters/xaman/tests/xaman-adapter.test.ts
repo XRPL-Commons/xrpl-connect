@@ -38,6 +38,15 @@ const SIGNED_TRANSACTION = SIGNING_WALLET.sign({
 const SIGNED_TX_HEX = SIGNED_TRANSACTION.tx_blob;
 const SIGNED_TX_JSON = decode(SIGNED_TX_HEX) as Transaction;
 const SIGNED_TX_HASH = hashes.hashSignedTx(SIGNED_TX_HEX);
+const REQUESTED_TRANSACTION = {
+  TransactionType: 'Payment',
+  Account: CONNECTED_ACCOUNT,
+  Destination: 'rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe',
+  Amount: '1000000',
+  Fee: '10',
+  Sequence: 1,
+  Flags: 0,
+} as Transaction;
 const MULTISIGN_SOURCE = Wallet.generate();
 const MULTISIGN_INPUT = {
   TransactionType: 'Payment',
@@ -51,6 +60,10 @@ const MULTISIGN_INPUT = {
 const MULTISIGNED_TRANSACTION = SIGNING_WALLET.sign(MULTISIGN_INPUT, true);
 const MULTISIGNED_TX_JSON = decode(MULTISIGNED_TRANSACTION.tx_blob) as Transaction;
 const MULTISIGNED_TX_HASH = hashes.hashSignedTx(MULTISIGNED_TRANSACTION.tx_blob);
+const EXISTING_MULTISIGNER = Wallet.generate();
+const PARTIALLY_SIGNED_INPUT = decode(
+  EXISTING_MULTISIGNER.sign(MULTISIGN_INPUT, true).tx_blob
+) as Transaction;
 
 function signedFixture(networkId = 0) {
   const input = {
@@ -117,7 +130,8 @@ function createSubscriptionHarness() {
 function resolvedPayload(
   submit: boolean,
   responseOverrides: Record<string, unknown> = {},
-  metaOverrides: Record<string, unknown> = {}
+  metaOverrides: Record<string, unknown> = {},
+  requestJson: Transaction = REQUESTED_TRANSACTION
 ) {
   return {
     meta: {
@@ -127,6 +141,9 @@ function resolvedPayload(
       multisign: false,
       signers: [CONNECTED_ACCOUNT],
       ...metaOverrides,
+    },
+    payload: {
+      request_json: requestJson,
     },
     response: {
       hex: SIGNED_TX_HEX,
@@ -543,12 +560,17 @@ describe('XamanAdapter.sign', () => {
     const fixture = signedFixture(numericId);
     const { adapter, subscription } = await signedAdapter(network);
     mockXummInstance.payload.get.mockResolvedValue(
-      resolvedPayload(false, {
-        hex: fixture.blob,
-        txid: fixture.hash,
-        environment_networkid: numericId,
-        environment_nodetype: forceNetwork,
-      })
+      resolvedPayload(
+        false,
+        {
+          hex: fixture.blob,
+          txid: fixture.hash,
+          environment_networkid: numericId,
+          environment_nodetype: forceNetwork,
+        },
+        {},
+        fixture.input
+      )
     );
 
     const signPromise = adapter.sign(fixture.input);
@@ -627,6 +649,39 @@ describe('XamanAdapter.sign', () => {
     expect(subscription.close).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects a signed transaction whose requested fields were changed', async () => {
+    const requested = {
+      ...REQUESTED_TRANSACTION,
+      Destination: Wallet.generate().address,
+      Amount: '5000000',
+    } as Transaction;
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false, {}, {}, requested));
+
+    const signPromise = adapter.sign(requested);
+    const rejection = expect(signPromise).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    await subscription.emit({ signed: true });
+
+    await rejection;
+  });
+
+  it('rejects a resolved payload whose request differs from the original transaction', async () => {
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(
+      resolvedPayload(false, {}, {}, { ...REQUESTED_TRANSACTION, Amount: '5000000' } as Transaction)
+    );
+
+    const signPromise = adapter.sign(REQUESTED_TRANSACTION);
+    const rejection = expect(signPromise).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    await subscription.emit({ signed: true });
+
+    await rejection;
+  });
+
   it('rejects a resolved payload signed for a different account', async () => {
     const { adapter, subscription } = await signedAdapter();
     mockXummInstance.payload.get.mockResolvedValue(
@@ -675,7 +730,8 @@ describe('XamanAdapter.sign', () => {
           account: MULTISIGN_SOURCE.address,
           multisign_account: CONNECTED_ACCOUNT,
         },
-        { multisign: true }
+        { multisign: true },
+        MULTISIGN_INPUT
       )
     );
 
@@ -714,11 +770,37 @@ describe('XamanAdapter.sign', () => {
           account: MULTISIGN_SOURCE.address,
           multisign_account: CONNECTED_ACCOUNT,
         },
-        { multisign: true }
+        { multisign: true },
+        MULTISIGN_INPUT
       )
     );
 
     const signPromise = adapter.sign(MULTISIGN_INPUT);
+    const rejection = expect(signPromise).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    await subscription.emit({ signed: true });
+
+    await rejection;
+  });
+
+  it('rejects a multi-signed result that drops an existing signature', async () => {
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(
+      resolvedPayload(
+        false,
+        {
+          hex: MULTISIGNED_TRANSACTION.tx_blob,
+          txid: MULTISIGNED_TX_HASH,
+          account: MULTISIGN_SOURCE.address,
+          multisign_account: CONNECTED_ACCOUNT,
+        },
+        { multisign: true },
+        PARTIALLY_SIGNED_INPUT
+      )
+    );
+
+    const signPromise = adapter.sign(PARTIALLY_SIGNED_INPUT);
     const rejection = expect(signPromise).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_FAILED,
     });
@@ -817,6 +899,46 @@ describe('XamanAdapter.signAndSubmit', () => {
     expect(mockXummInstance.payload.get).toHaveBeenCalledTimes(2);
   });
 
+  it('stops retrying authoritative result retrieval after the retry deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.payload.get.mockRejectedValue(new Error('persistent network failure'));
+
+      const submitPromise = adapter.signAndSubmit(REQUESTED_TRANSACTION);
+      const rejection = expect(submitPromise).rejects.toMatchObject({
+        code: WalletErrorCode.SIGN_FAILED,
+      });
+      await subscription.emit({ signed: true });
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      await rejection;
+      expect(mockXummInstance.payload.get.mock.calls.length).toBeGreaterThan(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('times out an authoritative result request that never responds', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.payload.get.mockImplementation(() => new Promise(() => {}));
+
+      const submitPromise = adapter.signAndSubmit(REQUESTED_TRANSACTION);
+      const rejection = expect(submitPromise).rejects.toMatchObject({
+        code: WalletErrorCode.SIGN_FAILED,
+      });
+      await subscription.emit({ signed: true });
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      await rejection;
+      expect(mockXummInstance.payload.get).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('rejects a submission dispatched to a different network', async () => {
     const { adapter, subscription } = await signedAdapter();
     mockXummInstance.payload.get.mockResolvedValue(
@@ -877,6 +999,22 @@ describe('XamanAdapter.signAndSubmit', () => {
 });
 
 describe('XamanAdapter.disconnect', () => {
+  it('aborts authoritative result retrieval before logging out', async () => {
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockImplementation(() => new Promise(() => {}));
+    mockXummInstance.logout.mockResolvedValue(undefined);
+
+    const submitPromise = adapter.signAndSubmit(REQUESTED_TRANSACTION);
+    await subscription.emit({ signed: true });
+    await vi.waitFor(() => expect(mockXummInstance.payload.get).toHaveBeenCalledTimes(1));
+
+    const disconnectPromise = adapter.disconnect();
+
+    await expect(submitPromise).rejects.toMatchObject({ code: WalletErrorCode.SIGN_FAILED });
+    await disconnectPromise;
+    expect(mockXummInstance.logout).toHaveBeenCalledTimes(1);
+  });
+
   it('authoritatively cancels a payload that finishes creating after disconnect', async () => {
     const { adapter } = await signedAdapter();
     let resolveCreation: ((payload: Record<string, unknown>) => void) | undefined;
