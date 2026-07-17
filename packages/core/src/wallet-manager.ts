@@ -301,7 +301,21 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     if (!this.currentAdapter) {
       throw createWalletError.notConnected();
     }
-    return this.currentAdapter.getNetwork();
+    const adapter = this.currentAdapter;
+    const account = this.currentAccount;
+    try {
+      const network = await adapter.getNetwork();
+      if (this.currentAdapter !== adapter || this.currentAccount !== account) {
+        throw createWalletError.notConnected();
+      }
+      return this.validateNetwork(network, adapter.name);
+    } catch (error) {
+      if (isWalletError(error)) throw error;
+      throw createWalletError.unknown(
+        `Failed to read the active network from ${adapter.name}.`,
+        error as Error
+      );
+    }
   }
 
   /**
@@ -318,20 +332,34 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       throw createWalletError.notConnected();
     }
 
-    if (!supportsNetworkSwitch(this.currentAdapter)) {
+    const adapter = this.currentAdapter;
+    const account = this.currentAccount;
+    if (!supportsNetworkSwitch(adapter)) {
       throw createWalletError.unsupportedMethod(
-        `${this.currentAdapter.name} does not support runtime network switching`
+        `${adapter.name} does not support runtime network switching`
       );
     }
 
-    this.logger.info('Switching network via adapter', network);
-    const applied = await this.currentAdapter.switchNetwork(network);
-    const shouldEmit =
-      this.currentAccount?.network.id !== applied.id ||
-      this.currentAccount?.network.wss !== applied.wss ||
-      this.currentAccount?.network.rpc !== applied.rpc;
-    await this.applyNetwork(applied, shouldEmit);
-    return applied;
+    try {
+      this.logger.info('Switching network via adapter', network);
+      const result = await adapter.switchNetwork(network);
+      if (this.currentAdapter !== adapter || this.currentAccount !== account) {
+        throw createWalletError.notConnected();
+      }
+      const applied = this.validateNetwork(result, adapter.name);
+      const shouldEmit =
+        account?.network.id !== applied.id ||
+        account?.network.wss !== applied.wss ||
+        account?.network.rpc !== applied.rpc;
+      await this.applyNetwork(adapter, account, applied, shouldEmit);
+      return applied;
+    } catch (error) {
+      if (isWalletError(error)) throw error;
+      throw createWalletError.unknown(
+        `Failed to switch ${adapter.name} to the requested network.`,
+        error as Error
+      );
+    }
   }
 
   /**
@@ -438,21 +466,43 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * Apply a network change initiated by the manager: update the cached account,
    * persist it (preserving any other stored fields), and emit `networkChanged`.
    */
-  private async applyNetwork(network: NetworkInfo, emitEvent: boolean): Promise<void> {
-    if (this.currentAccount) {
-      this.currentAccount.network = network;
+  private async applyNetwork(
+    adapter: WalletAdapter,
+    account: AccountInfo | null,
+    network: NetworkInfo,
+    emitEvent: boolean
+  ): Promise<void> {
+    const existing = await this.storage.loadState();
+    if (this.currentAdapter !== adapter || this.currentAccount !== account || !account) {
+      throw createWalletError.notConnected();
     }
-    if (this.currentAdapter && this.currentAccount) {
-      const existing = await this.storage.loadState();
+    account.network = network;
+    if (this.currentAdapter === adapter) {
       await this.storage.saveState({
         ...(existing ?? {}),
-        walletId: this.currentAdapter.id,
-        account: this.currentAccount,
+        walletId: adapter.id,
+        account,
         network,
         timestamp: Date.now(),
       });
     }
+    if (this.currentAdapter !== adapter || this.currentAccount !== account) {
+      throw createWalletError.notConnected();
+    }
     if (emitEvent) this.emit('networkChanged', network);
+  }
+
+  private validateNetwork(network: unknown, walletName: string): NetworkInfo {
+    if (
+      !network ||
+      typeof network !== 'object' ||
+      typeof (network as Partial<NetworkInfo>).id !== 'string' ||
+      typeof (network as Partial<NetworkInfo>).name !== 'string' ||
+      typeof (network as Partial<NetworkInfo>).wss !== 'string'
+    ) {
+      throw createWalletError.unknown(`${walletName} returned an invalid network response.`);
+    }
+    return network as NetworkInfo;
   }
 
   /**

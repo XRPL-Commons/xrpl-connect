@@ -199,6 +199,39 @@ describe('WalletManager.switchNetwork()', () => {
       code: 'NOT_CONNECTED',
     });
   });
+
+  it('does not apply or emit a switch that finishes after disconnect', async () => {
+    let resolveSwitch!: (network: NetworkInfo) => void;
+    const switchNetwork = vi.fn(
+      () => new Promise<NetworkInfo>((resolve) => (resolveSwitch = resolve))
+    );
+    const adapter: WalletAdapter = { ...createFakeAdapter(), switchNetwork };
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+    const onNetworkChanged = vi.fn();
+    manager.on('networkChanged', onNetworkChanged);
+
+    const switching = manager.switchNetwork('devnet');
+    await manager.disconnect();
+    resolveSwitch({ id: 'devnet', name: 'Devnet', wss: 'wss://devnet' });
+
+    await expect(switching).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+    expect(manager.account).toBeNull();
+    expect(onNetworkChanged).not.toHaveBeenCalled();
+  });
+
+  it('wraps an invalid adapter response in a typed error', async () => {
+    const adapter: WalletAdapter = {
+      ...createFakeAdapter(),
+      switchNetwork: vi.fn(async () => undefined as never),
+    };
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    await expect(manager.switchNetwork('devnet')).rejects.toMatchObject({
+      code: 'UNKNOWN_ERROR',
+    });
+  });
 });
 
 describe('WalletManager.getNetwork()', () => {
