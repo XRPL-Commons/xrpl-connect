@@ -209,9 +209,11 @@ export class WalletManager extends EventEmitter<WalletEvent> {
 
     this.logger.debug('Signing transaction', transaction);
 
+    const adapter = this.currentAdapter;
+    const signerAddress = this.currentAccount?.address;
     try {
-      const result = await this.currentAdapter.sign(transaction);
-      this.stampSigner(result);
+      const result = await adapter.sign(transaction);
+      this.stampSigner(result, signerAddress);
       this.logger.info('Transaction signed', result.tx_blob || result.signature);
       return result;
     } catch (error) {
@@ -260,9 +262,11 @@ export class WalletManager extends EventEmitter<WalletEvent> {
 
     this.logger.debug('Signing message');
 
+    const adapter = this.currentAdapter;
+    const signerAddress = this.currentAccount?.address;
     try {
-      const signed = await this.currentAdapter.signMessage(message);
-      this.stampSigner(signed);
+      const signed = await adapter.signMessage(message);
+      this.stampSigner(signed, signerAddress);
       this.logger.info('Message signed');
       return signed;
     } catch (error) {
@@ -320,10 +324,14 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       throw createWalletError.notConnected();
     }
 
-    const account = await this.currentAdapter.getAccount();
+    const adapter = this.currentAdapter;
+    const previous = this.currentAccount;
+    const account = await adapter.getAccount();
+    if (this.currentAdapter !== adapter || this.currentAccount !== previous) {
+      throw createWalletError.notConnected();
+    }
     if (!account) return null;
 
-    const previous = this.currentAccount;
     const addressChanged = previous?.address !== account.address;
     const networkChanged =
       previous !== null &&
@@ -331,15 +339,21 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         previous.network.wss !== account.network.wss ||
         previous.network.rpc !== account.network.rpc);
 
-    this.currentAccount = account;
     const existing = await this.storage.loadState();
+    if (this.currentAdapter !== adapter || this.currentAccount !== previous) {
+      throw createWalletError.notConnected();
+    }
+    this.currentAccount = account;
     await this.storage.saveState({
       ...(existing ?? {}),
-      walletId: this.currentAdapter.id,
+      walletId: adapter.id,
       account,
       network: account.network,
       timestamp: Date.now(),
     });
+    if (this.currentAdapter !== adapter || this.currentAccount !== account) {
+      throw createWalletError.notConnected();
+    }
 
     if (addressChanged) this.emit('accountChanged', account);
     if (networkChanged) this.emit('networkChanged', account.network);
@@ -398,9 +412,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * the adapter didn't already set it, so callers always know which account
    * produced the signature.
    */
-  private stampSigner(result: { signerAddress?: string }): void {
-    if (result.signerAddress == null && this.currentAccount) {
-      result.signerAddress = this.currentAccount.address;
+  private stampSigner(result: { signerAddress?: string }, signerAddress?: string): void {
+    if (result.signerAddress == null && signerAddress) {
+      result.signerAddress = signerAddress;
     }
   }
 

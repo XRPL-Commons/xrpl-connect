@@ -194,6 +194,25 @@ describe('WalletManager signerAddress stamping', () => {
     const signed = await manager.sign({} as Transaction);
     expect(signed.signerAddress).toBe('rExplicit');
   });
+
+  it('stamps the account that started the signing request when the account changes in flight', async () => {
+    let resolveSign!: (value: SignedTransaction) => void;
+    const adapter = createFakeAdapter();
+    adapter.sign = vi.fn(
+      () => new Promise<SignedTransaction>((resolve) => (resolveSign = resolve))
+    );
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    const signing = manager.sign({} as Transaction);
+    adapter.emitAdapterEvent('accountChanged', {
+      ...ACCOUNT,
+      address: 'rChanged00000000000000000000000000',
+    });
+    resolveSign({ hash: '0xhash' } as SignedTransaction);
+
+    await expect(signing).resolves.toMatchObject({ signerAddress: ACCOUNT.address });
+  });
 });
 
 describe('WalletManager.fetchAccount()', () => {
@@ -248,5 +267,48 @@ describe('WalletManager.fetchAccount()', () => {
     expect(manager.account?.network).toEqual(CHANGED_NETWORK);
     expect(onNetworkChanged).toHaveBeenCalledWith(CHANGED_NETWORK);
     expect(onAccountChanged).not.toHaveBeenCalled();
+  });
+
+  it('does not restore account state when disconnected while fetching', async () => {
+    let resolveAccount!: (value: AccountInfo) => void;
+    const adapter: WalletAdapter = {
+      ...createFakeAdapter(),
+      getAccount: vi.fn(() => new Promise<AccountInfo>((resolve) => (resolveAccount = resolve))),
+    };
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    const fetching = manager.fetchAccount();
+    await manager.disconnect();
+    resolveAccount(ACCOUNT);
+
+    await expect(fetching).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    expect(manager.connected).toBe(false);
+    expect(manager.account).toBeNull();
+  });
+
+  it('does not restore account state when disconnected while persisting a refresh', async () => {
+    let resolveLoad!: (value: string | null) => void;
+    const storage = {
+      get: vi.fn(() => new Promise<string | null>((resolve) => (resolveLoad = resolve))),
+      set: vi.fn(async () => {}),
+      remove: vi.fn(async () => {}),
+      clear: vi.fn(async () => {}),
+    };
+    const adapter: WalletAdapter = {
+      ...createFakeAdapter(),
+      getAccount: vi.fn(async () => ({ ...ACCOUNT, address: 'rRefreshed' })),
+    };
+    const manager = new WalletManager({ adapters: [adapter], storage });
+    await manager.connect('fake');
+
+    const fetching = manager.fetchAccount();
+    await vi.waitFor(() => expect(storage.get).toHaveBeenCalled());
+    await manager.disconnect();
+    resolveLoad(null);
+
+    await expect(fetching).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    expect(manager.connected).toBe(false);
+    expect(manager.account).toBeNull();
   });
 });
