@@ -135,15 +135,17 @@ Beautiful UI component for wallet connection.
   "
   primary-wallet="xaman"
   wallets="xaman,crossmark,walletconnect"
+  show-unavailable
 ></xrpl-wallet-connector>
 ```
 
 ### Attributes
 
-| Attribute        | Type     | Description                        |
-| ---------------- | -------- | ---------------------------------- |
-| `primary-wallet` | `string` | Wallet ID to feature/highlight     |
-| `wallets`        | `string` | Comma-separated list of wallet IDs |
+| Attribute          | Type      | Description                                                        |
+| ------------------ | --------- | ------------------------------------------------------------------ |
+| `primary-wallet`   | `string`  | Wallet ID to feature/highlight                                     |
+| `wallets`          | `string`  | Comma-separated list of wallet IDs                                 |
+| `show-unavailable` | `boolean` | Show unavailable wallets with Install or disabled Unavailable rows |
 
 ### Methods
 

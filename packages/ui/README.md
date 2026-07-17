@@ -66,10 +66,11 @@ A Web Component is a reusable, encapsulated HTML element built using the Web Com
 
 All attributes are optional and control the behavior of the component:
 
-| Attribute        | Type   | Default | Description                                                                             |
-| ---------------- | ------ | ------- | --------------------------------------------------------------------------------------- |
-| `primary-wallet` | string | -       | Wallet ID to display first (e.g., `'xaman'`)                                            |
-| `wallets`        | string | -       | Comma-separated list of wallet IDs to include (e.g., `'xaman,crossmark,walletconnect'`) |
+| Attribute          | Type    | Default | Description                                                                               |
+| ------------------ | ------- | ------- | ----------------------------------------------------------------------------------------- |
+| `primary-wallet`   | string  | -       | Wallet ID to display first (e.g., `'xaman'`)                                              |
+| `wallets`          | string  | -       | Comma-separated list of wallet IDs to include (e.g., `'xaman,crossmark,walletconnect'`)   |
+| `show-unavailable` | boolean | false   | Show unavailable wallets with an Install link, or a disabled row when no URL is available |
 
 All styling is controlled exclusively via CSS variables (see [Customization](./CUSTOMIZATION.md) guide).
 
