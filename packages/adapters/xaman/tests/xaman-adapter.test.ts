@@ -60,6 +60,10 @@ const MULTISIGN_INPUT = {
 const MULTISIGNED_TRANSACTION = SIGNING_WALLET.sign(MULTISIGN_INPUT, true);
 const MULTISIGNED_TX_JSON = decode(MULTISIGNED_TRANSACTION.tx_blob) as Transaction;
 const MULTISIGNED_TX_HASH = hashes.hashSignedTx(MULTISIGNED_TRANSACTION.tx_blob);
+const EXISTING_MULTISIGNER = Wallet.generate();
+const PARTIALLY_SIGNED_INPUT = decode(
+  EXISTING_MULTISIGNER.sign(MULTISIGN_INPUT, true).tx_blob
+) as Transaction;
 
 function signedFixture(networkId = 0) {
   const input = {
@@ -772,6 +776,31 @@ describe('XamanAdapter.sign', () => {
     );
 
     const signPromise = adapter.sign(MULTISIGN_INPUT);
+    const rejection = expect(signPromise).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    await subscription.emit({ signed: true });
+
+    await rejection;
+  });
+
+  it('rejects a multi-signed result that drops an existing signature', async () => {
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(
+      resolvedPayload(
+        false,
+        {
+          hex: MULTISIGNED_TRANSACTION.tx_blob,
+          txid: MULTISIGNED_TX_HASH,
+          account: MULTISIGN_SOURCE.address,
+          multisign_account: CONNECTED_ACCOUNT,
+        },
+        { multisign: true },
+        PARTIALLY_SIGNED_INPUT
+      )
+    );
+
+    const signPromise = adapter.sign(PARTIALLY_SIGNED_INPUT);
     const rejection = expect(signPromise).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_FAILED,
     });

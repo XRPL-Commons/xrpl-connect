@@ -28,7 +28,7 @@ const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
 const SIGNING_TIMEOUT_MS = 5 * 60 * 1000;
 const RESOLVED_PAYLOAD_RETRY_MAX_MS = 5_000;
 const RESOLVED_PAYLOAD_RETRY_TIMEOUT_MS = 30_000;
-const SIGNING_OUTPUT_FIELDS = new Set(['TxnSignature', 'Signers']);
+const SIGNING_OUTPUT_FIELDS = new Set(['TxnSignature']);
 
 const XAMAN_NETWORKS_BY_ID = new Map<number, XamanNetwork>([
   [0, { forceNetwork: 'MAINNET', networkId: 0, id: 'mainnet', name: 'Mainnet' }],
@@ -901,6 +901,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
 
   private containsRequestedValue(expected: unknown, actual: unknown, field?: string): boolean {
     if (field && SIGNING_OUTPUT_FIELDS.has(field)) return true;
+    if (field === 'Signers') return this.containsRequestedSigners(expected, actual);
     if (Array.isArray(expected)) {
       return (
         Array.isArray(actual) &&
@@ -916,6 +917,20 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
       );
     }
     return Object.is(expected, actual);
+  }
+
+  private containsRequestedSigners(expected: unknown, actual: unknown): boolean {
+    if (!Array.isArray(expected) || !Array.isArray(actual)) return false;
+    const matchedIndexes = new Set<number>();
+    return expected.every((expectedSigner) => {
+      const matchingIndex = actual.findIndex(
+        (actualSigner, index) =>
+          !matchedIndexes.has(index) && this.containsRequestedValue(expectedSigner, actualSigner)
+      );
+      if (matchingIndex === -1) return false;
+      matchedIndexes.add(matchingIndex);
+      return true;
+    });
   }
 
   private createPayloadOperation(client: Xumm, submit: boolean): ActivePayloadOperation {
