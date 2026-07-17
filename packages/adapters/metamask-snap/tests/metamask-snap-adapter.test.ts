@@ -139,10 +139,38 @@ describe('MetaMaskSnapAdapter signing', () => {
 
   it('signAndSubmit returns the submitted hash', async () => {
     const adapter = await connected({
-      xrpl_signAndSubmit: () => ({ result: { hash: 'SUBMITTED' } }),
+      xrpl_signAndSubmit: () => ({
+        result: { engine_result: 'tesSUCCESS', tx_json: { hash: 'SUBMITTED' } },
+      }),
     });
     const res = await adapter.signAndSubmit({ TransactionType: 'Payment' } as never);
     expect(res.hash).toBe('SUBMITTED');
+  });
+
+  it('rejects a ledger submission failure instead of reporting success', async () => {
+    const adapter = await connected({
+      xrpl_signAndSubmit: () => ({
+        result: {
+          engine_result: 'tecUNFUNDED_PAYMENT',
+          engine_result_message: 'Insufficient XRP balance',
+          tx_json: { hash: 'REJECTED' },
+        },
+      }),
+    });
+
+    await expect(
+      adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+    ).rejects.toMatchObject({ code: WalletErrorCode.SIGN_FAILED });
+  });
+
+  it('rejects a malformed successful response without a transaction hash', async () => {
+    const adapter = await connected({
+      xrpl_signAndSubmit: () => ({ result: { engine_result: 'tesSUCCESS', tx_json: {} } }),
+    });
+
+    await expect(
+      adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+    ).rejects.toMatchObject({ code: WalletErrorCode.SIGN_FAILED });
   });
 
   it('signMessage returns the signature and public key', async () => {

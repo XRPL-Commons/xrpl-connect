@@ -241,15 +241,30 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
         Account: transaction.Account || this.currentAccount.address,
       };
 
-      const result = (await this.invokeSnap('xrpl_signAndSubmit', tx)) as {
-        result?: { hash?: string };
-        hash?: string;
+      const response = (await this.invokeSnap('xrpl_signAndSubmit', tx)) as {
+        result?: {
+          engine_result?: string;
+          engine_result_message?: string;
+          tx_json?: { hash?: string };
+        };
       };
-
-      const hash = result?.result?.hash || result?.hash || '';
+      const submitResult = response?.result;
+      if (submitResult?.engine_result !== 'tesSUCCESS') {
+        const detail = submitResult?.engine_result_message || submitResult?.engine_result;
+        throw new Error(
+          detail ? `XRPL submission failed: ${detail}` : 'Invalid XRPL submit response'
+        );
+      }
+      const hash = submitResult.tx_json?.hash;
+      if (!hash) {
+        throw new Error('XRPL submission succeeded without a transaction hash');
+      }
 
       return { hash };
     } catch (error) {
+      if (isWalletError(error)) {
+        throw error;
+      }
       if (error instanceof Error && error.message.toLowerCase().includes('reject')) {
         throw createWalletError.signRejected();
       }
