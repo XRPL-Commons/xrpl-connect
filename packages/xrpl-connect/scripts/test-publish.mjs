@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { run } from './run-command.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectFolder = path.join(__dirname, '..');
@@ -12,32 +12,11 @@ const publishFolder = path.join(projectFolder, 'dist-publish');
 const fixturesFolder = path.join(projectFolder, 'tests', 'publish');
 const temporaryRoot = mkdtempSync(path.join(os.tmpdir(), 'xrpl-connect-publish-'));
 
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    cwd: options.cwd,
-    encoding: 'utf-8',
-    env: {
-      ...process.env,
-      npm_config_cache: path.join(temporaryRoot, '.npm-cache'),
-    },
-    stdio: options.capture ? 'pipe' : 'inherit',
-  });
-
-  if (result.error) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    const output = [result.stdout, result.stderr].filter(Boolean).join('\n');
-    throw new Error(
-      `${command} ${args.join(' ')} failed with exit code ${result.status}\n${output}`
-    );
-  }
-
-  return result.stdout;
-}
+const runOptions = { env: { npm_config_cache: path.join(temporaryRoot, '.npm-cache') } };
 
 try {
   const packOutput = run('npm', ['pack', '--json', '--pack-destination', temporaryRoot], {
+    ...runOptions,
     cwd: publishFolder,
     capture: true,
   });
@@ -78,7 +57,7 @@ try {
       'xrpl@^4.0.0',
       'jsdom@^22.1.0',
     ],
-    { cwd: consumerFolder }
+    { ...runOptions, cwd: consumerFolder }
   );
 
   const installedManifest = JSON.parse(
@@ -116,13 +95,19 @@ try {
 
   const tscPath = path.join(repositoryRoot, 'node_modules', 'typescript', 'bin', 'tsc');
   console.log('→ Type-checking packed ESM consumer');
-  run(process.execPath, [tscPath, '--project', 'tsconfig.esm.json'], { cwd: consumerFolder });
+  run(process.execPath, [tscPath, '--project', 'tsconfig.esm.json'], {
+    ...runOptions,
+    cwd: consumerFolder,
+  });
   console.log('→ Type-checking packed CommonJS consumer');
-  run(process.execPath, [tscPath, '--project', 'tsconfig.cjs.json'], { cwd: consumerFolder });
+  run(process.execPath, [tscPath, '--project', 'tsconfig.cjs.json'], {
+    ...runOptions,
+    cwd: consumerFolder,
+  });
   console.log('→ Loading packed ESM runtime');
-  run(process.execPath, ['runtime-esm.mjs'], { cwd: consumerFolder });
+  run(process.execPath, ['runtime-esm.mjs'], { ...runOptions, cwd: consumerFolder });
   console.log('→ Loading packed CommonJS runtime');
-  run(process.execPath, ['runtime-cjs.cjs'], { cwd: consumerFolder });
+  run(process.execPath, ['runtime-cjs.cjs'], { ...runOptions, cwd: consumerFolder });
 
   console.log('✓ Packed xrpl-connect package passed ESM, CommonJS, and TypeScript consumer tests');
 } finally {

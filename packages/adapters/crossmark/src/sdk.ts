@@ -9,10 +9,40 @@ type CrossmarkIndexedTransaction = typeof CrossmarkTypings.Models.IndexedTransac
 type CrossmarkSignOptions = typeof CrossmarkTypings.Models.ExtendedSignOpts;
 type CrossmarkCryptOptions = typeof CrossmarkTypings.Models.CryptOpts;
 
+/** Listener accepted by Crossmark's EventEmitter-based APIs. */
+// EventEmitter listeners intentionally support arbitrary event-specific arguments.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type CrossmarkListener = (...args: any[]) => void;
+
+/** Public request tracked by Crossmark while it awaits a wallet response. */
+export interface CrossmarkActiveRequest {
+  resolve: (value: unknown) => void;
+  reject: (value: unknown) => void;
+}
+
+/** EventEmitter methods available on Crossmark SDK objects. */
+export interface CrossmarkEventEmitter {
+  addListener(event: string | symbol, listener: CrossmarkListener): this;
+  on(event: string | symbol, listener: CrossmarkListener): this;
+  once(event: string | symbol, listener: CrossmarkListener): this;
+  removeListener(event: string | symbol, listener: CrossmarkListener): this;
+  off(event: string | symbol, listener: CrossmarkListener): this;
+  removeAllListeners(event?: string | symbol): this;
+  setMaxListeners(count: number): this;
+  getMaxListeners(): number;
+  listeners(event: string | symbol): CrossmarkListener[];
+  rawListeners(event: string | symbol): CrossmarkListener[];
+  emit(event: string | symbol, ...args: unknown[]): boolean;
+  listenerCount(event: string | symbol): number;
+  prependListener(event: string | symbol, listener: CrossmarkListener): this;
+  prependOnceListener(event: string | symbol, listener: CrossmarkListener): this;
+  eventNames(): Array<string | symbol>;
+}
+
 /** Low-level Crossmark request transport. */
-export interface CrossmarkRequestAPI {
+export interface CrossmarkRequestAPI extends CrossmarkEventEmitter {
   readonly sdk: CrossmarkClient;
-  readonly active: Map<string, unknown>;
+  readonly active: Map<string, CrossmarkActiveRequest>;
   readonly uuid: string;
   readonly connected: boolean;
   readonly target?: string;
@@ -34,12 +64,12 @@ export interface CrossmarkEnvironment {
 }
 
 /** Crossmark extension discovery helper. */
-export interface CrossmarkMount {
+export interface CrossmarkMount extends CrossmarkEventEmitter {
   readonly sdk: CrossmarkClient;
   readonly isDetected?: boolean;
   loop(timeout?: number): Promise<boolean>;
-  on(event: string, listener: (...args: unknown[]) => void): this;
-  off(event: string, listener: (...args: unknown[]) => void): this;
+  on(event: 'detected', listener: () => void): this;
+  on(event: string | symbol, listener: CrossmarkListener): this;
 }
 
 /** Current Crossmark wallet session. */
@@ -151,7 +181,7 @@ export interface CrossmarkSyncMethods {
 }
 
 /** Complete Crossmark client surface. */
-export interface CrossmarkClient {
+export interface CrossmarkClient extends CrossmarkEventEmitter {
   readonly mount: CrossmarkMount;
   readonly api: CrossmarkRequestAPI;
   readonly session: CrossmarkSession;
@@ -159,7 +189,7 @@ export interface CrossmarkClient {
   readonly async: CrossmarkAsyncMethods;
   readonly sync: CrossmarkSyncMethods;
   readonly methods: CrossmarkAsyncMethods & CrossmarkSyncMethods;
-  readonly app: string;
+  readonly app: typeof CrossmarkTypings.Config.config.title;
   on(event: typeof CrossmarkTypings.EVENTS.PING, listener: () => void): this;
   on(event: typeof CrossmarkTypings.EVENTS.CLOSE, listener: () => void): this;
   on(event: typeof CrossmarkTypings.EVENTS.OPEN, listener: () => void): this;
@@ -180,16 +210,12 @@ export interface CrossmarkClient {
     event: typeof CrossmarkTypings.EVENTS.ALL,
     listener: (event: typeof CrossmarkTypings.CatchAllEvent) => void
   ): this;
-  on(event: string, listener: (...args: unknown[]) => void): this;
-  once(event: string, listener: (...args: unknown[]) => void): this;
-  off(event: string, listener: (...args: unknown[]) => void): this;
-  removeListener(event: string, listener: (...args: unknown[]) => void): this;
-  emit(event: string, ...args: unknown[]): boolean;
+  on(event: string | symbol, listener: CrossmarkListener): this;
 }
 
 /** Constructor exported by the upstream SDK as `vanilla`. */
 export interface CrossmarkClientConstructor {
-  new (options?: { project: string }): CrossmarkClient;
+  new (options?: { project: typeof CrossmarkTypings.Config.config.title }): CrossmarkClient;
 }
 
 /** Collision-safe namespace mirroring every runtime export from `@crossmarkio/sdk`. */

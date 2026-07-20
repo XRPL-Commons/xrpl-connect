@@ -36,6 +36,15 @@ CrossmarkSDK.default.on(crossmarkResponseEvent, (response) => {
   const typedResponse: typeof CrossmarkSDK.typings.Models.Response = response;
   void typedResponse;
 });
+const crossmarkNetworkListener = (network: typeof CrossmarkSDK.typings.BasicNetwork) =>
+  void network;
+CrossmarkSDK.default.on(CrossmarkSDK.typings.EVENTS.NETWORK_CHANGE, crossmarkNetworkListener);
+CrossmarkSDK.default.off(CrossmarkSDK.typings.EVENTS.NETWORK_CHANGE, crossmarkNetworkListener);
+CrossmarkSDK.default.addListener('custom', crossmarkNetworkListener);
+CrossmarkSDK.default.api.on('response', crossmarkNetworkListener);
+CrossmarkSDK.default.mount.addListener('detected', () => {});
+CrossmarkSDK.default.api.active.get('request-id')?.resolve(undefined);
+CrossmarkSDK.default.listeners('custom')[0]?.({ network: 'xrpl' });
 const gemWalletGetAddress: typeof GemWalletAPI.getAddress = GemWalletAPI.getAddress;
 const crossmarkClient: CrossmarkClient = CrossmarkSDK.default;
 const xamanEvent = {} as XamanSDK.UniversalSdkEvent;
