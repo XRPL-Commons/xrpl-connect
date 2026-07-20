@@ -94,6 +94,14 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * Connect to a wallet
    */
   async connect(walletId: string, options?: ConnectOptions): Promise<AccountInfo> {
+    return this.connectInternal(walletId, options);
+  }
+
+  private async connectInternal(
+    walletId: string,
+    options?: ConnectOptions,
+    expectedState?: StoredState
+  ): Promise<AccountInfo> {
     this.logger.info(`Connecting to wallet: ${walletId}`);
 
     // Get adapter
@@ -106,6 +114,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     if (this.currentAdapter && this.currentAdapter.id !== walletId) {
       throw createWalletError.alreadyConnected(this.currentAdapter.name);
     }
+
+    let adapterConnected = false;
+    let connectionCommitted = false;
 
     try {
       // Check availability
@@ -145,10 +156,21 @@ export class WalletManager extends EventEmitter<WalletEvent> {
 
       // Connect
       const account = await adapter.connect(connectOptions);
+      adapterConnected = true;
 
-      // Update state
-      this.currentAdapter = adapter;
-      this.currentAccount = account;
+      if (expectedState && supportsReconnectOptions(adapter)) {
+        if (account.address !== expectedState.account.address) {
+          throw createWalletError.connectionFailed(
+            adapter.name,
+            new Error(
+              `Reconnected account mismatch. Expected "${expectedState.account.address}" but wallet returned "${account.address}".`
+            )
+          );
+        }
+        if (account.network.id !== expectedState.network.id) {
+          throw createWalletError.networkMismatch(expectedState.network.id, account.network.id);
+        }
+      }
 
       // Let adapters explicitly select the minimal JSON-safe reconnect state.
       // Never persist arbitrary caller-provided options.
@@ -164,16 +186,36 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       };
       await this.storage.saveState(state);
 
+      // Commit manager state only after reconnect validation, option
+      // serialization, and persistence have completed successfully.
+      this.currentAdapter = adapter;
+      this.currentAccount = account;
+
       // Subscribe to adapter events if supported. Track every registration so
       // disconnect() can call the matching off() and stop late callbacks from
       // mutating manager state after the session is gone.
       this.subscribeToAdapter(adapter);
+      connectionCommitted = true;
 
       this.logger.info(`Connected to ${adapter.name}`, account);
       this.emit('connect', account);
 
       return account;
     } catch (error) {
+      if (adapterConnected && !connectionCommitted) {
+        this.unsubscribeFromAdapter(adapter);
+        this.currentAdapter = null;
+        this.currentAccount = null;
+        await this.storage.clearState();
+        try {
+          await adapter.disconnect();
+        } catch (disconnectError) {
+          this.logger.warn(
+            `Failed to clean up ${adapter.name} after connection failure:`,
+            disconnectError
+          );
+        }
+      }
       this.logger.error(`Failed to connect to ${adapter.name}:`, error);
       // Preserve adapter-thrown WalletError so user-rejection / not-installed / etc.
       // surface with their original code & category instead of collapsing into CONNECTION_FAILED.
@@ -221,10 +263,14 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       // Replay the original connect options so wallet-specific selections
       // (e.g. the Ledger derivation path / account index) are restored instead
       // of reconnecting to the default account.
-      return await this.connect(stored.walletId, {
-        network: stored.network,
-        ...stored.connectOptions,
-      });
+      return await this.connectInternal(
+        stored.walletId,
+        {
+          ...stored.connectOptions,
+          network: stored.network,
+        },
+        stored
+      );
     } catch (error) {
       this.logger.warn('Reconnection failed:', error);
       await this.storage.clearState();

@@ -8,6 +8,7 @@ import type {
   AccountInfo,
   ConnectOptions,
   NetworkInfo,
+  ReconnectOptions,
   SignedMessage,
   SignedTransaction,
   SubmittedTransaction,
@@ -17,6 +18,7 @@ import type {
 } from '../src/types';
 
 const NETWORK: NetworkInfo = { id: 'testnet', name: 'Testnet', wss: 'wss://example' };
+const MAINNET: NetworkInfo = { id: 'mainnet', name: 'Mainnet', wss: 'wss://mainnet' };
 const ACCOUNT: AccountInfo = { address: 'rTestAddress00000000000000000000000', network: NETWORK };
 
 afterEach(() => {
@@ -175,7 +177,10 @@ describe('WalletManager.reconnect()', () => {
    * can assert what reconnect() replayed. Mirrors a hardware wallet where the
    * derivation path / account index selects which account is returned.
    */
-  function createRecordingAdapter(received: Array<ConnectOptions | undefined>): WalletAdapter {
+  function createRecordingAdapter(
+    received: Array<ConnectOptions | undefined>,
+    account: AccountInfo = ACCOUNT
+  ): WalletAdapter {
     return {
       id: 'ledger',
       name: 'Ledger',
@@ -187,11 +192,11 @@ describe('WalletManager.reconnect()', () => {
       isAvailable: async () => true,
       connect: async (options) => {
         received.push(options);
-        return ACCOUNT;
+        return account;
       },
       disconnect: async () => {},
-      getAccount: async () => ACCOUNT,
-      getNetwork: async () => NETWORK,
+      getAccount: async () => account,
+      getNetwork: async () => account.network,
       sign: async () => ({ hash: '' }) as SignedTransaction,
       signAndSubmit: async () => ({ hash: '' }) as SubmittedTransaction,
       signMessage: async () => ({ signature: '' }) as SignedMessage,
@@ -242,5 +247,74 @@ describe('WalletManager.reconnect()', () => {
 
     const stored = await new Storage(storage).loadState();
     expect(stored?.connectOptions).toBeUndefined();
+  });
+
+  it('rejects and cleans up a restored account that differs from stored state', async () => {
+    const storage = new MemoryStorageAdapter();
+    await new WalletManager({ adapters: [createRecordingAdapter([])], storage }).connect('ledger', {
+      derivationPath: "44'/144'/3'/0/0",
+    });
+
+    const restoredAdapter = createRecordingAdapter([], {
+      ...ACCOUNT,
+      address: 'rDifferentLedgerDevice0000000000000000',
+    });
+    restoredAdapter.disconnect = vi.fn(async () => {});
+    const manager = new WalletManager({ adapters: [restoredAdapter], storage });
+    const onConnect = vi.fn();
+    manager.on('connect', onConnect);
+
+    await expect(manager.reconnect()).resolves.toBeNull();
+    expect(manager.connected).toBe(false);
+    expect(restoredAdapter.disconnect).toHaveBeenCalledOnce();
+    expect(onConnect).not.toHaveBeenCalled();
+    expect(await new Storage(storage).loadState()).toBeNull();
+  });
+
+  it('rejects and cleans up a restored network that differs from stored state', async () => {
+    const storage = new MemoryStorageAdapter();
+    await new WalletManager({ adapters: [createRecordingAdapter([])], storage }).connect('ledger');
+
+    const restoredAdapter = createRecordingAdapter([], { ...ACCOUNT, network: MAINNET });
+    restoredAdapter.disconnect = vi.fn(async () => {});
+    const manager = new WalletManager({ adapters: [restoredAdapter], storage });
+
+    await expect(manager.reconnect()).resolves.toBeNull();
+    expect(manager.connected).toBe(false);
+    expect(restoredAdapter.disconnect).toHaveBeenCalledOnce();
+    expect(await new Storage(storage).loadState()).toBeNull();
+  });
+
+  it('rolls back a connection when reconnect option serialization throws', async () => {
+    const storage = new MemoryStorageAdapter();
+    const adapter = createRecordingAdapter([]);
+    adapter.serializeReconnectOptions = () => {
+      throw new Error('serializer failed');
+    };
+    adapter.disconnect = vi.fn(async () => {});
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    await expect(manager.connect('ledger')).rejects.toMatchObject({
+      message: expect.stringContaining('serializer failed'),
+    });
+    expect(manager.connected).toBe(false);
+    expect(manager.wallet).toBeNull();
+    expect(manager.account).toBeNull();
+    expect(adapter.disconnect).toHaveBeenCalledOnce();
+    expect(await new Storage(storage).loadState()).toBeNull();
+  });
+
+  it('keeps stored network state authoritative over malformed adapter options', async () => {
+    const storage = new MemoryStorageAdapter();
+    const initialAdapter = createRecordingAdapter([]);
+    initialAdapter.serializeReconnectOptions = () =>
+      ({ network: MAINNET }) as unknown as ReconnectOptions;
+    await new WalletManager({ adapters: [initialAdapter], storage }).connect('ledger');
+
+    const received: Array<ConnectOptions | undefined> = [];
+    const restoredAdapter = createRecordingAdapter(received);
+    await new WalletManager({ adapters: [restoredAdapter], storage }).reconnect();
+
+    expect(received.at(-1)?.network).toEqual(NETWORK);
   });
 });

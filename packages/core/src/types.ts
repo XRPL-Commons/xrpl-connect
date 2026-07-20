@@ -103,6 +103,15 @@ export type ConnectOptions<WalletSpecificOptions extends Record<string, unknown>
 } & WalletSpecificOptions;
 
 /**
+ * Adapter-owned, JSON-safe options required to restore a wallet account.
+ * Core-owned connection policy must not be overridden by persisted adapter data.
+ */
+export type ReconnectOptions = Record<string, unknown> & {
+  network?: never;
+  autoReconnect?: never;
+};
+
+/**
  * Events that adapters can emit
  */
 export type WalletAdapterEvent =
@@ -124,7 +133,7 @@ export interface WalletAdapter {
 
   // Optional, minimal reconnect-state serialization (never called by adapters
   // that do not opt in).
-  serializeReconnectOptions?(options: ConnectOptions): ConnectOptions | undefined;
+  serializeReconnectOptions?(options: ConnectOptions): ReconnectOptions | undefined;
 
   // Availability
   isAvailable(): Promise<boolean>; // Check if wallet is installed/accessible
@@ -169,7 +178,7 @@ export interface SupportsDeepLink {
  * options required to restore the same wallet account after a reload.
  */
 export interface SupportsReconnectOptions {
-  serializeReconnectOptions(options: ConnectOptions): ConnectOptions | undefined;
+  serializeReconnectOptions(options: ConnectOptions): ReconnectOptions | undefined;
 }
 
 export function supportsPreInitialize(
@@ -230,7 +239,7 @@ export interface StoredState {
    * Adapter-selected, JSON-safe options required to restore the same account.
    * Arbitrary caller-provided connection options are never stored.
    */
-  connectOptions?: ConnectOptions;
+  connectOptions?: ReconnectOptions;
 }
 
 /**

@@ -170,21 +170,39 @@ describe('LedgerAdapter.disconnect', () => {
 });
 
 describe('LedgerAdapter reconnect options', () => {
-  it('serializes only an explicit derivation path', () => {
-    const adapter = new LedgerAdapter();
-    expect(
-      adapter.serializeReconnectOptions({
-        derivationPath: "44'/144'/3'/0/0",
-        network: 'testnet',
-        autoReconnect: true,
-      })
-    ).toEqual({ derivationPath: "44'/144'/3'/0/0" });
+  it('serializes a constructor-selected account as its effective path', () => {
+    const adapter = new LedgerAdapter({ accountIndex: 7 });
+
+    expect(adapter.serializeReconnectOptions({ network: 'testnet' })).toEqual({
+      derivationPath: "44'/144'/7'/0/0",
+    });
   });
 
-  it('serializes an account index and ignores unrelated options', () => {
+  it('serializes the account index actually used when derivationPath is empty', async () => {
+    installNavigator({ hid: {} });
+    xrpAppInstance.getAddress.mockResolvedValue({ address: 'rLedger', publicKey: 'aabbcc' });
     const adapter = new LedgerAdapter();
-    expect(adapter.serializeReconnectOptions({ accountIndex: 7, autoReconnect: true })).toEqual({
-      accountIndex: 7,
+
+    const options = { derivationPath: '', accountIndex: 7 };
+    await adapter.connect(options);
+
+    expect(xrpAppInstance.getAddress).toHaveBeenCalledWith("44'/144'/7'/0/0", false, false);
+    expect(adapter.serializeReconnectOptions(options)).toEqual({
+      derivationPath: "44'/144'/7'/0/0",
+    });
+  });
+
+  it('retains and serializes the active path when a later connect omits a selector', async () => {
+    installNavigator({ hid: {} });
+    xrpAppInstance.getAddress.mockResolvedValue({ address: 'rLedger', publicKey: 'aabbcc' });
+    const adapter = new LedgerAdapter();
+
+    await adapter.connect({ accountIndex: 7 });
+    await adapter.connect({ network: 'testnet' });
+
+    expect(xrpAppInstance.getAddress).toHaveBeenLastCalledWith("44'/144'/7'/0/0", false, false);
+    expect(adapter.serializeReconnectOptions({ network: 'testnet' })).toEqual({
+      derivationPath: "44'/144'/7'/0/0",
     });
   });
 });

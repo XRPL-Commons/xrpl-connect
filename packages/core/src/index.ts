@@ -18,6 +18,7 @@ export type {
   SignedMessage,
   SubmittedTransaction,
   ConnectOptions,
+  ReconnectOptions,
   WalletEvent,
   WalletAdapterEvent,
   StorageAdapter,

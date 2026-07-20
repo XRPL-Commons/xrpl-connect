@@ -17,6 +17,7 @@ import type {
   SignedMessage,
   SubmittedTransaction,
   SupportsReconnectOptions,
+  ReconnectOptions,
 } from '@xrpl-connect/core';
 import { createWalletError, resolveNetwork } from '@xrpl-connect/core';
 
@@ -68,17 +69,9 @@ export class LedgerAdapter implements WalletAdapter, SupportsReconnectOptions {
     return browserSupport.supported;
   }
 
-  /** Persist only the account selector needed to restore this Ledger address. */
-  serializeReconnectOptions(
-    options: ConnectOptions<LedgerConnectOptions>
-  ): ConnectOptions<LedgerConnectOptions> | undefined {
-    if (typeof options.derivationPath === 'string') {
-      return { derivationPath: options.derivationPath };
-    }
-    if (typeof options.accountIndex === 'number') {
-      return { accountIndex: options.accountIndex };
-    }
-    return undefined;
+  /** Persist the effective path used to derive the connected Ledger address. */
+  serializeReconnectOptions(_options: ConnectOptions<LedgerConnectOptions>): ReconnectOptions {
+    return { derivationPath: this.derivationPath };
   }
 
   /**
