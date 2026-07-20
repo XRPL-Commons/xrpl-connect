@@ -264,6 +264,13 @@ export const mainStyles = `
     gap: 12px;
   }
 
+  .wallet-empty {
+    color: var(--xc-text-muted-color);
+    font-size: 14px;
+    line-height: 1.5;
+    text-align: center;
+  }
+
   .wallet-button {
     width: 100%;
     padding: ${SIZES.BUTTON_PADDING_VERTICAL}px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
@@ -286,6 +293,25 @@ export const mainStyles = `
 
   .wallet-button img {
     border-radius: 6px;
+  }
+
+  .wallet-button--unavailable {
+    opacity: 0.6;
+  }
+
+  .wallet-button--unavailable:hover {
+    opacity: 1;
+  }
+
+  .wallet-install-label {
+    margin-left: auto;
+    margin-right: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--xc-background-tertiary);
+    color: var(--xc-text-muted-color);
   }
 
   .qr-view {

@@ -39,20 +39,23 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node scripts/prepare-types.mjs",
     "dev": "tsup --watch",
     "lint": "eslint src --ext .ts,.tsx",
     "type-check": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "node tests/ssr-smoke.mjs && vitest run",
     "test:watch": "vitest",
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",
     "react-dom": "^18.0.0 || ^19.0.0",
+    "xrpl": "^3.0.0 || ^4.0.0",
     "xrpl-connect": "^0.8.0"
   },
   "devDependencies": {
+    "@microsoft/api-extractor": "^7.47.0",
+    "@xrpl-connect/core": "workspace:*",
     "@testing-library/react": "^16.0.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
@@ -61,7 +64,7 @@
     "react-dom": "^18.3.1",
     "tsup": "^8.1.0",
     "typescript": "^5.5.0",
-    "vitest": "^1.6.0",
+    "vitest": "^3.2.6",
     "xrpl-connect": "workspace:*"
   }
 }

@@ -4,4 +4,7 @@
  */
 
 export { WalletConnectAdapter, XRPLMethod } from './walletconnect-adapter';
-export type { WalletConnectAdapterOptions } from './walletconnect-adapter';
+export type {
+  WalletConnectAdapterOptions,
+  WalletConnectConnectOptions,
+} from './walletconnect-adapter';

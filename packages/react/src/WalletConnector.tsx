@@ -1,5 +1,11 @@
 import { useEffect, useRef, type CSSProperties } from 'react';
-import { isWalletError } from 'xrpl-connect';
+import {
+  createWalletError,
+  getErrorMessage,
+  isWalletError,
+  type AccountInfo,
+  type WalletError,
+} from '@xrpl-connect/core';
 import { useXrplConnectContext } from './provider';
 import type { WalletConnectorElement, WalletConnectorProps, WalletConnectorTheme } from './types';
 
@@ -44,8 +50,13 @@ export function WalletConnector({
   onConnect,
   onError,
 }: WalletConnectorProps) {
-  const { manager, registerConnector, reportModalConnecting, reportModalError } =
-    useXrplConnectContext();
+  const {
+    manager,
+    registerConnector,
+    unregisterConnector,
+    reportModalConnecting,
+    reportModalError,
+  } = useXrplConnectContext();
   const elRef = useRef<WalletConnectorElement | null>(null);
 
   // Keep the latest callbacks in a ref so the binding effect can stay stable
@@ -56,6 +67,23 @@ export function WalletConnector({
   useEffect(() => {
     let active = true;
     let detach: (() => void) | undefined;
+    let registeredElement: WalletConnectorElement | null = null;
+    let notifiedAccountKey: string | null = null;
+
+    const onMgrConnect = (account: AccountInfo) => {
+      const accountKey = `${account.address}:${account.network.id}`;
+      if (notifiedAccountKey === accountKey) return;
+      notifiedAccountKey = accountKey;
+      callbacksRef.current.onConnect?.(account);
+    };
+    const onMgrDisconnect = () => {
+      notifiedAccountKey = null;
+    };
+    manager.on('connect', onMgrConnect);
+    manager.on('disconnect', onMgrDisconnect);
+
+    // Reconcile a connection that completed before this component's effect.
+    if (manager.connected && manager.account) onMgrConnect(manager.account);
 
     void customElements.whenDefined('xrpl-wallet-connector').then(() => {
       const el = elRef.current;
@@ -63,6 +91,7 @@ export function WalletConnector({
 
       el.setWalletManager(manager);
       registerConnector(el);
+      registeredElement = el;
 
       const onWcConnecting = (e: Event) => {
         const walletId = (e as CustomEvent<{ walletId: string }>).detail?.walletId;
@@ -72,33 +101,35 @@ export function WalletConnector({
         }
       };
       const onWcError = (e: Event) => {
-        const error = (e as CustomEvent<{ error?: unknown }>).detail?.error;
-        if (!isWalletError(error)) return;
+        const detail = (
+          e as CustomEvent<{
+            error?: unknown;
+            errorType?: 'rejected' | 'unavailable' | 'failed';
+            walletId?: string;
+          }>
+        ).detail;
+        const error = normalizeModalError(detail?.error, detail?.errorType, detail?.walletId);
         reportModalError(error);
         callbacksRef.current.onError?.(error);
-      };
-      // Source connect from the manager because it carries the authoritative account.
-      const onMgrConnect = () => {
-        if (manager.account) callbacksRef.current.onConnect?.(manager.account);
       };
 
       el.addEventListener('connecting', onWcConnecting);
       el.addEventListener('error', onWcError);
-      manager.on('connect', onMgrConnect);
 
       detach = () => {
         el.removeEventListener('connecting', onWcConnecting);
         el.removeEventListener('error', onWcError);
-        manager.off('connect', onMgrConnect);
       };
     });
 
     return () => {
       active = false;
-      registerConnector(null);
+      manager.off('connect', onMgrConnect);
+      manager.off('disconnect', onMgrDisconnect);
+      if (registeredElement) unregisterConnector(registeredElement);
       detach?.();
     };
-  }, [manager, registerConnector, reportModalConnecting, reportModalError]);
+  }, [manager, registerConnector, unregisterConnector, reportModalConnecting, reportModalError]);
 
   const mergedStyle = {
     ...(theme ? THEMES[theme] : {}),
@@ -115,4 +146,22 @@ export function WalletConnector({
       style={mergedStyle}
     />
   );
+}
+
+function normalizeModalError(
+  error: unknown,
+  errorType?: 'rejected' | 'unavailable' | 'failed',
+  walletId?: string
+): WalletError {
+  if (isWalletError(error)) return error;
+
+  const walletName = walletId || 'wallet';
+  const originalError = error instanceof Error ? error : new Error(getErrorMessage(error));
+  if (errorType === 'rejected') return createWalletError.connectionRejected(walletName);
+  if (errorType === 'unavailable') {
+    return originalError.message.toLowerCase().includes('not installed')
+      ? createWalletError.notInstalled(walletName)
+      : createWalletError.notAvailable(walletName);
+  }
+  return createWalletError.connectionFailed(walletName, originalError);
 }

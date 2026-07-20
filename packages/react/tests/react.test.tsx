@@ -8,11 +8,13 @@ import {
   createWalletError,
   type WalletAdapter,
   type AccountInfo,
-} from 'xrpl-connect';
+  type StorageAdapter,
+} from '@xrpl-connect/core';
 import {
   XrplConnectProvider,
   useWallet,
   useSigner,
+  useWalletModal,
   WalletConnector,
   WalletErrorCode,
 } from '../src';
@@ -62,7 +64,7 @@ describe('XrplConnectProvider + hooks', () => {
     spy.mockRestore();
   });
 
-  it('creates exactly one WalletManager across re-renders (incl. StrictMode)', () => {
+  it('keeps one committed WalletManager across re-renders in StrictMode', () => {
     const managers: WalletManager[] = [];
     function Probe() {
       const { manager } = useWallet();
@@ -92,6 +94,25 @@ describe('XrplConnectProvider + hooks', () => {
     expect(unique.size).toBe(1);
   });
 
+  it('starts auto-connect only once in StrictMode', async () => {
+    const storage: StorageAdapter = {
+      get: vi.fn(async () => null),
+      set: vi.fn(async () => {}),
+      remove: vi.fn(async () => {}),
+      clear: vi.fn(async () => {}),
+    };
+
+    render(
+      <StrictMode>
+        <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: true, storage }}>
+          <div />
+        </XrplConnectProvider>
+      </StrictMode>
+    );
+
+    await waitFor(() => expect(storage.get).toHaveBeenCalledTimes(1));
+  });
+
   it('reflects connect/disconnect state through useWallet', async () => {
     const { result } = renderHook(() => useWallet(), { wrapper: wrapper([makeAdapter()]) });
 
@@ -109,6 +130,47 @@ describe('XrplConnectProvider + hooks', () => {
     });
     await waitFor(() => expect(result.current.connected).toBe(false));
     expect(result.current.account).toBeNull();
+  });
+
+  it('disconnects an owned manager when the provider unmounts', async () => {
+    const disconnect = vi.fn(async () => {});
+    const { result, unmount } = renderHook(() => useWallet(), {
+      wrapper: wrapper([makeAdapter({ disconnect })]),
+    });
+    await act(async () => {
+      await result.current.connect('fake');
+    });
+
+    unmount();
+    await waitFor(() => expect(disconnect).toHaveBeenCalledTimes(1));
+  });
+
+  it('cancels a direct manager connection that resolves after unmount', async () => {
+    let resolveConnect!: (account: AccountInfo) => void;
+    const disconnect = vi.fn(async () => {});
+    const adapter = makeAdapter({
+      connect: vi.fn(() => new Promise<AccountInfo>((resolve) => (resolveConnect = resolve))),
+      disconnect,
+    });
+    let manager: WalletManager | null = null;
+    function Capture() {
+      manager = useWallet().manager;
+      return null;
+    }
+    const { unmount } = render(
+      <XrplConnectProvider config={{ adapters: [adapter], autoConnect: false }}>
+        <Capture />
+      </XrplConnectProvider>
+    );
+
+    const connecting = manager!.connect('fake');
+    await waitFor(() => expect(adapter.connect).toHaveBeenCalledTimes(1));
+    unmount();
+    resolveConnect(ACCOUNT);
+
+    await expect(connecting).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    expect(disconnect).toHaveBeenCalled();
+    expect(manager!.connected).toBe(false);
   });
 
   it('useSigner rejects with a typed WalletError (code + category)', async () => {
@@ -177,6 +239,48 @@ describe('<WalletConnector>', () => {
     await waitFor(() => expect(onConnect).toHaveBeenCalledWith(ACCOUNT));
   });
 
+  it('observes a connection started before custom-element binding settles', async () => {
+    const onConnect = vi.fn();
+    let mgr: WalletManager | null = null;
+    function Capture() {
+      mgr = useWallet().manager;
+      return null;
+    }
+    render(
+      <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+        <Capture />
+        <WalletConnector onConnect={onConnect} />
+      </XrplConnectProvider>
+    );
+
+    await act(async () => {
+      await mgr!.connect('fake');
+    });
+    await waitFor(() => expect(onConnect).toHaveBeenCalledWith(ACCOUNT));
+  });
+
+  it('fires onConnect again after reconnecting the same account', async () => {
+    const onConnect = vi.fn();
+    let mgr: WalletManager | null = null;
+    function Capture() {
+      mgr = useWallet().manager;
+      return null;
+    }
+    render(
+      <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+        <Capture />
+        <WalletConnector onConnect={onConnect} />
+      </XrplConnectProvider>
+    );
+
+    await act(async () => {
+      await mgr!.connect('fake');
+      await mgr!.disconnect();
+      await mgr!.connect('fake');
+    });
+    await waitFor(() => expect(onConnect).toHaveBeenCalledTimes(2));
+  });
+
   it('propagates modal lifecycle and typed errors to callbacks and provider state', async () => {
     const onError = vi.fn();
     let walletState: ReturnType<typeof useWallet> | null = null;
@@ -211,5 +315,71 @@ describe('<WalletConnector>', () => {
     await waitFor(() => expect(walletState!.error).toBe(error));
     expect(walletState!.connecting).toBe(false);
     expect(onError).toHaveBeenCalledWith(error);
+
+    act(() => {
+      el.dispatchEvent(
+        new CustomEvent('error', {
+          detail: {
+            error: new Error('Fake is not installed'),
+            errorType: 'unavailable',
+            walletId: 'fake',
+          },
+        })
+      );
+    });
+    await waitFor(() =>
+      expect(walletState!.error?.code).toBe(WalletErrorCode.WALLET_NOT_INSTALLED)
+    );
+    expect(onError).toHaveBeenLastCalledWith(
+      expect.objectContaining({ code: WalletErrorCode.WALLET_NOT_INSTALLED })
+    );
+  });
+
+  it('keeps the remaining connector registered when a sibling unmounts', async () => {
+    let modal: ReturnType<typeof useWalletModal> | null = null;
+    function Capture() {
+      modal = useWalletModal();
+      return null;
+    }
+    function View({ showFirst }: { showFirst: boolean }) {
+      return (
+        <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+          <Capture />
+          {showFirst && <WalletConnector key="first" className="first" />}
+          <WalletConnector key="second" className="second" />
+        </XrplConnectProvider>
+      );
+    }
+
+    const { rerender } = render(<View showFirst />);
+    await waitFor(() => {
+      expect(
+        (document.querySelector('.second') as HTMLElement & { manager: unknown }).manager
+      ).not.toBeNull();
+    });
+    rerender(<View showFirst={false} />);
+
+    act(() => modal!.open());
+    expect((document.querySelector('.second') as HTMLElement & { opened: boolean }).opened).toBe(
+      true
+    );
+  });
+
+  it('updates and removes the wallet allowlist attribute on rerender', () => {
+    function View({ wallets }: { wallets?: string[] }) {
+      return (
+        <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+          <WalletConnector wallets={wallets} />
+        </XrplConnectProvider>
+      );
+    }
+    const { rerender } = render(<View wallets={['first', 'second']} />);
+    const el = document.querySelector('xrpl-wallet-connector')!;
+    expect(el.getAttribute('wallets')).toBe('first,second');
+
+    rerender(<View wallets={['third']} />);
+    expect(el.getAttribute('wallets')).toBe('third');
+    rerender(<View />);
+    expect(el.hasAttribute('wallets')).toBe(false);
   });
 });

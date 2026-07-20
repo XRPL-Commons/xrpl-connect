@@ -108,3 +108,35 @@ export function truncateString(str: string, maxLength: number): string {
 export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+/** Return an absolute HTTP(S) URL that is safe to open outside the application. */
+export function getSafeExternalUrl(value: string | undefined): string | null {
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Order wallets by most-recently-used first (`mruIds`, newest first), keeping
+ * the input order for wallets with no usage history. Stable: never reorders two
+ * wallets that are both unused.
+ *
+ * @param wallets - Wallets to order.
+ * @param mruIds - Wallet ids in most-recently-used order (newest first).
+ */
+export function orderWalletsByMru<T extends { id: string }>(wallets: T[], mruIds: string[]): T[] {
+  if (mruIds.length === 0) return wallets;
+  const rank = (id: string): number => {
+    const index = mruIds.indexOf(id);
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  return wallets
+    .map((wallet, index) => ({ wallet, index }))
+    .sort((a, b) => rank(a.wallet.id) - rank(b.wallet.id) || a.index - b.index)
+    .map((entry) => entry.wallet);
+}

@@ -27,6 +27,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Test published package
+        run: pnpm --filter xrpl-connect test:publish
+
       - name: Lint
         run: pnpm lint
 

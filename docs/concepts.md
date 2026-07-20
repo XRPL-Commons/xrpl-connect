@@ -52,15 +52,28 @@ await walletManager.disconnect();
 
 ### Key Methods
 
-- `connect(walletId, options?)` - Connect to a wallet by id
+- `connect(walletId, options?)` - Connect to a wallet by id after a one-second availability preflight
 - `reconnect()` - Reconnect to the previously connected wallet from storage
 - `sign(transaction)` - Sign a transaction and return the signed blob
 - `signAndSubmit(transaction)` - Sign and submit transaction to ledger
 - `signMessage(message)` - Sign a message (string or `Uint8Array`)
-- `getAvailableWallets()` - List adapters whose `isAvailable()` resolves true
+- `supports(capability)` - Check whether the connected wallet supports a signing operation
+- `fetchAccount()` - Refresh account and network data on adapters that support a live wallet query
+- `getAvailableWallets()` - List adapters whose `isAvailable()` resolves true within one second
 - `disconnect()` - Disconnect current wallet
 - `on(event, listener)` - Listen to events
 - `off(event, listener)` - Remove event listener
+
+The `account` property is cached. `fetchAccount()` is its explicit live
+counterpart and is available for Crossmark, GemWallet, Ledger, Otsu, and Xaman.
+WalletConnect and Xyra reject live refresh with `UNSUPPORTED_METHOD`; use
+`supportsFetchAccount()` after checking that `walletManager.wallet` is non-null
+before offering refresh UI.
+
+Signing capabilities are separately declared through `WalletCapabilities`.
+`WalletManager.supports()` lets applications hide unsupported actions, and the
+manager rejects explicitly unsupported signing calls before invoking the
+adapter.
 
 ## Adapters
 

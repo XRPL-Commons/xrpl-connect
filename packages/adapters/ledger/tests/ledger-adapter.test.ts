@@ -51,6 +51,7 @@ beforeEach(() => {
   transportWebUSB.create.mockReset();
   xrpAppInstance.getAddress.mockReset();
   xrpAppInstance.signTransaction.mockReset();
+  mockTransport.close.mockReset().mockResolvedValue(undefined);
   transportWebHID.create.mockResolvedValue(mockTransport);
   transportWebUSB.create.mockResolvedValue(mockTransport);
 });
@@ -166,5 +167,105 @@ describe('LedgerAdapter.disconnect', () => {
     await adapter.disconnect();
 
     expect(await adapter.getAccount()).toBeNull();
+  });
+});
+
+describe('LedgerAdapter.fetchAccount', () => {
+  async function connected() {
+    installNavigator({ hid: {} });
+    xrpAppInstance.getAddress.mockResolvedValueOnce({
+      address: 'rLedger',
+      publicKey: 'aabbcc',
+    });
+    const adapter = new LedgerAdapter();
+    await adapter.connect({ network: 'testnet' });
+    return adapter;
+  }
+
+  it('performs a fresh device read and replaces changed account data', async () => {
+    const adapter = await connected();
+    xrpAppInstance.getAddress.mockResolvedValueOnce({
+      address: 'rLedgerChanged',
+      publicKey: 'ddeeff',
+    });
+
+    await expect(adapter.fetchAccount()).resolves.toMatchObject({
+      address: 'rLedgerChanged',
+      publicKey: 'ddeeff',
+      network: { id: 'testnet' },
+    });
+    expect(xrpAppInstance.getAddress).toHaveBeenCalledTimes(2);
+    await expect(adapter.getAccount()).resolves.toMatchObject({ address: 'rLedgerChanged' });
+  });
+
+  it('returns null without touching the device after disconnect', async () => {
+    const adapter = await connected();
+    await adapter.disconnect();
+
+    await expect(adapter.fetchAccount()).resolves.toBeNull();
+    expect(xrpAppInstance.getAddress).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidates account reads as soon as disconnect starts', async () => {
+    const adapter = await connected();
+    let releaseClose!: () => void;
+    mockTransport.close.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (releaseClose = resolve))
+    );
+
+    const disconnecting = adapter.disconnect();
+    await expect(adapter.fetchAccount()).resolves.toBeNull();
+    expect(xrpAppInstance.getAddress).toHaveBeenCalledTimes(1);
+
+    releaseClose();
+    await disconnecting;
+  });
+
+  it('maps a fresh device-read failure without replacing the cached account', async () => {
+    const adapter = await connected();
+    xrpAppInstance.getAddress.mockRejectedValueOnce(new Error('No device found'));
+
+    await expect(adapter.fetchAccount()).rejects.toMatchObject({
+      code: WalletErrorCode.WALLET_NOT_INSTALLED,
+    });
+    await expect(adapter.getAccount()).resolves.toMatchObject({ address: 'rLedger' });
+  });
+});
+
+describe('LedgerAdapter reconnect options', () => {
+  it('serializes a constructor-selected account as its effective path', () => {
+    const adapter = new LedgerAdapter({ accountIndex: 7 });
+
+    expect(adapter.serializeReconnectOptions({ network: 'testnet' })).toEqual({
+      derivationPath: "44'/144'/7'/0/0",
+    });
+  });
+
+  it('serializes the account index actually used when derivationPath is empty', async () => {
+    installNavigator({ hid: {} });
+    xrpAppInstance.getAddress.mockResolvedValue({ address: 'rLedger', publicKey: 'aabbcc' });
+    const adapter = new LedgerAdapter();
+
+    const options = { derivationPath: '', accountIndex: 7 };
+    await adapter.connect(options);
+
+    expect(xrpAppInstance.getAddress).toHaveBeenCalledWith("44'/144'/7'/0/0", false, false);
+    expect(adapter.serializeReconnectOptions(options)).toEqual({
+      derivationPath: "44'/144'/7'/0/0",
+    });
+  });
+
+  it('retains and serializes the active path when a later connect omits a selector', async () => {
+    installNavigator({ hid: {} });
+    xrpAppInstance.getAddress.mockResolvedValue({ address: 'rLedger', publicKey: 'aabbcc' });
+    const adapter = new LedgerAdapter();
+
+    await adapter.connect({ accountIndex: 7 });
+    await adapter.connect({ network: 'testnet' });
+
+    expect(xrpAppInstance.getAddress).toHaveBeenLastCalledWith("44'/144'/7'/0/0", false, false);
+    expect(adapter.serializeReconnectOptions({ network: 'testnet' })).toEqual({
+      derivationPath: "44'/144'/7'/0/0",
+    });
   });
 });

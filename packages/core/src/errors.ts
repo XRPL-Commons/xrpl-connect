@@ -44,6 +44,18 @@ export class WalletError extends Error {
   public readonly category: WalletErrorCategory;
   public readonly originalError?: Error;
 
+  static [Symbol.hasInstance](value: unknown): boolean {
+    if (!value || typeof value !== 'object') return false;
+
+    const candidate = value as Partial<WalletError>;
+    return (
+      candidate.name === 'WalletError' &&
+      typeof candidate.message === 'string' &&
+      typeof candidate.code === 'string' &&
+      typeof candidate.category === 'string'
+    );
+  }
+
   constructor(code: WalletErrorCode, message: string, originalError?: Error) {
     super(message);
     this.name = 'WalletError';
@@ -144,7 +156,7 @@ export const createWalletError = {
   alreadyConnected: (walletName: string): WalletError =>
     new WalletError(
       WalletErrorCode.ALREADY_CONNECTED,
-      `${walletName} is already connected. Disconnect first before connecting to another wallet.`
+      `${walletName} is already connected or connecting. Disconnect first before starting another connection.`
     ),
 
   unsupportedMethod: (message: string): WalletError =>

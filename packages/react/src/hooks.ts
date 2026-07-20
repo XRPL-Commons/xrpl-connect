@@ -4,7 +4,7 @@ import type {
   SignedTransaction,
   SubmittedTransaction,
   SignedMessage,
-} from 'xrpl-connect';
+} from '@xrpl-connect/core';
 import { useXrplConnectContext } from './provider';
 
 /**

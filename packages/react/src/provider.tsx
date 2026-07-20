@@ -7,8 +7,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import { WalletManager, isWalletError } from 'xrpl-connect';
-import type { AccountInfo, NetworkInfo, WalletError, ConnectOptions } from 'xrpl-connect';
+import { WalletManager, isWalletError } from '@xrpl-connect/core';
+import type { AccountInfo, NetworkInfo, WalletError, ConnectOptions } from '@xrpl-connect/core';
 import type {
   XrplConnectContextValue,
   XrplConnectProviderProps,
@@ -21,21 +21,22 @@ const XrplConnectContext = createContext<XrplConnectContextValue | null>(null);
  * Wrap your app once. Holds a single {@link WalletManager} (built from `config`
  * — your adapters, API keys, network) for the whole subtree, exposes reactive
  * connection state, and drives the `<WalletConnector>` modal. The manager is
- * created exactly once on mount; `config` is read at that point (use a React
+ * stable for the committed mount; `config` is read at that point (use a React
  * `key` on the provider to rebuild it). (#33)
  */
 export function XrplConnectProvider({ config, children }: XrplConnectProviderProps) {
-  // Lazy ref init (NOT useState initializer): React StrictMode double-invokes
-  // state initializers in dev, which would build two managers — and the manager
-  // constructor has side effects (logger config, autoConnect). useRef persists
-  // across the double render, so this runs exactly once per mount.
+  // React may discard an initial render in development StrictMode. Suppress the
+  // constructor's asynchronous auto-connect so a discarded manager is inert;
+  // the committed manager starts reconnecting from the lifecycle effect below.
   const managerRef = useRef<WalletManager | null>(null);
   if (managerRef.current === null) {
-    managerRef.current = new WalletManager(config);
+    managerRef.current = new WalletManager({ ...config, autoConnect: false });
   }
   const manager = managerRef.current;
+  const autoConnectRef = useRef(config.autoConnect === true);
+  const mountedRef = useRef(false);
 
-  const connectorRef = useRef<WalletConnectorElement | null>(null);
+  const connectorsRef = useRef<Set<WalletConnectorElement>>(new Set());
 
   const [connected, setConnected] = useState<boolean>(manager.connected);
   const [account, setAccount] = useState<AccountInfo | null>(manager.account);
@@ -44,6 +45,7 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
   const [error, setError] = useState<WalletError | null>(null);
 
   useEffect(() => {
+    mountedRef.current = true;
     const sync = () => {
       setConnected(manager.connected);
       setAccount(manager.account);
@@ -68,15 +70,34 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
     manager.on('networkChanged', onNetworkChanged);
     manager.on('error', onError);
 
-    // `autoConnect` may have settled before this effect ran — sync once now.
     sync();
 
+    let disposed = false;
+    if (autoConnectRef.current) {
+      // StrictMode replays effects before microtasks run. Deferring here means
+      // the throwaway setup is cancelled and only the live setup reconnects.
+      queueMicrotask(() => {
+        if (disposed) return;
+        void manager.reconnect().then(
+          () => {
+            if (disposed && manager.connected) void manager.disconnect().catch(() => undefined);
+          },
+          (reconnectError: unknown) => {
+            if (!disposed && isWalletError(reconnectError)) setError(reconnectError);
+          }
+        );
+      });
+    }
+
     return () => {
+      disposed = true;
+      mountedRef.current = false;
       manager.off('connect', onConnect);
       manager.off('disconnect', onDisconnect);
       manager.off('accountChanged', onAccountChanged);
       manager.off('networkChanged', onNetworkChanged);
       manager.off('error', onError);
+      void manager.disconnect().catch(() => undefined);
     };
   }, [manager]);
 
@@ -85,10 +106,16 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
       setConnecting(true);
       setError(null);
       try {
-        return await manager.connect(walletId, options);
+        const connectedAccount = await manager.connect(walletId, options);
+        if (!mountedRef.current && manager.connected) {
+          await manager.disconnect();
+        }
+        return connectedAccount;
       } catch (err) {
-        setConnecting(false);
-        if (isWalletError(err)) setError(err);
+        if (mountedRef.current) {
+          setConnecting(false);
+          if (isWalletError(err)) setError(err);
+        }
         throw err;
       }
     },
@@ -97,8 +124,11 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
 
   const disconnect = useCallback(() => manager.disconnect(), [manager]);
 
-  const registerConnector = useCallback((el: WalletConnectorElement | null) => {
-    connectorRef.current = el;
+  const registerConnector = useCallback((el: WalletConnectorElement) => {
+    connectorsRef.current.add(el);
+  }, []);
+  const unregisterConnector = useCallback((el: WalletConnectorElement) => {
+    connectorsRef.current.delete(el);
   }, []);
   const reportModalConnecting = useCallback(() => {
     setConnecting(true);
@@ -109,8 +139,12 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
     setError(modalError);
   }, []);
 
-  const openModal = useCallback(() => connectorRef.current?.open(), []);
-  const closeModal = useCallback(() => connectorRef.current?.close(), []);
+  const getActiveConnector = useCallback(() => {
+    const connectors = [...connectorsRef.current];
+    return connectors.at(-1) ?? null;
+  }, []);
+  const openModal = useCallback(() => getActiveConnector()?.open(), [getActiveConnector]);
+  const closeModal = useCallback(() => getActiveConnector()?.close(), [getActiveConnector]);
 
   const value = useMemo<XrplConnectContextValue>(
     () => ({
@@ -123,6 +157,7 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
       connect,
       disconnect,
       registerConnector,
+      unregisterConnector,
       reportModalConnecting,
       reportModalError,
       openModal,
@@ -138,6 +173,7 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
       connect,
       disconnect,
       registerConnector,
+      unregisterConnector,
       reportModalConnecting,
       reportModalError,
       openModal,

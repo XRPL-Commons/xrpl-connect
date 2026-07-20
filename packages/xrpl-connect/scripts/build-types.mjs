@@ -1,6 +1,6 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { Extractor, ExtractorConfig } from '@microsoft/api-extractor';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -51,7 +51,7 @@ const config = ExtractorConfig.prepare({
     //   - `@xrpl-connect/*` — all workspace packages (the re-exported surface).
     //   - `eventemitter3`   — `WalletManager extends EventEmitter`, bundled into
     //                         the JS, so `manager.on(...)` needs its type inlined.
-    // Left EXTERNAL on purpose (declared as deps by prepare-publish.js so they
+    // Left EXTERNAL on purpose (declared as deps by prepare-publish.mjs so they
     // resolve in the consumer's tree — see ALLOWED_EXTERNAL_IMPORTS below):
     //   - `xrpl`                 — consumer-installed peer dependency.
     //   - `@walletconnect/types` — `WalletConnectAdapterOptions.metadata` is
@@ -60,6 +60,8 @@ const config = ExtractorConfig.prepare({
     //       of `@walletconnect/*` packages plus Node's `events` — several of which
     //       cannot be bundled. A single declared dependency is far cleaner and
     //       its own transitive types resolve for free.
+    //   - Wallet SDK packages   — intentionally preserved as namespace exports,
+    //       so consumers receive their complete upstream APIs and types.
     bundledPackages: ['@xrpl-connect/*', 'eventemitter3'],
     compiler: {
       tsconfigFilePath: '<projectFolder>/tsconfig.json',
@@ -97,12 +99,43 @@ if (!result.succeeded || result.warningCount > 0) {
 // unresolvable `import ... from '<pkg>'` (or a silent `any` under
 // `skipLibCheck`). Every external import the rollup keeps MUST be a module the
 // consumer is guaranteed to have — i.e. one declared in the published manifest
-// by prepare-publish.js. Keep this allow-list in lock-step with that script.
+// by prepare-publish.mjs. Keep this allow-list in lock-step with that script.
 const ALLOWED_EXTERNAL_IMPORTS = new Set([
   'xrpl', // peerDependency
   '@walletconnect/types', // dependency
+  '@xyrawallet/sdk', // dependency (public Xyra option/network types)
+  'xumm', // dependency (public XamanSDK namespace)
+  'xumm-oauth2-pkce', // dependency (public XamanOAuth2 namespace)
+  '@gemwallet/api', // dependency (public GemWalletAPI namespace)
+  '@crossmarkio/typings/sdk', // dependency (public CrossmarkSDK typings namespace)
 ]);
-const rolled = readFileSync(path.join(projectFolder, 'dist-publish', 'index.d.ts'), 'utf-8');
+const rolledPath = path.join(projectFolder, 'dist-publish', 'index.d.ts');
+let rolled = readFileSync(rolledPath, 'utf-8');
+
+// Crossmark's public typings use the global `chrome` namespace without declaring
+// a reference to it. Preserve the complete upstream types while making them work
+// for consumers that intentionally restrict `compilerOptions.types`.
+const chromeTypesReference = '/// <reference types="chrome" />\n';
+if (!rolled.startsWith(chromeTypesReference)) {
+  rolled = chromeTypesReference + rolled;
+}
+
+// API Extractor inlines the UI package's exported element interface but drops
+// its `declare global` block. Restore the custom-element tag mapping so the
+// packed facade keeps the same `document.createElement()` inference as the
+// standalone UI package.
+const walletConnectorTagDeclaration = `
+declare global {
+    interface HTMLElementTagNameMap {
+        'xrpl-wallet-connector': WalletConnectorElementInstance;
+    }
+}
+`;
+if (!rolled.includes("'xrpl-wallet-connector': WalletConnectorElementInstance")) {
+  rolled += walletConnectorTagDeclaration;
+}
+writeFileSync(rolledPath, rolled);
+
 const importedModules = new Set();
 for (const m of rolled.matchAll(/^\s*(?:import|export)\b[^;]*?\bfrom\s*['"]([^'"]+)['"]/gm)) {
   importedModules.add(m[1]);
@@ -119,5 +152,8 @@ if (leaked.length > 0) {
   process.exit(1);
 }
 
-console.log('✓ Rolled up types to dist-publish/index.d.ts (self-contained: only ' +
-  [...ALLOWED_EXTERNAL_IMPORTS].join(', ') + ' left external)');
+console.log(
+  '✓ Rolled up types to dist-publish/index.d.ts (self-contained: only ' +
+    [...ALLOWED_EXTERNAL_IMPORTS].join(', ') +
+    ' left external)'
+);

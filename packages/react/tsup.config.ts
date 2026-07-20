@@ -1,10 +1,10 @@
 import { defineConfig } from 'tsup';
 import { createTsupConfig } from '../../tsup.base.config';
 
-// React bindings are a thin layer over `xrpl-connect`; keep React and the
-// meta-package external so consumers resolve them from their own install.
+// Keep React external, but bundle the core runtime so importing this package is
+// safe in server environments where wallet SDKs have browser-only side effects.
 export default defineConfig(
   createTsupConfig({
-    external: ['react', 'react-dom', 'react/jsx-runtime', 'xrpl-connect'],
+    external: ['react', 'react-dom', 'react/jsx-runtime'],
   })
 );

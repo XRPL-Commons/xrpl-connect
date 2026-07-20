@@ -86,13 +86,13 @@ We provide a comprehensive React example application that demonstrates all XRPL-
 The example demonstrates:
 
 - ✅ Multiple wallet adapter support (Xaman, WalletConnect, Crossmark, GemWallet, Ledger)
-- ✅ Custom React hooks for wallet management
+- ✅ Official provider and hooks from `@xrpl-connect/react`
 - ✅ React Context API for global wallet state
 - ✅ Transaction and message signing forms
 - ✅ Dynamic theme switching
 - ✅ Real-time event logging
-- ✅ Proper TypeScript integration with web components
-- ✅ Best practices for web component lifecycle in React
+- ✅ Typed React wrapper around the wallet-connector web component
+- ✅ Demo-specific activity and status state kept separate from wallet state
 
 ### Project Structure
 
@@ -109,15 +109,17 @@ examples/react/
 │   │   ├── ThemeSelector.tsx       # Switch themes
 │   │   └── EventLog.tsx            # Display wallet events
 │   ├── context/
-│   │   └── WalletContext.tsx       # Global wallet state
-│   ├── hooks/
-│   │   ├── useWalletManager.ts     # Initialize WalletManager
-│   │   └── useWalletConnector.ts   # Connect to web component
+│   │   └── DemoContext.tsx         # Demo activity/status state only
 │   └── types/
 │       └── index.ts                # TypeScript definitions
 ```
 
-## Installation
+## Manual integration
+
+The remainder of this guide shows how to build the provider and hooks yourself.
+Use this approach only when you need lifecycle behavior beyond the official package.
+
+### Installation
 
 ```bash
 npm install xrpl-connect xrpl

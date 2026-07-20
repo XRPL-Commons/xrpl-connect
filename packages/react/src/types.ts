@@ -5,7 +5,7 @@ import type {
   NetworkInfo,
   WalletError,
   ConnectOptions,
-} from 'xrpl-connect';
+} from '@xrpl-connect/core';
 import type { CSSProperties, ReactNode } from 'react';
 
 /**
@@ -30,8 +30,10 @@ export interface XrplConnectContextValue {
   error: WalletError | null;
   connect: (walletId: string, options?: ConnectOptions) => Promise<AccountInfo>;
   disconnect: () => Promise<void>;
-  /** @internal — used by `<WalletConnector>` to register/clear its element. */
-  registerConnector: (el: WalletConnectorElement | null) => void;
+  /** @internal — used by `<WalletConnector>` to register its element. */
+  registerConnector: (el: WalletConnectorElement) => void;
+  /** @internal — removes only the connector that is being unmounted. */
+  unregisterConnector: (el: WalletConnectorElement) => void;
   /** @internal — mirrors modal lifecycle events into provider state. */
   reportModalConnecting: () => void;
   /** @internal — mirrors typed modal failures into provider state. */
