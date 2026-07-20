@@ -61,9 +61,17 @@ describe('WalletConnector wallet availability', () => {
   });
 
   it('cancels a pending wallet selection before returning to the wallet list', async () => {
-    const walletConnect = createAdapter('walletconnect', 'WalletConnect', vi.fn(async () => true));
+    const walletConnect = createAdapter(
+      'walletconnect',
+      'WalletConnect',
+      vi.fn(async () => true)
+    );
     walletConnect.connect = vi.fn(() => new Promise(() => {}));
-    const xaman = createAdapter('xaman', 'Xaman', vi.fn(async () => true));
+    const xaman = createAdapter(
+      'xaman',
+      'Xaman',
+      vi.fn(async () => true)
+    );
     xaman.connect = vi.fn(async () => ({ address: 'rXaman', network: NETWORK }));
     const manager = new WalletManager({ adapters: [walletConnect, xaman] });
     element = createElement(manager);

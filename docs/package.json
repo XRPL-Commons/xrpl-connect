@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "xrpl": "^4.4.2",
-    "xrpl-connect": "workspace:*"
+    "xrpl-connect": "^0.8.0"
   },
   "devDependencies": {
     "vitepress": "^1.6.4",
