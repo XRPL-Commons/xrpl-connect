@@ -146,6 +146,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     disconnectedCallback() {
       this.openGeneration += 1;
       this.isOpen = false;
+      this.accountModalOpen = false;
+      this.resetWalletAvailability();
       this.eventHandler?.detachEventListeners();
 
       if (this.walletManager && this.walletManagerHandlers) {
@@ -340,7 +342,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     private async refreshWalletAvailability() {
-      if (await this.checkWalletAvailability()) {
+      const openGeneration = this.openGeneration;
+      const availabilityApplied = await this.checkWalletAvailability();
+      if (availabilityApplied && openGeneration === this.openGeneration && this.isOpen) {
         this.walletAvailabilityChecked = true;
         this.render();
       }

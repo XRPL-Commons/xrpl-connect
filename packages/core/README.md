@@ -69,7 +69,7 @@ interface LoggerInstance {
 
 #### `connect(walletId: string, options?: ConnectOptions): Promise<AccountInfo>`
 
-Initiates connection to a specific wallet adapter.
+Initiates connection to a specific wallet adapter. The availability preflight is bounded by `TIME.AVAILABILITY_TIMEOUT` (one second), so an unresponsive adapter fails with `WALLET_NOT_AVAILABLE` instead of blocking indefinitely.
 
 **Parameters**:
 

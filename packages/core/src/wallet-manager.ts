@@ -108,8 +108,31 @@ export class WalletManager extends EventEmitter<WalletEvent> {
 
     try {
       // Check availability
-      const available = await adapter.isAvailable();
-      if (!available) {
+      const availability = await withTimeout<
+        | { available: boolean; error?: never }
+        | { available?: never; error: unknown }
+        | typeof AVAILABILITY_TIMED_OUT
+      >(
+        async () => {
+          try {
+            return { available: await adapter.isAvailable() };
+          } catch (error) {
+            return { error };
+          }
+        },
+        TIME.AVAILABILITY_TIMEOUT,
+        AVAILABILITY_TIMED_OUT
+      );
+      if (availability === AVAILABILITY_TIMED_OUT) {
+        this.logger.warn(
+          `Timed out checking availability for ${adapter.name} after ${TIME.AVAILABILITY_TIMEOUT}ms`
+        );
+        throw createWalletError.notAvailable(adapter.name);
+      }
+      if ('error' in availability) {
+        throw availability.error;
+      }
+      if (!availability.available) {
         throw createWalletError.notAvailable(adapter.name);
       }
 

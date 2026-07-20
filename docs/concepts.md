@@ -52,7 +52,7 @@ await walletManager.disconnect();
 
 ### Key Methods
 
-- `connect(walletId, options?)` - Connect to a wallet by id
+- `connect(walletId, options?)` - Connect to a wallet by id after a one-second availability preflight
 - `reconnect()` - Reconnect to the previously connected wallet from storage
 - `sign(transaction)` - Sign a transaction and return the signed blob
 - `signAndSubmit(transaction)` - Sign and submit transaction to ledger

@@ -46,7 +46,7 @@ const walletManager = new WalletManager(options: WalletManagerOptions)
 async connect(walletId: string, options?: ConnectOptions): Promise<AccountInfo>
 ```
 
-Connect to a registered adapter by `id` (e.g. `'xaman'`). Emits `connect` with the account.
+Connect to a registered adapter by `id` (e.g. `'xaman'`). The availability preflight is bounded by `TIME.AVAILABILITY_TIMEOUT` (one second) and rejects with `WALLET_NOT_AVAILABLE` when the adapter does not respond. Emits `connect` with the account.
 
 #### reconnect()
 

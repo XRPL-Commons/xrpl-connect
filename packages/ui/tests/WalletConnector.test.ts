@@ -37,6 +37,7 @@ function createElement(manager: WalletManager) {
     setWalletManager(manager: WalletManager): void;
     open(): Promise<void>;
     close(): void;
+    openAccountModal(): void;
     disconnectedCallback(): void;
     getOverlayRoot(): ShadowRoot | null;
   };
@@ -223,5 +224,60 @@ describe('WalletConnector wallet availability', () => {
     expect(onOpen).not.toHaveBeenCalled();
     expect(element.getOverlayRoot()).toBeNull();
     expect(document.body.style.overflow).toBe('');
+  });
+
+  it('leaves the loading view when a selected wallet stops responding', async () => {
+    const isAvailable = vi
+      .fn<WalletAdapter['isAvailable']>()
+      .mockResolvedValueOnce(true)
+      .mockReturnValueOnce(new Promise<boolean>(() => {}));
+    const adapter = createAdapter('wallet', 'Wallet', isAvailable);
+    element = createElement(new WalletManager({ adapters: [adapter] }));
+
+    await element.open();
+    (
+      element.getOverlayRoot()?.querySelector('[data-wallet-id="wallet"]') as HTMLButtonElement
+    ).click();
+    await vi.advanceTimersByTimeAsync(TIME.AVAILABILITY_TIMEOUT * 2);
+
+    expect(isAvailable).toHaveBeenCalledTimes(2);
+    expect(adapter.connect).not.toHaveBeenCalled();
+    expect(element.getOverlayRoot()?.querySelector('#loading-back-button')).toBeNull();
+    expect(element.getOverlayRoot()?.textContent).toContain('Wallet is not currently available.');
+  });
+
+  it('invalidates a pending refresh when disconnected', async () => {
+    let resolveRefresh!: (available: boolean) => void;
+    const refresh = new Promise<boolean>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const isAvailable = vi
+      .fn<WalletAdapter['isAvailable']>()
+      .mockResolvedValueOnce(true)
+      .mockReturnValueOnce(refresh)
+      .mockResolvedValue(true);
+    const adapter = createAdapter('wallet', 'Wallet', isAvailable);
+    element = createElement(new WalletManager({ adapters: [adapter] }));
+    document.body.appendChild(element);
+
+    await element.open();
+    element.openAccountModal();
+    element.setAttribute('wallets', 'wallet');
+    expect(document.querySelector('[data-xrpl-account-modal-portal]')).not.toBeNull();
+
+    element.remove();
+    expect(document.querySelector('[data-xrpl-account-modal-portal]')).toBeNull();
+
+    resolveRefresh(true);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(document.querySelector('[data-xrpl-account-modal-portal]')).toBeNull();
+
+    document.body.appendChild(element);
+    expect(document.querySelector('[data-xrpl-account-modal-portal]')).toBeNull();
+    await element.open();
+
+    expect(isAvailable).toHaveBeenCalledTimes(3);
+    expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="wallet"]')).not.toBeNull();
   });
 });
