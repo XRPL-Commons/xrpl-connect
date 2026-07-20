@@ -41,6 +41,10 @@ export default defineConfig({
         __dirname,
         '../adapters/walletconnect/src/index.ts'
       ),
+      '@xrpl-connect/adapter-metamask-snap': resolve(
+        __dirname,
+        '../adapters/metamask-snap/src/index.ts'
+      ),
     },
   },
   plugins: [

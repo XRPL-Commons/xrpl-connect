@@ -1,49 +1,50 @@
 import { useState, FormEvent } from 'react';
-import { useWallet } from '../context/WalletContext';
-import { Transaction } from 'xrpl-connect';
+import { useWallet, useSigner } from '@xrpl-connect/react';
+import type { Transaction } from 'xrpl-connect';
+import { useDemo } from '../context/DemoContext';
 
 export function TransactionForm() {
-  const { walletManager, isConnected, addEvent } = useWallet();
+  const { connected, account } = useWallet();
+  const { signAndSubmit } = useSigner();
+  const { addEvent } = useDemo();
   const [destination, setDestination] = useState('');
   const [amount, setAmount] = useState('');
   const [result, setResult] = useState('');
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-
-    if (!walletManager || !walletManager.account) return;
+    if (!account) return;
 
     try {
       setResult('<div class="loading">Signing and submitting transaction...</div>');
 
       const transaction: Transaction = {
         TransactionType: 'Payment',
-        Account: walletManager.account.address,
+        Account: account.address,
         Destination: destination,
         Amount: amount,
       };
 
-      const txResult = await walletManager.signAndSubmit(transaction);
+      const txResult = await signAndSubmit(transaction);
 
-      const txBlob = txResult.tx_blob as string | undefined;
       setResult(`
         <div class="success">
           <h3>Transaction Submitted!</h3>
           <p><strong>Hash:</strong> ${txResult.hash || 'Pending'}</p>
           ${txResult.id ? `<p><strong>ID:</strong> ${txResult.id}</p>` : ''}
-          ${txBlob ? `<p><strong>Blob:</strong> <code>${txBlob.substring(0, 50)}...</code></p>` : ''}
           <p class="info">✅ Transaction has been signed and submitted to the ledger</p>
         </div>
       `);
 
       addEvent('Transaction Submitted', txResult);
-    } catch (error: any) {
-      setResult(`<div class="error">Failed: ${error.message}</div>`);
-      addEvent('Transaction Failed', error);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setResult(`<div class="error">Failed: ${message}</div>`);
+      addEvent('Transaction Failed', { message });
     }
   };
 
-  if (!isConnected) {
+  if (!connected) {
     return null;
   }
 
@@ -76,7 +77,7 @@ export function TransactionForm() {
           <small>1 XRP = 1,000,000 drops</small>
         </div>
         <button type="submit" className="btn-primary">
-          Sign & Submit Transaction
+          Sign &amp; Submit Transaction
         </button>
       </form>
       {result && <div className="result" dangerouslySetInnerHTML={{ __html: result }} />}
