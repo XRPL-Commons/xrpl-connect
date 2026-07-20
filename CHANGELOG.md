@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - xrpl-connect (meta-package): re-export each adapter's full public surface, not just the adapter class. Consumers can now reach adapter-specific exports — including every `*AdapterOptions`/`*ConnectOptions` type — and the complete upstream Xaman, Xaman OAuth, Crossmark, and GemWallet APIs through the collision-safe `XamanSDK`, `XamanOAuth2`, `CrossmarkSDK`, and `GemWalletAPI` namespaces (#35).
-- Core: runtime network switching. `WalletManager.switchNetwork(network)` delegates to adapters that can switch natively (new opt-in `SupportsNetworkSwitch` capability + `supportsNetworkSwitch()` guard) and otherwise updates the network the manager reports/uses locally; either way it persists the change and emits `networkChanged`. `WalletManager.getNetwork()` returns the live network from the connected wallet. Previously the network could only be set at connect time.
+- Core: add adapter-backed runtime network control. `WalletManager.getNetwork()` returns the current network reported by the connected adapter, while `WalletManager.switchNetwork(network)` delegates only to adapters implementing the opt-in `SupportsNetworkSwitch` capability. Unsupported adapters reject with `UNSUPPORTED_METHOD` without changing local state. A successful native switch updates the manager's account and stored network state and notifies `networkChanged` listeners when the applied network changes. No bundled adapter currently implements native switching; wallet-driven changes remain observable through `networkChanged` (#98).
 
 ### Fixed
 

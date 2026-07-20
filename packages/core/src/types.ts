@@ -43,7 +43,7 @@ export const STANDARD_NETWORKS: Record<string, NetworkInfo> = {
 };
 
 /**
- * Network configuration type - can be a standard network key or custom NetworkInfo
+ * Network configuration type - a string network identifier or custom NetworkInfo
  */
 export type NetworkConfig = keyof typeof STANDARD_NETWORKS | NetworkInfo;
 
@@ -173,10 +173,11 @@ export function supportsDeepLink(
 }
 
 /**
- * Capability: adapter can switch the active network at runtime on the user's
- * behalf (e.g. an extension exposing a switch-network request), returning the
- * network it settled on. Adapters that don't implement this leave network
- * selection to the wallet UI (surfaced via the `networkChanged` event).
+ * Capability: adapter can request a real wallet-side network switch at runtime.
+ * Implementations must return the complete, authoritative network the wallet
+ * settled on; adapters without a verifiable native switch API must omit this
+ * capability. Adapters may emit their normal `networkChanged` event while the
+ * request resolves—the manager deduplicates that notification.
  */
 export interface SupportsNetworkSwitch {
   switchNetwork(network: NetworkConfig): Promise<NetworkInfo>;
