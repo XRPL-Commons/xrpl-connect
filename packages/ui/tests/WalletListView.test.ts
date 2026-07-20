@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vite-plus/test';
 import type { WalletAdapter } from '@xrpl-connect/core';
 import { renderWalletListView } from '../src/views/WalletListView';
 

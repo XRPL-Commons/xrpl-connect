@@ -1,5 +1,5 @@
 {
-  "name": "xrpl-connect",
+  "name": "xrpl-connect-monorepo",
   "version": "0.8.2",
   "private": true,
   "description": "A framework-agnostic wallet connection toolkit for XRPL",
@@ -17,41 +17,28 @@
   },
   "license": "MIT",
   "scripts": {
-    "build": "turbo build",
-    "dev": "turbo dev",
-    "test": "turbo test -- --passWithNoTests",
-    "lint": "turbo lint",
-    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\"",
-    "clean": "turbo clean && rm -rf node_modules",
-    "docs:dev": "vitepress dev docs",
-    "docs:build": "vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "build": "vp run -r build",
+    "dev": "vp run -r --parallel dev",
+    "test": "vp run -r build && vp run -F './packages/**' --ignore-depends-on --concurrency-limit 2 test -- --passWithNoTests",
+    "lint": "vp lint",
+    "format": "vp fmt",
+    "format:check": "vp fmt --check",
+    "clean": "vp run -r clean && vp cache clean",
+    "docs:dev": "vp exec vitepress dev docs",
+    "docs:build": "vp exec vitepress build docs",
+    "docs:preview": "vp exec vitepress preview docs"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.3.1",
-    "@eslint/js": "^9.39.1",
     "@types/node": "^20.14.0",
-    "@typescript-eslint/eslint-plugin": "^8.46.1",
-    "@typescript-eslint/parser": "^8.46.1",
-    "eslint": "^9.37.0",
-    "globals": "^16.5.0",
-    "prettier": "^3.3.0",
-    "tsup": "^8.1.0",
-    "turbo": "^2.0.0",
     "typescript": "^5.5.0",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
     "vitepress": "^1.6.4",
-    "vitest": "^3.2.6",
     "vue": "^3.5.22"
-  },
-  "pnpm": {
-    "overrides": {
-      "gray-matter>js-yaml": "^3.14.1"
-    }
   },
   "packageManager": "pnpm@10.18.3",
   "engines": {
-    "node": ">=18.0.0",
+    "node": "^20.19.0 || ^22.18.0 || >=24.11.0",
     "pnpm": ">=8.0.0"
   }
 }

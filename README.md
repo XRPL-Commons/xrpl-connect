@@ -172,22 +172,22 @@ XRPL Connect is built with a modular, adapter-based architecture:
 
 ```bash
 # Install dependencies
-pnpm install
+pnpm exec vp install
 
 # Build all packages
-pnpm build
+pnpm exec vp run build
 
 # Run tests
-pnpm test
+pnpm exec vp run test
 
 # Lint
-pnpm lint
+pnpm exec vp lint
 
 # Format
-pnpm format
+pnpm exec vp fmt
 
 # Development mode (watch)
-pnpm dev
+pnpm exec vp run dev
 ```
 
 ## 🤝 Contributing

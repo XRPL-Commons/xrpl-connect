@@ -1,4 +1,4 @@
-import { describe, it, expect, expectTypeOf, vi, beforeEach } from 'vitest';
+import { describe, it, expect, expectTypeOf, vi, beforeEach } from 'vite-plus/test';
 import { WalletErrorCode, type Transaction } from '@xrpl-connect/core';
 
 const mockClient = {

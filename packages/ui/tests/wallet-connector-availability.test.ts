@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { WalletManager, type WalletAdapter } from '@xrpl-connect/core';
 import { WalletConnectorElement } from '../src/wallet-connector';
 

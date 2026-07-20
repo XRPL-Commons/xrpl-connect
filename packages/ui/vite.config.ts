@@ -1,9 +1,9 @@
-/// <reference types="vite-plus/test" />
 import { defineConfig } from 'vite-plus';
+import { createPackConfig } from '../../vite.pack.config';
 
 export default defineConfig({
+  pack: createPackConfig(),
   test: {
-    globals: true,
     environment: 'jsdom',
   },
 });

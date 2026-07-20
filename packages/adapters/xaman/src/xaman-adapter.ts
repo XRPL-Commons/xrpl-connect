@@ -520,7 +520,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
     let handleAbort: (() => void) | undefined;
     this.activePayloadOperations.add(operation);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any
     const payloadBody: any = {
       txjson: transaction,
       options: {

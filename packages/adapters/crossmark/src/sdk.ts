@@ -11,7 +11,7 @@ type CrossmarkCryptOptions = typeof CrossmarkTypings.Models.CryptOpts;
 
 /** Listener accepted by Crossmark's EventEmitter-based APIs. */
 // EventEmitter listeners intentionally support arbitrary event-specific arguments.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// oxlint-disable-next-line typescript/no-explicit-any
 export type CrossmarkListener = (...args: any[]) => void;
 
 /** Public request tracked by Crossmark while it awaits a wallet response. */

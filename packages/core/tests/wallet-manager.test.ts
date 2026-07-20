@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect, expectTypeOf, vi } from 'vitest';
+import { afterEach, describe, it, expect, expectTypeOf, vi } from 'vite-plus/test';
 import EventEmitter from 'eventemitter3';
 import { WalletManager } from '../src/wallet-manager';
 import { MemoryStorageAdapter, Storage } from '../src/storage';

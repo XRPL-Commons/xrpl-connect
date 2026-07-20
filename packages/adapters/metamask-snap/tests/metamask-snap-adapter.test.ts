@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 import { WalletErrorCode } from '@xrpl-connect/core';
 import { MetaMaskSnapAdapter } from '../src/metamask-snap-adapter';
 

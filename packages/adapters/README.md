@@ -841,8 +841,8 @@ export class YourWalletAdapter implements WalletAdapter, SupportsFetchAccount {
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch"
+    "build": "vp pack",
+    "dev": "vp pack --watch"
   },
   "dependencies": {
     "@xrpl-connect/core": "workspace:*"
@@ -920,7 +920,7 @@ async connect(options?: any): Promise<AccountInfo> {
 ### Unit Testing Pattern
 
 ```typescript
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vite-plus/test';
 import { YourWalletAdapter } from './index';
 import { WalletErrorCode } from '@xrpl-connect/core';
 
@@ -1001,7 +1001,7 @@ packages/adapters/
 |   |   └── xyra-adapter.ts
 │   ├── package.json
 │   ├── tsconfig.json
-│   └── tsup.config.ts
+│   └── vite.config.ts
 ├── otsu/                     # Otsu extension adapter
 │   ├── src/
 │   │   ├── index.ts
@@ -1009,7 +1009,7 @@ packages/adapters/
 |   |   └── otsu-adapter.ts
 │   ├── package.json
 │   ├── tsconfig.json
-│   └── tsup.config.ts
+│   └── vite.config.ts
 ├── index.ts                  # Central export point
 └── CODE_DOC.md              # This file
 ```

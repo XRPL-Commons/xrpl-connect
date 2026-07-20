@@ -5,7 +5,7 @@
     "rootDir": "./src",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    "types": ["vitest/globals"]
+    "types": ["vite-plus/test"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

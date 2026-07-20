@@ -12,32 +12,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
         with:
-          node-version: 24
-          cache: pnpm
+          node-version: '24'
+          cache: true
 
       - name: Install dependencies
-        run: pnpm i
+        run: vp install
 
       - name: Build
-        run: pnpm build
+        run: vp run -r build
 
       - name: Test published package
-        run: pnpm --filter xrpl-connect test:publish
+        run: vp run -F xrpl-connect test:publish
 
-      - name: Lint
-        run: pnpm lint
-
-      - name: Format check
-        run: pnpm format:check
+      - name: Check
+        run: vp check
 
       - name: Test
-        run: pnpm test
+        run: vp run -F './packages/**' --ignore-depends-on --concurrency-limit 2 test -- --passWithNoTests
 
   docs-build:
     runs-on: ubuntu-latest
@@ -45,17 +39,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
         with:
-          node-version: 24
-          cache: pnpm
+          node-version: '24'
+          cache: true
 
       - name: Install dependencies
-        run: pnpm i --filter docs
+        run: vp install --filter docs
 
       - name: Build docs
-        run: pnpm docs:build
+        run: vp run docs:build
