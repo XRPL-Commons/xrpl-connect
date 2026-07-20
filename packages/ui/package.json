@@ -38,12 +38,13 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "lint": "eslint src",
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "lint": "vp lint src",
     "type-check": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "pnpm test:types && vp test run",
+    "test:types": "tsc -p tests/tsconfig.types.json",
+    "test:watch": "vp test",
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
@@ -51,10 +52,8 @@
   },
   "devDependencies": {
     "@xrpl-connect/core": "workspace:*",
-    "tsup": "^8.0.1",
     "typescript": "^5.3.3",
-    "vite": "^6.4.3",
-    "vitest": "^3.2.6",
+    "vite": "catalog:",
     "jsdom": "^22.1.0"
   },
   "dependencies": {

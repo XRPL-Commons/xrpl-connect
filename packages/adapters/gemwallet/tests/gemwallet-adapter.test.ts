@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vite-plus/test';
 import { TIME, WalletErrorCode } from '@xrpl-connect/core';
 
 vi.mock('@gemwallet/api', () => ({

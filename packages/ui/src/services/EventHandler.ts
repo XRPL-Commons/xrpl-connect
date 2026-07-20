@@ -2,7 +2,7 @@ import { WalletService } from './WalletService';
 import { TIMINGS } from '../constants';
 import { createLogger, supportsDeepLink } from '@xrpl-connect/core';
 import type { WalletConnectorContext } from '../types';
-import { isMobile } from '../utils';
+import { getSafeExternalUrl, isMobile } from '../utils';
 
 const logger = createLogger('[EventHandler]');
 
@@ -108,6 +108,14 @@ export class EventHandler {
       this.add(button, 'click', () => {
         const walletId = (button as HTMLElement).dataset.walletId;
         if (walletId) this.walletService.connectWallet(walletId);
+      });
+    });
+
+    // Install buttons for unavailable wallets — open the wallet's download page.
+    overlayRoot?.querySelectorAll('[data-install-url]').forEach((button: Element) => {
+      this.add(button, 'click', () => {
+        const url = getSafeExternalUrl((button as HTMLElement).dataset.installUrl);
+        if (url) window.open(url, '_blank', 'noopener,noreferrer');
       });
     });
 

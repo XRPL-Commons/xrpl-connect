@@ -1,5 +1,4 @@
-import { WalletProvider, useWallet } from './context/WalletContext';
-import { useWalletManager } from './hooks/useWalletManager';
+import { useDemo } from './context/DemoContext';
 import { WalletConnector } from './components/WalletConnector';
 import { ThemeSelector } from './components/ThemeSelector';
 import { AccountInfo } from './components/AccountInfo';
@@ -8,16 +7,15 @@ import { MessageSignForm } from './components/MessageSignForm';
 import { EventLog } from './components/EventLog';
 import './App.css';
 
-function AppContent() {
-  const { statusMessage } = useWallet();
-  useWalletManager();
+function App() {
+  const { statusMessage } = useDemo();
 
   return (
     <div id="app">
       <header>
         <div className="header-content">
           <h1>🔗 XRPL Connect Demo - React</h1>
-          <p>Framework-agnostic wallet connection toolkit for XRPL</p>
+          <p>Powered by @xrpl-connect/react — provider, hooks &amp; modal component</p>
         </div>
       </header>
 
@@ -47,14 +45,6 @@ function AppContent() {
 
       <WalletConnector />
     </div>
-  );
-}
-
-function App() {
-  return (
-    <WalletProvider>
-      <AppContent />
-    </WalletProvider>
   );
 }
 

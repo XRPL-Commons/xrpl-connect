@@ -10,7 +10,6 @@ import { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
 import { WalletConnectorElement } from '@xrpl-connect/ui';
 import '@xrpl-connect/ui'; // Register the web component
 
-
 // Configuration - ADD YOUR API KEYS HERE
 const XAMAN_API_KEY = '15ba80a8-cba2-4789-a45b-c6a850d9d91b'; // Get from https://apps.xumm.dev/
 const WALLETCONNECT_PROJECT_ID = '32798b46e13dfb0049706a524cf132d6'; // Get from https://cloud.walletconnect.com

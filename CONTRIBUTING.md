@@ -17,30 +17,29 @@ This project follows the spirit of the [Contributor Covenant](https://www.contri
 
 ### Prerequisites
 
-- **Node.js** ≥ 18
+- **Node.js** 20.19+, 22.18+, or 24.11+
 - **pnpm** ≥ 8 (the repo pins `pnpm@10.18.3` via `packageManager`)
+- **Vite+** (installed as a workspace dependency; invoke it with `pnpm exec vp`)
 
 ### Install
 
 ```bash
 git clone https://github.com/XRPL-Commons/xrpl-connect.git
 cd xrpl-connect
-pnpm install
+pnpm exec vp install
 ```
 
 ### Common Commands
 
-All commands run from the repository root via Turborepo:
+All commands run from the repository root via Vite+:
 
 ```bash
-pnpm build         # Build all packages
-pnpm dev           # Watch mode across packages
-pnpm test          # Run all tests (passes when a package has none)
-pnpm lint          # Lint all packages
-pnpm format        # Format with Prettier
-pnpm format:check  # Verify formatting in CI
-pnpm docs:dev      # Run the VitePress docs site locally
-pnpm docs:build    # Build the docs site
+pnpm exec vp run -r build  # Build all packages
+pnpm exec vp run dev       # Watch mode across packages
+pnpm exec vp run test      # Build and test all packages
+pnpm exec vp check         # Type-check, lint, and verify formatting
+pnpm exec vp fmt           # Format with Oxfmt
+pnpm exec vp run docs:dev  # Run the VitePress docs site locally
 ```
 
 ### Repository Layout
@@ -88,7 +87,7 @@ Common types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `build`, `ci`.
 Before opening a PR:
 
 1. Rebase or merge from the latest `develop`.
-2. Run `pnpm build`, `pnpm lint`, `pnpm test`, and `pnpm format:check` locally.
+2. Run `pnpm exec vp run build`, `pnpm exec vp check`, and `pnpm exec vp run test` locally.
 3. Add or update tests for behavior changes.
 4. Update the relevant docs under `docs/` if you change public API.
 5. Add a `CHANGELOG.md` entry under the `[Unreleased]` section describing user-visible changes (see [`CHANGELOG.md`](./CHANGELOG.md)).

@@ -1,4 +1,4 @@
-import { describe, it, expect, expectTypeOf, vi, beforeEach } from 'vitest';
+import { describe, it, expect, expectTypeOf, vi, beforeEach } from 'vite-plus/test';
 import { WalletErrorCode, type NetworkConfig, type Transaction } from '@xrpl-connect/core';
 import { decode, encode, hashes, Wallet } from 'xrpl';
 
@@ -20,7 +20,9 @@ const mockXummInstance = {
 };
 
 vi.mock('xumm', () => ({
-  Xumm: vi.fn().mockImplementation(() => mockXummInstance),
+  Xumm: vi.fn().mockImplementation(function () {
+    return mockXummInstance;
+  }),
 }));
 
 import { XamanAdapter } from '../src/xaman-adapter';

@@ -46,9 +46,9 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "publish:build": "turbo run build --filter=xrpl-connect... && vite build -c vite.config.ts && node scripts/build-types.mjs && node scripts/prepare-publish.mjs",
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "publish:build": "vp run -F '{.}^...' --no-cache build && vp build -c vite.config.ts && node scripts/build-types.mjs && node scripts/prepare-publish.mjs",
     "test": "node scripts/run-command.test.mjs",
     "test:publish": "pnpm publish:build && node scripts/test-publish.mjs",
     "clean": "rm -rf dist dist-publish"
@@ -57,6 +57,7 @@
     "@xrpl-connect/adapter-crossmark": "workspace:*",
     "@xrpl-connect/adapter-gemwallet": "workspace:*",
     "@xrpl-connect/adapter-ledger": "workspace:*",
+    "@xrpl-connect/adapter-metamask-snap": "workspace:*",
     "@xrpl-connect/adapter-walletconnect": "workspace:*",
     "@xrpl-connect/adapter-xaman": "workspace:*",
     "@xrpl-connect/adapter-otsu": "workspace:*",
@@ -75,9 +76,8 @@
     "global": "^4.4.0",
     "process": "^0.11.10",
     "@microsoft/api-extractor": "^7.47.0",
-    "tsup": "^8.1.0",
     "typescript": "^5.5.0",
-    "vite": "^6.4.3",
+    "vite": "catalog:",
     "vite-plugin-node-polyfills": "^0.24.0"
   }
 }

@@ -497,6 +497,52 @@ if (available) {
 
 ---
 
+### 7. MetaMask Snap Adapter
+
+**Package**: `@xrpl-connect/adapter-metamask-snap`
+
+**Export**: `MetaMaskSnapAdapter`
+
+#### Overview
+
+Brings XRPL support to MetaMask via the [`xrpl-snap`](https://snaps.metamask.io/snap/npm/xrpl-snap/) MetaMask Snap. The snap runs sandboxed inside MetaMask; the adapter talks to it through the standard provider RPC (`wallet_requestSnaps` to install/connect, `wallet_invokeSnap` for XRPL operations), so it needs **no `xrpl-snap` npm dependency**.
+
+#### Features
+
+- ✅ Uses the user's existing MetaMask install (no separate wallet)
+- ✅ Available only when MetaMask + Snaps are present
+- ✅ Sign, sign-and-submit, and message signing
+- ✅ Network switching via the snap
+
+#### Constructor
+
+```typescript
+const metaMaskSnapAdapter = new MetaMaskSnapAdapter(options?: MetaMaskSnapAdapterOptions);
+```
+
+```typescript
+interface MetaMaskSnapAdapterOptions {
+  snapId?: string; // defaults to 'npm:xrpl-snap'
+}
+```
+
+#### Example Usage
+
+```typescript
+import { MetaMaskSnapAdapter } from '@xrpl-connect/adapter-metamask-snap';
+// or: import { MetaMaskSnapAdapter, Adapters } from 'xrpl-connect';
+
+const metaMaskSnapAdapter = new MetaMaskSnapAdapter();
+```
+
+#### Implementation Details
+
+- **isAvailable()**: Returns `true` only when `window.ethereum?.isMetaMask` is set and `wallet_getSnaps` succeeds.
+- **connect()**: Installs/connects the snap (`wallet_requestSnaps`), switches network, then reads the account via `xrpl_getAccount`.
+- **sign() / signAndSubmit() / signMessage()**: Invoke the snap's `xrpl_sign`, `xrpl_signAndSubmit`, `xrpl_signMessage` methods.
+
+---
+
 ## Creating a Custom Adapter
 
 To add support for a new wallet, create a class that implements the `WalletAdapter` interface.
@@ -795,8 +841,8 @@ export class YourWalletAdapter implements WalletAdapter, SupportsFetchAccount {
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch"
+    "build": "vp pack",
+    "dev": "vp pack --watch"
   },
   "dependencies": {
     "@xrpl-connect/core": "workspace:*"
@@ -874,7 +920,7 @@ async connect(options?: any): Promise<AccountInfo> {
 ### Unit Testing Pattern
 
 ```typescript
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vite-plus/test';
 import { YourWalletAdapter } from './index';
 import { WalletErrorCode } from '@xrpl-connect/core';
 
@@ -955,7 +1001,7 @@ packages/adapters/
 |   |   └── xyra-adapter.ts
 │   ├── package.json
 │   ├── tsconfig.json
-│   └── tsup.config.ts
+│   └── vite.config.ts
 ├── otsu/                     # Otsu extension adapter
 │   ├── src/
 │   │   ├── index.ts
@@ -963,7 +1009,7 @@ packages/adapters/
 |   |   └── otsu-adapter.ts
 │   ├── package.json
 │   ├── tsconfig.json
-│   └── tsup.config.ts
+│   └── vite.config.ts
 ├── index.ts                  # Central export point
 └── CODE_DOC.md              # This file
 ```

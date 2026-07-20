@@ -3,7 +3,7 @@
  * A framework-agnostic web component for connecting to XRPL wallets
  */
 
-import type { WalletAdapter, WalletManager } from '@xrpl-connect/core';
+import type { AccountInfo, WalletAdapter, WalletManager } from '@xrpl-connect/core';
 import { createLogger, supportsPreInitialize, withTimeout, TIME } from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
 import { mainStyles } from './styles/main';
@@ -34,7 +34,7 @@ import {
   type QRCodeData,
   type WalletConnectorContext,
 } from './types';
-import { isXamanQRImage, adjustColorBrightness } from './utils';
+import { isXamanQRImage, adjustColorBrightness, orderWalletsByMru } from './utils';
 
 /**
  * Logger instance for wallet connector
@@ -42,8 +42,31 @@ import { isXamanQRImage, adjustColorBrightness } from './utils';
 const logger = createLogger('[WalletConnector]');
 const AVAILABILITY_TIMED_OUT = Symbol('availability-timed-out');
 
+/** Public API exposed by the `<xrpl-wallet-connector>` custom element. */
+export interface WalletConnectorElementInstance extends HTMLElement {
+  setWalletManager(manager: WalletManager): void;
+  open(): Promise<void>;
+  openAndWait(): Promise<AccountInfo>;
+  close(): void;
+  toggle(): void;
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'xrpl-wallet-connector': WalletConnectorElementInstance;
+  }
+}
+
+interface ConnectionWaiter {
+  resolve(account: AccountInfo): void;
+  reject(error: Error): void;
+}
+
 // Only define the component in browser (guard against SSR)
-let WalletConnectorElement: CustomElementConstructor | null = null;
+let WalletConnectorElement: {
+  new (): WalletConnectorElementInstance;
+  readonly prototype: WalletConnectorElementInstance;
+} | null = null;
 
 if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
   const XC_CSS_VARIABLES = [
@@ -85,7 +108,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     '--xc-warning-color',
   ] as const;
 
-  class WalletConnectorElementImpl extends HTMLElement implements WalletConnectorContext {
+  class WalletConnectorElementImpl
+    extends HTMLElement
+    implements WalletConnectorContext, WalletConnectorElementInstance
+  {
     public walletManager: WalletManager | null = null;
     public readonly shadow: ShadowRoot;
     private isOpen = false;
@@ -101,6 +127,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private preGeneratedQRCode: QRCodeStyling | null = null;
     private preGeneratedURI: string | null = null;
     private availableWallets: WalletAdapter[] = [];
+    // Specified wallets that are NOT installed/available — shown with an
+    // "Install" affordance only when the `show-unavailable` attribute is set.
+    private unavailableWallets: WalletAdapter[] = [];
     private walletAvailabilityChecked: boolean = false;
     private walletAvailabilityTimedOut: boolean = false;
     private walletAvailabilityGeneration: number = 0;
@@ -109,15 +138,21 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private overlayPortal: HTMLDivElement | null = null;
     private accountModalPortal: HTMLDivElement | null = null;
     private styleObserver: MutationObserver | null = null;
+    private readonly connectionWaiters = new Set<ConnectionWaiter>();
     private walletManagerHandlers: {
-      connect: () => void;
+      connect: (account: AccountInfo) => void;
       disconnect: () => void;
       accountChanged: () => void;
     } | null = null;
 
     // Observed attributes
     static get observedAttributes() {
-      return ['primary-wallet', 'wallets'];
+      return ['primary-wallet', 'wallets', 'show-unavailable'];
+    }
+
+    /** Whether unavailable wallets are listed with an "Install" link. */
+    private get showUnavailable(): boolean {
+      return this.hasAttribute('show-unavailable');
     }
 
     constructor() {
@@ -126,6 +161,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     connectedCallback() {
+      this.attachWalletManagerHandlers();
       this.render();
 
       // Update derived colors on initial load
@@ -147,15 +183,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.openGeneration += 1;
       this.isOpen = false;
       this.accountModalOpen = false;
+      this.rejectConnectionWaiters(
+        new Error('Wallet connector was disconnected before a wallet was connected.')
+      );
       this.resetWalletAvailability();
       this.eventHandler?.detachEventListeners();
-
-      if (this.walletManager && this.walletManagerHandlers) {
-        this.walletManager.off('connect', this.walletManagerHandlers.connect);
-        this.walletManager.off('disconnect', this.walletManagerHandlers.disconnect);
-        this.walletManager.off('accountChanged', this.walletManagerHandlers.accountChanged);
-        this.walletManagerHandlers = null;
-      }
+      this.detachWalletManagerHandlers();
 
       this.styleObserver?.disconnect();
       this.styleObserver = null;
@@ -256,35 +289,18 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Set the WalletManager instance
      */
     setWalletManager(manager: WalletManager) {
-      // If a previous manager was wired up, drop its subscriptions before swapping.
-      if (this.walletManager && this.walletManagerHandlers) {
-        this.walletManager.off('connect', this.walletManagerHandlers.connect);
-        this.walletManager.off('disconnect', this.walletManagerHandlers.disconnect);
-        this.walletManager.off('accountChanged', this.walletManagerHandlers.accountChanged);
-      }
-
+      this.detachWalletManagerHandlers();
       this.walletManager = manager;
       this.resetWalletAvailability();
       this.walletService = new WalletService(this.walletManager, this);
       this.eventHandler = new EventHandler(this, this.walletService);
+      this.attachWalletManagerHandlers();
 
-      // Listen to wallet manager events — keep refs so we can detach on disconnect.
-      this.walletManagerHandlers = {
-        connect: () => {
-          this.close();
-          this.render(); // Re-render to update button
-        },
-        disconnect: () => {
-          this.render(); // Re-render to update button
-        },
-        accountChanged: () => {
-          this.render(); // Re-render to update button with new account
-        },
-      };
-
-      this.walletManager.on('connect', this.walletManagerHandlers.connect);
-      this.walletManager.on('disconnect', this.walletManagerHandlers.disconnect);
-      this.walletManager.on('accountChanged', this.walletManagerHandlers.accountChanged);
+      const connectedAccount = manager.connected ? manager.account : null;
+      if (connectedAccount && this.connectionWaiters.size > 0) {
+        this.resolveConnectionWaiters(connectedAccount);
+        if (this.isOpen) this.close();
+      }
 
       if (this.isOpen) {
         // Hide unverified choices until the replacement manager is checked.
@@ -297,6 +313,52 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       // Check for existing Xaman session after a short delay
       this.checkXamanStateOnInit();
+    }
+
+    private attachWalletManagerHandlers(): void {
+      const manager = this.walletManager;
+      if (!manager || this.walletManagerHandlers) return;
+
+      this.walletManagerHandlers = {
+        connect: (account: AccountInfo) => {
+          if (manager !== this.walletManager) return;
+          this.resolveConnectionWaiters(account);
+          const connectedId = manager.wallet?.id;
+          if (connectedId) this.recordMruId(connectedId);
+          this.close();
+          this.render();
+        },
+        disconnect: () => {
+          if (manager === this.walletManager) this.render();
+        },
+        accountChanged: () => {
+          if (manager === this.walletManager) this.render();
+        },
+      };
+
+      manager.on('connect', this.walletManagerHandlers.connect);
+      manager.on('disconnect', this.walletManagerHandlers.disconnect);
+      manager.on('accountChanged', this.walletManagerHandlers.accountChanged);
+    }
+
+    private detachWalletManagerHandlers(): void {
+      if (!this.walletManager || !this.walletManagerHandlers) return;
+      this.walletManager.off('connect', this.walletManagerHandlers.connect);
+      this.walletManager.off('disconnect', this.walletManagerHandlers.disconnect);
+      this.walletManager.off('accountChanged', this.walletManagerHandlers.accountChanged);
+      this.walletManagerHandlers = null;
+    }
+
+    private resolveConnectionWaiters(account: AccountInfo): void {
+      const waiters = Array.from(this.connectionWaiters);
+      this.connectionWaiters.clear();
+      for (const waiter of waiters) waiter.resolve(account);
+    }
+
+    private rejectConnectionWaiters(error: Error): void {
+      const waiters = Array.from(this.connectionWaiters);
+      this.connectionWaiters.clear();
+      for (const waiter of waiters) waiter.reject(error);
     }
 
     /**
@@ -337,6 +399,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private resetWalletAvailability() {
       this.walletAvailabilityGeneration += 1;
       this.availableWallets = [];
+      this.unavailableWallets = [];
       this.walletAvailabilityChecked = false;
       this.walletAvailabilityTimedOut = false;
     }
@@ -364,6 +427,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           return false;
         }
         this.availableWallets = [];
+        this.unavailableWallets = [];
         this.walletAvailabilityTimedOut = false;
         return true;
       }
@@ -414,15 +478,16 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
         this.walletAvailabilityTimedOut = availabilityChecks.some((check) => check.timedOut);
 
-        // Filter to only available wallets and maintain order from specified list
-        this.availableWallets = specifiedWalletIds
-          .map((id) => availabilityChecks.find((check) => check.wallet.id === id)?.wallet)
+        // Split into available / unavailable, preserving the specified order.
+        const ordered = specifiedWalletIds
+          .map((id) => availabilityChecks.find((check) => check.wallet.id === id))
           .filter(
-            (wallet): wallet is WalletAdapter =>
-              (wallet !== undefined &&
-                availabilityChecks.find((c) => c.wallet.id === wallet.id)?.available) ??
-              false
+            (check): check is { wallet: WalletAdapter; available: boolean; timedOut: boolean } =>
+              !!check
           );
+
+        this.availableWallets = ordered.filter((c) => c.available).map((c) => c.wallet);
+        this.unavailableWallets = ordered.filter((c) => !c.available).map((c) => c.wallet);
 
         logger.debug(
           'Available wallets:',
@@ -435,9 +500,63 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         }
         logger.error('Error checking wallet availability:', error);
         this.availableWallets = [];
+        this.unavailableWallets = [];
         this.walletAvailabilityTimedOut = true;
         return true;
       }
+    }
+
+    /** localStorage key holding the most-recently-used wallet ids (newest first). */
+    private static readonly MRU_STORAGE_KEY = 'xrpl-connect:mru-wallets';
+
+    /**
+     * Read the most-recently-used wallet ids (newest first). Never throws —
+     * storage may be unavailable or hold malformed data.
+     */
+    private loadMruIds(): string[] {
+      try {
+        if (typeof localStorage === 'undefined') return [];
+        const raw = localStorage.getItem(WalletConnectorElementImpl.MRU_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed)
+          ? parsed.filter((id): id is string => typeof id === 'string')
+          : [];
+      } catch {
+        return [];
+      }
+    }
+
+    /** Move a wallet id to the front of the most-recently-used list. */
+    private recordMruId(id: string): void {
+      try {
+        if (typeof localStorage === 'undefined') return;
+        const next = [id, ...this.loadMruIds().filter((existing) => existing !== id)].slice(0, 10);
+        localStorage.setItem(WalletConnectorElementImpl.MRU_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // Ignore storage failures — MRU ordering is a non-critical enhancement.
+      }
+    }
+
+    /**
+     * Return wallets ordered by most-recently-used first, keeping the given
+     * (availability) order for wallets with no usage history.
+     */
+    private orderByMru(wallets: WalletAdapter[]): WalletAdapter[] {
+      return orderWalletsByMru(wallets, this.loadMruIds());
+    }
+
+    /** Reorder available wallets by MRU without moving unavailable-wallet slots. */
+    private orderVisibleWallets(
+      wallets: WalletAdapter[],
+      unavailableWalletIds: ReadonlySet<string>
+    ): WalletAdapter[] {
+      const orderedAvailable = this.orderByMru(
+        wallets.filter((wallet) => !unavailableWalletIds.has(wallet.id))
+      );
+      let availableIndex = 0;
+      return wallets.map((wallet) =>
+        unavailableWalletIds.has(wallet.id) ? wallet : orderedAvailable[availableIndex++]
+      );
     }
 
     /**
@@ -470,11 +589,36 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     /**
+     * Open the modal and resolve once a wallet is connected, or reject if the
+     * user closes the modal first. Lets callers `await` a connection in one call
+     * instead of wiring up `connected` / `close` event listeners themselves.
+     */
+    openAndWait(): Promise<AccountInfo> {
+      const manager = this.walletManager;
+      if (!manager) {
+        return Promise.reject(new Error('WalletManager must be set before opening the modal.'));
+      }
+      if (manager.connected && manager.account) {
+        return Promise.resolve(manager.account);
+      }
+
+      return new Promise<AccountInfo>((resolve, reject) => {
+        this.connectionWaiters.add({ resolve, reject });
+        if (!this.isOpen) {
+          void this.open().catch((error) => {
+            this.rejectConnectionWaiters(error instanceof Error ? error : new Error(String(error)));
+          });
+        }
+      });
+    }
+
+    /**
      * Close the modal
      */
     close() {
       this.openGeneration += 1;
       this.isOpen = false;
+      this.rejectConnectionWaiters(new Error('Modal closed before a wallet was connected.'));
 
       // Restore body scroll when modal is closed
       document.body.style.overflow = '';
@@ -845,15 +989,34 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           ? this.truncateAddress(currentAccount.address, ADDRESS_DISPLAY.TRUNCATE_CHARS_BUTTON)
           : 'Connect Wallet';
 
+      const unavailableWalletIds = new Set(this.unavailableWallets.map((wallet) => wallet.id));
+      // When unavailable wallets are visible, rebuild one configured sequence before
+      // applying MRU ordering so availability does not create separate ordering buckets.
+      const checkedWallets = this.showUnavailable
+        ? this.parseWalletAttribute()
+            .map((id) =>
+              [...this.availableWallets, ...this.unavailableWallets].find(
+                (wallet) => wallet.id === id
+              )
+            )
+            .filter((wallet): wallet is WalletAdapter => wallet !== undefined)
+        : this.availableWallets;
       // Once checked, an empty list means no wallet is currently available.
-      const wallets = this.walletAvailabilityChecked
-        ? this.availableWallets
+      const baseWallets = this.walletAvailabilityChecked
+        ? checkedWallets
         : this.walletManager?.wallets || [];
+      const wallets = this.showUnavailable
+        ? this.orderVisibleWallets(baseWallets, unavailableWalletIds)
+        : this.orderByMru(baseWallets);
 
       const primaryWallet = this.primaryWalletId
-        ? (wallets.find((w) => w.id === this.primaryWalletId) ?? null)
+        ? (wallets.find(
+            (wallet) => wallet.id === this.primaryWalletId && !unavailableWalletIds.has(wallet.id)
+          ) ?? null)
         : null;
-      const otherWallets = wallets.filter((w) => w.id !== this.primaryWalletId);
+      const otherWallets = wallets.filter(
+        (wallet) => primaryWallet === null || wallet.id !== primaryWallet.id
+      );
 
       // Render based on view state
       let contentHTML = '';
@@ -872,7 +1035,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           this.accountSelectionData.accounts
         );
       } else {
-        contentHTML = renderWalletListView(primaryWallet, otherWallets);
+        contentHTML = renderWalletListView(primaryWallet, otherWallets, unavailableWalletIds);
       }
 
       const overlayClass = this.isFirstOpen ? 'overlay fade-in' : 'overlay';

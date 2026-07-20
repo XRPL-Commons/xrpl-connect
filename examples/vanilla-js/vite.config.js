@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vite-plus';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 export default defineConfig({
@@ -23,11 +23,7 @@ export default defineConfig({
   },
   optimizeDeps: {
     // Force Vite to not pre-bundle workspace packages so changes are reflected immediately
-    exclude: [
-      '@xrpl-connect/adapter-ledger',
-      '@xrpl-connect/core',
-      '@xrpl-connect/ui',
-    ],
+    exclude: ['@xrpl-connect/adapter-ledger', '@xrpl-connect/core', '@xrpl-connect/ui'],
   },
   build: {
     rollupOptions: {

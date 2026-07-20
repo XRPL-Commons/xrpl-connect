@@ -11,7 +11,7 @@ const projectFolder = path.join(__dirname, '..');
  *
  * The runtime bundle (`vite.config.ts`) is fully self-contained: it inlines every
  * `@xrpl-connect/*` package and declares none of them as dependencies. The
- * default `tsup` build emits `dist/index.d.ts`, but that only *re-exports*
+ * default `vp pack` build emits `dist/index.d.ts`, but that only *re-exports*
  * (`export * from '@xrpl-connect/core'` …), which a consumer of `xrpl-connect`
  * cannot resolve because the sub-packages aren't installed.
  *
@@ -22,7 +22,7 @@ const projectFolder = path.join(__dirname, '..');
  * stays external (peer dependency installed by the consumer).
  *
  * Prerequisites (satisfied by `publish:build`, which runs
- * `turbo run build --filter=xrpl-connect...` first — building this package *and*
+ * `vp run -t build` first — building this package *and*
  * all its workspace dependencies in topological order):
  *   - `dist/index.d.ts` exists for this package.
  *   - Each `@xrpl-connect/*` workspace package has been built (its
@@ -32,7 +32,7 @@ const projectFolder = path.join(__dirname, '..');
 const entry = path.join(projectFolder, 'dist', 'index.d.ts');
 if (!existsSync(entry)) {
   console.error(
-    `✗ Missing ${entry}. Run the package build (tsup) before build-types — ` +
+    `✗ Missing ${entry}. Run the package build (vp pack) before build-types — ` +
       'publish:build does this automatically.'
   );
   process.exit(1);
@@ -118,8 +118,24 @@ let rolled = readFileSync(rolledPath, 'utf-8');
 const chromeTypesReference = '/// <reference types="chrome" />\n';
 if (!rolled.startsWith(chromeTypesReference)) {
   rolled = chromeTypesReference + rolled;
-  writeFileSync(rolledPath, rolled);
 }
+
+// API Extractor inlines the UI package's exported element interface but drops
+// its `declare global` block. Restore the custom-element tag mapping so the
+// packed facade keeps the same `document.createElement()` inference as the
+// standalone UI package.
+const walletConnectorTagDeclaration = `
+declare global {
+    interface HTMLElementTagNameMap {
+        'xrpl-wallet-connector': WalletConnectorElementInstance;
+    }
+}
+`;
+if (!rolled.includes("'xrpl-wallet-connector': WalletConnectorElementInstance")) {
+  rolled += walletConnectorTagDeclaration;
+}
+writeFileSync(rolledPath, rolled);
+
 const importedModules = new Set();
 for (const m of rolled.matchAll(/^\s*(?:import|export)\b[^;]*?\bfrom\s*['"]([^'"]+)['"]/gm)) {
   importedModules.add(m[1]);

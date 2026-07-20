@@ -104,11 +104,7 @@ The web component is used in the JSX like a regular React component:
 <xrpl-wallet-connector
   ref={walletConnectorRef}
   id="wallet-connector"
-  style={
-    {
-      /* CSS variables */
-    }
-  }
+  style={{/* CSS variables */}}
   primary-wallet="xaman"
 />
 ```
@@ -187,9 +183,7 @@ The example is configured to use the **testnet** by default. You can change this
 
 ```typescript
 const walletManager = new WalletManager({
-  adapters: [
-    /* ... */
-  ],
+  adapters: [/* ... */],
   network: 'testnet', // Change to 'mainnet', 'devnet', or provide custom config
   autoConnect: true,
   logger: { level: 'info' },

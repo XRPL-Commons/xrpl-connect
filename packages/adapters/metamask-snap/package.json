@@ -1,0 +1,57 @@
+{
+  "name": "@xrpl-connect/adapter-metamask-snap",
+  "version": "0.8.2",
+  "description": "MetaMask Snap wallet adapter for XRPL Connect - Use XRPL via MetaMask Snaps",
+  "author": "XRPL Connect Contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/XRPL-Commons/xrpl-connect#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/XRPL-Commons/xrpl-connect",
+    "directory": "packages/adapters/metamask-snap"
+  },
+  "bugs": {
+    "url": "https://github.com/XRPL-Commons/xrpl-connect/issues"
+  },
+  "keywords": [
+    "xrpl",
+    "metamask",
+    "snap",
+    "wallet",
+    "adapter",
+    "web3"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "tsc --noEmit -p tsconfig.test.json && vp test run",
+    "test:watch": "vp test",
+    "lint": "vp lint src",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@xrpl-connect/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "xrpl": "^3.0.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "jsdom": "^22.1.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -195,9 +195,7 @@ import { ref } from 'vue';
 import { useWallet } from '@/composables/useWallet';
 
 const { walletManager, connected } = useWallet({
-  adapters: [
-    /* your adapters */
-  ],
+  adapters: [/* your adapters */],
 });
 
 const loading = ref(false);
@@ -333,9 +331,7 @@ import { ref } from 'vue';
 import { useWallet } from '@/composables/useWallet';
 
 const { walletManager, connected } = useWallet({
-  adapters: [
-    /* your adapters */
-  ],
+  adapters: [/* your adapters */],
 });
 
 const message = ref('');
@@ -364,9 +360,7 @@ import { watch } from 'vue';
 import { useWallet } from '@/composables/useWallet';
 
 const { account, connected, error } = useWallet({
-  adapters: [
-    /* your adapters */
-  ],
+  adapters: [/* your adapters */],
 });
 
 // Watch for connection changes
@@ -437,9 +431,7 @@ import { computed } from 'vue';
 import { useWallet } from '@/composables/useWallet';
 
 const { account, walletManager } = useWallet({
-  adapters: [
-    /* your adapters */
-  ],
+  adapters: [/* your adapters */],
 });
 
 const shortAddress = computed(() => {
@@ -487,7 +479,7 @@ const networkColor = computed(() => {
 Example test using Vitest:
 
 ```typescript
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vite-plus/test';
 import { mount } from '@vue/test-utils';
 import { useWallet } from '@/composables/useWallet';
 

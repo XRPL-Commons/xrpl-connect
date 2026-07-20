@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect, expectTypeOf, vi } from 'vitest';
+import { afterEach, describe, it, expect, expectTypeOf, vi } from 'vite-plus/test';
 import EventEmitter from 'eventemitter3';
 import { WalletManager } from '../src/wallet-manager';
 import { createWalletError } from '../src/errors';
@@ -278,6 +278,53 @@ describe('WalletManager.disconnect()', () => {
     expect(adapter.listenerCount('disconnect')).toBe(0);
     expect(adapter.listenerCount('accountChanged')).toBe(0);
     expect(adapter.listenerCount('networkChanged')).toBe(0);
+  });
+
+  it('cancels a connection that is still pending', async () => {
+    let resolveConnect!: (account: AccountInfo) => void;
+    const adapter = createFakeAdapter();
+    adapter.connect = vi.fn(
+      () => new Promise<AccountInfo>((resolve) => (resolveConnect = resolve))
+    );
+    const manager = new WalletManager({
+      adapters: [adapter],
+      storage: new MemoryStorageAdapter(),
+    });
+
+    const connecting = manager.connect('fake');
+    await vi.waitFor(() => expect(adapter.connect).toHaveBeenCalledTimes(1));
+    await manager.disconnect();
+    resolveConnect(ACCOUNT);
+
+    await expect(connecting).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    expect(adapter.disconnect).toHaveBeenCalled();
+    expect(manager.connected).toBe(false);
+  });
+
+  it('does not let a cancelled attempt tear down a newer connection', async () => {
+    let resolveFirstConnect!: (account: AccountInfo) => void;
+    const adapter = createFakeAdapter();
+    adapter.connect = vi
+      .fn()
+      .mockImplementationOnce(
+        () => new Promise<AccountInfo>((resolve) => (resolveFirstConnect = resolve))
+      )
+      .mockResolvedValueOnce(ACCOUNT);
+    const manager = new WalletManager({
+      adapters: [adapter],
+      storage: new MemoryStorageAdapter(),
+    });
+
+    const firstConnection = manager.connect('fake');
+    await vi.waitFor(() => expect(adapter.connect).toHaveBeenCalledTimes(1));
+    await manager.disconnect();
+    await manager.connect('fake');
+    resolveFirstConnect(ACCOUNT);
+
+    await expect(firstConnection).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    expect(adapter.disconnect).toHaveBeenCalledTimes(1);
+    expect(manager.connected).toBe(true);
+    expect(manager.account?.address).toBe(ACCOUNT.address);
   });
 });
 

@@ -1,12 +1,16 @@
 import {
   CrossmarkSDK,
   GemWalletAPI,
+  WalletConnectorElement,
   XamanOAuth2,
   XamanSDK,
+  type AccountInfo,
   type ConnectOptions,
   type CrossmarkClient,
   type LedgerConnectOptions,
+  type MetaMaskSnapAdapterOptions,
   type WalletConnectConnectOptions,
+  type WalletConnectorElementInstance,
   type XamanConnectOptions,
   type XyraConnectOptions,
 } from 'xrpl-connect';
@@ -50,6 +54,16 @@ const crossmarkClient: CrossmarkClient = CrossmarkSDK.default;
 const xamanEvent = {} as XamanSDK.UniversalSdkEvent;
 const oauthFlow = {} as XamanOAuth2.ResolvedFlow;
 const gemWalletRequest = {} as GemWalletAPI.SendPaymentRequest;
+const walletConnector: WalletConnectorElementInstance =
+  document.createElement('xrpl-wallet-connector');
+const pendingAccount: Promise<AccountInfo> = walletConnector.openAndWait();
+const walletConnectorConstructor: {
+  new (): WalletConnectorElementInstance;
+  readonly prototype: WalletConnectorElementInstance;
+} | null = WalletConnectorElement;
+const metamaskOptions: MetaMaskSnapAdapterOptions = {
+  snapId: 'local:http://localhost:8080',
+};
 
 void [
   connectOptions,
@@ -63,4 +77,8 @@ void [
   xamanEvent,
   oauthFlow,
   gemWalletRequest,
+  walletConnector,
+  pendingAccount,
+  walletConnectorConstructor,
+  metamaskOptions,
 ];

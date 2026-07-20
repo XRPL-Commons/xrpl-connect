@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vite-plus/test';
 import { EventHandler } from '../src/services/EventHandler';
 
 /**
@@ -101,5 +101,29 @@ describe('EventHandler', () => {
 
     eventHandler.detachEventListeners();
     expect(net).toBe(0);
+  });
+
+  it('does not open an unsafe install URL', () => {
+    const button = document.createElement('button');
+    button.dataset.installUrl = 'javascript:alert(1)';
+    const root = {
+      querySelector: vi.fn(() => null),
+      querySelectorAll: vi.fn((selector: string) =>
+        selector === '[data-install-url]' ? [button] : []
+      ),
+    };
+    const component = {
+      shadow: root,
+      getOverlayRoot: vi.fn(() => root),
+      getAccountModalRoot: vi.fn(() => root),
+    };
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const eventHandler = new EventHandler(component as any, {} as any);
+
+    eventHandler.attachEventListeners();
+    button.click();
+
+    expect(open).not.toHaveBeenCalled();
+    open.mockRestore();
   });
 });

@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vite-plus/test';
 import { TIME } from '@xrpl-connect/core';
 import { WalletService } from '../src/services/WalletService';
 

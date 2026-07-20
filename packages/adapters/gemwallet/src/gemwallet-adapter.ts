@@ -30,7 +30,7 @@ const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
 /**
  * GemWallet adapter options
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+// oxlint-disable-next-line typescript/no-empty-object-type
 export interface GemWalletAdapterOptions {
   // Currently no specific options needed for GemWallet
 }

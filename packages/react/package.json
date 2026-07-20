@@ -1,0 +1,68 @@
+{
+  "name": "@xrpl-connect/react",
+  "version": "0.8.2",
+  "description": "React bindings (provider, hooks, modal component) for XRPL Connect",
+  "author": "XRPL Connect Contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/XRPL-Commons/xrpl-connect#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/XRPL-Commons/xrpl-connect",
+    "directory": "packages/react"
+  },
+  "bugs": {
+    "url": "https://github.com/XRPL-Commons/xrpl-connect/issues"
+  },
+  "keywords": [
+    "xrpl",
+    "wallet",
+    "react",
+    "hooks",
+    "provider",
+    "web3",
+    "wallet-connection",
+    "xaman",
+    "crossmark"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "vp pack && node scripts/prepare-types.mjs",
+    "dev": "vp pack --watch",
+    "lint": "vp lint src",
+    "type-check": "tsc --noEmit",
+    "test": "node tests/ssr-smoke.mjs && vp test run",
+    "test:watch": "vp test",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0",
+    "xrpl": "^3.0.0 || ^4.0.0",
+    "xrpl-connect": "^0.8.0"
+  },
+  "devDependencies": {
+    "@microsoft/api-extractor": "^7.47.0",
+    "@xrpl-connect/core": "workspace:*",
+    "@testing-library/react": "^16.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "jsdom": "^22.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.5.0",
+    "xrpl-connect": "workspace:*"
+  }
+}

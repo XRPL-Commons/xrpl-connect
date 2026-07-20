@@ -1,9 +1,9 @@
-import { useWallet } from '../context/WalletContext';
+import { useWallet } from '@xrpl-connect/react';
 
 export function AccountInfo() {
-  const { isConnected, accountInfo } = useWallet();
+  const { connected, account, network, manager } = useWallet();
 
-  if (!isConnected || !accountInfo) {
+  if (!connected || !account) {
     return null;
   }
 
@@ -13,15 +13,17 @@ export function AccountInfo() {
       <div className="info-card">
         <div className="info-row">
           <span className="label">Address:</span>
-          <span className="value">{accountInfo.address}</span>
+          <span className="value">{account.address}</span>
         </div>
         <div className="info-row">
           <span className="label">Network:</span>
-          <span className="value">{accountInfo.network}</span>
+          <span className="value">
+            {network ? `${network.name} (${network.id})` : account.network.id}
+          </span>
         </div>
         <div className="info-row">
           <span className="label">Wallet:</span>
-          <span className="value">{accountInfo.walletName}</span>
+          <span className="value">{manager.wallet?.name ?? '—'}</span>
         </div>
       </div>
       <p className="section-description">Click the button showing your address to disconnect</p>

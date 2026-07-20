@@ -97,9 +97,7 @@ The example is configured to use the **testnet** by default. You can change this
 
 ```javascript
 const walletManager = new WalletManager({
-  adapters: [
-    /* ... */
-  ],
+  adapters: [/* ... */],
   network: 'testnet', // Change to 'mainnet', 'devnet', or provide custom config
   autoConnect: true,
   logger: { level: 'info' },

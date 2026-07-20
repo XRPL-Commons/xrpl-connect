@@ -19,33 +19,36 @@
         <!-- Theme Customization Section -->
         <section id="theme-section">
           <h2>Component Theming</h2>
-          <p class="section-description">Customize the wallet connector component theme in real-time</p>
+          <p class="section-description">
+            Customize the wallet connector component theme in real-time
+          </p>
           <div class="theme-buttons">
-            <button class="theme-btn theme-btn-active" data-theme="dark">
-              🌙 Dark Theme
-            </button>
-            <button class="theme-btn" data-theme="light">
-              ☀️ Light Theme
-            </button>
-            <button class="theme-btn" data-theme="purple">
-              🟣 Purple Theme
-            </button>
+            <button class="theme-btn theme-btn-active" data-theme="dark">🌙 Dark Theme</button>
+            <button class="theme-btn" data-theme="light">☀️ Light Theme</button>
+            <button class="theme-btn" data-theme="purple">🟣 Purple Theme</button>
           </div>
           <div class="theme-info">
             <p><strong>Current Theme:</strong> <span id="current-theme">Dark</span></p>
-            <p class="theme-description">CSS variables are applied dynamically to the <code>&lt;xrpl-wallet-connector&gt;</code> component. Try switching themes while the modal is open!</p>
+            <p class="theme-description">
+              CSS variables are applied dynamically to the
+              <code>&lt;xrpl-wallet-connector&gt;</code> component. Try switching themes while the
+              modal is open!
+            </p>
           </div>
         </section>
 
         <!-- Connection Status Section -->
         <section id="connect-section">
           <h2>Connection Status</h2>
-          <p class="section-description">Click the <strong>"Connect Wallet"</strong> button above to connect or manage your wallet</p>
+          <p class="section-description">
+            Click the <strong>"Connect Wallet"</strong> button above to connect or manage your
+            wallet
+          </p>
           <div id="status" class="status"></div>
         </section>
 
         <!-- Account Info Section -->
-        <section id="account-section" style="display: none;">
+        <section id="account-section" style="display: none">
           <h2>Account Info</h2>
           <div class="info-card">
             <div class="info-row">
@@ -65,7 +68,7 @@
         </section>
 
         <!-- Transaction Section -->
-        <section id="transaction-section" style="display: none;">
+        <section id="transaction-section" style="display: none">
           <h2>Send Transaction</h2>
           <form id="tx-form" class="tx-form">
             <div class="form-group">
@@ -79,13 +82,7 @@
             </div>
             <div class="form-group">
               <label for="amount">Amount (drops)</label>
-              <input
-                type="number"
-                id="amount"
-                placeholder="1000000"
-                min="1"
-                required
-              />
+              <input type="number" id="amount" placeholder="1000000" min="1" required />
               <small>1 XRP = 1,000,000 drops</small>
             </div>
             <button type="submit" class="btn-primary">Sign & Submit Transaction</button>
@@ -94,7 +91,7 @@
         </section>
 
         <!-- Sign Message Section -->
-        <section id="message-section" style="display: none;">
+        <section id="message-section" style="display: none">
           <h2>Sign Message</h2>
           <form id="msg-form" class="msg-form">
             <div class="form-group">
@@ -137,14 +134,15 @@
         --xrpl-background-color: #1a202c;
         --xrpl-background-secondary: #2d3748;
         --xrpl-background-tertiary: #4a5568;
-        --xrpl-text-color: #F5F4E7;
+        --xrpl-text-color: #f5f4e7;
         --xrpl-text-muted-color: rgba(245, 244, 231, 0.6);
         --xrpl-primary-color: #3b99fc;
         --xrpl-font-family: inherit;
         --xrpl-border-radius: 12px;
         --xrpl-modal-box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
       "
-      primary-wallet="xaman">
+      primary-wallet="xaman"
+    >
     </xrpl-wallet-connector>
 
     <script type="module" src="/src/main.js"></script>

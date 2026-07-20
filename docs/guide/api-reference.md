@@ -214,15 +214,17 @@ Beautiful UI component for wallet connection.
   "
   primary-wallet="xaman"
   wallets="xaman,crossmark,walletconnect"
+  show-unavailable
 ></xrpl-wallet-connector>
 ```
 
 ### Attributes
 
-| Attribute        | Type     | Description                        |
-| ---------------- | -------- | ---------------------------------- |
-| `primary-wallet` | `string` | Wallet ID to feature/highlight     |
-| `wallets`        | `string` | Comma-separated list of wallet IDs |
+| Attribute          | Type      | Description                                                        |
+| ------------------ | --------- | ------------------------------------------------------------------ |
+| `primary-wallet`   | `string`  | Wallet ID to feature/highlight                                     |
+| `wallets`          | `string`  | Comma-separated list of wallet IDs                                 |
+| `show-unavailable` | `boolean` | Show unavailable wallets with Install or disabled Unavailable rows |
 
 ### Methods
 
@@ -242,6 +244,16 @@ async open(): Promise<void>
 
 Open the wallet selection modal.
 
+#### openAndWait()
+
+```typescript
+openAndWait(): Promise<AccountInfo>
+```
+
+Open the modal and resolve with the connected account. It resolves immediately
+when a wallet is already connected, and rejects when no `WalletManager` is set
+or when the modal closes before a connection completes.
+
 #### close()
 
 ```typescript
@@ -249,6 +261,10 @@ close(): void
 ```
 
 Close any open modals.
+
+Wallet choices are ordered by most recent successful use. The component stores
+that ordering in `localStorage` under `xrpl-connect:mru-wallets`; an explicit
+`primary-wallet` still takes precedence.
 
 ### Events
 
