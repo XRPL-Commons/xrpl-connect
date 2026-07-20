@@ -6,6 +6,75 @@ description: Integrate XRPL-Connect into your React application using hooks and 
 
 Integrate XRPL-Connect into your React application with hooks. This guide covers both standard React and Next.js applications.
 
+## Recommended: `@xrpl-connect/react`
+
+The easiest way to use XRPL-Connect in React is the official bindings package — a
+provider that owns a single `WalletManager`, ready-made hooks, and a themeable
+`<WalletConnector>` modal. You no longer need to hand-roll a context/hooks layer.
+
+```bash
+npm install @xrpl-connect/react xrpl-connect xrpl
+```
+
+```tsx
+// main.tsx — import xrpl-connect once to register the web component
+import 'xrpl-connect';
+import { XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
+import { XrplConnectProvider } from '@xrpl-connect/react';
+
+const config = {
+  adapters: [new XamanAdapter({ apiKey: 'YOUR_KEY' }), new CrossmarkAdapter()],
+  network: 'testnet',
+  autoConnect: true,
+};
+
+createRoot(document.getElementById('root')!).render(
+  <XrplConnectProvider config={config}>
+    <App />
+  </XrplConnectProvider>
+);
+```
+
+```tsx
+// App.tsx
+import { useWallet, useSigner, useWalletModal, WalletConnector } from '@xrpl-connect/react';
+
+export function App() {
+  const { connected, account, disconnect, error } = useWallet();
+  const { open } = useWalletModal();
+  const { signAndSubmit } = useSigner();
+
+  return (
+    <>
+      {connected ? (
+        <button onClick={disconnect}>Disconnect {account?.address}</button>
+      ) : (
+        <button onClick={open}>Connect Wallet</button>
+      )}
+      {error && (
+        <p>
+          Error [{error.code}]: {error.message}
+        </p>
+      )}
+      <WalletConnector theme="dark" onError={(e) => console.error(e.code, e.category)} />
+    </>
+  );
+}
+```
+
+**Hooks:** `useWallet()` (`connected`, `account`, `network`, `connect`, `disconnect`,
+`connecting`, `error`), `useSigner()` (`sign`, `signAndSubmit`, `signMessage` — reject
+with a typed `WalletError`), and `useWalletModal()` (`open`, `close`).
+
+**`<WalletConnector>` props:** `primaryWallet`, `wallets`, `theme`, `cssVars`,
+`onConnecting`, `onConnect`, `onError` — all typed.
+
+> **Next.js (App Router):** these are client components — add `'use client'` to the
+> file that renders the provider/connector.
+
+See the package README for the full API. The manual integration below remains valid
+if you'd rather wire the `WalletManager` and web component yourself.
+
 ## Complete Example Application
 
 We provide a comprehensive React example application that demonstrates all XRPL-Connect features:
@@ -17,13 +86,13 @@ We provide a comprehensive React example application that demonstrates all XRPL-
 The example demonstrates:
 
 - ✅ Multiple wallet adapter support (Xaman, WalletConnect, Crossmark, GemWallet, Ledger)
-- ✅ Custom React hooks for wallet management
+- ✅ Official provider and hooks from `@xrpl-connect/react`
 - ✅ React Context API for global wallet state
 - ✅ Transaction and message signing forms
 - ✅ Dynamic theme switching
 - ✅ Real-time event logging
-- ✅ Proper TypeScript integration with web components
-- ✅ Best practices for web component lifecycle in React
+- ✅ Typed React wrapper around the wallet-connector web component
+- ✅ Demo-specific activity and status state kept separate from wallet state
 
 ### Project Structure
 
@@ -40,15 +109,17 @@ examples/react/
 │   │   ├── ThemeSelector.tsx       # Switch themes
 │   │   └── EventLog.tsx            # Display wallet events
 │   ├── context/
-│   │   └── WalletContext.tsx       # Global wallet state
-│   ├── hooks/
-│   │   ├── useWalletManager.ts     # Initialize WalletManager
-│   │   └── useWalletConnector.ts   # Connect to web component
+│   │   └── DemoContext.tsx         # Demo activity/status state only
 │   └── types/
 │       └── index.ts                # TypeScript definitions
 ```
 
-## Installation
+## Manual integration
+
+The remainder of this guide shows how to build the provider and hooks yourself.
+Use this approach only when you need lifecycle behavior beyond the official package.
+
+### Installation
 
 ```bash
 npm install xrpl-connect xrpl

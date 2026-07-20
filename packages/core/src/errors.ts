@@ -44,6 +44,18 @@ export class WalletError extends Error {
   public readonly category: WalletErrorCategory;
   public readonly originalError?: Error;
 
+  static [Symbol.hasInstance](value: unknown): boolean {
+    if (!value || typeof value !== 'object') return false;
+
+    const candidate = value as Partial<WalletError>;
+    return (
+      candidate.name === 'WalletError' &&
+      typeof candidate.message === 'string' &&
+      typeof candidate.code === 'string' &&
+      typeof candidate.category === 'string'
+    );
+  }
+
   constructor(code: WalletErrorCode, message: string, originalError?: Error) {
     super(message);
     this.name = 'WalletError';

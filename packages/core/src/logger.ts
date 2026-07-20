@@ -57,7 +57,18 @@ interface GlobalLoggerConfig {
   level?: InternalLogLevel;
 }
 
-let globalConfig: GlobalLoggerConfig = {};
+const GLOBAL_LOGGER_CONFIG = Symbol.for('xrpl-connect.logger.config');
+const globalScope = globalThis as typeof globalThis & {
+  [GLOBAL_LOGGER_CONFIG]?: GlobalLoggerConfig;
+};
+
+function getGlobalConfig(): GlobalLoggerConfig {
+  return (globalScope[GLOBAL_LOGGER_CONFIG] ??= {});
+}
+
+function setGlobalConfig(config: GlobalLoggerConfig): void {
+  globalScope[GLOBAL_LOGGER_CONFIG] = config;
+}
 
 /**
  * Configure the global logger used by every `Logger` instance — including the
@@ -72,21 +83,21 @@ let globalConfig: GlobalLoggerConfig = {};
  */
 export function configureLogger(option: LoggerOptions | LoggerInstance | undefined): void {
   if (option === undefined) {
-    globalConfig = {};
+    setGlobalConfig({});
     return;
   }
   if (isLoggerInstance(option)) {
-    globalConfig = { instance: option };
+    setGlobalConfig({ instance: option });
     return;
   }
-  globalConfig = { level: normalizeLevel(option.level) };
+  setGlobalConfig({ level: normalizeLevel(option.level) });
 }
 
 /**
  * Reset the global logger configuration. Exposed primarily for tests.
  */
 export function resetGlobalLogger(): void {
-  globalConfig = {};
+  setGlobalConfig({});
 }
 
 /**
@@ -114,7 +125,8 @@ export class Logger {
    */
   private effectiveLevel(): InternalLogLevel {
     if (this.localLevel) return this.localLevel;
-    if (globalConfig.level) return globalConfig.level;
+    const { level } = getGlobalConfig();
+    if (level) return level;
     return isDevelopment() ? 'debug' : 'warn';
   }
 
@@ -140,8 +152,9 @@ export class Logger {
    */
   debug(message: string, ...args: unknown[]): void {
     if (!this.shouldLog('debug')) return;
-    if (globalConfig.instance) {
-      globalConfig.instance.debug(`${this.prefix} ${message}`, ...args);
+    const { instance } = getGlobalConfig();
+    if (instance) {
+      instance.debug(`${this.prefix} ${message}`, ...args);
       return;
     }
     console.debug(this.formatMessage('debug', message), ...args);
@@ -152,8 +165,9 @@ export class Logger {
    */
   info(message: string, ...args: unknown[]): void {
     if (!this.shouldLog('info')) return;
-    if (globalConfig.instance) {
-      globalConfig.instance.info(`${this.prefix} ${message}`, ...args);
+    const { instance } = getGlobalConfig();
+    if (instance) {
+      instance.info(`${this.prefix} ${message}`, ...args);
       return;
     }
     console.info(this.formatMessage('info', message), ...args);
@@ -164,8 +178,9 @@ export class Logger {
    */
   warn(message: string, ...args: unknown[]): void {
     if (!this.shouldLog('warn')) return;
-    if (globalConfig.instance) {
-      globalConfig.instance.warn(`${this.prefix} ${message}`, ...args);
+    const { instance } = getGlobalConfig();
+    if (instance) {
+      instance.warn(`${this.prefix} ${message}`, ...args);
       return;
     }
     console.warn(this.formatMessage('warn', message), ...args);
@@ -176,8 +191,9 @@ export class Logger {
    */
   error(message: string, ...args: unknown[]): void {
     if (!this.shouldLog('error')) return;
-    if (globalConfig.instance) {
-      globalConfig.instance.error(`${this.prefix} ${message}`, ...args);
+    const { instance } = getGlobalConfig();
+    if (instance) {
+      instance.error(`${this.prefix} ${message}`, ...args);
       return;
     }
     console.error(this.formatMessage('error', message), ...args);

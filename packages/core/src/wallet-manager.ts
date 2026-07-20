@@ -50,6 +50,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     callback: (data: unknown) => void;
   }> = [];
   private sessionGeneration = 0;
+  private connectionAttemptGeneration = 0;
   private stateRevision = 0;
   private storageTail: Promise<void> = Promise.resolve();
 
@@ -129,6 +130,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       throw createWalletError.alreadyConnected(activeAdapter.name);
     }
     this.connectingAdapter = adapter;
+    const connectionAttempt = ++this.connectionAttemptGeneration;
 
     let adapterConnected = false;
     let connectionCommitted = false;
@@ -163,6 +165,12 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       if (!availability.available) {
         throw createWalletError.notAvailable(adapter.name);
       }
+      if (
+        connectionAttempt !== this.connectionAttemptGeneration ||
+        this.connectingAdapter !== adapter
+      ) {
+        throw createWalletError.notConnected();
+      }
 
       // Merge network options
       const connectOptions: ConnectOptions = {
@@ -173,6 +181,12 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       // Connect
       const account = await adapter.connect(connectOptions);
       adapterConnected = true;
+      if (
+        connectionAttempt !== this.connectionAttemptGeneration ||
+        this.connectingAdapter !== adapter
+      ) {
+        throw createWalletError.notConnected();
+      }
 
       if (expectedState && supportsReconnectOptions(adapter)) {
         if (account.address !== expectedState.account.address) {
@@ -226,10 +240,11 @@ export class WalletManager extends EventEmitter<WalletEvent> {
             await this.storageTail;
             shouldDisconnectAdapter = false;
           }
-        } else {
-          await this.queueStorage(() => this.storage.clearState());
         }
-        if (shouldDisconnectAdapter) {
+        const newerConnectionOwnsManager =
+          connectionAttempt !== this.connectionAttemptGeneration &&
+          (this.connectingAdapter !== null || this.currentAdapter !== null);
+        if (shouldDisconnectAdapter && !newerConnectionOwnsManager) {
           try {
             await adapter.disconnect();
           } catch (disconnectError) {
@@ -248,7 +263,12 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       }
       throw createWalletError.connectionFailed(adapter.name, error as Error);
     } finally {
-      if (this.connectingAdapter === adapter) this.connectingAdapter = null;
+      if (
+        connectionAttempt === this.connectionAttemptGeneration &&
+        this.connectingAdapter === adapter
+      ) {
+        this.connectingAdapter = null;
+      }
     }
   }
 
@@ -257,7 +277,18 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    */
   async disconnect(): Promise<void> {
     if (!this.currentAdapter) {
-      this.logger.warn('No wallet connected');
+      const connectingAdapter = this.connectingAdapter;
+      if (connectingAdapter) {
+        this.connectionAttemptGeneration += 1;
+        this.connectingAdapter = null;
+        await this.queueStorage(() => this.storage.clearState());
+        try {
+          await connectingAdapter.disconnect();
+        } catch (error) {
+          this.logger.warn(`Failed to cancel connection to ${connectingAdapter.name}:`, error);
+        }
+        return;
+      }
       return;
     }
 
