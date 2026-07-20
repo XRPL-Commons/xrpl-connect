@@ -35,10 +35,13 @@ export const useWallet = () => {
           XyraAdapter,
           OtsuAdapter,
           MetaMaskSnapAdapter,
-        } = (await import('xrpl-connect')) as any;
+        } = await import('xrpl-connect');
 
         if (!WalletManager) {
           throw new Error('Failed to import WalletManager from xrpl-connect');
+        }
+        if (!MetaMaskSnapAdapter) {
+          throw new Error('Failed to import MetaMaskSnapAdapter from xrpl-connect');
         }
 
         const adapters: any[] = [];

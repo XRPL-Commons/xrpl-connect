@@ -4,6 +4,7 @@ require('./runtime-env.cjs');
 const api = require('xrpl-connect');
 
 assert.equal(typeof api.XamanAdapter, 'function');
+assert.equal(typeof api.MetaMaskSnapAdapter, 'function');
 assert.equal(typeof api.XamanSDK.Xumm, 'function');
 assert.equal(typeof api.XamanOAuth2.XummPkce, 'function');
 assert.equal(typeof api.CrossmarkSDK.default.methods.signInAndWait, 'function');

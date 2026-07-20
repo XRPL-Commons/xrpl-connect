@@ -145,6 +145,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
 
   private client: Xumm | null = null;
   private clientApiKey: string | null = null;
+  private sdkApiKey: string | null = null;
   private currentAccount: AccountInfo | null = null;
   private options: XamanAdapterOptions;
   private activePayloadOperations = new Set<ActivePayloadOperation>();
@@ -188,6 +189,15 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
       );
     }
 
+    if (this.sdkApiKey && this.sdkApiKey !== apiKey) {
+      throw createWalletError.connectionFailed(
+        this.name,
+        new Error(
+          'Cannot change the Xaman API key after the browser SDK has initialized. Reload the page before using a different API key.'
+        )
+      );
+    }
+
     if (this.connecting || this.disconnecting || this.activePayloadOperations.size > 0) {
       throw createWalletError.connectionFailed(
         this.name,
@@ -205,6 +215,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
     let client: Xumm | null = null;
 
     try {
+      this.sdkApiKey = apiKey;
       client = new Xumm(apiKey);
       this.client = client;
       this.clientApiKey = apiKey;
@@ -302,6 +313,15 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
       );
     }
 
+    if (this.sdkApiKey && this.sdkApiKey !== apiKey) {
+      throw createWalletError.connectionFailed(
+        this.name,
+        new Error(
+          'Cannot change the Xaman API key after the browser SDK has initialized. Reload the page before using a different API key.'
+        )
+      );
+    }
+
     if (this.restoringState && this.connectionAttemptDone) {
       const restorationGeneration = this.connectionGeneration;
       logger.info('Connection phase: superseding silent session restoration');
@@ -356,6 +376,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
 
     let client: Xumm | null = null;
     try {
+      this.sdkApiKey = apiKey;
       client = new Xumm(apiKey);
       this.client = client;
       this.clientApiKey = apiKey;

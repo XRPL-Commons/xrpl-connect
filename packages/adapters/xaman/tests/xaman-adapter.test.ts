@@ -304,6 +304,33 @@ describe('XamanAdapter.connect', () => {
     expect(mockXummInstance.authorize).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects a different API key after the browser SDK initializes', async () => {
+    let resolveRestoredAccount!: (account: undefined) => void;
+    mockXummInstance.user.account = new Promise<undefined>((resolve) => {
+      resolveRestoredAccount = resolve;
+    });
+    mockXummInstance.logout.mockResolvedValue(undefined);
+    mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
+    const adapter = new XamanAdapter({ apiKey: 'restoration-key' });
+
+    const stateCheck = adapter.checkXamanState();
+
+    await expect(adapter.connect({ apiKey: 'authorization-key' })).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+      message: expect.stringContaining('Reload the page'),
+    });
+    expect(mockXummInstance.authorize).not.toHaveBeenCalled();
+
+    resolveRestoredAccount(undefined);
+    await expect(stateCheck).resolves.toBeNull();
+
+    await expect(adapter.connect({ apiKey: 'authorization-key' })).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+      message: expect.stringContaining('Reload the page'),
+    });
+    expect(mockXummInstance.authorize).not.toHaveBeenCalled();
+  });
+
   it('does not let a superseded restoration overwrite explicit authorization', async () => {
     let resolveRestoredAccount!: (account: string) => void;
     mockXummInstance.user.account = new Promise<string>((resolve) => {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { TIME, WalletManager } from '@xrpl-connect/core';
+import { MemoryStorageAdapter, TIME, WalletManager } from '@xrpl-connect/core';
 import type { NetworkInfo, WalletAdapter } from '@xrpl-connect/core';
 import '../src/wallet-connector';
 
@@ -84,6 +84,39 @@ describe('WalletConnector wallet availability', () => {
 
     expect(walletConnect.disconnect).toHaveBeenCalledOnce();
     expect(manager.wallet).toBe(xaman);
+  });
+
+  it('cancels a pending wallet connection when detached', async () => {
+    let resolveConnection!: (account: { address: string; network: NetworkInfo }) => void;
+    const walletConnect = createAdapter(
+      'walletconnect',
+      'WalletConnect',
+      vi.fn(async () => true)
+    );
+    walletConnect.connect = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveConnection = resolve;
+        })
+    );
+    const manager = new WalletManager({
+      adapters: [walletConnect],
+      storage: new MemoryStorageAdapter(),
+    });
+    element = createElement(manager);
+    document.body.appendChild(element);
+
+    const connection = manager.connect('walletconnect');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(walletConnect.connect).toHaveBeenCalledOnce();
+    element.remove();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(walletConnect.disconnect).toHaveBeenCalled();
+    resolveConnection({ address: 'rWalletConnect', network: NETWORK });
+
+    await expect(connection).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+    expect(manager.connected).toBe(false);
+    expect(manager.wallet).toBeNull();
   });
 
   it('renders an empty state instead of falling back to unavailable wallets', async () => {

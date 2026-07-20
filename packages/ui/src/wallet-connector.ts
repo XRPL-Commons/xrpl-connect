@@ -180,6 +180,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     disconnectedCallback() {
+      this.cancelPendingConnection();
       this.openGeneration += 1;
       this.isOpen = false;
       this.accountModalOpen = false;
