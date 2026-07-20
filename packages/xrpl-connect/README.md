@@ -126,8 +126,12 @@ export {
   AccountInfo,
   NetworkInfo,
   SignedTransaction,
+  ManagedSignedTransaction,
   SubmittedTransaction,
   SignedMessage,
+  ManagedSignedMessage,
+  WalletCapabilities,
+  SupportsFetchAccount,
   WalletEvent,
   WalletAdapterEvent,
   ConnectOptions,
@@ -140,6 +144,11 @@ export {
 
   // Constants
   STANDARD_NETWORKS,
+  CAPABILITY_DEFAULTS,
+
+  // Capability helpers
+  adapterSupports,
+  supportsFetchAccount,
 };
 ```
 

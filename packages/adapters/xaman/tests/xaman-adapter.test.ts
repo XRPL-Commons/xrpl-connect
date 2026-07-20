@@ -4,6 +4,7 @@ import { decode, encode, hashes, Wallet } from 'xrpl';
 
 const mockXummInstance = {
   authorize: vi.fn(),
+  ping: vi.fn(),
   logout: vi.fn(),
   user: {
     account: Promise.resolve<string | undefined>(undefined),
@@ -176,6 +177,7 @@ function confirmedCancellation() {
 
 beforeEach(() => {
   mockXummInstance.authorize.mockReset();
+  mockXummInstance.ping.mockReset();
   mockXummInstance.logout.mockReset();
   mockXummInstance.user.account = Promise.resolve(undefined);
   mockXummInstance.user.networkEndpoint = Promise.resolve(undefined);
@@ -1218,5 +1220,81 @@ describe('XamanAdapter.disconnect', () => {
     await adapter.disconnect();
 
     expect(await adapter.getAccount()).toBeNull();
+  });
+});
+
+describe('XamanAdapter.fetchAccount', () => {
+  async function connected() {
+    mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
+    const adapter = new XamanAdapter({ apiKey: 'test-key' });
+    await adapter.connect({ network: 'mainnet' });
+    return adapter;
+  }
+
+  it('uses a fresh ping to replace changed account and network data', async () => {
+    const adapter = await connected();
+    const changedAccount = Wallet.generate().address;
+    mockXummInstance.ping.mockResolvedValue({
+      jwtData: {
+        sub: changedAccount,
+        network_endpoint: 'wss://s.altnet.rippletest.net:51233',
+        network_id: 1,
+      },
+    });
+
+    await expect(adapter.fetchAccount()).resolves.toMatchObject({
+      address: changedAccount,
+      network: {
+        id: 'testnet',
+        wss: 'wss://s.altnet.rippletest.net:51233',
+      },
+    });
+    expect(mockXummInstance.ping).toHaveBeenCalledTimes(1);
+    await expect(adapter.getAccount()).resolves.toMatchObject({ address: changedAccount });
+  });
+
+  it('clears stale account state when ping has no authenticated subject', async () => {
+    const adapter = await connected();
+    mockXummInstance.ping.mockResolvedValue({ application: { uuidv4: 'app', name: 'App' } });
+
+    await expect(adapter.fetchAccount()).resolves.toBeNull();
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
+  it('returns null without pinging when disconnected', async () => {
+    const adapter = new XamanAdapter({ apiKey: 'test-key' });
+
+    await expect(adapter.fetchAccount()).resolves.toBeNull();
+    expect(mockXummInstance.ping).not.toHaveBeenCalled();
+  });
+
+  it('propagates ping failures as connection errors without replacing cached state', async () => {
+    const adapter = await connected();
+    mockXummInstance.ping.mockRejectedValue(new Error('Ping failed'));
+
+    await expect(adapter.fetchAccount()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+    await expect(adapter.getAccount()).resolves.toMatchObject({ address: CONNECTED_ACCOUNT });
+  });
+
+  it('does not let an older concurrent refresh overwrite a newer one', async () => {
+    const adapter = await connected();
+    const olderAccount = Wallet.generate().address;
+    const newerAccount = Wallet.generate().address;
+    let resolveOlder!: (value: unknown) => void;
+    let resolveNewer!: (value: unknown) => void;
+    mockXummInstance.ping
+      .mockImplementationOnce(() => new Promise((resolve) => (resolveOlder = resolve)))
+      .mockImplementationOnce(() => new Promise((resolve) => (resolveNewer = resolve)));
+
+    const older = adapter.fetchAccount();
+    const newer = adapter.fetchAccount();
+    resolveNewer({ jwtData: { sub: newerAccount } });
+    await expect(newer).resolves.toMatchObject({ address: newerAccount });
+    resolveOlder({ jwtData: { sub: olderAccount } });
+
+    await expect(older).resolves.toMatchObject({ address: newerAccount });
+    await expect(adapter.getAccount()).resolves.toMatchObject({ address: newerAccount });
   });
 });

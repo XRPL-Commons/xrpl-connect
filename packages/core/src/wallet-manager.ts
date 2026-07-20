@@ -9,8 +9,8 @@ import type {
   WalletManagerOptions,
   AccountInfo,
   Transaction,
-  SignedTransaction,
-  SignedMessage,
+  ManagedSignedTransaction,
+  ManagedSignedMessage,
   SubmittedTransaction,
   WalletEvent,
   ConnectOptions,
@@ -18,8 +18,14 @@ import type {
   NetworkInfo,
   ReconnectOptions,
   StoredState,
+  WalletCapabilities,
 } from './types';
-import { supportsNetworkSwitch, supportsReconnectOptions } from './types';
+import {
+  adapterSupports,
+  supportsFetchAccount,
+  supportsNetworkSwitch,
+  supportsReconnectOptions,
+} from './types';
 import { createWalletError, isWalletError } from './errors';
 import { Logger, configureLogger, isLoggerInstance } from './logger';
 import { Storage } from './storage';
@@ -60,6 +66,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     event: WalletAdapterEvent;
     callback: (data: unknown) => void;
   }> = [];
+  private stateRevision = 0;
 
   constructor(options: WalletManagerOptions) {
     super();
@@ -242,6 +249,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       this.currentAdapter = adapter;
       this.currentAccount = account;
       this.currentReconnectOptions = reconnectOptions ? { ...reconnectOptions } : undefined;
+      this.stateRevision += 1;
 
       // Subscribe to adapter events if supported. Track every registration so
       // disconnect() can call the matching off() and stop late callbacks from
@@ -249,10 +257,11 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       this.subscribeToAdapter(adapter, session);
       connectionCommitted = true;
 
-      this.logger.info(`Connected to ${adapter.name}`, account);
-      this.emit('connect', account);
+      const connectedAccount = this.currentAccount;
+      this.logger.info(`Connected to ${adapter.name}`, connectedAccount);
+      this.emit('connect', connectedAccount);
 
-      return account;
+      return connectedAccount;
     } catch (error) {
       if (adapterConnected && !connectionCommitted) {
         const newerSessionUsesAdapter = this.currentAdapter === adapter;
@@ -389,17 +398,24 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * @param transaction - The transaction to sign
    * @returns SignedTransaction with signed transaction JSON, a blob, and/or a signature
    */
-  async sign(transaction: Transaction): Promise<SignedTransaction> {
-    if (!this.currentAdapter) {
+  async sign(transaction: Transaction): Promise<ManagedSignedTransaction> {
+    if (!this.currentAdapter || !this.currentAccount) {
       throw createWalletError.notConnected();
     }
+    this.assertSupports('sign');
 
     this.logger.debug('Signing transaction', transaction);
 
+    const adapter = this.currentAdapter;
+    const signerAddress = this.currentAccount.address;
     try {
-      const result = await this.currentAdapter.sign(transaction);
-      this.logger.info('Transaction signed', result.tx_blob || result.signature);
-      return result;
+      const result = await adapter.sign(transaction);
+      const signed: ManagedSignedTransaction = {
+        ...result,
+        signerAddress: result.signerAddress ?? signerAddress,
+      };
+      this.logger.info('Transaction signed', signed.tx_blob || signed.signature);
+      return signed;
     } catch (error) {
       this.logger.error('Failed to sign transaction:', error);
       if (isWalletError(error)) {
@@ -418,6 +434,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     if (!this.currentAdapter) {
       throw createWalletError.notConnected();
     }
+    this.assertSupports('signAndSubmit');
 
     this.logger.debug('Signing and submitting transaction', transaction);
 
@@ -437,15 +454,22 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   /**
    * Sign a message
    */
-  async signMessage(message: string | Uint8Array): Promise<SignedMessage> {
-    if (!this.currentAdapter) {
+  async signMessage(message: string | Uint8Array): Promise<ManagedSignedMessage> {
+    if (!this.currentAdapter || !this.currentAccount) {
       throw createWalletError.notConnected();
     }
+    this.assertSupports('signMessage');
 
     this.logger.debug('Signing message');
 
+    const adapter = this.currentAdapter;
+    const signerAddress = this.currentAccount.address;
     try {
-      const signed = await this.currentAdapter.signMessage(message);
+      const result = await adapter.signMessage(message);
+      const signed: ManagedSignedMessage = {
+        ...result,
+        signerAddress: result.signerAddress ?? signerAddress,
+      };
       this.logger.info('Message signed');
       return signed;
     } catch (error) {
@@ -591,6 +615,86 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
+   * Whether the connected wallet (or a given adapter) supports a capability.
+   * Returns `false` when no wallet is connected and no adapter is passed.
+   *
+   * Lets callers hide/disable UI for operations a wallet can't perform (e.g.
+   * a "Sign message" button for Xaman/WalletConnect) instead of letting the
+   * call fail at runtime.
+   */
+  supports(
+    capability: keyof WalletCapabilities,
+    adapter: WalletAdapter | null = this.currentAdapter
+  ): boolean {
+    return adapter ? adapterSupports(adapter, capability) : false;
+  }
+
+  /**
+   * Re-fetch the account live from the connected wallet and refresh the cached
+   * value, emitting `accountChanged` if it changed. Use this when you need the
+   * current on-wallet account rather than the cached `account` getter (e.g. the
+   * user may have switched accounts in the wallet).
+   */
+  async fetchAccount(): Promise<AccountInfo | null> {
+    if (!this.currentAdapter || !this.currentAccount) {
+      throw createWalletError.notConnected();
+    }
+
+    const adapter = this.currentAdapter;
+    if (!supportsFetchAccount(adapter)) {
+      throw createWalletError.unsupportedMethod(
+        `${adapter.name} does not support live account refresh`
+      );
+    }
+
+    const session = this.sessionGeneration;
+    const startingRevision = this.stateRevision;
+    const previous = this.cloneAccount(this.currentAccount);
+    const fetched = await adapter.fetchAccount();
+
+    this.getSessionAccount(adapter, session);
+
+    // An adapter event that arrives during the live query is authoritative.
+    // Its persistence was queued synchronously by the event handler.
+    if (this.stateRevision !== startingRevision) {
+      await this.storageMutationQueue;
+      return this.cloneAccount(this.getSessionAccount(adapter, session));
+    }
+
+    if (!fetched) {
+      await this.cleanup();
+      this.emit('disconnect');
+      return null;
+    }
+
+    const account = this.cloneAccount(fetched);
+
+    const addressChanged = previous.address !== account.address;
+    const networkChanged = !this.networksEqual(previous.network, account.network);
+
+    this.currentAccount = account;
+    const committedRevision = ++this.stateRevision;
+    if (addressChanged) this.currentReconnectOptions = undefined;
+    const state = this.createStoredState(
+      adapter,
+      account,
+      account.network,
+      this.currentReconnectOptions
+    );
+    await this.enqueueStorageMutation(() => this.storage.saveState(state));
+    this.getSessionAccount(adapter, session);
+
+    if (this.stateRevision !== committedRevision) {
+      await this.storageMutationQueue;
+      return this.cloneAccount(this.getSessionAccount(adapter, session));
+    }
+
+    if (addressChanged) this.emit('accountChanged', account);
+    if (networkChanged) this.emit('networkChanged', account.network);
+    return account;
+  }
+
+  /**
    * Get current connection state
    */
   get connected(): boolean {
@@ -626,6 +730,18 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
+   * Throw a typed `UNSUPPORTED_METHOD` error if the connected wallet declares
+   * it can't perform the given capability.
+   */
+  private assertSupports(capability: keyof WalletCapabilities): void {
+    if (this.currentAdapter && !adapterSupports(this.currentAdapter, capability)) {
+      throw createWalletError.unsupportedMethod(
+        `${this.currentAdapter.name} does not support "${capability}"`
+      );
+    }
+  }
+
+  /**
    * Handle adapter disconnect event
    */
   private async handleAdapterDisconnect(adapter: WalletAdapter, session: number): Promise<void> {
@@ -651,6 +767,11 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     // adapter reports a different account, those selectors are no longer safe
     // to persist alongside later session updates.
     this.currentReconnectOptions = undefined;
+    this.stateRevision += 1;
+    const state = this.createStoredState(adapter, currentAccount, currentAccount.network);
+    void this.enqueueStorageMutation(() => this.storage.saveState(state)).catch((error) => {
+      this.logger.warn(`Failed to persist an account change from ${adapter.name}:`, error);
+    });
     this.emit('accountChanged', currentAccount);
   }
 
@@ -691,6 +812,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     const account = this.getSessionAccount(adapter, session);
     const currentAccount = { ...account, network: { ...network } };
     this.currentAccount = currentAccount;
+    this.stateRevision += 1;
     const state = this.createStoredState(
       adapter,
       currentAccount,
@@ -868,6 +990,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     this.currentAdapter = null;
     this.currentAccount = null;
     this.currentReconnectOptions = undefined;
+    this.stateRevision += 1;
     await this.enqueueStorageMutation(() => this.storage.clearState());
   }
 }

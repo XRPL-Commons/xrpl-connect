@@ -144,7 +144,7 @@ export const createWalletError = {
   alreadyConnected: (walletName: string): WalletError =>
     new WalletError(
       WalletErrorCode.ALREADY_CONNECTED,
-      `${walletName} is already connected. Disconnect first before connecting to another wallet.`
+      `${walletName} is already connected or connecting. Disconnect first before starting another connection.`
     ),
 
   unsupportedMethod: (message: string): WalletError =>
