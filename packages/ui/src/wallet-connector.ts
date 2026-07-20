@@ -399,6 +399,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private resetWalletAvailability() {
       this.walletAvailabilityGeneration += 1;
       this.availableWallets = [];
+      this.unavailableWallets = [];
       this.walletAvailabilityChecked = false;
       this.walletAvailabilityTimedOut = false;
     }
@@ -426,6 +427,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           return false;
         }
         this.availableWallets = [];
+        this.unavailableWallets = [];
         this.walletAvailabilityTimedOut = false;
         return true;
       }
@@ -541,6 +543,20 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     private orderByMru(wallets: WalletAdapter[]): WalletAdapter[] {
       return orderWalletsByMru(wallets, this.loadMruIds());
+    }
+
+    /** Reorder available wallets by MRU without moving unavailable-wallet slots. */
+    private orderVisibleWallets(
+      wallets: WalletAdapter[],
+      unavailableWalletIds: ReadonlySet<string>
+    ): WalletAdapter[] {
+      const orderedAvailable = this.orderByMru(
+        wallets.filter((wallet) => !unavailableWalletIds.has(wallet.id))
+      );
+      let availableIndex = 0;
+      return wallets.map((wallet) =>
+        unavailableWalletIds.has(wallet.id) ? wallet : orderedAvailable[availableIndex++]
+      );
     }
 
     /**
@@ -973,22 +989,34 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           ? this.truncateAddress(currentAccount.address, ADDRESS_DISPLAY.TRUNCATE_CHARS_BUTTON)
           : 'Connect Wallet';
 
+      const unavailableWalletIds = new Set(this.unavailableWallets.map((wallet) => wallet.id));
+      // When unavailable wallets are visible, rebuild one configured sequence before
+      // applying MRU ordering so availability does not create separate ordering buckets.
+      const checkedWallets = this.showUnavailable
+        ? this.parseWalletAttribute()
+            .map((id) =>
+              [...this.availableWallets, ...this.unavailableWallets].find(
+                (wallet) => wallet.id === id
+              )
+            )
+            .filter((wallet): wallet is WalletAdapter => wallet !== undefined)
+        : this.availableWallets;
       // Once checked, an empty list means no wallet is currently available.
       const baseWallets = this.walletAvailabilityChecked
-        ? this.availableWallets
+        ? checkedWallets
         : this.walletManager?.wallets || [];
-      const wallets = this.orderByMru(baseWallets);
+      const wallets = this.showUnavailable
+        ? this.orderVisibleWallets(baseWallets, unavailableWalletIds)
+        : this.orderByMru(baseWallets);
 
       const primaryWallet = this.primaryWalletId
-        ? (wallets.find((w) => w.id === this.primaryWalletId) ?? null)
+        ? (wallets.find(
+            (wallet) => wallet.id === this.primaryWalletId && !unavailableWalletIds.has(wallet.id)
+          ) ?? null)
         : null;
-      const otherWallets = wallets.filter((w) => w.id !== this.primaryWalletId);
-      // Only surface unavailable wallets (with an Install link) when opted in.
-      const unavailableWallets = this.showUnavailable
-        ? this.unavailableWallets.filter(
-            (w) => primaryWallet === null || w.id !== this.primaryWalletId
-          )
-        : [];
+      const otherWallets = wallets.filter(
+        (wallet) => primaryWallet === null || wallet.id !== primaryWallet.id
+      );
 
       // Render based on view state
       let contentHTML = '';
@@ -1007,7 +1035,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           this.accountSelectionData.accounts
         );
       } else {
-        contentHTML = renderWalletListView(primaryWallet, otherWallets, unavailableWallets);
+        contentHTML = renderWalletListView(primaryWallet, otherWallets, unavailableWalletIds);
       }
 
       const overlayClass = this.isFirstOpen ? 'overlay fade-in' : 'overlay';
