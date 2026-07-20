@@ -21,14 +21,18 @@
 export * from '@xrpl-connect/core';
 export * from '@xrpl-connect/ui';
 
-// Re-export all adapters
-export { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-export { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
-export { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
-export { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
-export { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
-export { XyraAdapter } from '@xrpl-connect/adapter-xyra';
-export { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
+// Re-export each adapter's full public surface — adapter classes, option types,
+// helpers, network maps, and collision-safe namespaces for the underlying wallet
+// SDKs. Consumers can access every adapter and upstream API from this package.
+// Adapter exports are uniquely named, so these `export *` re-exports do not collide
+// with each other or with the core/ui surfaces above.
+export * from '@xrpl-connect/adapter-xaman';
+export * from '@xrpl-connect/adapter-crossmark';
+export * from '@xrpl-connect/adapter-gemwallet';
+export * from '@xrpl-connect/adapter-walletconnect';
+export * from '@xrpl-connect/adapter-ledger';
+export * from '@xrpl-connect/adapter-xyra';
+export * from '@xrpl-connect/adapter-otsu';
 
 // Convenient grouped exports for better DX
 import { XamanAdapter } from '@xrpl-connect/adapter-xaman';

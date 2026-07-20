@@ -324,6 +324,25 @@ const adapter = new OtsuAdapter();
 
 **Supported Features:** Transaction signing, message signing
 
+## Direct Wallet SDK Access
+
+`xrpl-connect` exposes the complete upstream APIs used by its Xaman, Crossmark,
+and GemWallet adapters. Namespace exports prevent generic upstream names from
+colliding with XRPL Connect's own API:
+
+```typescript
+import { CrossmarkSDK, GemWalletAPI, XamanOAuth2, XamanSDK } from 'xrpl-connect';
+
+const xaman = new XamanSDK.Xumm('YOUR_API_KEY');
+const oauth = new XamanOAuth2.XummPkce('YOUR_API_KEY');
+const installed = CrossmarkSDK.default.sync.isInstalled();
+const address = await GemWalletAPI.getAddress();
+```
+
+The namespaces include every upstream runtime function. Xaman and GemWallet also
+preserve their upstream exported types; Crossmark uses equivalent local facade
+types because its published declarations reference private package subpaths.
+
 ## Types & Interfaces
 
 ### AccountInfo
