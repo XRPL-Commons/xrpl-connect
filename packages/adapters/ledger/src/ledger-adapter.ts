@@ -17,6 +17,8 @@ import type {
   SignedMessage,
   SubmittedTransaction,
   SupportsFetchAccount,
+  SupportsReconnectOptions,
+  ReconnectOptions,
 } from '@xrpl-connect/core';
 import { createWalletError, isWalletError, resolveNetwork } from '@xrpl-connect/core';
 
@@ -36,7 +38,9 @@ const DEFAULT_TIMEOUT = 60000;
 /**
  * Ledger adapter implementation
  */
-export class LedgerAdapter implements WalletAdapter, SupportsFetchAccount {
+export class LedgerAdapter
+  implements WalletAdapter, SupportsFetchAccount, SupportsReconnectOptions
+{
   readonly id = 'ledger';
   readonly name = 'Ledger';
   readonly icon = ICON_DATA_URL;
@@ -66,6 +70,11 @@ export class LedgerAdapter implements WalletAdapter, SupportsFetchAccount {
   async isAvailable(): Promise<boolean> {
     const browserSupport = isBrowserSupported();
     return browserSupport.supported;
+  }
+
+  /** Persist the effective path used to derive the connected Ledger address. */
+  serializeReconnectOptions(_options: ConnectOptions<LedgerConnectOptions>): ReconnectOptions {
+    return { derivationPath: this.derivationPath };
   }
 
   /**

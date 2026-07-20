@@ -117,6 +117,15 @@ export type ConnectOptions<WalletSpecificOptions extends Record<string, unknown>
 } & WalletSpecificOptions;
 
 /**
+ * Adapter-owned, JSON-safe options required to restore a wallet account.
+ * Core-owned connection policy must not be overridden by persisted adapter data.
+ */
+export type ReconnectOptions = Record<string, unknown> & {
+  network?: never;
+  autoReconnect?: never;
+};
+
+/**
  * Events that adapters can emit
  */
 export type WalletAdapterEvent =
@@ -181,6 +190,10 @@ export interface WalletAdapter {
    */
   readonly capabilities?: WalletCapabilities;
 
+  // Optional, minimal reconnect-state serialization (never called by adapters
+  // that do not opt in).
+  serializeReconnectOptions?(options: ConnectOptions): ReconnectOptions | undefined;
+
   // Availability
   isAvailable(): Promise<boolean>; // Check if wallet is installed/accessible
 
@@ -227,6 +240,14 @@ export interface SupportsFetchAccount {
   fetchAccount(): Promise<AccountInfo | null>;
 }
 
+/**
+ * Capability: adapter can select the small, JSON-safe subset of connection
+ * options required to restore the same wallet account after a reload.
+ */
+export interface SupportsReconnectOptions {
+  serializeReconnectOptions(options: ConnectOptions): ReconnectOptions | undefined;
+}
+
 export function supportsPreInitialize(
   adapter: WalletAdapter
 ): adapter is WalletAdapter & SupportsPreInitialize {
@@ -243,6 +264,14 @@ export function supportsFetchAccount(
   adapter: WalletAdapter
 ): adapter is WalletAdapter & SupportsFetchAccount {
   return typeof (adapter as Partial<SupportsFetchAccount>).fetchAccount === 'function';
+}
+
+export function supportsReconnectOptions(
+  adapter: WalletAdapter
+): adapter is WalletAdapter & SupportsReconnectOptions {
+  return (
+    typeof (adapter as Partial<SupportsReconnectOptions>).serializeReconnectOptions === 'function'
+  );
 }
 
 /**
@@ -279,6 +308,11 @@ export interface StoredState {
   account: AccountInfo;
   network: NetworkInfo;
   timestamp: number;
+  /**
+   * Adapter-selected, JSON-safe options required to restore the same account.
+   * Arbitrary caller-provided connection options are never stored.
+   */
+  connectOptions?: ReconnectOptions;
 }
 
 /**

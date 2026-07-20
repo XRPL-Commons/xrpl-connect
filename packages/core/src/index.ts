@@ -20,6 +20,7 @@ export type {
   ManagedSignedMessage,
   SubmittedTransaction,
   ConnectOptions,
+  ReconnectOptions,
   WalletEvent,
   WalletAdapterEvent,
   StorageAdapter,
@@ -31,6 +32,7 @@ export type {
   SupportsDeepLink,
   SupportsFetchAccount,
   WalletCapabilities,
+  SupportsReconnectOptions,
 } from './types';
 
 export {
@@ -42,6 +44,7 @@ export {
   supportsFetchAccount,
   adapterSupports,
   CAPABILITY_DEFAULTS,
+  supportsReconnectOptions,
 } from './types';
 
 // Errors

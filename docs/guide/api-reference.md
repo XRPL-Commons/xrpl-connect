@@ -628,7 +628,7 @@ All error codes are exposed by the `WalletErrorCode` enum.
 | `SIGN_REJECTED`         | `USER_ACTION`        | User rejected the signing prompt              | Allow the user to retry                |
 | `CONNECTION_FAILED`     | `NETWORK`            | Connection to the wallet failed               | Retry or fall back to another wallet   |
 | `NOT_CONNECTED`         | `INVALID_INPUT`      | A connection is required but none is active   | Connect before calling the method      |
-| `ALREADY_CONNECTED`     | `INVALID_INPUT`      | A different wallet is already connected       | Disconnect first                       |
+| `ALREADY_CONNECTED`     | `INVALID_INPUT`      | A wallet is already connected or connecting   | Disconnect first                       |
 | `UNSUPPORTED_METHOD`    | `INVALID_INPUT`      | The wallet does not implement this method     | Use a wallet that supports it          |
 | `SIGN_FAILED`           | `INTERNAL`           | Signing failed for an unspecified reason      | Retry or surface the original error    |
 | `UNKNOWN_ERROR`         | `INTERNAL`           | Unhandled error from the adapter              | Inspect `originalError`                |
