@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Core: add declarative signing capabilities through `WalletAdapter.capabilities`, `WalletManager.supports()`, `adapterSupports()`, and `CAPABILITY_DEFAULTS`. Undeclared `sign`, `signAndSubmit`, and `signMessage` flags default to `true` for compatibility; explicitly unsupported manager operations fail with typed `UNSUPPORTED_METHOD` before the adapter is called. Xaman and WalletConnect now declare arbitrary message signing unsupported.
+- Core: add optional `signerAddress` fields to direct-adapter `SignedTransaction` and `SignedMessage` results, plus `ManagedSignedTransaction` and `ManagedSignedMessage` manager result types where the signer address is required. The manager preserves an adapter-provided signer and otherwise records the account that started the signing request.
+- Core/adapters: add strict live account refresh through `SupportsFetchAccount`, `supportsFetchAccount()`, and `WalletManager.fetchAccount()`. Crossmark, GemWallet, Ledger, Otsu, and Xaman query their wallet or device and refresh manager account/network state; WalletConnect, Xyra, and custom adapters without the optional interface fail with typed `UNSUPPORTED_METHOD` rather than returning cached data. A missing live account clears the manager session. `ConnectOptions.skipRequestAccess` is also exposed as a best-effort silent-access hint that adapters may ignore.
 - xrpl-connect (meta-package): re-export each adapter's full public surface, not just the adapter class. Consumers can now reach adapter-specific exports — including every `*AdapterOptions`/`*ConnectOptions` type — and the complete upstream Xaman, Xaman OAuth, Crossmark, and GemWallet APIs through the collision-safe `XamanSDK`, `XamanOAuth2`, `CrossmarkSDK`, and `GemWalletAPI` namespaces (#35).
 
 ### Fixed

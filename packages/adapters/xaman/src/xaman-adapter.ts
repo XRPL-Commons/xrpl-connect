@@ -20,6 +20,8 @@ import {
   SignedMessage,
   SubmittedTransaction,
   SupportsDeepLink,
+  SupportsFetchAccount,
+  WalletCapabilities,
 } from '@xrpl-connect/core';
 import { createWalletError, createLogger, isWalletError, resolveNetwork } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
@@ -132,11 +134,14 @@ export type XamanConnectOptions = {
 /**
  * Xaman wallet adapter implementation
  */
-export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
+export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFetchAccount {
   readonly id = 'xaman';
   readonly name = 'Xaman';
   readonly icon = ICON_DATA_URL;
   readonly url = 'https://xaman.app';
+  // Xaman has no native arbitrary-message signing; signMessage() is a stub that
+  // returns an empty signature, so advertise it as unsupported.
+  readonly capabilities: WalletCapabilities = { signMessage: false };
 
   private client: Xumm | null = null;
   private clientApiKey: string | null = null;
@@ -144,6 +149,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
   private options: XamanAdapterOptions;
   private activePayloadOperations = new Set<ActivePayloadOperation>();
   private connectionGeneration = 0;
+  private accountRefreshRevision = 0;
   private connecting = false;
   private disconnecting = false;
   private connectionAttemptDone: Promise<void> | null = null;
@@ -417,6 +423,57 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink {
    */
   async getAccount(): Promise<AccountInfo | null> {
     return this.currentAccount;
+  }
+
+  /**
+   * Refresh the authenticated account and network from Xaman's live ping endpoint.
+   */
+  async fetchAccount(): Promise<AccountInfo | null> {
+    const client = this.client;
+    const generation = this.connectionGeneration;
+    if (!client || !this.currentAccount) return null;
+    const refreshRevision = ++this.accountRefreshRevision;
+
+    try {
+      const pong = await client.ping();
+      if (this.client !== client || generation !== this.connectionGeneration) {
+        throw createWalletError.notConnected();
+      }
+      if (refreshRevision !== this.accountRefreshRevision) return this.currentAccount;
+      if (!this.currentAccount) return null;
+
+      const jwtData = pong?.jwtData as
+        | {
+            sub?: unknown;
+            network_endpoint?: unknown;
+            network_id?: unknown;
+          }
+        | undefined;
+      const address = typeof jwtData?.sub === 'string' ? jwtData.sub : '';
+      if (!address) {
+        this.currentAccount = null;
+        return null;
+      }
+
+      const endpoint = jwtData?.network_endpoint;
+      const networkId = jwtData?.network_id;
+      let network = this.currentAccount.network;
+      if (typeof endpoint === 'string' && typeof networkId === 'number') {
+        network = this.parseNetwork(endpoint, networkId);
+      } else if (endpoint !== undefined || networkId !== undefined) {
+        throw new Error('Xaman ping returned incomplete network information');
+      }
+
+      this.currentAccount = {
+        address,
+        publicKey: undefined,
+        network,
+      };
+      return this.currentAccount;
+    } catch (error) {
+      if (isWalletError(error)) throw error;
+      throw createWalletError.connectionFailed(this.name, error as Error);
+    }
   }
 
   /**

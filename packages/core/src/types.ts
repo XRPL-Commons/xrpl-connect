@@ -68,6 +68,7 @@ export interface SignedTransaction {
   hash: string; // Transaction hash
   tx_blob?: string; // Signed transaction blob
   signature?: string; // Signature
+  signerAddress?: string; // Address of the account that produced the signature
   tx_json?: Transaction; // Complete signed transaction JSON
   [key: string]: unknown; // Allow additional wallet-specific fields
 }
@@ -79,7 +80,14 @@ export interface SignedMessage {
   message: string; // Original message
   signature: string; // Signature
   publicKey: string; // Public key used for signing
+  signerAddress?: string; // Address of the account that produced the signature
 }
+
+/** Transaction signature returned by WalletManager with a known signer. */
+export type ManagedSignedTransaction = SignedTransaction & { signerAddress: string };
+
+/** Message signature returned by WalletManager with a known signer. */
+export type ManagedSignedMessage = SignedMessage & { signerAddress: string };
 
 /**
  * Result of submitting a transaction to the ledger
@@ -100,6 +108,12 @@ export interface SubmittedTransaction {
 export type ConnectOptions<WalletSpecificOptions extends Record<string, unknown> = {}> = {
   network?: NetworkConfig; // Preferred network
   autoReconnect?: boolean; // Auto-reconnect on page load
+  /**
+   * Ask the adapter to return the address without prompting for permission when
+   * it already has access (mirrors SEP-43 `skipRequestAccess`). Adapters that
+   * can't distinguish silent access may ignore this.
+   */
+  skipRequestAccess?: boolean;
 } & WalletSpecificOptions;
 
 /**
@@ -122,6 +136,44 @@ export type WalletAdapterEvent =
   | 'error';
 
 /**
+ * Declarative feature support for an adapter. Lets consumers and the manager
+ * know ahead of time which optional operations a wallet can actually perform,
+ * instead of discovering it only when a call fails at runtime.
+ *
+ * Every flag is optional; an omitted flag falls back to {@link CAPABILITY_DEFAULTS}
+ * (the three signing operations default to `true` for backwards compatibility,
+ * so existing adapters keep working without declaring anything).
+ */
+export interface WalletCapabilities {
+  /** Can sign a transaction without submitting it (`sign`). Default: `true`. */
+  sign?: boolean;
+  /** Can sign and submit a transaction (`signAndSubmit`). Default: `true`. */
+  signAndSubmit?: boolean;
+  /** Can sign an arbitrary message (`signMessage`). Default: `true`. */
+  signMessage?: boolean;
+}
+
+/**
+ * Default value for each capability when an adapter doesn't declare it.
+ */
+export const CAPABILITY_DEFAULTS: Readonly<Required<WalletCapabilities>> = Object.freeze({
+  sign: true,
+  signAndSubmit: true,
+  signMessage: true,
+});
+
+/**
+ * Resolve whether an adapter supports a capability, applying
+ * {@link CAPABILITY_DEFAULTS} when the adapter doesn't declare it.
+ */
+export function adapterSupports(
+  adapter: WalletAdapter,
+  capability: keyof WalletCapabilities
+): boolean {
+  return adapter.capabilities?.[capability] ?? CAPABILITY_DEFAULTS[capability];
+}
+
+/**
  * Core interface that all wallet adapters must implement
  */
 export interface WalletAdapter {
@@ -130,6 +182,13 @@ export interface WalletAdapter {
   readonly name: string; // 'Xaman Wallet', 'Crossmark', etc.
   readonly icon?: string; // URL or base64 icon
   readonly url?: string; // Wallet website/download URL
+
+  /**
+   * Declared feature support. Optional — omitted flags use
+   * {@link CAPABILITY_DEFAULTS}. Declare a capability as `false` for operations
+   * the wallet can't perform (e.g. Xaman/WalletConnect message signing).
+   */
+  readonly capabilities?: WalletCapabilities;
 
   // Optional, minimal reconnect-state serialization (never called by adapters
   // that do not opt in).
@@ -143,7 +202,7 @@ export interface WalletAdapter {
   disconnect(): Promise<void>;
 
   // Account information
-  getAccount(): Promise<AccountInfo | null>;
+  getAccount(): Promise<AccountInfo | null>; // Return the adapter's cached account
   getNetwork(): Promise<NetworkInfo>;
 
   // Signing and submission operations
@@ -174,6 +233,14 @@ export interface SupportsDeepLink {
 }
 
 /**
+ * Capability: adapter can query its wallet, provider, or device for the current
+ * authorized account without opening a new connection flow.
+ */
+export interface SupportsFetchAccount {
+  fetchAccount(): Promise<AccountInfo | null>;
+}
+
+/**
  * Capability: adapter can select the small, JSON-safe subset of connection
  * options required to restore the same wallet account after a reload.
  */
@@ -191,6 +258,12 @@ export function supportsDeepLink(
   adapter: WalletAdapter
 ): adapter is WalletAdapter & SupportsDeepLink {
   return typeof (adapter as Partial<SupportsDeepLink>).getDeepLinkURI === 'function';
+}
+
+export function supportsFetchAccount(
+  adapter: WalletAdapter
+): adapter is WalletAdapter & SupportsFetchAccount {
+  return typeof (adapter as Partial<SupportsFetchAccount>).fetchAccount === 'function';
 }
 
 export function supportsReconnectOptions(

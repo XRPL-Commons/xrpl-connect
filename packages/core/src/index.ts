@@ -16,6 +16,8 @@ export type {
   Transaction,
   SignedTransaction,
   SignedMessage,
+  ManagedSignedTransaction,
+  ManagedSignedMessage,
   SubmittedTransaction,
   ConnectOptions,
   ReconnectOptions,
@@ -28,6 +30,8 @@ export type {
   LogLevel,
   SupportsPreInitialize,
   SupportsDeepLink,
+  SupportsFetchAccount,
+  WalletCapabilities,
   SupportsReconnectOptions,
 } from './types';
 
@@ -37,6 +41,9 @@ export {
   WalletErrorCategory,
   supportsPreInitialize,
   supportsDeepLink,
+  supportsFetchAccount,
+  adapterSupports,
+  CAPABILITY_DEFAULTS,
   supportsReconnectOptions,
 } from './types';
 

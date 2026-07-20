@@ -2,9 +2,10 @@
  * Crossmark Adapter for XRPL
  */
 
-import sdk from '@crossmarkio/sdk';
+import sdk, { typings } from '@crossmarkio/sdk';
 import type {
   WalletAdapter,
+  SupportsFetchAccount,
   AccountInfo,
   ConnectOptions,
   NetworkInfo,
@@ -29,13 +30,15 @@ export interface CrossmarkAdapterOptions {
 /**
  * Crossmark adapter implementation
  */
-export class CrossmarkAdapter implements WalletAdapter {
+export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
   readonly id = 'crossmark';
   readonly name = 'Crossmark';
   readonly icon = ICON_DATA_URL;
   readonly url = 'https://crossmark.io';
 
   private currentAccount: AccountInfo | null = null;
+  private connectionGeneration = 0;
+  private accountRefreshRevision = 0;
 
   constructor(_options: CrossmarkAdapterOptions = {}) {
     // Options not currently used
@@ -90,6 +93,7 @@ export class CrossmarkAdapter implements WalletAdapter {
         publicKey,
         network,
       };
+      this.connectionGeneration += 1;
 
       return this.currentAccount;
     } catch (error) {
@@ -101,6 +105,7 @@ export class CrossmarkAdapter implements WalletAdapter {
    * Disconnect from Crossmark
    */
   async disconnect(): Promise<void> {
+    this.connectionGeneration += 1;
     this.currentAccount = null;
   }
 
@@ -112,6 +117,83 @@ export class CrossmarkAdapter implements WalletAdapter {
   }
 
   /**
+   * Fetch the active account and network directly from Crossmark.
+   */
+  async fetchAccount(): Promise<AccountInfo | null> {
+    if (!this.currentAccount) return null;
+    const generation = this.connectionGeneration;
+    const refreshRevision = ++this.accountRefreshRevision;
+
+    let addressResponse: unknown;
+    try {
+      addressResponse = await sdk.api.awaitRequest({ command: typings.COMMANDS.ADDRESS });
+    } catch (error) {
+      throw createWalletError.connectionFailed(this.name, error as Error);
+    }
+
+    if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
+    if (refreshRevision !== this.accountRefreshRevision) return this.currentAccount;
+    if (!this.currentAccount) return null;
+
+    const address = (addressResponse as unknown as { response?: { data?: { address?: string } } })
+      .response?.data?.address;
+
+    if (!address) {
+      this.currentAccount = null;
+      return null;
+    }
+
+    let networkResponse: unknown;
+    try {
+      networkResponse = await sdk.api.awaitRequest({ command: typings.COMMANDS.NETWORK });
+    } catch (error) {
+      throw createWalletError.connectionFailed(this.name, error as Error);
+    }
+
+    if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
+    if (refreshRevision !== this.accountRefreshRevision) return this.currentAccount;
+    if (!this.currentAccount) return null;
+
+    const network = (
+      networkResponse as unknown as {
+        response?: {
+          data?: {
+            network?: {
+              protocol?: string;
+              type?: string;
+              label?: string;
+              wss?: string;
+              rpc?: string;
+            };
+          };
+        };
+      }
+    ).response?.data?.network;
+
+    if (!network?.type || !network.label || !network.wss) {
+      throw createWalletError.connectionFailed(
+        this.name,
+        new Error('Crossmark returned incomplete network information')
+      );
+    }
+
+    const previousAccount = this.currentAccount;
+    this.currentAccount = {
+      address,
+      publicKey: previousAccount?.address === address ? previousAccount.publicKey : undefined,
+      network: this.toNetworkInfo({
+        protocol: network.protocol,
+        type: network.type,
+        label: network.label,
+        wss: network.wss,
+        rpc: network.rpc,
+      }),
+    };
+
+    return this.currentAccount;
+  }
+
+  /**
    * Get current network
    */
   async getNetwork(): Promise<NetworkInfo> {
@@ -119,6 +201,31 @@ export class CrossmarkAdapter implements WalletAdapter {
       throw createWalletError.notConnected();
     }
     return this.currentAccount.network;
+  }
+
+  private toNetworkInfo(network: {
+    protocol?: string;
+    type: string;
+    label: string;
+    wss: string;
+    rpc?: string;
+  }): NetworkInfo {
+    const type = network.type.toLowerCase();
+    const protocol = (network.protocol || network.label).toLowerCase();
+    const label = network.label.toLowerCase();
+    const isXrpl = label === 'xrpl' || label === 'xrp ledger';
+    const isStandardXrpl = isXrpl && ['mainnet', 'testnet', 'devnet'].includes(type);
+    const chain = label || protocol;
+    const networkId = isStandardXrpl ? type : `${chain.replace(/[^a-z0-9]+/g, '-')}-${type}`;
+
+    return {
+      id: networkId,
+      name: isStandardXrpl
+        ? `${type.charAt(0).toUpperCase()}${type.slice(1)}`
+        : `${network.label} ${network.type}`,
+      wss: network.wss,
+      rpc: network.rpc,
+    };
   }
 
   /**

@@ -3,6 +3,7 @@ import { TIME, WalletErrorCode } from '@xrpl-connect/core';
 
 vi.mock('@gemwallet/api', () => ({
   isInstalled: vi.fn(),
+  getNetwork: vi.fn(),
   getPublicKey: vi.fn(),
   signMessage: vi.fn(),
   signTransaction: vi.fn(),
@@ -16,10 +17,97 @@ const api = gemApi as unknown as Record<keyof typeof gemApi, ReturnType<typeof v
 
 beforeEach(() => {
   api.isInstalled.mockReset();
+  api.getNetwork.mockReset();
   api.getPublicKey.mockReset();
   api.signMessage.mockReset();
   api.signTransaction.mockReset();
   api.submitTransaction.mockReset();
+});
+
+describe('GemWalletAdapter.fetchAccount', () => {
+  async function connected() {
+    api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
+    api.getPublicKey.mockResolvedValue({
+      result: { address: 'rOriginal', publicKey: 'ORIGINAL_PK' },
+    });
+    const adapter = new GemWalletAdapter();
+    await adapter.connect();
+    return adapter;
+  }
+
+  it('queries GemWallet and replaces cached account and network data', async () => {
+    const adapter = await connected();
+    api.getPublicKey.mockResolvedValue({ result: { address: 'rFresh', publicKey: 'FRESH_PK' } });
+    api.getNetwork.mockResolvedValue({
+      result: { chain: 'XRPL', network: 'Testnet', websocket: 'wss://fresh.example' },
+    });
+
+    const account = await adapter.fetchAccount();
+
+    expect(api.getPublicKey).toHaveBeenCalledTimes(2);
+    expect(api.getNetwork).toHaveBeenCalledTimes(1);
+    expect(account).toEqual({
+      address: 'rFresh',
+      publicKey: 'FRESH_PK',
+      network: { id: 'testnet', name: 'Testnet', wss: 'wss://fresh.example' },
+    });
+    await expect(adapter.getAccount()).resolves.toEqual(account);
+  });
+
+  it('treats an explicit GemWallet rejection as an error and preserves the cache', async () => {
+    const adapter = await connected();
+    api.getPublicKey.mockResolvedValue({ type: 'reject', result: undefined });
+
+    await expect(adapter.fetchAccount()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_REJECTED,
+    });
+    expect(api.getNetwork).not.toHaveBeenCalled();
+    await expect(adapter.getAccount()).resolves.toMatchObject({ address: 'rOriginal' });
+  });
+
+  it('rejects with a typed connection error when the live query fails', async () => {
+    const adapter = await connected();
+    api.getPublicKey.mockRejectedValue(new Error('extension unavailable'));
+
+    await expect(adapter.fetchAccount()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+  });
+
+  it('does not restore state when disconnected during a live query', async () => {
+    const adapter = await connected();
+    let resolveAccount!: (value: unknown) => void;
+    api.getPublicKey.mockImplementation(() => new Promise((resolve) => (resolveAccount = resolve)));
+
+    const fetching = adapter.fetchAccount();
+    await adapter.disconnect();
+    resolveAccount({ result: { address: 'rLate', publicKey: 'LATE_PK' } });
+
+    await expect(fetching).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+    expect(api.getNetwork).not.toHaveBeenCalled();
+  });
+
+  it('does not let an older concurrent refresh overwrite a newer one', async () => {
+    const adapter = await connected();
+    let resolveFirst!: (value: unknown) => void;
+    let resolveSecond!: (value: unknown) => void;
+    api.getPublicKey
+      .mockImplementationOnce(() => new Promise((resolve) => (resolveFirst = resolve)))
+      .mockImplementationOnce(() => new Promise((resolve) => (resolveSecond = resolve)));
+    api.getNetwork.mockResolvedValue({
+      result: { chain: 'XRPL', network: 'Testnet', websocket: 'wss://testnet.example' },
+    });
+
+    const first = adapter.fetchAccount();
+    const second = adapter.fetchAccount();
+    resolveSecond({ result: { address: 'rNewer', publicKey: 'NEWER_PK' } });
+    await expect(second).resolves.toMatchObject({ address: 'rNewer' });
+    resolveFirst({ result: { address: 'rOlder', publicKey: 'OLDER_PK' } });
+
+    await expect(first).resolves.toMatchObject({ address: 'rNewer' });
+    await expect(adapter.getAccount()).resolves.toMatchObject({ address: 'rNewer' });
+  });
 });
 
 afterEach(() => {
