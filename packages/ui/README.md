@@ -78,7 +78,7 @@ All styling is controlled exclusively via CSS variables (see [Customization](./C
 The web component provides a public API for programmatic control:
 
 ```typescript
-interface WalletConnectorElement extends HTMLElement {
+interface WalletConnectorElementInstance extends HTMLElement {
   setWalletManager(manager: WalletManager): void;
   open(): Promise<void>;
   openAndWait(): Promise<AccountInfo>;

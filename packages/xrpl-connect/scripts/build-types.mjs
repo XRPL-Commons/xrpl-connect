@@ -118,8 +118,24 @@ let rolled = readFileSync(rolledPath, 'utf-8');
 const chromeTypesReference = '/// <reference types="chrome" />\n';
 if (!rolled.startsWith(chromeTypesReference)) {
   rolled = chromeTypesReference + rolled;
-  writeFileSync(rolledPath, rolled);
 }
+
+// API Extractor inlines the UI package's exported element interface but drops
+// its `declare global` block. Restore the custom-element tag mapping so the
+// packed facade keeps the same `document.createElement()` inference as the
+// standalone UI package.
+const walletConnectorTagDeclaration = `
+declare global {
+    interface HTMLElementTagNameMap {
+        'xrpl-wallet-connector': WalletConnectorElementInstance;
+    }
+}
+`;
+if (!rolled.includes("'xrpl-wallet-connector': WalletConnectorElementInstance")) {
+  rolled += walletConnectorTagDeclaration;
+}
+writeFileSync(rolledPath, rolled);
+
 const importedModules = new Set();
 for (const m of rolled.matchAll(/^\s*(?:import|export)\b[^;]*?\bfrom\s*['"]([^'"]+)['"]/gm)) {
   importedModules.add(m[1]);
