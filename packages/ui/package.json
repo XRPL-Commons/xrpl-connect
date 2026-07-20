@@ -42,19 +42,20 @@
     "dev": "tsup --watch",
     "lint": "eslint src",
     "type-check": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "pnpm test:types && vitest run",
+    "test:types": "tsc -p tests/tsconfig.types.json",
     "test:watch": "vitest",
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@xrpl-connect/core": "^0.8.0"
+    "@xrpl-connect/core": "^0.8.3"
   },
   "devDependencies": {
     "@xrpl-connect/core": "workspace:*",
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",
-    "vite": "^5.0.0",
-    "vitest": "^1.6.1",
+    "vite": "^6.4.3",
+    "vitest": "^3.2.6",
     "jsdom": "^22.1.0"
   },
   "dependencies": {

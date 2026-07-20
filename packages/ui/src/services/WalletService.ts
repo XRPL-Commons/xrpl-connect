@@ -1,5 +1,5 @@
-import type { ConnectOptions, WalletManager } from '@xrpl-connect/core';
-import { createLogger } from '@xrpl-connect/core';
+import type { ConnectOptions, WalletAdapter, WalletManager } from '@xrpl-connect/core';
+import { createLogger, TIME, WalletErrorCode, withTimeout } from '@xrpl-connect/core';
 import { isSafari, isMobile, delay } from '../utils';
 import { TIMINGS, ERROR_CODES } from '../constants';
 import {
@@ -11,6 +11,36 @@ import {
 } from '../types';
 
 const logger = createLogger('[WalletService]');
+const AVAILABILITY_TIMED_OUT = Symbol('availability-timed-out');
+
+async function checkWalletAvailability(wallet: WalletAdapter): Promise<boolean> {
+  const result = await withTimeout<
+    | { available: boolean; error?: never }
+    | { available?: never; error: unknown }
+    | typeof AVAILABILITY_TIMED_OUT
+  >(
+    async () => {
+      try {
+        return { available: await wallet.isAvailable() };
+      } catch (error) {
+        return { error };
+      }
+    },
+    TIME.AVAILABILITY_TIMEOUT,
+    AVAILABILITY_TIMED_OUT
+  );
+
+  if (result === AVAILABILITY_TIMED_OUT) {
+    logger.warn(
+      `Timed out checking availability for ${wallet.name} after ${TIME.AVAILABILITY_TIMEOUT}ms`
+    );
+    throw new Error(`${wallet.name} did not respond. Please try again.`);
+  }
+  if ('error' in result) {
+    throw result.error;
+  }
+  return result.available;
+}
 
 /**
  * Narrow `unknown` thrown values to the bits we read for error display.
@@ -104,7 +134,7 @@ export class WalletService {
         }
       } else if (walletId === 'ledger') {
         // For Ledger, show account selection first
-        const isAvailable = await wallet.isAvailable();
+        const isAvailable = await checkWalletAvailability(wallet);
 
         if (!isAvailable) {
           throw new Error(
@@ -132,14 +162,6 @@ export class WalletService {
         // Show account selection view
         this.component.showAccountSelectionView(walletId, wallet.name, wallet.icon, accounts);
       } else {
-        // For extension wallets, check availability first
-        const isAvailable = await wallet.isAvailable();
-
-        if (!isAvailable) {
-          // Wallet not installed - show appropriate error
-          throw new Error(`${wallet.name} is not installed. Please install the extension first.`);
-        }
-
         // Show loading state
         this.component.showLoadingView(walletId, wallet.name, wallet.icon);
 
@@ -175,7 +197,11 @@ export class WalletService {
       ) {
         errorType = 'unavailable';
         errorMessage = 'Wallet popup was closed or did not respond. Please try again.';
-      } else if (errorMessage.toLowerCase().includes('not installed')) {
+      } else if (
+        err.code === WalletErrorCode.WALLET_NOT_AVAILABLE ||
+        errorMessage.toLowerCase().includes('not installed') ||
+        errorMessage.toLowerCase().includes('did not respond')
+      ) {
         errorType = 'unavailable';
       }
 

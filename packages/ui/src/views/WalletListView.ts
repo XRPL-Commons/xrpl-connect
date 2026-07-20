@@ -23,15 +23,19 @@ export function renderWalletListView(
             : ''
         }
         <div class="wallet-list">
-          ${otherWallets
-            .map(
-              (wallet) => `
+          ${
+            !primaryWallet && otherWallets.length === 0
+              ? '<p class="wallet-empty">No wallets are currently available.</p>'
+              : otherWallets
+                  .map(
+                    (wallet) => `
             <button class="wallet-button" data-wallet-id="${wallet.id}">
               <span>${wallet.name}</span>
               ${wallet.icon ? `<img src="${wallet.icon}" width="28" height="28" alt="${wallet.name}">` : ''}
             </button>`
-            )
-            .join('')}
+                  )
+                  .join('')
+          }
           ${unavailableWallets
             .map((wallet) => {
               const installAttribute = wallet.url

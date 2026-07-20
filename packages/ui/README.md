@@ -79,9 +79,10 @@ All styling is controlled exclusively via CSS variables (see [Customization](./C
 The web component provides a public API for programmatic control:
 
 ```typescript
-interface WalletConnectorElement extends HTMLElement {
+interface WalletConnectorElementInstance extends HTMLElement {
   setWalletManager(manager: WalletManager): void;
-  open(): void;
+  open(): Promise<void>;
+  openAndWait(): Promise<AccountInfo>;
   close(): void;
   toggle(): void;
 }
@@ -105,6 +106,21 @@ Opens the wallet connection modal.
 const connector = document.querySelector('xrpl-wallet-connector');
 connector.open();
 ```
+
+#### `openAndWait()`
+
+Opens the modal and resolves with the connected account. It resolves immediately
+if the manager is already connected, and rejects if no manager is configured or
+the user closes the modal first.
+
+```typescript
+const account = await connector.openAndWait();
+console.log(account.address);
+```
+
+Successful connections also update the most-recently-used ordering stored at
+`localStorage["xrpl-connect:mru-wallets"]`. The `primary-wallet` attribute still
+has priority over this ordering.
 
 #### `close()`
 

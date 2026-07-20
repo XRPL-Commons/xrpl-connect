@@ -16,8 +16,11 @@ export type {
   Transaction,
   SignedTransaction,
   SignedMessage,
+  ManagedSignedTransaction,
+  ManagedSignedMessage,
   SubmittedTransaction,
   ConnectOptions,
+  ReconnectOptions,
   WalletEvent,
   WalletAdapterEvent,
   StorageAdapter,
@@ -27,6 +30,9 @@ export type {
   LogLevel,
   SupportsPreInitialize,
   SupportsDeepLink,
+  SupportsFetchAccount,
+  WalletCapabilities,
+  SupportsReconnectOptions,
 } from './types';
 
 export {
@@ -35,6 +41,10 @@ export {
   WalletErrorCategory,
   supportsPreInitialize,
   supportsDeepLink,
+  supportsFetchAccount,
+  adapterSupports,
+  CAPABILITY_DEFAULTS,
+  supportsReconnectOptions,
 } from './types';
 
 // Errors
@@ -64,3 +74,9 @@ export { TIME } from './constants';
 
 // Network helpers
 export { resolveNetwork } from './network';
+
+// Device detection
+export { isMobile } from './device';
+
+// Async helpers
+export { withTimeout } from './async';

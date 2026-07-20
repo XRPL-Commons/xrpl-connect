@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { WalletAdapter } from '@xrpl-connect/core';
+import { WalletManager, type WalletAdapter } from '@xrpl-connect/core';
 import { WalletConnectorElement } from '../src/wallet-connector';
 
 afterEach(() => {
@@ -13,26 +13,20 @@ describe('WalletConnectorElement availability rendering', () => {
       name: 'Unavailable Wallet',
       isAvailable: vi.fn(async () => false),
     } as unknown as WalletAdapter;
-    const Connector = WalletConnectorElement as CustomElementConstructor;
-    const connector = new Connector() as HTMLElement & {
-      walletManager: {
-        wallets: WalletAdapter[];
-        connected: boolean;
-        account: null;
+    const Connector = WalletConnectorElement as typeof HTMLElement & {
+      new (): HTMLElement & {
+        setWalletManager(manager: WalletManager): void;
+        open(): Promise<void>;
+        getOverlayRoot(): ShadowRoot | null;
       };
-      open(): Promise<void>;
-      overlayPortal: HTMLDivElement;
     };
-    connector.walletManager = {
-      wallets: [unavailableWallet],
-      connected: false,
-      account: null,
-    };
+    const connector = new Connector();
+    connector.setWalletManager(new WalletManager({ adapters: [unavailableWallet] }));
     document.body.appendChild(connector);
 
     await connector.open();
 
-    const modal = connector.overlayPortal.shadowRoot?.innerHTML ?? '';
+    const modal = connector.getOverlayRoot()?.innerHTML ?? '';
     expect(unavailableWallet.isAvailable).toHaveBeenCalledOnce();
     expect(modal).not.toContain('data-wallet-id="unavailable"');
     expect(modal).not.toContain('Unavailable Wallet');

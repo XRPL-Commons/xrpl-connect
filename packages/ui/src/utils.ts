@@ -5,6 +5,13 @@
 import { LUMINANCE, COLOR_ADJUSTMENT, BROWSER_PATTERNS } from './constants';
 
 /**
+ * Re-export the shared mobile/tablet detection (incl. iPadOS desktop-mode, #16)
+ * so the UI package and the WalletConnect adapter use one implementation that
+ * cannot drift. Kept on the UI's public surface for backwards compatibility.
+ */
+export { isMobile } from '@xrpl-connect/core';
+
+/**
  * Calculate luminance to determine if text should be black or white
  * Based on WCAG relative luminance formula
  * @param hex - Hex color string (with or without #)
@@ -73,14 +80,6 @@ export function isSafari(): boolean {
 }
 
 /**
- * Detect if user is on mobile device
- * @returns true if mobile device
- */
-export function isMobile(): boolean {
-  return BROWSER_PATTERNS.MOBILE.test(navigator.userAgent);
-}
-
-/**
  * Check if URI is a Xaman QR code image
  * Xaman provides PNG images directly instead of WalletConnect URIs
  * @param uri - URI to check
@@ -108,4 +107,24 @@ export function truncateString(str: string, maxLength: number): string {
  */
 export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Order wallets by most-recently-used first (`mruIds`, newest first), keeping
+ * the input order for wallets with no usage history. Stable: never reorders two
+ * wallets that are both unused.
+ *
+ * @param wallets - Wallets to order.
+ * @param mruIds - Wallet ids in most-recently-used order (newest first).
+ */
+export function orderWalletsByMru<T extends { id: string }>(wallets: T[], mruIds: string[]): T[] {
+  if (mruIds.length === 0) return wallets;
+  const rank = (id: string): number => {
+    const index = mruIds.indexOf(id);
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  return wallets
+    .map((wallet, index) => ({ wallet, index }))
+    .sort((a, b) => rank(a.wallet.id) - rank(b.wallet.id) || a.index - b.index)
+    .map((entry) => entry.wallet);
 }
