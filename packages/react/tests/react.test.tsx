@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vite-plus/test';
 import { render, act, waitFor, renderHook } from '@testing-library/react';
 import { StrictMode, useRef } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -166,6 +166,7 @@ describe('XrplConnectProvider + hooks', () => {
     const connecting = manager!.connect('fake');
     await waitFor(() => expect(adapter.connect).toHaveBeenCalledTimes(1));
     unmount();
+    await waitFor(() => expect(disconnect).toHaveBeenCalledTimes(1));
     resolveConnect(ACCOUNT);
 
     await expect(connecting).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
