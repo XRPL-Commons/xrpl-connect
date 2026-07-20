@@ -3,5 +3,5 @@
  */
 
 export { LedgerAdapter } from './ledger-adapter';
-export type { LedgerAdapterOptions } from './types';
+export type { LedgerAdapterOptions, LedgerConnectOptions } from './types';
 export { LedgerDeviceState, LEDGER_STATE_MESSAGES } from './types';

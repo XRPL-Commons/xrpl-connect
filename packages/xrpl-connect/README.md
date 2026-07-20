@@ -164,17 +164,31 @@ export {
   CrossmarkAdapter,
   GemWalletAdapter,
   WalletConnectAdapter,
+  LedgerAdapter,
   XyraAdapter,
+  OtsuAdapter,
 
   // Types
   XamanAdapterOptions,
+  XamanConnectOptions,
   CrossmarkAdapterOptions,
   GemWalletAdapterOptions,
   WalletConnectAdapterOptions,
+  WalletConnectConnectOptions,
+  LedgerAdapterOptions,
+  LedgerConnectOptions,
   XyraAdapterOptions,
+  XyraConnectOptions,
 
-  // Enums
+  // Enums, constants, and complete upstream APIs
   XRPLMethod, // from WalletConnect adapter
+  LedgerDeviceState,
+  LEDGER_STATE_MESSAGES,
+  OTSU_NETWORK_MAP,
+  XamanSDK,
+  XamanOAuth2,
+  CrossmarkSDK,
+  GemWalletAPI,
 };
 
 export const Adapters = {
@@ -182,7 +196,9 @@ export const Adapters = {
   Crossmark: CrossmarkAdapter,
   GemWallet: GemWalletAdapter,
   WalletConnect: WalletConnectAdapter,
+  Ledger: LedgerAdapter,
   Xyra: XyraAdapter,
+  Otsu: OtsuAdapter,
 };
 ```
 

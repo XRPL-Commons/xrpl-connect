@@ -4,4 +4,9 @@
  */
 
 export { XamanAdapter } from './xaman-adapter';
-export type { XamanAdapterOptions } from './xaman-adapter';
+export type { XamanAdapterOptions, XamanConnectOptions } from './xaman-adapter';
+
+// Namespace exports expose the complete upstream APIs without flattening generic
+// names into the adapter or meta-package public surface.
+export * as XamanSDK from 'xumm';
+export * as XamanOAuth2 from 'xumm-oauth2-pkce';
