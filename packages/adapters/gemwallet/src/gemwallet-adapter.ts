@@ -4,6 +4,7 @@
 
 import {
   isInstalled,
+  getNetwork,
   getPublicKey,
   signMessage,
   signTransaction,
@@ -11,6 +12,7 @@ import {
 } from '@gemwallet/api';
 import type {
   WalletAdapter,
+  SupportsFetchAccount,
   AccountInfo,
   ConnectOptions,
   NetworkInfo,
@@ -19,7 +21,7 @@ import type {
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
-import { createWalletError, resolveNetwork } from '@xrpl-connect/core';
+import { createWalletError, resolveNetwork, TIME, withTimeout } from '@xrpl-connect/core';
 import type { SubmittableTransaction } from 'xrpl';
 import iconSvg from './assets/icon.svg';
 
@@ -36,13 +38,15 @@ export interface GemWalletAdapterOptions {
 /**
  * GemWallet adapter implementation
  */
-export class GemWalletAdapter implements WalletAdapter {
+export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
   readonly id = 'gemwallet';
   readonly name = 'GemWallet';
   readonly icon = ICON_DATA_URL;
   readonly url = 'https://gemwallet.app';
 
   private currentAccount: AccountInfo | null = null;
+  private connectionGeneration = 0;
+  private accountRefreshRevision = 0;
 
   constructor(_options: GemWalletAdapterOptions = {}) {
     // Options not currently used
@@ -52,12 +56,18 @@ export class GemWalletAdapter implements WalletAdapter {
    * Check if GemWallet is installed
    */
   async isAvailable(): Promise<boolean> {
-    try {
-      const result = await isInstalled();
-      return result.result?.isInstalled || false;
-    } catch {
-      return false;
-    }
+    return withTimeout(
+      async () => {
+        try {
+          const result = await isInstalled();
+          return result.result?.isInstalled || false;
+        } catch {
+          return false;
+        }
+      },
+      TIME.AVAILABILITY_TIMEOUT,
+      false
+    );
   }
 
   /**
@@ -88,6 +98,7 @@ export class GemWalletAdapter implements WalletAdapter {
         publicKey,
         network,
       };
+      this.connectionGeneration += 1;
 
       return this.currentAccount;
     } catch (error) {
@@ -99,6 +110,7 @@ export class GemWalletAdapter implements WalletAdapter {
    * Disconnect from GemWallet
    */
   async disconnect(): Promise<void> {
+    this.connectionGeneration += 1;
     this.currentAccount = null;
   }
 
@@ -110,6 +122,63 @@ export class GemWalletAdapter implements WalletAdapter {
   }
 
   /**
+   * Fetch the active account and network directly from GemWallet.
+   */
+  async fetchAccount(): Promise<AccountInfo | null> {
+    if (!this.currentAccount) return null;
+    const generation = this.connectionGeneration;
+    const refreshRevision = ++this.accountRefreshRevision;
+
+    let accountResponse: Awaited<ReturnType<typeof getPublicKey>>;
+    try {
+      accountResponse = await getPublicKey();
+    } catch (error) {
+      throw createWalletError.connectionFailed(this.name, error as Error);
+    }
+
+    if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
+    if (refreshRevision !== this.accountRefreshRevision) return this.currentAccount;
+    if (!this.currentAccount) return null;
+
+    if (accountResponse.type === 'reject') {
+      throw createWalletError.connectionRejected(this.name);
+    }
+    if (!accountResponse.result?.address) {
+      throw createWalletError.connectionFailed(
+        this.name,
+        new Error('GemWallet returned incomplete account information')
+      );
+    }
+
+    let networkResponse: Awaited<ReturnType<typeof getNetwork>>;
+    try {
+      networkResponse = await getNetwork();
+    } catch (error) {
+      throw createWalletError.connectionFailed(this.name, error as Error);
+    }
+
+    if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
+    if (refreshRevision !== this.accountRefreshRevision) return this.currentAccount;
+    if (!this.currentAccount) return null;
+
+    const network = networkResponse.result;
+    if (!network?.chain || !network.network || !network.websocket) {
+      throw createWalletError.connectionFailed(
+        this.name,
+        new Error('GemWallet returned incomplete network information')
+      );
+    }
+
+    this.currentAccount = {
+      address: accountResponse.result.address,
+      publicKey: accountResponse.result.publicKey,
+      network: this.toNetworkInfo(network),
+    };
+
+    return this.currentAccount;
+  }
+
+  /**
    * Get current network
    */
   async getNetwork(): Promise<NetworkInfo> {
@@ -117,6 +186,24 @@ export class GemWalletAdapter implements WalletAdapter {
       throw createWalletError.notConnected();
     }
     return this.currentAccount.network;
+  }
+
+  private toNetworkInfo(network: {
+    chain: string;
+    network: string;
+    websocket: string;
+  }): NetworkInfo {
+    const chain = network.chain.toLowerCase();
+    const type = network.network.toLowerCase();
+    const isStandardXrpl = chain === 'xrpl' && ['mainnet', 'testnet', 'devnet'].includes(type);
+
+    return {
+      id: isStandardXrpl ? type : `${chain}-${type}`,
+      name: isStandardXrpl
+        ? `${type.charAt(0).toUpperCase()}${type.slice(1)}`
+        : `${network.chain} ${network.network}`,
+      wss: network.websocket,
+    };
   }
 
   /**

@@ -32,10 +32,9 @@ interface Eip1193Provider {
   request(args: { method: string; params?: unknown }): Promise<unknown>;
 }
 
-declare global {
-  interface Window {
-    ethereum?: Eip1193Provider;
-  }
+interface Eip6963ProviderDetail {
+  info: { rdns: string };
+  provider: Eip1193Provider;
 }
 
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
@@ -74,6 +73,7 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
   readonly url = 'https://snaps.metamask.io/snap/npm/xrpl-snap/';
 
   private readonly snapId: string;
+  private provider: Eip1193Provider | null = null;
   private currentAccount: AccountInfo | null = null;
 
   constructor(options: MetaMaskSnapAdapterOptions = {}) {
@@ -84,10 +84,34 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
    * Get the MetaMask provider from the window object
    */
   private getProvider(): Eip1193Provider | null {
-    if (typeof window === 'undefined' || !window.ethereum) {
+    if (this.provider) {
+      return this.provider;
+    }
+    if (typeof window === 'undefined') {
       return null;
     }
-    return window.ethereum;
+
+    let discovered: Eip1193Provider | null = null;
+    const handleAnnouncement = (event: Event) => {
+      const detail = (event as CustomEvent<Eip6963ProviderDetail>).detail;
+      if (
+        detail?.info?.rdns.includes('io.metamask') &&
+        typeof detail.provider?.request === 'function'
+      ) {
+        discovered = detail.provider;
+      }
+    };
+
+    window.addEventListener('eip6963:announceProvider', handleAnnouncement);
+    try {
+      window.dispatchEvent(new Event('eip6963:requestProvider'));
+    } finally {
+      window.removeEventListener('eip6963:announceProvider', handleAnnouncement);
+    }
+
+    const legacy = (window as Window & { ethereum?: Eip1193Provider }).ethereum;
+    this.provider = discovered ?? (legacy?.isMetaMask ? legacy : null);
+    return this.provider;
   }
 
   /**
@@ -129,6 +153,9 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
         params: { [this.snapId]: {} },
       });
 
+      // A failed reconnect must not leave an old account active after the Snap
+      // has accepted a new network or account selection.
+      this.currentAccount = null;
       const appliedNetwork = await this.selectNetwork(network);
 
       // Get account info from the snap
@@ -249,7 +276,10 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
         };
       };
       const submitResult = response?.result;
-      if (submitResult?.engine_result !== 'tesSUCCESS') {
+      if (
+        submitResult?.engine_result !== 'tesSUCCESS' &&
+        submitResult?.engine_result !== 'terQUEUED'
+      ) {
         const detail = submitResult?.engine_result_message || submitResult?.engine_result;
         throw new Error(
           detail ? `XRPL submission failed: ${detail}` : 'Invalid XRPL submit response'
@@ -281,7 +311,10 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
     }
 
     try {
-      const messageStr = typeof message === 'string' ? message : new TextDecoder().decode(message);
+      const messageStr =
+        typeof message === 'string'
+          ? message
+          : new TextDecoder('utf-8', { fatal: true }).decode(message);
 
       const result = (await this.invokeSnap('xrpl_signMessage', { message: messageStr })) as {
         signature: string;

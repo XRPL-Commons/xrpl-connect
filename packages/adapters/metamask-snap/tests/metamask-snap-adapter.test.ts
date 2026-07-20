@@ -59,6 +59,28 @@ describe('MetaMaskSnapAdapter.isAvailable', () => {
     await expect(new MetaMaskSnapAdapter().isAvailable()).resolves.toBe(true);
   });
 
+  it('discovers MetaMask through EIP-6963 when another wallet owns window.ethereum', async () => {
+    const legacy = mockProvider({ isMetaMask: false });
+    const metamask = mockProvider({});
+    setProvider(legacy);
+    const announce = () => {
+      window.dispatchEvent(
+        new CustomEvent('eip6963:announceProvider', {
+          detail: { info: { rdns: 'io.metamask' }, provider: metamask },
+        })
+      );
+    };
+    window.addEventListener('eip6963:requestProvider', announce);
+
+    try {
+      await expect(new MetaMaskSnapAdapter().isAvailable()).resolves.toBe(true);
+      expect(metamask.request).toHaveBeenCalledWith({ method: 'wallet_getSnaps' });
+      expect(legacy.request).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('eip6963:requestProvider', announce);
+    }
+  });
+
   it('returns false when wallet_getSnaps throws', async () => {
     setProvider(
       mockProvider({
@@ -110,6 +132,37 @@ describe('MetaMaskSnapAdapter.connect', () => {
       code: WalletErrorCode.CONNECTION_REJECTED,
     });
   });
+
+  it('clears the cached session when reconnect fails after changing networks', async () => {
+    let chainId = 0;
+    let accountRequests = 0;
+    setProvider(
+      mockProvider({
+        snapHandlers: {
+          xrpl_getActiveNetwork: () => ({ chainId, name: 'Network', nodeUrl: '' }),
+          xrpl_changeNetwork: (params) => {
+            chainId = (params as { chainId: number }).chainId;
+            return {};
+          },
+          xrpl_getAccount: () => {
+            accountRequests += 1;
+            if (accountRequests > 1) throw new Error('Account request failed');
+            return { account: 'rSNAP', publicKey: 'PUBKEY' };
+          },
+        },
+      })
+    );
+    const adapter = new MetaMaskSnapAdapter();
+    await adapter.connect();
+
+    await expect(adapter.connect({ network: 'testnet' })).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NOT_CONNECTED,
+    });
+  });
 });
 
 describe('MetaMaskSnapAdapter signing', () => {
@@ -147,6 +200,18 @@ describe('MetaMaskSnapAdapter signing', () => {
     expect(res.hash).toBe('SUBMITTED');
   });
 
+  it('returns the hash when the ledger queues a submitted transaction', async () => {
+    const adapter = await connected({
+      xrpl_signAndSubmit: () => ({
+        result: { engine_result: 'terQUEUED', tx_json: { hash: 'QUEUED' } },
+      }),
+    });
+
+    await expect(adapter.signAndSubmit({ TransactionType: 'Payment' } as never)).resolves.toEqual({
+      hash: 'QUEUED',
+    });
+  });
+
   it('rejects a ledger submission failure instead of reporting success', async () => {
     const adapter = await connected({
       xrpl_signAndSubmit: () => ({
@@ -179,6 +244,16 @@ describe('MetaMaskSnapAdapter signing', () => {
     });
     const res = await adapter.signMessage('hello');
     expect(res).toEqual({ message: 'hello', signature: 'SIG', publicKey: 'PUBKEY' });
+  });
+
+  it('rejects invalid UTF-8 bytes before invoking the Snap', async () => {
+    const signMessage = vi.fn(() => ({ signature: 'SIG' }));
+    const adapter = await connected({ xrpl_signMessage: signMessage });
+
+    await expect(adapter.signMessage(Uint8Array.from([0xc3, 0x28]))).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    expect(signMessage).not.toHaveBeenCalled();
   });
 
   it('maps a signing rejection to SIGN_REJECTED', async () => {

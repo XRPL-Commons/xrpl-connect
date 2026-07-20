@@ -38,7 +38,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest run",
+    "test": "tsc --noEmit -p tsconfig.test.json && vitest run",
     "test:watch": "vitest",
     "lint": "eslint src --ext .ts",
     "clean": "rm -rf dist"
@@ -51,8 +51,9 @@
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
+    "jsdom": "^22.1.0",
     "tsup": "^8.1.0",
     "typescript": "^5.5.0",
-    "vitest": "^1.6.0"
+    "vitest": "^3.2.6"
   }
 }

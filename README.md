@@ -113,6 +113,20 @@ That's it! The web component provides a beautiful, pre-built UI for wallet selec
 
 > **Heads up on `autoConnect`:** with `autoConnect: true`, the WalletManager silently restores the previous session from `localStorage` when your page loads and emits a `connect` event before any user interaction. Register your `connect` / `disconnect` / `error` listeners **immediately** after constructing the manager so you don't miss that initial event.
 
+### Direct wallet SDK access
+
+The meta-package also exposes the complete upstream wallet APIs under namespaces,
+so applications do not need to add the transitive SDKs as direct dependencies:
+
+```typescript
+import { CrossmarkSDK, GemWalletAPI, XamanOAuth2, XamanSDK } from 'xrpl-connect';
+
+const xaman = new XamanSDK.Xumm('YOUR_API_KEY');
+const oauth = new XamanOAuth2.XummPkce('YOUR_API_KEY');
+const installed = CrossmarkSDK.default.sync.isInstalled();
+const address = await GemWalletAPI.getAddress();
+```
+
 ## 📚 Documentation
 
 - **[Getting Started Guide](./docs/GETTING_STARTED.md)** - Complete introduction to XRPL Connect

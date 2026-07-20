@@ -69,12 +69,15 @@ interface LoggerInstance {
 
 #### `connect(walletId: string, options?: ConnectOptions): Promise<AccountInfo>`
 
-Initiates connection to a specific wallet adapter.
+Initiates connection to a specific wallet adapter. The availability preflight is bounded by `TIME.AVAILABILITY_TIMEOUT` (one second), so an unresponsive adapter fails with `WALLET_NOT_AVAILABLE` instead of blocking indefinitely.
 
 **Parameters**:
 
 - `walletId` (string): The ID of the wallet to connect (e.g., 'xaman', 'crossmark', 'gemwallet', 'walletconnect')
-- `options` (optional): Wallet-specific options (e.g., `{ apiKey: 'key' }` for Xaman)
+- `options` (optional): Network and wallet-specific connection options. Set
+  `skipRequestAccess: true` to ask a supporting wallet to reuse existing access
+  without prompting; adapters that cannot distinguish silent access may ignore
+  this hint.
 
 **Returns**: `AccountInfo` containing the connected account details
 
@@ -112,13 +115,14 @@ console.log('Disconnected');
 
 ---
 
-#### `reconnect(): Promise<AccountInfo>`
+#### `reconnect(): Promise<AccountInfo | null>`
 
 Reconnects to the previously connected wallet using stored state.
 
-**Returns**: `AccountInfo` of the reconnected account
+**Returns**: `AccountInfo` of the reconnected account, or `null` when no valid
+stored session can be restored
 
-**Throws**: `WalletError` if reconnection fails or no previous connection exists
+Failed reconnection attempts clear invalid stored state and resolve to `null`.
 
 **Example**:
 
@@ -132,21 +136,20 @@ const account = await walletManager.reconnect();
 
 ### Signing Methods
 
-#### `signAndSubmit(transaction: Transaction, submit?: boolean): Promise<SignedTransaction | SubmittedTransaction>`
+#### `sign(transaction: Transaction): Promise<ManagedSignedTransaction>`
 
-Signs a transaction and optionally submits it to the network.
+Signs a transaction without submitting it to the network.
 
 **Parameters**:
 
 - `transaction` (Transaction): An XRPL transaction object
-- `submit` (boolean, optional): If `true`, automatically submit after signing. Default: `false`
 
-**Returns**:
+**Returns**: A `SignedTransaction` with a required `signerAddress` identifying
+the account that produced the signature. The result may also contain `tx_blob`,
+`tx_json`, `signature`, and wallet-specific fields.
 
-- `SignedTransaction` if `submit=false` (contains `tx_blob`, `signature`, etc.)
-- `SubmittedTransaction` if `submit=true` (contains `hash`, `id`, etc.)
-
-**Throws**: `WalletError` with `SIGN_FAILED`, `SIGN_REJECTED`, or `NOT_CONNECTED` error codes
+**Throws**: `WalletError` with `SIGN_FAILED`, `SIGN_REJECTED`,
+`NOT_CONNECTED`, or `UNSUPPORTED_METHOD` error codes
 
 **Requires**: Active connection (`walletManager.connected === true`)
 
@@ -162,12 +165,41 @@ const txn = {
   Sequence: 1,
 };
 
-// Sign only
-const signed = await walletManager.signAndSubmit(txn, false);
+const signed = await walletManager.sign(txn);
 console.log('Signature:', signed.signature);
+console.log('Signed by:', signed.signerAddress);
+```
 
-// Sign and submit
-const submitted = await walletManager.signAndSubmit(txn, true);
+---
+
+#### `signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction>`
+
+Signs a transaction and submits it to the network.
+
+**Parameters**:
+
+- `transaction` (Transaction): An XRPL transaction object
+
+**Returns**: `SubmittedTransaction` (may contain `hash`, `id`, `tx_blob`, `tx_json`, etc.)
+
+**Throws**: `WalletError` with `SIGN_FAILED`, `SIGN_REJECTED`,
+`NOT_CONNECTED`, or `UNSUPPORTED_METHOD` error codes
+
+**Requires**: Active connection (`walletManager.connected === true`)
+
+**Example**:
+
+```typescript
+const txn = {
+  TransactionType: 'Payment',
+  Account: walletManager.account.address,
+  Destination: 'rN7n7otQDd6FczFgLdkqsL...',
+  Amount: '1000000',
+  Fee: '12',
+  Sequence: 1,
+};
+
+const submitted = await walletManager.signAndSubmit(txn);
 console.log('Transaction hash:', submitted.hash);
 ```
 
@@ -175,7 +207,7 @@ console.log('Transaction hash:', submitted.hash);
 
 ---
 
-#### `signMessage(message: string | Uint8Array): Promise<SignedMessage>`
+#### `signMessage(message: string | Uint8Array): Promise<ManagedSignedMessage>`
 
 Signs an arbitrary message (not a transaction).
 
@@ -183,9 +215,11 @@ Signs an arbitrary message (not a transaction).
 
 - `message` (string | Uint8Array): The message to sign
 
-**Returns**: `SignedMessage` containing the signature, message, and public key
+**Returns**: A `SignedMessage` containing the signature, message, public key,
+and required `signerAddress`
 
-**Throws**: `WalletError` with `SIGN_FAILED` or `SIGN_REJECTED` error codes
+**Throws**: `WalletError` with `SIGN_FAILED`, `SIGN_REJECTED`,
+`NOT_CONNECTED`, or `UNSUPPORTED_METHOD` error codes
 
 **Example**:
 
@@ -194,17 +228,69 @@ const message = 'Sign this message to authenticate';
 const signed = await walletManager.signMessage(message);
 console.log('Signature:', signed.signature);
 console.log('Public Key:', signed.publicKey);
+console.log('Signed by:', signed.signerAddress);
 ```
 
 ---
 
 ### Query Methods
 
+#### `supports(capability: keyof WalletCapabilities, adapter?: WalletAdapter | null): boolean`
+
+Reports whether the connected wallet supports `sign`, `signAndSubmit`, or
+`signMessage`. Pass an adapter to inspect it before connecting. With neither a
+connected wallet nor an explicit adapter, the method returns `false`.
+
+Capabilities omitted by an adapter use `CAPABILITY_DEFAULTS`, where all three
+signing operations default to `true` for backward compatibility. If an adapter
+explicitly declares an operation unsupported, the corresponding manager method
+throws `WalletErrorCode.UNSUPPORTED_METHOD` before invoking the adapter.
+
+```typescript
+if (walletManager.supports('signMessage')) {
+  const signed = await walletManager.signMessage('Authenticate me');
+}
+```
+
+---
+
+#### `fetchAccount(): Promise<AccountInfo | null>`
+
+Requests fresh account and network data from the connected wallet, updates the
+manager cache and persisted session, and emits `accountChanged` and/or
+`networkChanged` when those values differ. This is distinct from the `account`
+getter, which only returns cached state.
+
+Live refresh is currently implemented by the Crossmark, GemWallet, Ledger,
+Otsu, and Xaman adapters. WalletConnect, Xyra, and custom adapters without
+`SupportsFetchAccount` reject with `WalletErrorCode.UNSUPPORTED_METHOD`; an
+unsupported adapter is never queried through its cached `getAccount()` method.
+Calling `fetchAccount()` without an active connection rejects with
+`WalletErrorCode.NOT_CONNECTED`. If the wallet reports no active account, the
+manager clears the session, emits `disconnect`, and returns `null`.
+
+```typescript
+const freshAccount = await walletManager.fetchAccount();
+if (freshAccount) {
+  console.log('Current wallet account:', freshAccount.address);
+}
+```
+
+Use the type guard when UI needs to decide whether to offer an explicit refresh
+action:
+
+```typescript
+const wallet = walletManager.wallet;
+const canRefresh = wallet !== null && supportsFetchAccount(wallet);
+```
+
+---
+
 #### `getAvailableWallets(): Promise<WalletAdapter[]>`
 
-Returns a filtered list of available (installed/accessible) wallets.
+Checks registered wallets in parallel and returns those that report available within one second.
 
-**Returns**: Array of `WalletAdapter` objects whose `isAvailable()` method returns `true`
+**Returns**: Array of `WalletAdapter` objects whose `isAvailable()` method resolves to `true` before `TIME.AVAILABILITY_TIMEOUT`
 
 **Example**:
 
@@ -362,6 +448,67 @@ walletManager.on('error', (error: WalletError) => {
 
 ## Type Definitions
 
+### Wallet Capabilities
+
+Adapters can declare unsupported signing operations without making those
+methods optional on the base `WalletAdapter` contract:
+
+```typescript
+interface WalletCapabilities {
+  sign?: boolean;
+  signAndSubmit?: boolean;
+  signMessage?: boolean;
+}
+
+const CAPABILITY_DEFAULTS = {
+  sign: true,
+  signAndSubmit: true,
+  signMessage: true,
+};
+
+function adapterSupports(adapter: WalletAdapter, capability: keyof WalletCapabilities): boolean;
+```
+
+An omitted `capabilities` object or omitted flag resolves through
+`CAPABILITY_DEFAULTS`. Declare a flag as `false` only when the operation cannot
+succeed. Xaman and WalletConnect declare `signMessage: false`.
+
+`adapterSupports()` applies the same defaulting independently of connection
+state. `WalletManager.supports()` uses it for the connected or explicitly
+provided adapter and returns `false` when neither exists.
+
+### Live Account Refresh
+
+Live refresh is an optional adapter contract so cached account getters are not
+mistaken for wallet queries:
+
+```typescript
+interface SupportsFetchAccount {
+  fetchAccount(): Promise<AccountInfo | null>;
+}
+
+function supportsFetchAccount(
+  adapter: WalletAdapter
+): adapter is WalletAdapter & SupportsFetchAccount;
+```
+
+Crossmark, GemWallet, Ledger, Otsu, and Xaman implement this interface.
+WalletConnect and Xyra do not currently expose a reliable live account query.
+
+### ConnectOptions
+
+```typescript
+type ConnectOptions<WalletSpecificOptions extends Record<string, unknown> = {}> = {
+  network?: NetworkConfig;
+  autoReconnect?: boolean;
+  skipRequestAccess?: boolean;
+} & WalletSpecificOptions;
+```
+
+`skipRequestAccess` is a best-effort hint to reuse access already granted to the
+wallet without showing another permission prompt. Adapters may ignore it when
+their provider API does not expose a silent-access mode.
+
 ### NetworkInfo
 
 ```typescript
@@ -381,27 +528,40 @@ interface NetworkInfo {
 
 #### SignedTransaction
 
-Result from `signAndSubmit(txn, false)`:
+Result from `sign(transaction)`:
 
 ```typescript
 interface SignedTransaction {
   hash: string; // Transaction hash
   tx_blob?: string; // Signed transaction blob
   signature?: string; // Transaction signature
+  signerAddress?: string; // Optional on direct adapter results
+  tx_json?: Transaction; // Complete signed transaction JSON
   [key: string]: unknown; // Additional wallet-specific fields
 }
+```
+
+The base adapter result keeps `signerAddress` optional for compatibility with
+custom adapters. `WalletManager.sign()` strengthens it to a required `string`,
+using the account that started the signing request when the adapter omits it.
+
+```typescript
+type ManagedSignedTransaction = SignedTransaction & { signerAddress: string };
 ```
 
 ---
 
 #### SubmittedTransaction
 
-Result from `signAndSubmit(txn, true)`:
+Result from `signAndSubmit(transaction)`:
 
 ```typescript
 interface SubmittedTransaction {
   hash: string; // Transaction hash
   id?: string; // Optional transaction ID
+  tx_blob?: string; // Signed transaction blob
+  signature?: string; // Transaction signature
+  tx_json?: Transaction; // Complete signed transaction JSON
   [key: string]: unknown; // Additional submission response data
 }
 ```
@@ -417,7 +577,15 @@ interface SignedMessage {
   message: string; // Original message
   signature: string; // Signature hex string
   publicKey: string; // Public key of signing account
+  signerAddress?: string; // Optional on direct adapter results
 }
+```
+
+`WalletManager.signMessage()` likewise returns `signerAddress` as required and
+preserves a value explicitly supplied by the adapter.
+
+```typescript
+type ManagedSignedMessage = SignedMessage & { signerAddress: string };
 ```
 
 ---
@@ -759,7 +927,7 @@ const txn = {
 };
 
 try {
-  const result = await walletManager.signAndSubmit(txn, true);
+  const result = await walletManager.signAndSubmit(txn);
   console.log('Submitted:', result.hash);
 } catch (error) {
   console.error('Transaction failed:', error.message);
