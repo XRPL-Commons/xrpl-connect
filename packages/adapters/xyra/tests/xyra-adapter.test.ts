@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 import { WalletErrorCode } from '@xrpl-connect/core';
 
 const mockSdk = {
@@ -10,7 +10,9 @@ const mockSdk = {
 };
 
 vi.mock('@xyrawallet/sdk', () => ({
-  XyraSDK: vi.fn().mockImplementation(() => mockSdk),
+  XyraSDK: vi.fn().mockImplementation(function () {
+    return mockSdk;
+  }),
 }));
 
 import { XyraAdapter } from '../src/xyra-adapter';

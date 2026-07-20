@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "vp dev",
+    "build": "vp build",
+    "preview": "vp preview"
   },
   "dependencies": {
     "@xrpl-connect/adapter-crossmark": "workspace:*",
@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "buffer": "^6.0.3",
-    "vite": "^7.1.7",
+    "vite": "catalog:",
     "vite-plugin-node-polyfills": "^0.24.0"
   }
 }

@@ -1,5 +1,5 @@
-/// <reference types="vitest" />
-import { defineConfig } from 'vite';
+/// <reference types="vite-plus/test" />
+import { defineConfig } from 'vite-plus';
 import path from 'path';
 
 export default defineConfig({

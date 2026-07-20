@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 import { WalletErrorCode } from '@xrpl-connect/core';
 
 const mocks = vi.hoisted(() => {
@@ -23,17 +23,21 @@ vi.mock('@ledgerhq/hw-transport-webusb', () => ({
 }));
 
 vi.mock('@ledgerhq/hw-app-xrp', () => ({
-  default: vi.fn().mockImplementation(() => mocks.xrpAppInstance),
+  default: vi.fn().mockImplementation(function () {
+    return mocks.xrpAppInstance;
+  }),
 }));
 
 vi.mock('xrpl', () => ({
   encode: vi.fn(() => 'encodedblob'),
-  Client: vi.fn().mockImplementation(() => ({
-    connect: vi.fn().mockResolvedValue(undefined),
-    disconnect: vi.fn().mockResolvedValue(undefined),
-    autofill: vi.fn(async (tx) => ({ ...tx, Sequence: 1, Fee: '10' })),
-    submitAndWait: vi.fn().mockResolvedValue({ result: { hash: 'HASH' } }),
-  })),
+  Client: vi.fn().mockImplementation(function () {
+    return {
+      connect: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+      autofill: vi.fn(async (tx) => ({ ...tx, Sequence: 1, Fee: '10' })),
+      submitAndWait: vi.fn().mockResolvedValue({ result: { hash: 'HASH' } }),
+    };
+  }),
 }));
 
 import { LedgerAdapter } from '../src/ledger-adapter';

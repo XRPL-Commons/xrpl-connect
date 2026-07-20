@@ -27,28 +27,28 @@
 const downloadFullDoc = async () => {
   try {
     // Try to fetch the llms-full.txt file from the root
-    const baseUrl = import.meta.env.BASE_URL || '/'
-    const response = await fetch(`${baseUrl}llms-full.txt`)
+    const baseUrl = import.meta.env.BASE_URL || '/';
+    const response = await fetch(`${baseUrl}llms-full.txt`);
 
     if (!response.ok) {
-      throw new Error(`Failed to download: ${response.statusText}`)
+      throw new Error(`Failed to download: ${response.statusText}`);
     }
 
-    const content = await response.text()
+    const content = await response.text();
 
     // Create a blob and download
-    const blob = new Blob([content], { type: 'text/plain' })
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'xrpl-connect-docs.md'
-    document.body.appendChild(a)
-    a.click()
-    window.URL.revokeObjectURL(url)
-    document.body.removeChild(a)
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'xrpl-connect-docs.md';
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
   } catch (error) {
-    console.error('Failed to download documentation:', error)
-    alert('Failed to download documentation. Please try again.')
+    console.error('Failed to download documentation:', error);
+    alert('Failed to download documentation. Please try again.');
   }
-}
+};
 </script>

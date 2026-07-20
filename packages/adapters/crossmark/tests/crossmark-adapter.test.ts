@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vite-plus/test';
 import { WalletErrorCode } from '@xrpl-connect/core';
 
 vi.mock('@crossmarkio/sdk', () => {

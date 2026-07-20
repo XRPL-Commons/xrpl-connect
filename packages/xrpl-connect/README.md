@@ -29,7 +29,6 @@ packages/xrpl-connect/
 │   └── index.ts              # Central export point
 ├── package.json
 ├── tsconfig.json
-├── tsup.config.ts
 ├── vite.config.ts
 ├── scripts/
 │   └── build-webcomp.ts      # Build scripts

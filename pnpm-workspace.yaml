@@ -21,3 +21,13 @@ overrides:
   node-forge@<1.3.2: '>=1.3.2'
   vite@>=5.2.6 <=5.4.20: '>=5.4.21'
   vite@>=7.1.0 <=7.1.10: '>=7.1.11'
+  gray-matter>js-yaml: ^3.14.1
+  vite: 'catalog:'
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@0.2.5
+  vite-plus: 0.2.5
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: '*'

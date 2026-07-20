@@ -1,8 +1,9 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vite-plus';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { copyFileSync, existsSync, readFileSync } from 'fs';
 import inject from '@rollup/plugin-inject';
+import { createPackConfig } from '../../vite.pack.config';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -10,9 +11,25 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
  * Vite config for publishing a fully-bundled version of xrpl-connect
  * This bundles all dependencies (including Buffer polyfill) into a single file suitable for npm
  *
- * Usage: vite build -c vite.config.ts
+ * Usage: vp build -c vite.config.ts
  */
 export default defineConfig({
+  pack: createPackConfig({
+    deps: {
+      neverBundle: [
+        'xrpl',
+        '@xrpl-connect/core',
+        '@xrpl-connect/ui',
+        '@xrpl-connect/adapter-xaman',
+        '@xrpl-connect/adapter-crossmark',
+        '@xrpl-connect/adapter-gemwallet',
+        '@xrpl-connect/adapter-walletconnect',
+        '@xrpl-connect/adapter-xyra',
+        '@xrpl-connect/adapter-otsu',
+        '@xrpl-connect/adapter-ledger',
+      ],
+    },
+  }),
   resolve: {
     alias: {
       '@xrpl-connect/core': resolve(__dirname, '../core/src/index.ts'),
@@ -27,7 +44,7 @@ export default defineConfig({
     },
   },
   plugins: [
-    // Match the per-adapter tsup config (`loader: { '.svg': 'text' }`). Without
+    // Match the per-adapter pack config (`loader: { '.svg': 'text' }`). Without
     // this, Vite's default asset handler resolves `.svg` imports to a
     // `data:image/svg+xml,...` URL, and each adapter's
     // `data:image/svg+xml,${encodeURIComponent(iconSvg)}` wrapper then

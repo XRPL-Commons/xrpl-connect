@@ -73,7 +73,7 @@ packages/adapters/my-wallet/
 │   └── types.ts                 # Types (if needed)
 ├── package.json
 ├── tsconfig.json
-├── tsup.config.ts
+├── vite.config.ts
 └── README.md
 ```
 
@@ -110,11 +110,11 @@ Use the Xaman adapter as a template. Replace `my-wallet` and `MyWallet` with you
   },
   "files": ["dist", "README.md"],
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "lint": "eslint src --ext .ts",
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test run",
+    "test:watch": "vp test",
+    "lint": "vp lint src",
     "clean": "rm -rf dist"
   },
   "dependencies": {
@@ -125,21 +125,19 @@ Use the Xaman adapter as a template. Replace `my-wallet` and `MyWallet` with you
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
-    "tsup": "^8.1.0",
-    "typescript": "^5.5.0",
-    "vitest": "^1.6.0"
+    "typescript": "^5.5.0"
   }
 }
 ```
 
 ### 2.4 Copy Config Files
 
-Copy `tsconfig.json` and `tsup.config.ts` from an existing adapter (e.g., xaman):
+Copy `tsconfig.json` and `vite.config.ts` from an existing adapter (e.g., xaman):
 
 ```bash
 # From the xrpl-connect root
 cp packages/adapters/xaman/tsconfig.json packages/adapters/my-wallet/
-cp packages/adapters/xaman/tsup.config.ts packages/adapters/my-wallet/
+cp packages/adapters/xaman/vite.config.ts packages/adapters/my-wallet/
 ```
 
 ## Step 3: Implement Your Adapter
@@ -346,7 +344,7 @@ export { MyWalletAdapter } from './my-wallet-adapter';
 Create a test file `src/my-wallet-adapter.test.ts`:
 
 ```typescript
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vite-plus/test';
 import { MyWalletAdapter } from './my-wallet-adapter';
 
 describe('MyWalletAdapter', () => {

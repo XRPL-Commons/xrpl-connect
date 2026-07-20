@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 import { STANDARD_NETWORKS, WalletErrorCode } from '@xrpl-connect/core';
 import { OtsuAdapter } from '../src/otsu-adapter';
 
