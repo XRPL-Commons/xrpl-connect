@@ -18,6 +18,7 @@ export type {
   SignedMessage,
   SubmittedTransaction,
   ConnectOptions,
+  ReconnectOptions,
   WalletEvent,
   WalletAdapterEvent,
   StorageAdapter,
@@ -28,6 +29,7 @@ export type {
   SupportsPreInitialize,
   SupportsDeepLink,
   SupportsNetworkSwitch,
+  SupportsReconnectOptions,
 } from './types';
 
 export {
@@ -37,6 +39,7 @@ export {
   supportsPreInitialize,
   supportsDeepLink,
   supportsNetworkSwitch,
+  supportsReconnectOptions,
 } from './types';
 
 // Errors

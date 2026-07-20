@@ -16,9 +16,10 @@ import type {
   ConnectOptions,
   NetworkConfig,
   NetworkInfo,
+  ReconnectOptions,
   StoredState,
 } from './types';
-import { supportsNetworkSwitch } from './types';
+import { supportsNetworkSwitch, supportsReconnectOptions } from './types';
 import { createWalletError, isWalletError } from './errors';
 import { Logger, configureLogger, isLoggerInstance } from './logger';
 import { Storage } from './storage';
@@ -26,6 +27,15 @@ import { TIME } from './constants';
 import { withTimeout } from './async';
 
 const AVAILABILITY_TIMED_OUT = Symbol('availability-timed-out');
+
+interface ConnectionAttempt {
+  adapter: WalletAdapter;
+  automatic: boolean;
+  cancelled: boolean;
+  adapterConnectStarted: boolean;
+  disconnectRequestedAfterConnect: boolean;
+  cleanupPromise?: Promise<void>;
+}
 
 /**
  * Main class for managing wallet connections
@@ -43,6 +53,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   private networkEventPersistence: Promise<void> = Promise.resolve();
   private networkMutationQueue: { tail: Promise<void> } = { tail: Promise.resolve() };
   private storageMutationQueue: Promise<void> = Promise.resolve();
+  private currentReconnectOptions: ReconnectOptions | undefined;
+  private connectionAttempt: ConnectionAttempt | null = null;
+  private reconnectGeneration = 0;
   private adapterListeners: Array<{
     event: WalletAdapterEvent;
     callback: (data: unknown) => void;
@@ -78,11 +91,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    */
   private async autoConnect(): Promise<void> {
     try {
-      const stored = await this.enqueueStorageMutation(() => this.storage.loadState());
-      if (stored && this.isStateValid(stored)) {
-        this.logger.debug('Attempting auto-reconnect', stored);
-        await this.reconnect();
-      }
+      await this.reconnectFromStorage(true);
     } catch (error) {
       this.logger.warn('Auto-connect failed:', error);
     }
@@ -100,18 +109,58 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * Connect to a wallet
    */
   async connect(walletId: string, options?: ConnectOptions): Promise<AccountInfo> {
-    this.logger.info(`Connecting to wallet: ${walletId}`);
+    this.reconnectGeneration += 1;
+    if (this.currentAdapter?.id === walletId && this.currentAccount && !this.disconnecting) {
+      return this.cloneAccount(this.currentAccount);
+    }
+    const attempt = this.connectionAttempt;
+    if (attempt) {
+      if (!attempt.automatic) {
+        throw createWalletError.alreadyConnected(attempt.adapter.name);
+      }
+      await this.cancelConnectionAttempt(attempt);
+    }
+    return this.startConnection(walletId, options, undefined, false);
+  }
 
-    // Get adapter
+  private startConnection(
+    walletId: string,
+    options: ConnectOptions | undefined,
+    expectedState: StoredState | undefined,
+    automatic: boolean
+  ): Promise<AccountInfo> {
     const adapter = this.adapters.get(walletId);
     if (!adapter) {
       throw createWalletError.notFound(walletId);
     }
-
-    // Check if already connected
     if (this.currentAdapter) {
       throw createWalletError.alreadyConnected(this.currentAdapter.name);
     }
+    if (this.connectionAttempt) {
+      throw createWalletError.alreadyConnected(this.connectionAttempt.adapter.name);
+    }
+
+    const attempt: ConnectionAttempt = {
+      adapter,
+      automatic,
+      cancelled: false,
+      adapterConnectStarted: false,
+      disconnectRequestedAfterConnect: false,
+    };
+    this.connectionAttempt = attempt;
+    return this.connectInternal(adapter, options, expectedState, attempt);
+  }
+
+  private async connectInternal(
+    adapter: WalletAdapter,
+    options: ConnectOptions | undefined,
+    expectedState: StoredState | undefined,
+    attempt: ConnectionAttempt
+  ): Promise<AccountInfo> {
+    this.logger.info(`Connecting to wallet: ${adapter.id}`);
+
+    let adapterConnected = false;
+    let connectionCommitted = false;
 
     try {
       // Check availability
@@ -142,6 +191,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       if (!availability.available) {
         throw createWalletError.notAvailable(adapter.name);
       }
+      this.assertConnectionAttemptActive(attempt);
 
       // Merge network options
       const connectOptions: ConnectOptions = {
@@ -149,12 +199,41 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         network: options?.network || this.options.network,
       };
 
-      // Connect
+      // Connect and detach manager state from adapter-owned mutable objects.
+      attempt.adapterConnectStarted = true;
       const adapterAccount = await adapter.connect(connectOptions);
+      adapterConnected = true;
+      this.assertConnectionAttemptActive(attempt);
       const account = this.cloneAccount(adapterAccount);
 
-      // Update state. The generation distinguishes this session from any
-      // earlier connection that reused the same adapter or account object.
+      if (expectedState && supportsReconnectOptions(adapter)) {
+        if (account.address !== expectedState.account.address) {
+          throw createWalletError.connectionFailed(
+            adapter.name,
+            new Error(
+              `Reconnected account mismatch. Expected "${expectedState.account.address}" but wallet returned "${account.address}".`
+            )
+          );
+        }
+        if (account.network.id !== expectedState.network.id) {
+          throw createWalletError.networkMismatch(expectedState.network.id, account.network.id);
+        }
+      }
+
+      // Let adapters explicitly select the minimal JSON-safe reconnect state.
+      // Never persist arbitrary caller-provided options.
+      const reconnectOptions = supportsReconnectOptions(adapter)
+        ? adapter.serializeReconnectOptions(connectOptions)
+        : undefined;
+      this.assertConnectionAttemptActive(attempt);
+      const state = this.createStoredState(adapter, account, account.network, reconnectOptions);
+      await this.enqueueStorageMutation(() => this.storage.saveState(state));
+      this.assertConnectionAttemptActive(attempt);
+
+      // Commit manager state only after reconnect validation, option
+      // serialization, and persistence have completed successfully.
+      // The generation distinguishes this session from any earlier connection
+      // that reused the same adapter or account object.
       const session = ++this.sessionGeneration;
       this.disconnecting = false;
       this.networkEventRevision = 0;
@@ -162,22 +241,41 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       this.networkMutationQueue = { tail: Promise.resolve() };
       this.currentAdapter = adapter;
       this.currentAccount = account;
-
-      // Save to storage
-      const state = this.createStoredState(adapter, account, account.network);
-      await this.enqueueStorageMutation(() => this.storage.saveState(state));
-      this.getSessionAccount(adapter, session);
+      this.currentReconnectOptions = reconnectOptions ? { ...reconnectOptions } : undefined;
 
       // Subscribe to adapter events if supported. Track every registration so
       // disconnect() can call the matching off() and stop late callbacks from
       // mutating manager state after the session is gone.
       this.subscribeToAdapter(adapter, session);
+      connectionCommitted = true;
 
       this.logger.info(`Connected to ${adapter.name}`, account);
       this.emit('connect', account);
 
       return account;
     } catch (error) {
+      if (adapterConnected && !connectionCommitted) {
+        const newerSessionUsesAdapter = this.currentAdapter === adapter;
+        const newerAttemptUsesAdapter =
+          this.connectionAttempt !== attempt && this.connectionAttempt?.adapter === adapter;
+        if (!attempt.cancelled && !this.currentAdapter) {
+          await this.enqueueStorageMutation(() => this.storage.clearState());
+        }
+        if (
+          !newerSessionUsesAdapter &&
+          !newerAttemptUsesAdapter &&
+          !attempt.disconnectRequestedAfterConnect
+        ) {
+          try {
+            await adapter.disconnect();
+          } catch (disconnectError) {
+            this.logger.warn(
+              `Failed to clean up ${adapter.name} after connection failure:`,
+              disconnectError
+            );
+          }
+        }
+      }
       this.logger.error(`Failed to connect to ${adapter.name}:`, error);
       // Preserve adapter-thrown WalletError so user-rejection / not-installed / etc.
       // surface with their original code & category instead of collapsing into CONNECTION_FAILED.
@@ -185,6 +283,10 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         throw error;
       }
       throw createWalletError.connectionFailed(adapter.name, error as Error);
+    } finally {
+      if (this.connectionAttempt === attempt) {
+        this.connectionAttempt = null;
+      }
     }
   }
 
@@ -192,6 +294,11 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * Disconnect from current wallet
    */
   async disconnect(): Promise<void> {
+    this.reconnectGeneration += 1;
+    const attempt = this.connectionAttempt;
+    if (attempt) {
+      await this.cancelConnectionAttempt(attempt);
+    }
     if (!this.currentAdapter) {
       this.logger.warn('No wallet connected');
       return;
@@ -222,20 +329,57 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * Reconnect to previously connected wallet
    */
   async reconnect(): Promise<AccountInfo | null> {
+    return this.reconnectFromStorage(false);
+  }
+
+  private async reconnectFromStorage(automatic: boolean): Promise<AccountInfo | null> {
+    if (this.currentAdapter || this.connectionAttempt) {
+      this.logger.debug('Skipping reconnect because a wallet session is already active');
+      return null;
+    }
+
+    const reconnectGeneration = ++this.reconnectGeneration;
+    const sessionGeneration = this.sessionGeneration;
     const stored = await this.enqueueStorageMutation(() => this.storage.loadState());
     if (!stored) {
       this.logger.debug('No stored state found for reconnection');
       return null;
     }
+    if (automatic && !this.isStateValid(stored)) return null;
+    if (
+      this.currentAdapter ||
+      this.connectionAttempt ||
+      this.sessionGeneration !== sessionGeneration ||
+      this.reconnectGeneration !== reconnectGeneration
+    ) {
+      return null;
+    }
 
     try {
-      return await this.connect(stored.walletId, {
-        network: stored.network,
-        autoReconnect: true,
-      });
+      if (automatic) this.logger.debug('Attempting auto-reconnect', stored);
+      // Replay the original connect options so wallet-specific selections
+      // (e.g. the Ledger derivation path / account index) are restored instead
+      // of reconnecting to the default account.
+      return await this.startConnection(
+        stored.walletId,
+        {
+          ...stored.connectOptions,
+          network: stored.network,
+          autoReconnect: true,
+        },
+        stored,
+        automatic
+      );
     } catch (error) {
       this.logger.warn('Reconnection failed:', error);
-      await this.enqueueStorageMutation(() => this.storage.clearState());
+      if (
+        !this.currentAdapter &&
+        !this.connectionAttempt &&
+        this.sessionGeneration === sessionGeneration &&
+        this.reconnectGeneration === reconnectGeneration
+      ) {
+        await this.enqueueStorageMutation(() => this.storage.clearState());
+      }
       return null;
     }
   }
@@ -503,6 +647,10 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     const currentAccount = this.cloneAccount(account);
     this.logger.info('Account changed', currentAccount);
     this.currentAccount = currentAccount;
+    // Reconnect options select the account established by connect(). Once an
+    // adapter reports a different account, those selectors are no longer safe
+    // to persist alongside later session updates.
+    this.currentReconnectOptions = undefined;
     this.emit('accountChanged', currentAccount);
   }
 
@@ -543,7 +691,12 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     const account = this.getSessionAccount(adapter, session);
     const currentAccount = { ...account, network: { ...network } };
     this.currentAccount = currentAccount;
-    const state = this.createStoredState(adapter, currentAccount, network);
+    const state = this.createStoredState(
+      adapter,
+      currentAccount,
+      network,
+      this.currentReconnectOptions
+    );
     const persistence = this.enqueueStorageMutation(() => this.storage.saveState(state));
     if (emitEvent) this.emit('networkChanged', network);
     await persistence;
@@ -553,7 +706,8 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   private createStoredState(
     adapter: WalletAdapter,
     account: AccountInfo,
-    network: NetworkInfo
+    network: NetworkInfo,
+    reconnectOptions?: ReconnectOptions
   ): StoredState {
     const storedNetwork = { ...network };
     return {
@@ -561,6 +715,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       account: { ...account, network: storedNetwork },
       network: storedNetwork,
       timestamp: Date.now(),
+      ...(reconnectOptions ? { connectOptions: { ...reconnectOptions } } : {}),
     };
   }
 
@@ -602,6 +757,36 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       this.currentAccount !== null &&
       this.sessionGeneration === session
     );
+  }
+
+  private assertConnectionAttemptActive(attempt: ConnectionAttempt): void {
+    if (attempt.cancelled || this.connectionAttempt !== attempt) {
+      throw createWalletError.notConnected();
+    }
+  }
+
+  private async cancelConnectionAttempt(attempt: ConnectionAttempt): Promise<void> {
+    attempt.cancelled = true;
+    if (this.connectionAttempt === attempt) {
+      this.connectionAttempt = null;
+    }
+
+    attempt.cleanupPromise ??= Promise.all([
+      this.enqueueStorageMutation(() => this.storage.clearState()),
+      attempt.adapterConnectStarted
+        ? (() => {
+            // This teardown owns all cleanup for a cancelled attempt. A late
+            // connect result must never schedule a second disconnect that can
+            // race a replacement using the same adapter.
+            attempt.disconnectRequestedAfterConnect = true;
+            return attempt.adapter.disconnect().catch((error) => {
+              this.logger.warn(`Failed to cancel connection to ${attempt.adapter.name}:`, error);
+              throw error;
+            });
+          })()
+        : Promise.resolve(),
+    ]).then(() => undefined);
+    await attempt.cleanupPromise;
   }
 
   private getSessionAccount(adapter: WalletAdapter, session: number): AccountInfo {
@@ -682,6 +867,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     this.networkMutationQueue = { tail: Promise.resolve() };
     this.currentAdapter = null;
     this.currentAccount = null;
+    this.currentReconnectOptions = undefined;
     await this.enqueueStorageMutation(() => this.storage.clearState());
   }
 }
