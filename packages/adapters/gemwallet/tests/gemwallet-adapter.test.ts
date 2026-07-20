@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { WalletErrorCode } from '@xrpl-connect/core';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
+import { TIME, WalletErrorCode } from '@xrpl-connect/core';
 
 vi.mock('@gemwallet/api', () => ({
   isInstalled: vi.fn(),
@@ -22,6 +22,10 @@ beforeEach(() => {
   api.submitTransaction.mockReset();
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe('GemWalletAdapter.isAvailable', () => {
   it('returns true when extension reports installed', async () => {
     api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
@@ -36,6 +40,16 @@ describe('GemWalletAdapter.isAvailable', () => {
   it('returns false when the call throws', async () => {
     api.isInstalled.mockRejectedValue(new Error('boom'));
     await expect(new GemWalletAdapter().isAvailable()).resolves.toBe(false);
+  });
+
+  it('returns false when the extension does not answer in time', async () => {
+    vi.useFakeTimers();
+    api.isInstalled.mockReturnValue(new Promise(() => {}));
+    const availability = new GemWalletAdapter().isAvailable();
+
+    await vi.advanceTimersByTimeAsync(TIME.AVAILABILITY_TIMEOUT);
+
+    await expect(availability).resolves.toBe(false);
   });
 });
 
@@ -64,6 +78,19 @@ describe('GemWalletAdapter.connect', () => {
     await expect(new GemWalletAdapter().connect()).rejects.toMatchObject({
       code: WalletErrorCode.CONNECTION_FAILED,
     });
+  });
+
+  it('fails within the availability timeout when the extension does not answer', async () => {
+    vi.useFakeTimers();
+    api.isInstalled.mockReturnValue(new Promise(() => {}));
+
+    const rejection = expect(new GemWalletAdapter().connect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+    await vi.advanceTimersByTimeAsync(TIME.AVAILABILITY_TIMEOUT);
+
+    await rejection;
+    expect(api.getPublicKey).not.toHaveBeenCalled();
   });
 });
 

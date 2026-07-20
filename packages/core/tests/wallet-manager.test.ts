@@ -1,6 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import EventEmitter from 'eventemitter3';
 import { WalletManager } from '../src/wallet-manager';
+import { TIME } from '../src/constants';
+import { WalletErrorCode } from '../src/types';
 import type {
   AccountInfo,
   NetworkInfo,
@@ -14,6 +16,10 @@ import type {
 
 const NETWORK: NetworkInfo = { id: 'testnet', name: 'Testnet', wss: 'wss://example' };
 const ACCOUNT: AccountInfo = { address: 'rTestAddress00000000000000000000000', network: NETWORK };
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function createFakeAdapter(): WalletAdapter & {
   emitAdapterEvent: (event: WalletAdapterEvent, data?: unknown) => void;
@@ -94,5 +100,69 @@ describe('WalletManager.disconnect()', () => {
     expect(adapter.listenerCount('disconnect')).toBe(0);
     expect(adapter.listenerCount('accountChanged')).toBe(0);
     expect(adapter.listenerCount('networkChanged')).toBe(0);
+  });
+});
+
+describe('WalletManager.getAvailableWallets()', () => {
+  it('returns responsive wallets without waiting indefinitely for a hung adapter', async () => {
+    vi.useFakeTimers();
+    const available = {
+      ...createFakeAdapter(),
+      id: 'available',
+      name: 'Available Wallet',
+    };
+    const unavailable = {
+      ...createFakeAdapter(),
+      id: 'unavailable',
+      name: 'Unavailable Wallet',
+      isAvailable: vi.fn(async () => false),
+    };
+    const hung = {
+      ...createFakeAdapter(),
+      id: 'hung',
+      name: 'Hung Wallet',
+      isAvailable: vi.fn(() => new Promise<boolean>(() => {})),
+    };
+    const manager = new WalletManager({ adapters: [available, unavailable, hung] });
+
+    const result = manager.getAvailableWallets();
+    expect(available.isAvailable).toHaveBeenCalledTimes(1);
+    expect(unavailable.isAvailable).toHaveBeenCalledTimes(1);
+    expect(hung.isAvailable).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(TIME.AVAILABILITY_TIMEOUT);
+
+    await expect(result).resolves.toEqual([available]);
+  });
+});
+
+describe('WalletManager.connect()', () => {
+  it('fails within the availability timeout when an adapter stops responding', async () => {
+    vi.useFakeTimers();
+    let resolveAvailability!: (available: boolean) => void;
+    const availability = new Promise<boolean>((resolve) => {
+      resolveAvailability = resolve;
+    });
+    const hung = {
+      ...createFakeAdapter(),
+      id: 'hung',
+      name: 'Hung Wallet',
+      isAvailable: vi.fn(() => availability),
+    };
+    const manager = new WalletManager({ adapters: [hung] });
+
+    const rejection = expect(manager.connect('hung')).rejects.toMatchObject({
+      code: WalletErrorCode.WALLET_NOT_AVAILABLE,
+    });
+    await vi.advanceTimersByTimeAsync(TIME.AVAILABILITY_TIMEOUT);
+
+    await rejection;
+    expect(hung.connect).not.toHaveBeenCalled();
+    expect(manager.connected).toBe(false);
+
+    resolveAvailability(true);
+    await Promise.resolve();
+    expect(hung.connect).not.toHaveBeenCalled();
+    expect(manager.connected).toBe(false);
   });
 });

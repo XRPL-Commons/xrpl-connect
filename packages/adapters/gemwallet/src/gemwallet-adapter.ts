@@ -19,7 +19,7 @@ import type {
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
-import { createWalletError, resolveNetwork } from '@xrpl-connect/core';
+import { createWalletError, resolveNetwork, TIME, withTimeout } from '@xrpl-connect/core';
 import type { SubmittableTransaction } from 'xrpl';
 import iconSvg from './assets/icon.svg';
 
@@ -52,12 +52,18 @@ export class GemWalletAdapter implements WalletAdapter {
    * Check if GemWallet is installed
    */
   async isAvailable(): Promise<boolean> {
-    try {
-      const result = await isInstalled();
-      return result.result?.isInstalled || false;
-    } catch {
-      return false;
-    }
+    return withTimeout(
+      async () => {
+        try {
+          const result = await isInstalled();
+          return result.result?.isInstalled || false;
+        } catch {
+          return false;
+        }
+      },
+      TIME.AVAILABILITY_TIMEOUT,
+      false
+    );
   }
 
   /**

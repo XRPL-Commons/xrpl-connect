@@ -69,7 +69,7 @@ interface LoggerInstance {
 
 #### `connect(walletId: string, options?: ConnectOptions): Promise<AccountInfo>`
 
-Initiates connection to a specific wallet adapter.
+Initiates connection to a specific wallet adapter. The availability preflight is bounded by `TIME.AVAILABILITY_TIMEOUT` (one second), so an unresponsive adapter fails with `WALLET_NOT_AVAILABLE` instead of blocking indefinitely.
 
 **Parameters**:
 
@@ -225,9 +225,9 @@ console.log('Public Key:', signed.publicKey);
 
 #### `getAvailableWallets(): Promise<WalletAdapter[]>`
 
-Returns a filtered list of available (installed/accessible) wallets.
+Checks registered wallets in parallel and returns those that report available within one second.
 
-**Returns**: Array of `WalletAdapter` objects whose `isAvailable()` method returns `true`
+**Returns**: Array of `WalletAdapter` objects whose `isAvailable()` method resolves to `true` before `TIME.AVAILABILITY_TIMEOUT`
 
 **Example**:
 

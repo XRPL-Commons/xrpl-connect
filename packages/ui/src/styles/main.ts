@@ -264,6 +264,13 @@ export const mainStyles = `
     gap: 12px;
   }
 
+  .wallet-empty {
+    color: var(--xc-text-muted-color);
+    font-size: 14px;
+    line-height: 1.5;
+    text-align: center;
+  }
+
   .wallet-button {
     width: 100%;
     padding: ${SIZES.BUTTON_PADDING_VERTICAL}px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;

@@ -22,6 +22,9 @@ import { createWalletError, isWalletError } from './errors';
 import { Logger, configureLogger, isLoggerInstance } from './logger';
 import { Storage } from './storage';
 import { TIME } from './constants';
+import { withTimeout } from './async';
+
+const AVAILABILITY_TIMED_OUT = Symbol('availability-timed-out');
 
 /**
  * Main class for managing wallet connections
@@ -105,8 +108,31 @@ export class WalletManager extends EventEmitter<WalletEvent> {
 
     try {
       // Check availability
-      const available = await adapter.isAvailable();
-      if (!available) {
+      const availability = await withTimeout<
+        | { available: boolean; error?: never }
+        | { available?: never; error: unknown }
+        | typeof AVAILABILITY_TIMED_OUT
+      >(
+        async () => {
+          try {
+            return { available: await adapter.isAvailable() };
+          } catch (error) {
+            return { error };
+          }
+        },
+        TIME.AVAILABILITY_TIMEOUT,
+        AVAILABILITY_TIMED_OUT
+      );
+      if (availability === AVAILABILITY_TIMED_OUT) {
+        this.logger.warn(
+          `Timed out checking availability for ${adapter.name} after ${TIME.AVAILABILITY_TIMEOUT}ms`
+        );
+        throw createWalletError.notAvailable(adapter.name);
+      }
+      if ('error' in availability) {
+        throw availability.error;
+      }
+      if (!availability.available) {
         throw createWalletError.notAvailable(adapter.name);
       }
 
@@ -268,23 +294,39 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
-   * Get list of available wallets (installed/accessible)
+   * Get registered wallets whose availability check succeeds within the
+   * configured availability timeout.
    */
   async getAvailableWallets(): Promise<WalletAdapter[]> {
-    const available: WalletAdapter[] = [];
+    const adapters = Array.from(this.adapters.values());
 
-    for (const adapter of this.adapters.values()) {
-      try {
-        const isAvailable = await adapter.isAvailable();
-        if (isAvailable) {
-          available.push(adapter);
+    // Check availability in parallel, capping each adapter with a timeout so a
+    // single slow or hung `isAvailable()` can't stall the whole list.
+    const results = await Promise.all(
+      adapters.map(async (adapter) => {
+        const result = await withTimeout<boolean | typeof AVAILABILITY_TIMED_OUT>(
+          async () => {
+            try {
+              return await adapter.isAvailable();
+            } catch (error) {
+              this.logger.warn(`Failed to check availability for ${adapter.name}:`, error);
+              return false;
+            }
+          },
+          TIME.AVAILABILITY_TIMEOUT,
+          AVAILABILITY_TIMED_OUT
+        );
+        if (result === AVAILABILITY_TIMED_OUT) {
+          this.logger.warn(
+            `Timed out checking availability for ${adapter.name} after ${TIME.AVAILABILITY_TIMEOUT}ms`
+          );
+          return false;
         }
-      } catch (error) {
-        this.logger.warn(`Failed to check availability for ${adapter.name}:`, error);
-      }
-    }
+        return result;
+      })
+    );
 
-    return available;
+    return adapters.filter((_, index) => results[index]);
   }
 
   /**
