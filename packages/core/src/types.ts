@@ -69,6 +69,7 @@ export interface SignedTransaction {
   tx_blob?: string; // Signed transaction blob
   signature?: string; // Signature
   signerAddress?: string; // Address of the account that produced the signature
+  tx_json?: Transaction; // Complete signed transaction JSON
   [key: string]: unknown; // Allow additional wallet-specific fields
 }
 
@@ -82,12 +83,21 @@ export interface SignedMessage {
   signerAddress?: string; // Address of the account that produced the signature
 }
 
+/** Transaction signature returned by WalletManager with a known signer. */
+export type ManagedSignedTransaction = SignedTransaction & { signerAddress: string };
+
+/** Message signature returned by WalletManager with a known signer. */
+export type ManagedSignedMessage = SignedMessage & { signerAddress: string };
+
 /**
  * Result of submitting a transaction to the ledger
  */
 export interface SubmittedTransaction {
   hash: string; // Transaction hash
   id?: string; // Request/submission ID (wallet-specific)
+  tx_blob?: string; // Signed transaction blob
+  signature?: string; // Signature
+  tx_json?: Transaction; // Complete signed transaction JSON
   [key: string]: unknown; // Allow additional wallet-specific fields
 }
 
@@ -137,11 +147,11 @@ export interface WalletCapabilities {
 /**
  * Default value for each capability when an adapter doesn't declare it.
  */
-export const CAPABILITY_DEFAULTS: Required<WalletCapabilities> = {
+export const CAPABILITY_DEFAULTS: Readonly<Required<WalletCapabilities>> = Object.freeze({
   sign: true,
   signAndSubmit: true,
   signMessage: true,
-};
+});
 
 /**
  * Resolve whether an adapter supports a capability, applying
@@ -179,7 +189,7 @@ export interface WalletAdapter {
   disconnect(): Promise<void>;
 
   // Account information
-  getAccount(): Promise<AccountInfo | null>;
+  getAccount(): Promise<AccountInfo | null>; // Return the adapter's cached account
   getNetwork(): Promise<NetworkInfo>;
 
   // Signing and submission operations
@@ -209,6 +219,14 @@ export interface SupportsDeepLink {
   getDeepLinkURI(uri: string): string;
 }
 
+/**
+ * Capability: adapter can query its wallet, provider, or device for the current
+ * authorized account without opening a new connection flow.
+ */
+export interface SupportsFetchAccount {
+  fetchAccount(): Promise<AccountInfo | null>;
+}
+
 export function supportsPreInitialize(
   adapter: WalletAdapter
 ): adapter is WalletAdapter & SupportsPreInitialize {
@@ -219,6 +237,12 @@ export function supportsDeepLink(
   adapter: WalletAdapter
 ): adapter is WalletAdapter & SupportsDeepLink {
   return typeof (adapter as Partial<SupportsDeepLink>).getDeepLinkURI === 'function';
+}
+
+export function supportsFetchAccount(
+  adapter: WalletAdapter
+): adapter is WalletAdapter & SupportsFetchAccount {
+  return typeof (adapter as Partial<SupportsFetchAccount>).fetchAccount === 'function';
 }
 
 /**

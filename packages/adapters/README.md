@@ -27,6 +27,7 @@ WalletManager (expects WalletAdapter interface)
 │  ├─ connect()                                     │
 │  ├─ disconnect()                                  │
 │  ├─ getAccount()                                  │
+│  ├─ fetchAccount() (optional live query)           │
 │  ├─ sign()                                        │
 │  ├─ signAndSubmit()                               │
 │  ├─ signMessage()                                 │
@@ -55,6 +56,7 @@ interface WalletAdapter {
   readonly name: string; // Display name (e.g., 'Xaman by Xumm')
   readonly icon?: string; // URL or base64-encoded wallet icon
   readonly url?: string; // Wallet website or download URL
+  readonly capabilities?: WalletCapabilities;
 
   // ==================== Availability ====================
   isAvailable(): Promise<boolean>; // Check if wallet is accessible
@@ -80,9 +82,31 @@ interface WalletAdapter {
 type WalletAdapterEvent = 'connect' | 'disconnect' | 'accountChanged' | 'networkChanged' | 'error';
 
 interface ConnectOptions {
-  [key: string]: any; // Wallet-specific options
+  network?: NetworkConfig;
+  autoReconnect?: boolean;
+  skipRequestAccess?: boolean; // Best-effort silent-access hint
+  [key: string]: unknown; // Wallet-specific options
 }
 ```
+
+Signing capabilities omitted from `capabilities` default to `true` through
+`CAPABILITY_DEFAULTS`. Declare a flag as `false` when that operation cannot
+succeed. `WalletManager` rejects an explicitly unsupported operation with
+`UNSUPPORTED_METHOD` before calling the adapter.
+
+Live account refresh is intentionally separate from cached `getAccount()`:
+
+```typescript
+interface SupportsFetchAccount {
+  fetchAccount(): Promise<AccountInfo | null>;
+}
+```
+
+Crossmark, GemWallet, Ledger, Otsu, and Xaman implement this optional interface.
+WalletConnect and Xyra do not currently provide a reliable live query. Custom
+adapters should implement `SupportsFetchAccount` only when `fetchAccount()`
+contacts the wallet, extension, session, or hardware rather than returning an
+in-memory account.
 
 ---
 
@@ -506,11 +530,12 @@ import {
   SignedTransaction,
   SubmittedTransaction,
   SignedMessage,
+  SupportsFetchAccount,
   WalletError,
   WalletErrorCode,
 } from '@xrpl-connect/core';
 
-export class YourWalletAdapter implements WalletAdapter {
+export class YourWalletAdapter implements WalletAdapter, SupportsFetchAccount {
   readonly id = 'your-wallet-id';
   readonly name = 'Your Wallet';
   readonly icon = 'https://...'; // URL or base64
@@ -574,6 +599,10 @@ export class YourWalletAdapter implements WalletAdapter {
   // ==================== Account & Network ====================
 
   async getAccount(): Promise<AccountInfo | null> {
+    return this.account;
+  }
+
+  async fetchAccount(): Promise<AccountInfo | null> {
     if (!this.account) {
       return null;
     }
@@ -594,7 +623,7 @@ export class YourWalletAdapter implements WalletAdapter {
 
       return this.account;
     } catch (error) {
-      return null;
+      throw this.handleError(error, 'Account refresh failed');
     }
   }
 

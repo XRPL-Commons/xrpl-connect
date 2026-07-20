@@ -9,8 +9,8 @@ import type {
   WalletManagerOptions,
   AccountInfo,
   Transaction,
-  SignedTransaction,
-  SignedMessage,
+  ManagedSignedTransaction,
+  ManagedSignedMessage,
   SubmittedTransaction,
   WalletEvent,
   ConnectOptions,
@@ -19,11 +19,14 @@ import type {
   StoredState,
   WalletCapabilities,
 } from './types';
-import { adapterSupports } from './types';
+import { adapterSupports, supportsFetchAccount } from './types';
 import { createWalletError, isWalletError } from './errors';
 import { Logger, configureLogger, isLoggerInstance } from './logger';
 import { Storage } from './storage';
 import { TIME } from './constants';
+import { withTimeout } from './async';
+
+const AVAILABILITY_TIMED_OUT = Symbol('availability-timed-out');
 
 /**
  * Main class for managing wallet connections
@@ -39,6 +42,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     event: WalletAdapterEvent;
     callback: (data: unknown) => void;
   }> = [];
+  private sessionGeneration = 0;
+  private stateRevision = 0;
+  private storageTail: Promise<void> = Promise.resolve();
 
   constructor(options: WalletManagerOptions) {
     super();
@@ -107,8 +113,31 @@ export class WalletManager extends EventEmitter<WalletEvent> {
 
     try {
       // Check availability
-      const available = await adapter.isAvailable();
-      if (!available) {
+      const availability = await withTimeout<
+        | { available: boolean; error?: never }
+        | { available?: never; error: unknown }
+        | typeof AVAILABILITY_TIMED_OUT
+      >(
+        async () => {
+          try {
+            return { available: await adapter.isAvailable() };
+          } catch (error) {
+            return { error };
+          }
+        },
+        TIME.AVAILABILITY_TIMEOUT,
+        AVAILABILITY_TIMED_OUT
+      );
+      if (availability === AVAILABILITY_TIMED_OUT) {
+        this.logger.warn(
+          `Timed out checking availability for ${adapter.name} after ${TIME.AVAILABILITY_TIMEOUT}ms`
+        );
+        throw createWalletError.notAvailable(adapter.name);
+      }
+      if ('error' in availability) {
+        throw availability.error;
+      }
+      if (!availability.available) {
         throw createWalletError.notAvailable(adapter.name);
       }
 
@@ -121,28 +150,28 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       // Connect
       const account = await adapter.connect(connectOptions);
 
-      // Update state
+      // Update state before persistence so disconnect can invalidate this
+      // session while a storage operation is pending.
       this.currentAdapter = adapter;
-      this.currentAccount = account;
+      this.currentAccount = this.cloneAccount(account);
+      const generation = ++this.sessionGeneration;
+      this.stateRevision += 1;
 
-      // Save to storage
-      const state: StoredState = {
-        walletId: adapter.id,
-        account,
-        network: account.network,
-        timestamp: Date.now(),
-      };
-      await this.storage.saveState(state);
+      await this.persistState(adapter, generation, this.currentAccount);
+      if (!this.isActiveSession(adapter, generation) || !this.currentAccount) {
+        throw createWalletError.notConnected();
+      }
 
       // Subscribe to adapter events if supported. Track every registration so
       // disconnect() can call the matching off() and stop late callbacks from
       // mutating manager state after the session is gone.
-      this.subscribeToAdapter(adapter);
+      this.subscribeToAdapter(adapter, generation);
 
-      this.logger.info(`Connected to ${adapter.name}`, account);
-      this.emit('connect', account);
+      const connectedAccount = this.currentAccount;
+      this.logger.info(`Connected to ${adapter.name}`, connectedAccount);
+      this.emit('connect', connectedAccount);
 
-      return account;
+      return connectedAccount;
     } catch (error) {
       this.logger.error(`Failed to connect to ${adapter.name}:`, error);
       // Preserve adapter-thrown WalletError so user-rejection / not-installed / etc.
@@ -163,14 +192,17 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       return;
     }
 
-    const walletName = this.currentAdapter.name;
+    const adapter = this.currentAdapter;
+    const generation = this.sessionGeneration;
+    const walletName = adapter.name;
     this.logger.info(`Disconnecting from ${walletName}`);
 
     try {
-      await this.currentAdapter.disconnect();
-      await this.cleanup();
+      await adapter.disconnect();
+      const cleaned = await this.cleanup(adapter, generation);
+      if (!cleaned) await this.storageTail;
       this.logger.info(`Disconnected from ${walletName}`);
-      this.emit('disconnect');
+      if (cleaned) this.emit('disconnect');
     } catch (error) {
       this.logger.error(`Failed to disconnect from ${walletName}:`, error);
       throw error;
@@ -191,7 +223,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       return await this.connect(stored.walletId);
     } catch (error) {
       this.logger.warn('Reconnection failed:', error);
-      await this.storage.clearState();
+      await this.queueStorage(() => this.storage.clearState());
       return null;
     }
   }
@@ -199,10 +231,10 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   /**
    * Sign a transaction without submitting it to the ledger
    * @param transaction - The transaction to sign
-   * @returns SignedTransaction with tx_blob and/or signature
+   * @returns SignedTransaction with signed transaction JSON, a blob, and/or a signature
    */
-  async sign(transaction: Transaction): Promise<SignedTransaction> {
-    if (!this.currentAdapter) {
+  async sign(transaction: Transaction): Promise<ManagedSignedTransaction> {
+    if (!this.currentAdapter || !this.currentAccount) {
       throw createWalletError.notConnected();
     }
     this.assertSupports('sign');
@@ -210,12 +242,15 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     this.logger.debug('Signing transaction', transaction);
 
     const adapter = this.currentAdapter;
-    const signerAddress = this.currentAccount?.address;
+    const signerAddress = this.currentAccount.address;
     try {
       const result = await adapter.sign(transaction);
-      this.stampSigner(result, signerAddress);
-      this.logger.info('Transaction signed', result.tx_blob || result.signature);
-      return result;
+      const signed: ManagedSignedTransaction = {
+        ...result,
+        signerAddress: result.signerAddress ?? signerAddress,
+      };
+      this.logger.info('Transaction signed', signed.tx_blob || signed.signature);
+      return signed;
     } catch (error) {
       this.logger.error('Failed to sign transaction:', error);
       if (isWalletError(error)) {
@@ -254,8 +289,8 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   /**
    * Sign a message
    */
-  async signMessage(message: string | Uint8Array): Promise<SignedMessage> {
-    if (!this.currentAdapter) {
+  async signMessage(message: string | Uint8Array): Promise<ManagedSignedMessage> {
+    if (!this.currentAdapter || !this.currentAccount) {
       throw createWalletError.notConnected();
     }
     this.assertSupports('signMessage');
@@ -263,10 +298,13 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     this.logger.debug('Signing message');
 
     const adapter = this.currentAdapter;
-    const signerAddress = this.currentAccount?.address;
+    const signerAddress = this.currentAccount.address;
     try {
-      const signed = await adapter.signMessage(message);
-      this.stampSigner(signed, signerAddress);
+      const result = await adapter.signMessage(message);
+      const signed: ManagedSignedMessage = {
+        ...result,
+        signerAddress: result.signerAddress ?? signerAddress,
+      };
       this.logger.info('Message signed');
       return signed;
     } catch (error) {
@@ -279,23 +317,39 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
-   * Get list of available wallets (installed/accessible)
+   * Get registered wallets whose availability check succeeds within the
+   * configured availability timeout.
    */
   async getAvailableWallets(): Promise<WalletAdapter[]> {
-    const available: WalletAdapter[] = [];
+    const adapters = Array.from(this.adapters.values());
 
-    for (const adapter of this.adapters.values()) {
-      try {
-        const isAvailable = await adapter.isAvailable();
-        if (isAvailable) {
-          available.push(adapter);
+    // Check availability in parallel, capping each adapter with a timeout so a
+    // single slow or hung `isAvailable()` can't stall the whole list.
+    const results = await Promise.all(
+      adapters.map(async (adapter) => {
+        const result = await withTimeout<boolean | typeof AVAILABILITY_TIMED_OUT>(
+          async () => {
+            try {
+              return await adapter.isAvailable();
+            } catch (error) {
+              this.logger.warn(`Failed to check availability for ${adapter.name}:`, error);
+              return false;
+            }
+          },
+          TIME.AVAILABILITY_TIMEOUT,
+          AVAILABILITY_TIMED_OUT
+        );
+        if (result === AVAILABILITY_TIMED_OUT) {
+          this.logger.warn(
+            `Timed out checking availability for ${adapter.name} after ${TIME.AVAILABILITY_TIMEOUT}ms`
+          );
+          return false;
         }
-      } catch (error) {
-        this.logger.warn(`Failed to check availability for ${adapter.name}:`, error);
-      }
-    }
+        return result;
+      })
+    );
 
-    return available;
+    return adapters.filter((_, index) => results[index]);
   }
 
   /**
@@ -320,39 +374,61 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * user may have switched accounts in the wallet).
    */
   async fetchAccount(): Promise<AccountInfo | null> {
-    if (!this.currentAdapter) {
+    if (!this.currentAdapter || !this.currentAccount) {
       throw createWalletError.notConnected();
     }
 
     const adapter = this.currentAdapter;
-    const previous = this.currentAccount;
-    const account = await adapter.getAccount();
-    if (this.currentAdapter !== adapter || this.currentAccount !== previous) {
+    if (!supportsFetchAccount(adapter)) {
+      throw createWalletError.unsupportedMethod(
+        `${adapter.name} does not support live account refresh`
+      );
+    }
+
+    const generation = this.sessionGeneration;
+    const startingRevision = this.stateRevision;
+    const previous = this.cloneAccount(this.currentAccount);
+    const fetched = await adapter.fetchAccount();
+
+    if (!this.isActiveSession(adapter, generation)) {
       throw createWalletError.notConnected();
     }
-    if (!account) return null;
 
-    const addressChanged = previous?.address !== account.address;
-    const networkChanged =
-      previous !== null &&
-      (previous.network.id !== account.network.id ||
-        previous.network.wss !== account.network.wss ||
-        previous.network.rpc !== account.network.rpc);
-
-    const existing = await this.storage.loadState();
-    if (this.currentAdapter !== adapter || this.currentAccount !== previous) {
-      throw createWalletError.notConnected();
+    // An adapter event that arrives during the live query is authoritative.
+    // Its persistence was queued synchronously by the event handler.
+    if (this.stateRevision !== startingRevision) {
+      await this.storageTail;
+      if (!this.isActiveSession(adapter, generation)) {
+        throw createWalletError.notConnected();
+      }
+      return this.currentAccount;
     }
+
+    if (!fetched) {
+      const cleaned = await this.cleanup(adapter, generation);
+      if (cleaned) this.emit('disconnect');
+      return null;
+    }
+
+    const account = this.cloneAccount(fetched);
+
+    const addressChanged = previous.address !== account.address;
+    const networkChanged = !this.networksEqual(previous.network, account.network);
+
     this.currentAccount = account;
-    await this.storage.saveState({
-      ...(existing ?? {}),
-      walletId: adapter.id,
-      account,
-      network: account.network,
-      timestamp: Date.now(),
-    });
-    if (this.currentAdapter !== adapter || this.currentAccount !== account) {
+    const committedRevision = ++this.stateRevision;
+    await this.persistState(adapter, generation, account);
+
+    if (!this.isActiveSession(adapter, generation)) {
       throw createWalletError.notConnected();
+    }
+
+    if (this.stateRevision !== committedRevision) {
+      await this.storageTail;
+      if (!this.isActiveSession(adapter, generation)) {
+        throw createWalletError.notConnected();
+      }
+      return this.currentAccount;
     }
 
     if (addressChanged) this.emit('accountChanged', account);
@@ -408,65 +484,109 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
-   * Populate `signerAddress` on a sign result with the connected account when
-   * the adapter didn't already set it, so callers always know which account
-   * produced the signature.
-   */
-  private stampSigner(result: { signerAddress?: string }, signerAddress?: string): void {
-    if (result.signerAddress == null && signerAddress) {
-      result.signerAddress = signerAddress;
-    }
-  }
-
-  /**
    * Handle adapter disconnect event
    */
-  private async handleAdapterDisconnect(): Promise<void> {
+  private handleAdapterDisconnect(adapter: WalletAdapter, generation: number): void {
+    if (!this.isActiveSession(adapter, generation)) return;
+
     this.logger.info('Wallet disconnected (adapter event)');
-    await this.cleanup();
-    this.emit('disconnect');
+    void this.cleanup(adapter, generation)
+      .then((cleaned) => {
+        if (cleaned) this.emit('disconnect');
+      })
+      .catch((error) => {
+        this.logger.warn('Failed to clean up disconnected wallet:', error);
+      });
   }
 
   /**
    * Handle account changed event
    */
-  private handleAccountChanged(account: AccountInfo): void {
+  private handleAccountChanged(
+    adapter: WalletAdapter,
+    generation: number,
+    account: AccountInfo
+  ): void {
+    if (!this.isActiveSession(adapter, generation)) return;
+
     this.logger.info('Account changed', account);
-    this.currentAccount = account;
-    void this.persistCurrentState();
-    this.emit('accountChanged', account);
+    const nextAccount = this.cloneAccount(account);
+    this.currentAccount = nextAccount;
+    this.stateRevision += 1;
+    void this.persistState(adapter, generation, nextAccount);
+    this.emit('accountChanged', nextAccount);
   }
 
   /**
    * Handle network changed event
    */
-  private handleNetworkChanged(network: NetworkInfo): void {
+  private handleNetworkChanged(
+    adapter: WalletAdapter,
+    generation: number,
+    network: NetworkInfo
+  ): void {
+    if (!this.isActiveSession(adapter, generation) || !this.currentAccount) return;
+
     this.logger.info('Network changed', network);
-    if (this.currentAccount) {
-      this.currentAccount.network = network;
-    }
-    void this.persistCurrentState();
-    this.emit('networkChanged', network);
+    const nextAccount = this.cloneAccount({ ...this.currentAccount, network });
+    this.currentAccount = nextAccount;
+    this.stateRevision += 1;
+    void this.persistState(adapter, generation, nextAccount);
+    this.emit('networkChanged', nextAccount.network);
   }
 
-  /** Persist adapter-driven account/network changes without dropping stored metadata. */
-  private async persistCurrentState(): Promise<void> {
-    if (!this.currentAdapter || !this.currentAccount) return;
-
-    const existing = await this.storage.loadState();
-    await this.storage.saveState({
-      ...existing,
-      walletId: this.currentAdapter.id,
-      account: this.currentAccount,
-      network: this.currentAccount.network,
-      timestamp: Date.now(),
+  /** Serialize storage mutations so cleanup is always the final old-session write. */
+  private queueStorage(operation: () => Promise<void>): Promise<void> {
+    const result = this.storageTail.then(operation, operation);
+    this.storageTail = result.catch((error) => {
+      this.logger.warn('Failed to persist wallet state:', error);
     });
+    return result;
+  }
+
+  /** Persist an immutable session snapshot without restoring stale state. */
+  private persistState(
+    adapter: WalletAdapter,
+    generation: number,
+    account: AccountInfo
+  ): Promise<void> {
+    const snapshot = this.cloneAccount(account);
+    return this.queueStorage(async () => {
+      if (!this.isActiveSession(adapter, generation)) return;
+      const existing = await this.storage.loadState();
+      if (!this.isActiveSession(adapter, generation)) return;
+      await this.storage.saveState({
+        ...(existing ?? {}),
+        walletId: adapter.id,
+        account: snapshot,
+        network: snapshot.network,
+        timestamp: Date.now(),
+      });
+    });
+  }
+
+  private isActiveSession(adapter: WalletAdapter, generation: number): boolean {
+    return this.currentAdapter === adapter && this.sessionGeneration === generation;
+  }
+
+  private cloneAccount(account: AccountInfo): AccountInfo {
+    return { ...account, network: { ...account.network } };
+  }
+
+  private networksEqual(left: NetworkInfo, right: NetworkInfo): boolean {
+    return (
+      left.id === right.id &&
+      left.name === right.name &&
+      left.wss === right.wss &&
+      left.rpc === right.rpc &&
+      left.walletConnectId === right.walletConnectId
+    );
   }
 
   /**
    * Register adapter listeners and remember them so we can detach later.
    */
-  private subscribeToAdapter(adapter: WalletAdapter): void {
+  private subscribeToAdapter(adapter: WalletAdapter, generation: number): void {
     if (!adapter.on) return;
 
     const register = (event: WalletAdapterEvent, callback: (data: unknown) => void): void => {
@@ -474,9 +594,13 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       this.adapterListeners.push({ event, callback });
     };
 
-    register('disconnect', () => this.handleAdapterDisconnect());
-    register('accountChanged', (data) => this.handleAccountChanged(data as AccountInfo));
-    register('networkChanged', (data) => this.handleNetworkChanged(data as NetworkInfo));
+    register('disconnect', () => this.handleAdapterDisconnect(adapter, generation));
+    register('accountChanged', (data) =>
+      this.handleAccountChanged(adapter, generation, data as AccountInfo)
+    );
+    register('networkChanged', (data) =>
+      this.handleNetworkChanged(adapter, generation, data as NetworkInfo)
+    );
   }
 
   /**
@@ -498,12 +622,15 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   /**
    * Cleanup connection state
    */
-  private async cleanup(): Promise<void> {
-    if (this.currentAdapter) {
-      this.unsubscribeFromAdapter(this.currentAdapter);
-    }
+  private async cleanup(adapter: WalletAdapter, generation: number): Promise<boolean> {
+    if (!this.isActiveSession(adapter, generation)) return false;
+
+    this.unsubscribeFromAdapter(adapter);
     this.currentAdapter = null;
     this.currentAccount = null;
-    await this.storage.clearState();
+    this.sessionGeneration += 1;
+    this.stateRevision += 1;
+    await this.queueStorage(() => this.storage.clearState());
+    return true;
   }
 }

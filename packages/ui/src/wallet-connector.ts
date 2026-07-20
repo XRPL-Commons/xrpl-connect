@@ -4,7 +4,7 @@
  */
 
 import type { WalletAdapter, WalletManager } from '@xrpl-connect/core';
-import { createLogger, supportsPreInitialize } from '@xrpl-connect/core';
+import { createLogger, supportsPreInitialize, withTimeout, TIME } from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
 import { mainStyles } from './styles/main';
 import {
@@ -40,6 +40,7 @@ import { isXamanQRImage, adjustColorBrightness } from './utils';
  * Logger instance for wallet connector
  */
 const logger = createLogger('[WalletConnector]');
+const AVAILABILITY_TIMED_OUT = Symbol('availability-timed-out');
 
 // Only define the component in browser (guard against SSR)
 let WalletConnectorElement: CustomElementConstructor | null = null;
@@ -88,6 +89,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     public walletManager: WalletManager | null = null;
     public readonly shadow: ShadowRoot;
     private isOpen = false;
+    private openGeneration = 0;
     private isFirstOpen = true;
     private primaryWalletId: string | null = null;
     private viewState: 'list' | 'qr' | 'loading' | 'error' | 'account-selection' = 'list';
@@ -98,9 +100,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private previousModalHeight: number = 0;
     private preGeneratedQRCode: QRCodeStyling | null = null;
     private preGeneratedURI: string | null = null;
-    private specifiedWalletIds: string[] = [];
     private availableWallets: WalletAdapter[] = [];
     private walletAvailabilityChecked: boolean = false;
+    private walletAvailabilityTimedOut: boolean = false;
+    private walletAvailabilityGeneration: number = 0;
     private accountModalOpen: boolean = false;
     private accountBalance: string | null = null;
     private overlayPortal: HTMLDivElement | null = null;
@@ -141,6 +144,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     disconnectedCallback() {
+      this.openGeneration += 1;
+      this.isOpen = false;
+      this.accountModalOpen = false;
+      this.resetWalletAvailability();
       this.eventHandler?.detachEventListeners();
 
       if (this.walletManager && this.walletManagerHandlers) {
@@ -229,7 +236,17 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       if (this.accountModalPortal) this.forwardCSSVariables(this.accountModalPortal);
     }
 
-    attributeChangedCallback(_name: string, _oldValue: string, _newValue: string) {
+    attributeChangedCallback(name: string, oldValue: string, newValue: string) {
+      if (name === 'wallets' && oldValue !== newValue) {
+        this.resetWalletAvailability();
+        if (this.isOpen) {
+          // Hide stale choices immediately while the new allowlist is checked.
+          this.walletAvailabilityChecked = true;
+          this.render();
+          void this.refreshWalletAvailability();
+          return;
+        }
+      }
       if (this.shadow.children.length > 0) {
         this.render();
       }
@@ -247,6 +264,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       this.walletManager = manager;
+      this.resetWalletAvailability();
       this.walletService = new WalletService(this.walletManager, this);
       this.eventHandler = new EventHandler(this, this.walletService);
 
@@ -268,7 +286,14 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.walletManager.on('disconnect', this.walletManagerHandlers.disconnect);
       this.walletManager.on('accountChanged', this.walletManagerHandlers.accountChanged);
 
-      this.render();
+      if (this.isOpen) {
+        // Hide unverified choices until the replacement manager is checked.
+        this.walletAvailabilityChecked = true;
+        this.render();
+        void this.refreshWalletAvailability();
+      } else {
+        this.render();
+      }
 
       // Check for existing Xaman session after a short delay
       this.checkXamanStateOnInit();
@@ -309,44 +334,88 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         .filter((id) => id.length > 0);
     }
 
+    private resetWalletAvailability() {
+      this.walletAvailabilityGeneration += 1;
+      this.availableWallets = [];
+      this.walletAvailabilityChecked = false;
+      this.walletAvailabilityTimedOut = false;
+    }
+
+    private async refreshWalletAvailability() {
+      const openGeneration = this.openGeneration;
+      const availabilityApplied = await this.checkWalletAvailability();
+      if (availabilityApplied && openGeneration === this.openGeneration && this.isOpen) {
+        this.walletAvailabilityChecked = true;
+        this.render();
+      }
+    }
+
     /**
      * Check which wallets are available
      * Filters wallets based on 'wallets' attribute and checks isAvailable() on each
      */
-    private async checkWalletAvailability() {
-      if (!this.walletManager || !this.walletManager.wallets.length) {
+    private async checkWalletAvailability(): Promise<boolean> {
+      const manager = this.walletManager;
+      const generation = ++this.walletAvailabilityGeneration;
+
+      if (!manager || !manager.wallets.length) {
         logger.warn('No wallet manager or wallets registered');
+        if (generation !== this.walletAvailabilityGeneration || manager !== this.walletManager) {
+          return false;
+        }
         this.availableWallets = [];
-        return;
+        this.walletAvailabilityTimedOut = false;
+        return true;
       }
 
       try {
         // Parse the specified wallet IDs from attribute
-        this.specifiedWalletIds = this.parseWalletAttribute();
+        const specifiedWalletIds = this.parseWalletAttribute();
 
-        logger.debug('Checking availability for wallets:', this.specifiedWalletIds);
+        logger.debug('Checking availability for wallets:', specifiedWalletIds);
 
         // Get adapters for specified wallet IDs
-        const walletsToCheck = this.walletManager.wallets.filter((w) =>
-          this.specifiedWalletIds.includes(w.id)
-        );
+        const walletsToCheck = manager.wallets.filter((w) => specifiedWalletIds.includes(w.id));
 
-        // Check availability for each wallet in parallel
+        // Check availability for each wallet in parallel. Each check is capped
+        // with a timeout so one slow or hung wallet (e.g. a network probe on a
+        // flaky mobile connection) can't block the modal from rendering the
+        // rest of the list — Promise.all otherwise waits for the slowest one.
         const availabilityChecks = await Promise.all(
           walletsToCheck.map(async (wallet) => {
-            try {
-              const available = await wallet.isAvailable();
+            const result = await withTimeout<boolean | typeof AVAILABILITY_TIMED_OUT>(
+              async () => {
+                try {
+                  return await wallet.isAvailable();
+                } catch (error) {
+                  logger.warn(`Error checking availability for ${wallet.id}:`, error);
+                  return false;
+                }
+              },
+              TIME.AVAILABILITY_TIMEOUT,
+              AVAILABILITY_TIMED_OUT
+            );
+            const timedOut = result === AVAILABILITY_TIMED_OUT;
+            const available = timedOut ? false : result;
+            if (timedOut) {
+              logger.warn(
+                `Timed out checking availability for ${wallet.id} after ${TIME.AVAILABILITY_TIMEOUT}ms`
+              );
+            } else {
               logger.debug(`Wallet ${wallet.id} availability: ${available}`);
-              return { wallet, available };
-            } catch (error) {
-              logger.warn(`Error checking availability for ${wallet.id}:`, error);
-              return { wallet, available: false };
             }
+            return { wallet, available, timedOut };
           })
         );
 
+        if (generation !== this.walletAvailabilityGeneration || manager !== this.walletManager) {
+          return false;
+        }
+
+        this.walletAvailabilityTimedOut = availabilityChecks.some((check) => check.timedOut);
+
         // Filter to only available wallets and maintain order from specified list
-        this.availableWallets = this.specifiedWalletIds
+        this.availableWallets = specifiedWalletIds
           .map((id) => availabilityChecks.find((check) => check.wallet.id === id)?.wallet)
           .filter(
             (wallet): wallet is WalletAdapter =>
@@ -359,9 +428,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           'Available wallets:',
           this.availableWallets.map((w) => w.id)
         );
+        return true;
       } catch (error) {
+        if (generation !== this.walletAvailabilityGeneration || manager !== this.walletManager) {
+          return false;
+        }
         logger.error('Error checking wallet availability:', error);
         this.availableWallets = [];
+        this.walletAvailabilityTimedOut = true;
+        return true;
       }
     }
 
@@ -369,16 +444,22 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Open the modal
      */
     async open() {
+      const openGeneration = ++this.openGeneration;
       this.isOpen = true;
       this.isFirstOpen = true;
 
       // Prevent body scroll when modal is open
       document.body.style.overflow = 'hidden';
 
-      // Check wallet availability when opening modal for the first time
-      if (!this.walletAvailabilityChecked) {
-        await this.checkWalletAvailability();
-        this.walletAvailabilityChecked = true;
+      // Retry a bounded check on later opens when an adapter previously timed out.
+      if (!this.walletAvailabilityChecked || this.walletAvailabilityTimedOut) {
+        const availabilityApplied = await this.checkWalletAvailability();
+        if (openGeneration !== this.openGeneration || !this.isOpen) {
+          return;
+        }
+        if (availabilityApplied) {
+          this.walletAvailabilityChecked = true;
+        }
       }
 
       this.render();
@@ -392,6 +473,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Close the modal
      */
     close() {
+      this.openGeneration += 1;
       this.isOpen = false;
 
       // Restore body scroll when modal is closed
@@ -763,11 +845,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           ? this.truncateAddress(currentAccount.address, ADDRESS_DISPLAY.TRUNCATE_CHARS_BUTTON)
           : 'Connect Wallet';
 
-      // Use available wallets if any have been checked, otherwise fallback to all wallets
-      const wallets =
-        this.walletAvailabilityChecked && this.availableWallets.length > 0
-          ? this.availableWallets
-          : this.walletManager?.wallets || [];
+      // Once checked, an empty list means no wallet is currently available.
+      const wallets = this.walletAvailabilityChecked
+        ? this.availableWallets
+        : this.walletManager?.wallets || [];
 
       const primaryWallet = this.primaryWalletId
         ? (wallets.find((w) => w.id === this.primaryWalletId) ?? null)

@@ -12,6 +12,7 @@
 
 import type {
   WalletAdapter,
+  SupportsFetchAccount,
   AccountInfo,
   ConnectOptions,
   NetworkInfo,
@@ -49,7 +50,7 @@ const logger = createLogger('[Otsu]');
  * console.log('Connected:', account.address);
  * ```
  */
-export class OtsuAdapter implements WalletAdapter {
+export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
   // ==================== Metadata ====================
 
   readonly id = 'otsu';
@@ -60,6 +61,8 @@ export class OtsuAdapter implements WalletAdapter {
   // ==================== Private State ====================
 
   private currentAccount: AccountInfo | null = null;
+  private connectionGeneration = 0;
+  private stateRevision = 0;
   private listeners: Map<WalletAdapterEvent, Set<(data?: unknown) => void>> = new Map();
   private providerListeners: Map<string, (data: unknown) => void> = new Map();
 
@@ -107,6 +110,8 @@ export class OtsuAdapter implements WalletAdapter {
         address: response.address,
         network: networkInfo,
       };
+      this.connectionGeneration += 1;
+      this.stateRevision += 1;
 
       this.setupProviderListeners(provider);
       this.emit('connect', this.currentAccount);
@@ -131,19 +136,18 @@ export class OtsuAdapter implements WalletAdapter {
    */
   async disconnect(): Promise<void> {
     logger.debug('Disconnecting from Otsu Wallet');
+    this.connectionGeneration += 1;
+    this.stateRevision += 1;
+    this.currentAccount = null;
 
+    const provider = this.getProviderSafe();
+    if (provider) this.removeProviderListeners(provider);
+    this.emit('disconnect');
     try {
-      const provider = this.getProviderSafe();
-      if (provider) {
-        this.removeProviderListeners(provider);
-        await provider.disconnect();
-      }
+      await provider?.disconnect();
     } catch {
       // Ignore disconnect errors
     }
-
-    this.currentAccount = null;
-    this.emit('disconnect');
   }
 
   // ==================== Account & Network ====================
@@ -152,6 +156,67 @@ export class OtsuAdapter implements WalletAdapter {
    * Get the currently connected account information.
    */
   async getAccount(): Promise<AccountInfo | null> {
+    return this.currentAccount;
+  }
+
+  /**
+   * Fetch the active account and network directly from the injected provider.
+   */
+  async fetchAccount(): Promise<AccountInfo | null> {
+    if (!this.currentAccount) return null;
+    const generation = this.connectionGeneration;
+    const startingRevision = this.stateRevision;
+    const provider = this.getProvider();
+    let connected: boolean;
+    try {
+      connected = provider.isConnected();
+    } catch (error) {
+      throw this.mapError(error, 'connect');
+    }
+    if (!connected) {
+      this.currentAccount = null;
+      return null;
+    }
+
+    let accountResponse: Awaited<ReturnType<OtsuProvider['getAddress']>>;
+    try {
+      accountResponse = await provider.getAddress();
+    } catch (error) {
+      throw this.mapError(error, 'connect');
+    }
+
+    if (generation !== this.connectionGeneration || !this.currentAccount) {
+      throw createWalletError.notConnected();
+    }
+    if (startingRevision !== this.stateRevision) return this.currentAccount;
+
+    if (!accountResponse.address) {
+      this.currentAccount = null;
+      return null;
+    }
+
+    let networkResponse: Awaited<ReturnType<OtsuProvider['getNetwork']>>;
+    try {
+      networkResponse = await provider.getNetwork();
+    } catch (error) {
+      throw this.mapError(error, 'connect');
+    }
+
+    if (generation !== this.connectionGeneration || !this.currentAccount) {
+      throw createWalletError.notConnected();
+    }
+    if (startingRevision !== this.stateRevision) return this.currentAccount;
+
+    let network: NetworkInfo;
+    try {
+      network = this.toNetworkInfo(networkResponse.network);
+    } catch (error) {
+      throw this.mapError(error, 'connect');
+    }
+
+    this.currentAccount = { address: accountResponse.address, network };
+    this.stateRevision += 1;
+
     return this.currentAccount;
   }
 
@@ -339,16 +404,7 @@ export class OtsuAdapter implements WalletAdapter {
   ): Promise<NetworkInfo> {
     try {
       const { network } = await provider.getNetwork();
-
-      if (STANDARD_NETWORKS[network]) {
-        return STANDARD_NETWORKS[network];
-      }
-
-      // Fallback: try to match by name
-      const lower = network.toLowerCase();
-      if (lower.includes('main')) return STANDARD_NETWORKS.mainnet;
-      if (lower.includes('test')) return STANDARD_NETWORKS.testnet;
-      if (lower.includes('dev')) return STANDARD_NETWORKS.devnet;
+      return this.toNetworkInfo(network);
     } catch {
       // If getNetwork fails, use the requested network config
     }
@@ -366,6 +422,19 @@ export class OtsuAdapter implements WalletAdapter {
     return STANDARD_NETWORKS.mainnet;
   }
 
+  private toNetworkInfo(network: string): NetworkInfo {
+    if (STANDARD_NETWORKS[network]) {
+      return STANDARD_NETWORKS[network];
+    }
+
+    const lower = network.toLowerCase();
+    if (lower.includes('main')) return STANDARD_NETWORKS.mainnet;
+    if (lower.includes('test')) return STANDARD_NETWORKS.testnet;
+    if (lower.includes('dev')) return STANDARD_NETWORKS.devnet;
+
+    throw new Error(`Unsupported Otsu network: ${network}`);
+  }
+
   /**
    * Set up listeners on the Otsu provider to forward events.
    */
@@ -376,6 +445,7 @@ export class OtsuAdapter implements WalletAdapter {
           ...this.currentAccount,
           address: (data as { address: string }).address,
         };
+        this.stateRevision += 1;
         this.emit('accountChanged', this.currentAccount);
       }
     };
@@ -388,11 +458,14 @@ export class OtsuAdapter implements WalletAdapter {
           ...this.currentAccount,
           network: networkInfo,
         };
+        this.stateRevision += 1;
         this.emit('networkChanged', networkInfo);
       }
     };
 
     const disconnectHandler = () => {
+      this.connectionGeneration += 1;
+      this.stateRevision += 1;
       this.currentAccount = null;
       this.emit('disconnect');
     };

@@ -16,8 +16,9 @@ import type {
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
+  SupportsFetchAccount,
 } from '@xrpl-connect/core';
-import { createWalletError, resolveNetwork } from '@xrpl-connect/core';
+import { createWalletError, isWalletError, resolveNetwork } from '@xrpl-connect/core';
 
 import type { LedgerAdapterOptions, LedgerConnectOptions } from './types';
 import { LedgerDeviceState } from './types';
@@ -35,7 +36,7 @@ const DEFAULT_TIMEOUT = 60000;
 /**
  * Ledger adapter implementation
  */
-export class LedgerAdapter implements WalletAdapter {
+export class LedgerAdapter implements WalletAdapter, SupportsFetchAccount {
   readonly id = 'ledger';
   readonly name = 'Ledger';
   readonly icon = ICON_DATA_URL;
@@ -154,8 +155,8 @@ export class LedgerAdapter implements WalletAdapter {
    * Disconnect from Ledger
    */
   async disconnect(): Promise<void> {
-    await this.cleanup();
     this.currentAccount = null;
+    await this.cleanup();
   }
 
   /**
@@ -163,6 +164,63 @@ export class LedgerAdapter implements WalletAdapter {
    */
   async getAccount(): Promise<AccountInfo | null> {
     return this.currentAccount;
+  }
+
+  /**
+   * Re-read the configured derivation path from the connected Ledger device.
+   */
+  async fetchAccount(): Promise<AccountInfo | null> {
+    if (!this.currentAccount) return null;
+    if (!this.xrpApp) throw createWalletError.notConnected();
+
+    const xrpApp = this.xrpApp;
+    const network = this.currentAccount.network;
+
+    try {
+      const result = await this.withTimeout(
+        xrpApp.getAddress(this.derivationPath, false, false),
+        'Account refresh timeout. Please check your Ledger device.'
+      );
+
+      if (!result?.address) {
+        throw new Error('Failed to get address from Ledger device');
+      }
+      if (this.xrpApp !== xrpApp || !this.currentAccount) {
+        throw createWalletError.notConnected();
+      }
+
+      this.currentAccount = {
+        address: result.address,
+        publicKey: result.publicKey,
+        network,
+      };
+      return this.currentAccount;
+    } catch (error) {
+      if (isWalletError(error)) throw error;
+
+      const { state, message } = parseLedgerError(error);
+      if (state === LedgerDeviceState.NOT_CONNECTED) {
+        throw createWalletError.notInstalled(
+          'Ledger device not found. Please connect your Ledger via USB.'
+        );
+      }
+      if (state === LedgerDeviceState.LOCKED) {
+        throw createWalletError.connectionFailed(
+          this.name,
+          new Error('Ledger is locked. Please unlock your Ledger by entering your PIN.')
+        );
+      }
+      if (state === LedgerDeviceState.APP_NOT_OPEN) {
+        throw createWalletError.connectionFailed(
+          this.name,
+          new Error('XRP app is not open. Please open the XRP application on your Ledger device.')
+        );
+      }
+      throw createWalletError.connectionFailed(
+        this.name,
+        new Error(message || (error as Error).message)
+      );
+    }
   }
 
   /**
@@ -437,15 +495,16 @@ export class LedgerAdapter implements WalletAdapter {
    * Clean up transport connection
    */
   private async cleanup(): Promise<void> {
-    if (this.transport) {
+    const transport = this.transport;
+    this.transport = null;
+    this.xrpApp = null;
+    if (transport) {
       try {
-        await this.transport.close();
+        await transport.close();
       } catch (error) {
         console.warn('Error closing Ledger transport:', error);
       }
-      this.transport = null;
     }
-    this.xrpApp = null;
   }
 
   /**
