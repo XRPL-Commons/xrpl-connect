@@ -109,6 +109,18 @@ export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Return an absolute HTTP(S) URL that is safe to open outside the application. */
+export function getSafeExternalUrl(value: string | undefined): string | null {
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Order wallets by most-recently-used first (`mruIds`, newest first), keeping
  * the input order for wallets with no usage history. Stable: never reorders two
