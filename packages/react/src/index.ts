@@ -22,4 +22,9 @@ export type {
 
 // Re-export the error primitives so consumers can branch on codes without a
 // second import from `xrpl-connect`.
-export { WalletError, WalletErrorCode, WalletErrorCategory, isWalletError } from '@xrpl-connect/core';
+export {
+  WalletError,
+  WalletErrorCode,
+  WalletErrorCategory,
+  isWalletError,
+} from '@xrpl-connect/core';
