@@ -40,6 +40,7 @@ function createElement(manager: WalletManager) {
     openAccountModal(): void;
     disconnectedCallback(): void;
     getOverlayRoot(): ShadowRoot | null;
+    showWalletList(): void;
   };
   element.setWalletManager(manager);
   return element;
@@ -57,6 +58,24 @@ describe('WalletConnector wallet availability', () => {
     document.body.replaceChildren();
     vi.clearAllTimers();
     vi.useRealTimers();
+  });
+
+  it('cancels a pending wallet selection before returning to the wallet list', async () => {
+    const walletConnect = createAdapter('walletconnect', 'WalletConnect', vi.fn(async () => true));
+    walletConnect.connect = vi.fn(() => new Promise(() => {}));
+    const xaman = createAdapter('xaman', 'Xaman', vi.fn(async () => true));
+    xaman.connect = vi.fn(async () => ({ address: 'rXaman', network: NETWORK }));
+    const manager = new WalletManager({ adapters: [walletConnect, xaman] });
+    element = createElement(manager);
+
+    void manager.connect('walletconnect');
+    await vi.waitFor(() => expect(walletConnect.connect).toHaveBeenCalledOnce());
+
+    element.showWalletList();
+    await expect(manager.connect('xaman')).resolves.toMatchObject({ address: 'rXaman' });
+
+    expect(walletConnect.disconnect).toHaveBeenCalledOnce();
+    expect(manager.wallet).toBe(xaman);
   });
 
   it('renders an empty state instead of falling back to unavailable wallets', async () => {

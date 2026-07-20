@@ -283,6 +283,94 @@ describe('XamanAdapter.checkXamanState', () => {
 });
 
 describe('XamanAdapter.connect', () => {
+  it('supersedes an in-flight state check and starts authorization immediately', async () => {
+    let resolveRestoredAccount!: (account: undefined) => void;
+    mockXummInstance.user.account = new Promise<undefined>((resolve) => {
+      resolveRestoredAccount = resolve;
+    });
+    mockXummInstance.logout.mockResolvedValue(undefined);
+    mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
+    const adapter = new XamanAdapter({ apiKey: 'test-key' });
+
+    const stateCheck = adapter.checkXamanState();
+    const connection = adapter.connect();
+    await Promise.resolve();
+    expect(mockXummInstance.authorize).toHaveBeenCalledTimes(1);
+
+    resolveRestoredAccount(undefined);
+
+    await expect(stateCheck).resolves.toBeNull();
+    await expect(connection).resolves.toMatchObject({ address: CONNECTED_ACCOUNT });
+    expect(mockXummInstance.authorize).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let a superseded restoration overwrite explicit authorization', async () => {
+    let resolveRestoredAccount!: (account: string) => void;
+    mockXummInstance.user.account = new Promise<string>((resolve) => {
+      resolveRestoredAccount = resolve;
+    });
+    mockXummInstance.user.networkEndpoint = Promise.resolve('wss://xrplcluster.com');
+    mockXummInstance.user.networkId = Promise.resolve(0);
+    mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
+    const adapter = new XamanAdapter({ apiKey: 'test-key' });
+
+    const stateCheck = adapter.checkXamanState();
+    const connection = adapter.connect();
+    resolveRestoredAccount(CONNECTED_ACCOUNT);
+
+    await expect(stateCheck).resolves.toBeNull();
+    await expect(connection).resolves.toMatchObject({ address: CONNECTED_ACCOUNT });
+    expect(mockXummInstance.authorize).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps explicit authorization busy when the superseded restoration finishes first', async () => {
+    let resolveRestoredAccount!: (account: undefined) => void;
+    let resolveAuthorization!: (result: { me: { account: string } }) => void;
+    mockXummInstance.user.account = new Promise<undefined>((resolve) => {
+      resolveRestoredAccount = resolve;
+    });
+    mockXummInstance.authorize.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveAuthorization = resolve;
+        })
+    );
+    const adapter = new XamanAdapter({ apiKey: 'test-key' });
+
+    const stateCheck = adapter.checkXamanState();
+    const connection = adapter.connect();
+    resolveRestoredAccount(undefined);
+    await expect(stateCheck).resolves.toBeNull();
+
+    await expect(adapter.connect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+    expect(mockXummInstance.authorize).toHaveBeenCalledTimes(1);
+
+    resolveAuthorization({ me: { account: CONNECTED_ACCOUNT } });
+    await expect(connection).resolves.toMatchObject({ address: CONNECTED_ACCOUNT });
+  });
+
+  it('ignores late network data from a superseded restoration', async () => {
+    let resolveNetworkEndpoint!: (endpoint: string) => void;
+    mockXummInstance.user.account = Promise.resolve(CONNECTED_ACCOUNT);
+    mockXummInstance.user.networkEndpoint = new Promise<string>((resolve) => {
+      resolveNetworkEndpoint = resolve;
+    });
+    mockXummInstance.user.networkId = Promise.resolve(0);
+    mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
+    const adapter = new XamanAdapter({ apiKey: 'test-key' });
+
+    const stateCheck = adapter.checkXamanState();
+    await Promise.resolve();
+    const connection = adapter.connect();
+    resolveNetworkEndpoint('wss://xrplcluster.com');
+
+    await expect(stateCheck).resolves.toBeNull();
+    await expect(connection).resolves.toMatchObject({ address: CONNECTED_ACCOUNT });
+    expect(mockXummInstance.logout).not.toHaveBeenCalled();
+  });
+
   it('returns account info on a successful authorize', async () => {
     mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
     const adapter = new XamanAdapter({ apiKey: 'test-key' });

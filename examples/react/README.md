@@ -4,7 +4,7 @@ This is a demo application showcasing the XRPL Connect wallet toolkit with a Rea
 
 ## Features
 
-- Connect to multiple XRPL wallets (Xaman, WalletConnect, Crossmark, GemWallet)
+- Connect to multiple XRPL wallets, including Xaman, WalletConnect, Crossmark, GemWallet, and MetaMask Snap
 - React integration with XRPL Connect web component
 - Sign XRPL transactions
 - Sign arbitrary messages

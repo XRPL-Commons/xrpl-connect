@@ -312,7 +312,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       // Check for existing Xaman session after a short delay
-      this.checkXamanStateOnInit();
+      void this.checkXamanStateOnInit();
     }
 
     private attachWalletManagerHandlers(): void {
@@ -616,6 +616,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Close the modal
      */
     close() {
+      this.cancelPendingConnection();
       this.openGeneration += 1;
       this.isOpen = false;
       this.rejectConnectionWaiters(new Error('Modal closed before a wallet was connected.'));
@@ -802,12 +803,21 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Show wallet list view
      */
     public showWalletList() {
+      this.cancelPendingConnection();
       this.viewState = 'list';
       this.qrCodeData = null;
       this.loadingData = null;
       this.errorData = null;
       this.accountSelectionData = null;
       this.render();
+    }
+
+    private cancelPendingConnection(): void {
+      if (!this.walletManager || this.walletManager.connected) return;
+
+      void this.walletManager.disconnect().catch((error) => {
+        logger.warn('Failed to cancel pending wallet connection:', error);
+      });
     }
 
     /**

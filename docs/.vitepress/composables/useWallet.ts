@@ -34,6 +34,7 @@ export const useWallet = () => {
           LedgerAdapter,
           XyraAdapter,
           OtsuAdapter,
+          MetaMaskSnapAdapter,
         } = (await import('xrpl-connect')) as any;
 
         if (!WalletManager) {
@@ -73,6 +74,13 @@ export const useWallet = () => {
           adapters.push(otsu);
         } catch (err) {
           console.warn('Failed to create OtsuAdapter:', err);
+        }
+
+        try {
+          const metaMaskSnap = new MetaMaskSnapAdapter();
+          adapters.push(metaMaskSnap);
+        } catch (err) {
+          console.warn('Failed to create MetaMaskSnapAdapter:', err);
         }
 
         try {

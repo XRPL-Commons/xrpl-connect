@@ -8,6 +8,7 @@ import {
   GemWalletAdapter,
   XyraAdapter,
   OtsuAdapter,
+  MetaMaskSnapAdapter,
 } from 'xrpl-connect';
 import { XrplConnectProvider, type XrplConnectConfig } from '@xrpl-connect/react';
 import App from './App';
@@ -27,6 +28,7 @@ const config: XrplConnectConfig = {
     new GemWalletAdapter(),
     new XyraAdapter(),
     new OtsuAdapter(),
+    new MetaMaskSnapAdapter(),
   ],
   network: 'testnet',
   autoConnect: true,

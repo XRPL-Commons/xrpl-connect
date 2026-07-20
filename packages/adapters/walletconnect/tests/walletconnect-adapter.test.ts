@@ -188,6 +188,40 @@ describe('WalletConnectAdapter.signAndSubmit', () => {
 });
 
 describe('WalletConnectAdapter.disconnect', () => {
+  it('disconnects a session that is approved after the pending connection was cancelled', async () => {
+    let approve!: (session: {
+      topic: string;
+      namespaces: { xrpl: { accounts: string[] } };
+    }) => void;
+    const approval = new Promise<{
+      topic: string;
+      namespaces: { xrpl: { accounts: string[] } };
+    }>((resolve) => {
+      approve = resolve;
+    });
+    mockClient.connect.mockResolvedValue({
+      uri: 'wc:example',
+      approval: vi.fn(() => approval),
+    });
+    mockClient.disconnect.mockResolvedValue(undefined);
+
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+    const connection = adapter.connect();
+    await vi.waitFor(() => expect(mockClient.connect).toHaveBeenCalledOnce());
+
+    await adapter.disconnect();
+    approve({
+      topic: 'late-topic',
+      namespaces: { xrpl: { accounts: ['xrpl:0:rLateAddress'] } },
+    });
+
+    await expect(connection).rejects.toMatchObject({ code: WalletErrorCode.CONNECTION_FAILED });
+    expect(mockClient.disconnect).toHaveBeenCalledWith(
+      expect.objectContaining({ topic: 'late-topic' })
+    );
+    expect(await adapter.getAccount()).toBeNull();
+  });
+
   it('clears the session and account after a successful disconnect', async () => {
     mockClient.connect.mockResolvedValue({
       uri: 'wc:example',

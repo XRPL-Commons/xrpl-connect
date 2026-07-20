@@ -149,8 +149,10 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
   private options: XamanAdapterOptions;
   private activePayloadOperations = new Set<ActivePayloadOperation>();
   private connectionGeneration = 0;
+  private supersededRestorationGeneration: number | null = null;
   private accountRefreshRevision = 0;
   private connecting = false;
+  private restoringState = false;
   private disconnecting = false;
   private connectionAttemptDone: Promise<void> | null = null;
   private disconnectPromise: Promise<void> | null = null;
@@ -197,6 +199,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
 
     const generation = ++this.connectionGeneration;
     this.connecting = true;
+    this.restoringState = true;
     const attemptDone = deferred<void>();
     this.connectionAttemptDone = attemptDone.promise;
     let client: Xumm | null = null;
@@ -207,6 +210,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
       this.clientApiKey = apiKey;
       const address = await client.user.account;
       if (generation !== this.connectionGeneration || this.client !== client) {
+        if (this.supersededRestorationGeneration === generation) return null;
         throw new Error('Xaman state restoration was superseded or disconnected');
       }
       if (!address) {
@@ -233,6 +237,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
       }
 
       if (generation !== this.connectionGeneration || this.client !== client) {
+        if (this.supersededRestorationGeneration === generation) return null;
         throw new Error('Xaman state restoration was superseded or disconnected');
       }
 
@@ -244,7 +249,8 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
 
       return this.currentAccount;
     } catch (error) {
-      if (client) {
+      if (this.supersededRestorationGeneration === generation) return null;
+      if (client && generation === this.connectionGeneration && this.client === client) {
         try {
           await client.logout();
         } catch (logoutError) {
@@ -255,8 +261,14 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
       if (isWalletError(error)) throw error;
       throw createWalletError.connectionFailed(this.name, error as Error);
     } finally {
-      this.connecting = false;
-      if (this.connectionAttemptDone === attemptDone.promise) this.connectionAttemptDone = null;
+      if (this.supersededRestorationGeneration === generation) {
+        this.supersededRestorationGeneration = null;
+      }
+      if (this.connectionAttemptDone === attemptDone.promise) {
+        this.connecting = false;
+        this.restoringState = false;
+        this.connectionAttemptDone = null;
+      }
       attemptDone.resolve(undefined);
     }
   }
@@ -267,6 +279,20 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
   async connect(options?: ConnectOptions<XamanConnectOptions>): Promise<AccountInfo> {
     const apiKey = options?.apiKey || this.options.apiKey;
 
+    logger.info('Connection phase: requested', {
+      hasApiKey: Boolean(apiKey),
+      restoringState: this.restoringState,
+      connecting: this.connecting,
+      disconnecting: this.disconnecting,
+      activePayloadOperations: this.activePayloadOperations.size,
+      hasClient: Boolean(this.client),
+      hasAccount: Boolean(this.currentAccount),
+      browserUserActivation:
+        typeof navigator !== 'undefined' && 'userActivation' in navigator
+          ? navigator.userActivation.isActive
+          : undefined,
+    });
+
     if (!apiKey) {
       throw createWalletError.connectionFailed(
         this.name,
@@ -274,6 +300,18 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
           'API key is required for Xaman. Please provide it in connect options or adapter constructor.'
         )
       );
+    }
+
+    if (this.restoringState && this.connectionAttemptDone) {
+      const restorationGeneration = this.connectionGeneration;
+      logger.info('Connection phase: superseding silent session restoration');
+      this.supersededRestorationGeneration = restorationGeneration;
+      this.connectionGeneration += 1;
+      this.client = null;
+      this.clientApiKey = null;
+      this.connecting = false;
+      this.restoringState = false;
+      this.connectionAttemptDone = null;
     }
 
     if (this.connecting || this.disconnecting || this.activePayloadOperations.size > 0) {
@@ -321,10 +359,20 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
       client = new Xumm(apiKey);
       this.client = client;
       this.clientApiKey = apiKey;
-      logger.debug('Starting authorization flow');
+      logger.info('Connection phase: Xaman SDK initialized', {
+        browserUserActivation:
+          typeof navigator !== 'undefined' && 'userActivation' in navigator
+            ? navigator.userActivation.isActive
+            : undefined,
+        documentHasFocus:
+          typeof document !== 'undefined' && typeof document.hasFocus === 'function'
+            ? document.hasFocus()
+            : undefined,
+      });
+      logger.info('Connection phase: calling SDK authorize (popup should open now)');
 
       const authResult = await client.authorize();
-      logger.debug('Authorization result:', {
+      logger.info('Connection phase: SDK authorize settled', {
         hasResult: !!authResult,
         isError: authResult instanceof Error,
         hasMe: authResult && !(authResult instanceof Error) ? !!authResult.me : false,
@@ -337,7 +385,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
         throw new Error('Xaman connection attempt was superseded or disconnected');
       }
 
-      logger.debug('Authorization successful', { account: authResult.me?.account });
+      logger.info('Connection phase: authorization successful');
 
       const account = authResult.me.account;
 
@@ -349,7 +397,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
 
       return this.currentAccount;
     } catch (error) {
-      logger.error('Authorization failed:', error);
+      logger.error('Connection phase: authorization failed', error);
       if (client) {
         try {
           await client.logout();
@@ -363,6 +411,9 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
       if (isWalletError(error)) throw error;
       throw createWalletError.connectionFailed(this.name, error as Error);
     } finally {
+      logger.info('Connection phase: authorization attempt finished', {
+        connected: Boolean(this.currentAccount),
+      });
       this.connecting = false;
       if (this.connectionAttemptDone === attemptDone.promise) this.connectionAttemptDone = null;
       attemptDone.resolve(undefined);
