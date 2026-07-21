@@ -1,0 +1,62 @@
+{
+  "name": "@xrpl-connect/vue",
+  "version": "0.8.2",
+  "description": "Vue 3 bindings (plugin, composables, modal component) for XRPL Connect",
+  "author": "XRPL Connect Contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/XRPL-Commons/xrpl-connect#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/XRPL-Commons/xrpl-connect",
+    "directory": "packages/vue"
+  },
+  "bugs": {
+    "url": "https://github.com/XRPL-Commons/xrpl-connect/issues"
+  },
+  "keywords": [
+    "xrpl",
+    "wallet",
+    "vue",
+    "composables",
+    "plugin",
+    "web3",
+    "wallet-connection",
+    "xaman",
+    "crossmark"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "lint": "vp lint src",
+    "type-check": "tsc --noEmit",
+    "test": "node tests/ssr-smoke.mjs && vp test run",
+    "test:watch": "vp test",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0",
+    "xrpl": "^3.0.0 || ^4.0.0",
+    "xrpl-connect": "^0.8.0"
+  },
+  "devDependencies": {
+    "@xrpl-connect/core": "workspace:*",
+    "jsdom": "^22.1.0",
+    "typescript": "^5.5.0",
+    "vue": "^3.5.22",
+    "xrpl-connect": "workspace:*"
+  }
+}
