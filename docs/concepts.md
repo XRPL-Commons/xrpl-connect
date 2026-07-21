@@ -109,7 +109,7 @@ const adapter = new XamanAdapter({
 });
 ```
 
-**Features:** Transaction signing, message signing, QR codes, push notifications
+**Features:** Transaction signing, live account refresh, QR codes, and push notifications. Arbitrary message signing is not supported.
 
 #### Crossmark Adapter
 
@@ -122,6 +122,21 @@ const adapter = new CrossmarkAdapter();
 ```
 
 **Features:** Transaction signing, message signing, no API keys required
+
+#### MetaMask Snap Adapter
+
+Connect to XRPL through MetaMask and the XRPL Snap.
+
+```javascript
+import { MetaMaskSnapAdapter } from 'xrpl-connect';
+
+const adapter = new MetaMaskSnapAdapter({
+  // Optional: override this when developing a custom Snap.
+  snapId: 'npm:xrpl-snap',
+});
+```
+
+**Features:** Transaction signing and message signing through MetaMask. No application API key is required.
 
 #### GemWallet Adapter
 
@@ -199,6 +214,7 @@ const walletManager = new WalletManager({
     new CrossmarkAdapter(),
     new GemWalletAdapter(),
     new WalletConnectAdapter({ projectId: 'YOUR_PROJECT_ID' }),
+    new MetaMaskSnapAdapter(),
   ],
   network: 'testnet',
 });

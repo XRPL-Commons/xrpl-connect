@@ -292,6 +292,7 @@ const copyToClipboard = async () => {
 
 onMounted(async () => {
   try {
+    await customElements.whenDefined('xrpl-wallet-connector');
     const walletManager = await getWalletManager();
 
     // Set wallet manager on preview connector
