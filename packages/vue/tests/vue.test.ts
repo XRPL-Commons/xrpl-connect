@@ -1,13 +1,28 @@
 import { createApp, defineComponent, h, nextTick } from 'vue';
 import type { AccountInfo, WalletAdapter } from '@xrpl-connect/core';
 import { createWalletError, MemoryStorageAdapter, WalletErrorCode } from '@xrpl-connect/core';
-import { createXrplConnect, useSigner, useWallet, useWalletModal, WalletConnector } from '../src';
+import {
+  createXrplConnect,
+  useSigner,
+  useWallet,
+  useWalletModal,
+  WalletConnector,
+  type WalletConnectorElement,
+} from '../src';
 
 const ACCOUNT: AccountInfo = {
   address: 'rTEST',
   publicKey: 'EDTEST',
   network: { id: 'testnet', name: 'Testnet', rpcUrl: 'https://example.test' },
 };
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
 
 function makeAdapter(overrides: Partial<WalletAdapter> = {}): WalletAdapter {
   return {
@@ -73,9 +88,12 @@ describe('Vue plugin and composables', () => {
     await nextTick();
     expect(mounted.exposed.wallet.connected.value).toBe(true);
     expect(mounted.exposed.wallet.account.value).toEqual(ACCOUNT);
-    await expect(
-      mounted.exposed.signer.sign({ TransactionType: 'Payment' } as never)
-    ).resolves.toMatchObject({ txBlob: 'signed', signerAddress: ACCOUNT.address });
+    const signed = await mounted.exposed.signer.sign({ TransactionType: 'Payment' } as never);
+    const signedMessage = await mounted.exposed.signer.signMessage('hello');
+    expectTypeOf(signed.signerAddress).toEqualTypeOf<string>();
+    expectTypeOf(signedMessage.signerAddress).toEqualTypeOf<string>();
+    expect(signed).toMatchObject({ txBlob: 'signed', signerAddress: ACCOUNT.address });
+    expect(signedMessage).toMatchObject({ signature: 'signature', signerAddress: ACCOUNT.address });
 
     await mounted.exposed.wallet.disconnect();
     await nextTick();
@@ -145,9 +163,104 @@ describe('Vue plugin and composables', () => {
     expect(mounted.exposed.error.value?.code).toBe(WalletErrorCode.CONNECTION_REJECTED);
     mounted.app.unmount();
   });
+
+  it('keeps connecting true until every concurrent connection attempt settles', async () => {
+    const pending = deferred<AccountInfo>();
+    const connect = vi.fn(() => pending.promise);
+    const mounted = mountWithPlugin(() => useWallet(), [makeAdapter({ connect })]);
+
+    const first = mounted.exposed.connect('fake');
+    await vi.waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+    await expect(mounted.exposed.connect('fake')).rejects.toMatchObject({
+      code: WalletErrorCode.ALREADY_CONNECTED,
+    });
+    expect(mounted.exposed.connecting.value).toBe(true);
+
+    pending.resolve(ACCOUNT);
+    await expect(first).resolves.toEqual(ACCOUNT);
+    expect(mounted.exposed.connecting.value).toBe(false);
+    expect(mounted.exposed.error.value).toBeNull();
+    mounted.app.unmount();
+  });
+
+  it('clears connection state when a pending connection is cancelled', async () => {
+    const pending = deferred<AccountInfo>();
+    const connect = vi.fn(() => pending.promise);
+    const disconnect = vi.fn(async () => undefined);
+    const mounted = mountWithPlugin(() => useWallet(), [makeAdapter({ connect, disconnect })]);
+
+    const connection = mounted.exposed.connect('fake');
+    await vi.waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+    await mounted.exposed.disconnect();
+    expect(mounted.exposed.connecting.value).toBe(false);
+    expect(mounted.exposed.error.value).toBeNull();
+
+    pending.resolve(ACCOUNT);
+    await expect(connection).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    expect(mounted.exposed.connecting.value).toBe(false);
+    expect(mounted.exposed.error.value).toBeNull();
+    mounted.app.unmount();
+  });
+
+  it('tracks auto-connect and suppresses a stale reconnect race error', async () => {
+    const storedState = deferred<string | null>();
+    const pendingConnection = deferred<AccountInfo>();
+    const connect = vi.fn(() => pendingConnection.promise);
+    const storage = {
+      get: vi.fn(() => storedState.promise),
+      set: vi.fn(async () => undefined),
+      remove: vi.fn(async () => undefined),
+      clear: vi.fn(async () => undefined),
+    };
+    let wallet: ReturnType<typeof useWallet> | undefined;
+    const root = document.createElement('div');
+    const app = createApp(
+      defineComponent({
+        setup() {
+          wallet = useWallet();
+          return () => null;
+        },
+      })
+    );
+    app.use(
+      createXrplConnect({ adapters: [makeAdapter({ connect })], autoConnect: true, storage })
+    );
+    app.mount(root);
+
+    expect(wallet!.connecting.value).toBe(true);
+    await vi.waitFor(() => expect(storage.get).toHaveBeenCalledTimes(1));
+    const manualConnection = wallet!.connect('fake');
+    await vi.waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+    storedState.resolve(
+      JSON.stringify({
+        walletId: 'fake',
+        account: ACCOUNT,
+        network: ACCOUNT.network,
+        timestamp: Date.now(),
+      })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(wallet!.connecting.value).toBe(true);
+    expect(wallet!.error.value).toBeNull();
+
+    pendingConnection.resolve(ACCOUNT);
+    await expect(manualConnection).resolves.toEqual(ACCOUNT);
+    await vi.waitFor(() => expect(wallet!.connecting.value).toBe(false));
+    expect(wallet!.connected.value).toBe(true);
+    expect(wallet!.error.value).toBeNull();
+    app.unmount();
+  });
 });
 
 describe('<WalletConnector>', () => {
+  it('exposes the complete custom-element control contract', () => {
+    expectTypeOf<WalletConnectorElement['open']>().toEqualTypeOf<() => Promise<void>>();
+    expectTypeOf<WalletConnectorElement['openAndWait']>().toEqualTypeOf<
+      () => Promise<AccountInfo>
+    >();
+    expectTypeOf<WalletConnectorElement['toggle']>().toEqualTypeOf<() => void>();
+  });
+
   beforeAll(() => {
     if (customElements.get('xrpl-wallet-connector')) return;
     customElements.define(

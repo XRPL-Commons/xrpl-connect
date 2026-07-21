@@ -1,6 +1,6 @@
 import type {
-  SignedMessage,
-  SignedTransaction,
+  ManagedSignedMessage,
+  ManagedSignedTransaction,
   SubmittedTransaction,
   Transaction,
 } from '@xrpl-connect/core';
@@ -27,10 +27,11 @@ export function useWallet() {
 export function useSigner() {
   const { manager } = useXrplConnectContext();
   return {
-    sign: (transaction: Transaction): Promise<SignedTransaction> => manager.sign(transaction),
+    sign: (transaction: Transaction): Promise<ManagedSignedTransaction> =>
+      manager.sign(transaction),
     signAndSubmit: (transaction: Transaction): Promise<SubmittedTransaction> =>
       manager.signAndSubmit(transaction),
-    signMessage: (message: string | Uint8Array): Promise<SignedMessage> =>
+    signMessage: (message: string | Uint8Array): Promise<ManagedSignedMessage> =>
       manager.signMessage(message),
   };
 }
