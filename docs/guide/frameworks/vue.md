@@ -1,508 +1,133 @@
 ---
-description: Integrate XRPL-Connect into your Vue 3 application using the Composition API.
+description: Integrate XRPL-Connect into your Vue 3 application with first-party composables.
 ---
 
 # Vue 3
 
-Integrate XRPL-Connect into your Vue 3 application with the Composition API.
+`@xrpl-connect/vue` provides a Vue plugin, reactive composables, and a typed wrapper for the
+wallet connector modal. Configure the wallet manager once and consume the same state anywhere
+in the application.
 
 ## Installation
 
 ```bash
-npm install xrpl-connect xrpl
+npm install @xrpl-connect/vue xrpl-connect xrpl vue
 ```
 
-## Basic Setup
+## Configure the plugin
 
-Here's a minimal Vue component using XRPL-Connect:
+Import `xrpl-connect` once in the browser entry point to register the wallet connector custom
+element, then install the Vue plugin before mounting the application:
 
-```vue
-<template>
-  <div>
-    <xrpl-wallet-connector ref="connectorRef" primary-wallet="xaman" />
+```ts
+// main.ts
+import { createApp } from 'vue';
+import 'xrpl-connect';
+import { CrossmarkAdapter, XamanAdapter } from 'xrpl-connect';
+import { createXrplConnect } from '@xrpl-connect/vue';
+import App from './App.vue';
 
-    <div v-if="error" style="color: red; margin-top: 20px">Error: {{ error }}</div>
+const app = createApp(App);
 
-    <div
-      v-if="account"
-      style="margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px"
-    >
-      <h3>Connected Account</h3>
-      <p><strong>Address:</strong> {{ account.address }}</p>
-      <p><strong>Network:</strong> {{ account.network.name }}</p>
-      <button @click="handleDisconnect">Disconnect</button>
-    </div>
-  </div>
-</template>
-
-<script setup>
-import { ref, onMounted } from 'vue';
-import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
-
-const connectorRef = ref(null);
-const walletManager = ref(null);
-const account = ref(null);
-const error = ref(null);
-
-onMounted(() => {
-  // Initialize WalletManager
-  const manager = new WalletManager({
+app.use(
+  createXrplConnect({
     adapters: [new XamanAdapter({ apiKey: 'YOUR_API_KEY' }), new CrossmarkAdapter()],
     network: 'testnet',
     autoConnect: true,
-  });
+  })
+);
 
-  // Set up event listeners
-  manager.on('connect', (acc) => {
-    account.value = acc;
-    error.value = null;
-  });
-
-  manager.on('disconnect', () => {
-    account.value = null;
-  });
-
-  manager.on('error', (err) => {
-    error.value = err.message;
-  });
-
-  walletManager.value = manager;
-
-  // Connect component to manager
-  if (connectorRef.value) {
-    connectorRef.value.setWalletManager(manager);
-  }
-});
-
-const handleDisconnect = async () => {
-  if (walletManager.value) {
-    await walletManager.value.disconnect();
-  }
-};
-</script>
+app.mount('#app');
 ```
 
-## Creating a Composable
+Each plugin installation owns one `WalletManager`. Its state and event listeners are isolated
+from other Vue applications on the same page and are released when the app unmounts.
 
-For better reusability, create a composable:
+## Wallet state and modal
 
-```typescript
-// composables/useWallet.ts
-import { ref, onMounted } from 'vue';
-import { WalletManager } from 'xrpl-connect';
-import type { AccountInfo, WalletAdapter, WalletError } from 'xrpl-connect';
-
-interface UseWalletOptions {
-  adapters: WalletAdapter[];
-  network?: 'mainnet' | 'testnet' | 'devnet';
-}
-
-export function useWallet(options: UseWalletOptions) {
-  const { adapters, network = 'testnet' } = options;
-
-  const walletManager = ref<WalletManager | null>(null);
-  const account = ref<AccountInfo | null>(null);
-  const connected = ref(false);
-  const error = ref<WalletError | null>(null);
-  const loading = ref(true);
-  const connectorRef = ref<HTMLElement | null>(null);
-
-  onMounted(() => {
-    const manager = new WalletManager({
-      adapters,
-      network,
-      autoConnect: true,
-    });
-
-    manager.on('connect', (acc: AccountInfo) => {
-      account.value = acc;
-      connected.value = true;
-      error.value = null;
-    });
-
-    manager.on('disconnect', () => {
-      account.value = null;
-      connected.value = false;
-    });
-
-    manager.on('error', (err: WalletError) => {
-      error.value = err;
-    });
-
-    walletManager.value = manager;
-    loading.value = false;
-
-    if (connectorRef.value) {
-      connectorRef.value.setWalletManager(manager);
-    }
-  });
-
-  const disconnect = async () => {
-    if (walletManager.value) {
-      await walletManager.value.disconnect();
-    }
-  };
-
-  return {
-    walletManager,
-    account,
-    connected,
-    error,
-    loading,
-    connectorRef,
-    disconnect,
-  };
-}
-```
-
-Usage:
+`useWallet()` returns readonly Vue refs, so use them directly in templates and through `.value`
+in scripts. `useWalletModal()` controls the most recently mounted connector.
 
 ```vue
-<template>
-  <div>
-    <xrpl-wallet-connector ref="connectorRef" />
-    <button v-if="connected" @click="disconnect">Disconnect</button>
-  </div>
-</template>
+<script setup lang="ts">
+import { WalletConnector, useWallet, useWalletModal } from '@xrpl-connect/vue';
 
-<script setup>
-import { useWallet } from '@/composables/useWallet';
-import { XamanAdapter } from 'xrpl-connect';
-
-const { connectorRef, connected, disconnect } = useWallet({
-  adapters: [new XamanAdapter({ apiKey: 'YOUR_API_KEY' })],
-});
+const { connected, account, connecting, error, disconnect } = useWallet();
+const { open } = useWalletModal();
 </script>
+
+<template>
+  <button v-if="!connected" :disabled="connecting" @click="open">
+    {{ connecting ? 'Connecting…' : 'Connect wallet' }}
+  </button>
+  <button v-else @click="disconnect">Disconnect {{ account?.address }}</button>
+
+  <p v-if="error">Error [{{ error.code }}]: {{ error.message }}</p>
+
+  <WalletConnector
+    primary-wallet="xaman"
+    :wallets="['xaman', 'crossmark']"
+    theme="dark"
+    :css-vars="{ '--xc-primary-color': '#a78bfa' }"
+    @connecting="(walletId) => console.log('Connecting', walletId)"
+    @connect="(connectedAccount) => console.log('Connected', connectedAccount.address)"
+    @error="(walletError) => console.error(walletError.code, walletError.message)"
+  />
+</template>
 ```
 
-## Signing Transactions
+## Signing
 
-Sign transactions in Vue:
+Signing actions are bound to the injected manager and reject with typed `WalletError` values.
 
 ```vue
-<template>
-  <form @submit.prevent="handleSubmit">
-    <button type="submit" :disabled="loading || !connected">
-      {{ loading ? 'Sending...' : 'Send Payment' }}
-    </button>
-    <p v-if="error" style="color: red">{{ error }}</p>
-    <p v-if="result" style="color: green">Success! Hash: {{ result.hash }}</p>
-  </form>
-</template>
-
-<script setup>
+<script setup lang="ts">
 import { ref } from 'vue';
-import { useWallet } from '@/composables/useWallet';
+import { isWalletError, useSigner, useWallet } from '@xrpl-connect/vue';
 
-const { walletManager, connected } = useWallet({
-  adapters: [/* your adapters */],
-});
+const { account, connected } = useWallet();
+const { signAndSubmit } = useSigner();
+const submitting = ref(false);
+const result = ref<string | null>(null);
 
-const loading = ref(false);
-const error = ref(null);
-const result = ref(null);
-
-const handleSubmit = async () => {
-  if (!walletManager.value?.connected) {
-    error.value = 'Wallet not connected';
-    return;
-  }
-
-  loading.value = true;
-  error.value = null;
+async function sendPayment() {
+  if (!connected.value || !account.value) return;
+  submitting.value = true;
 
   try {
-    const txResult = await walletManager.value.signAndSubmit({
+    const submitted = await signAndSubmit({
       TransactionType: 'Payment',
-      Account: walletManager.value.account.address,
+      Account: account.value.address,
       Destination: 'rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT',
       Amount: '1000000',
     });
-
-    result.value = txResult;
-  } catch (err) {
-    error.value = err.message;
-  } finally {
-    loading.value = false;
-  }
-};
-</script>
-```
-
-## Provide/Inject Pattern
-
-For larger apps, use Provide/Inject to share wallet state:
-
-```typescript
-// composables/useWalletState.ts
-import { provide, inject, ref, onMounted } from 'vue';
-import { WalletManager } from 'xrpl-connect';
-import type { AccountInfo, WalletAdapter } from 'xrpl-connect';
-
-const WalletSymbol = Symbol('wallet');
-
-export function provideWallet(adapters: WalletAdapter[], network = 'testnet') {
-  const walletManager = ref<WalletManager | null>(null);
-  const account = ref<AccountInfo | null>(null);
-  const connected = ref(false);
-
-  onMounted(() => {
-    const manager = new WalletManager({
-      adapters,
-      network,
-      autoConnect: true,
-    });
-
-    manager.on('connect', (acc: AccountInfo) => {
-      account.value = acc;
-      connected.value = true;
-    });
-
-    manager.on('disconnect', () => {
-      account.value = null;
-      connected.value = false;
-    });
-
-    walletManager.value = manager;
-  });
-
-  provide(WalletSymbol, {
-    walletManager,
-    account,
-    connected,
-  });
-
-  return { walletManager, account, connected };
-}
-
-export function useProvidedWallet() {
-  return inject<{
-    walletManager: any;
-    account: any;
-    connected: any;
-  }>(WalletSymbol)!;
-}
-```
-
-Usage in App.vue:
-
-```vue
-<script setup>
-import { provideWallet } from '@/composables/useWalletState';
-import { XamanAdapter } from 'xrpl-connect';
-
-provideWallet([new XamanAdapter({ apiKey: 'YOUR_API_KEY' })]);
-</script>
-
-<template>
-  <RouterView />
-</template>
-```
-
-Then use in any child component:
-
-```vue
-<script setup>
-import { useProvidedWallet } from '@/composables/useWalletState';
-
-const { account, connected } = useProvidedWallet();
-</script>
-
-<template>
-  <div v-if="connected">Connected: {{ account?.address }}</div>
-</template>
-```
-
-## Signing Messages
-
-Sign messages with Vue:
-
-```vue
-<template>
-  <form @submit.prevent="handleSignMessage">
-    <input v-model="message" placeholder="Message to sign" />
-    <button type="submit">Sign Message</button>
-    <p v-if="signature" style="word-break: break-all">Signature: {{ signature }}</p>
-  </form>
-</template>
-
-<script setup>
-import { ref } from 'vue';
-import { useWallet } from '@/composables/useWallet';
-
-const { walletManager, connected } = useWallet({
-  adapters: [/* your adapters */],
-});
-
-const message = ref('');
-const signature = ref('');
-
-const handleSignMessage = async () => {
-  if (!walletManager.value?.connected) return;
-
-  try {
-    const result = await walletManager.value.signMessage(message.value);
-    signature.value = result.signature;
+    result.value = submitted.hash;
   } catch (error) {
-    console.error('Sign failed:', error);
+    if (isWalletError(error)) console.error(error.code, error.category, error.message);
+    throw error;
+  } finally {
+    submitting.value = false;
   }
-};
-</script>
-```
-
-## Reactive Watchers
-
-Monitor wallet state changes:
-
-```vue
-<script setup>
-import { watch } from 'vue';
-import { useWallet } from '@/composables/useWallet';
-
-const { account, connected, error } = useWallet({
-  adapters: [/* your adapters */],
-});
-
-// Watch for connection changes
-watch(connected, (newValue) => {
-  if (newValue) {
-    console.log('Wallet connected:', account.value?.address);
-  } else {
-    console.log('Wallet disconnected');
-  }
-});
-
-// Watch for errors
-watch(error, (newError) => {
-  if (newError) {
-    console.error('Wallet error:', newError.message);
-  }
-});
-</script>
-```
-
-## Error Handling
-
-Handle errors gracefully:
-
-```vue
-<template>
-  <div v-if="error" class="error-alert">
-    {{ getErrorMessage(error) }}
-  </div>
-</template>
-
-<script setup>
-import { useWallet } from '@/composables/useWallet';
-
-const { error } = useWallet({
-  adapters: [/* your adapters */],
-});
-
-const getErrorMessage = (err: any) => {
-  if (err.code === 'WALLET_NOT_FOUND') {
-    return 'Please install a wallet to continue';
-  } else if (err.code === 'CONNECTION_FAILED') {
-    return 'Failed to connect. Please try again.';
-  } else if (err.code === 'SIGN_FAILED') {
-    return 'You rejected the transaction';
-  }
-  return err.message;
-};
-</script>
-
-<style scoped>
-.error-alert {
-  padding: 10px;
-  background: #fee;
-  color: #c00;
-  border-radius: 4px;
 }
-</style>
-```
-
-## Computed Properties
-
-Use computed for derived state:
-
-```vue
-<script setup>
-import { computed } from 'vue';
-import { useWallet } from '@/composables/useWallet';
-
-const { account, walletManager } = useWallet({
-  adapters: [/* your adapters */],
-});
-
-const shortAddress = computed(() => {
-  if (!account.value) return null;
-  const addr = account.value.address;
-  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-});
-
-const networkColor = computed(() => {
-  const network = account.value?.network.name;
-  if (network === 'mainnet') return 'green';
-  if (network === 'testnet') return 'orange';
-  return 'gray';
-});
 </script>
 
 <template>
-  <div v-if="account">
-    <p>{{ shortAddress }}</p>
-    <p :style="{ color: networkColor }">{{ account.network.name }}</p>
-  </div>
+  <button :disabled="submitting || !connected" @click="sendPayment">Send payment</button>
+  <p v-if="result">Submitted: {{ result }}</p>
 </template>
 ```
 
-## Best Practices
+## API summary
 
-1. **Use Composables** - Extract wallet logic into reusable composables
+- `createXrplConnect(config)` installs an isolated wallet manager using core `WalletManagerOptions`.
+- `useWallet()` returns `manager`, `connected`, `account`, `network`, `connecting`, `error`,
+  `connect`, and `disconnect`.
+- `useSigner()` returns `sign`, `signAndSubmit`, and `signMessage`.
+- `useWalletModal()` returns `open` and `close`.
+- `<WalletConnector>` wraps the browser custom element with typed Vue props and events.
 
-2. **Type Safety** - Use TypeScript for better type checking
+## SSR and Nuxt
 
-3. **Lazy Loading** - Load adapters only when needed
-
-4. **Error Boundaries** - Use error boundaries for wallet components
-
-5. **Memory Management** - Clean up listeners on component unmount
-
-6. **State Persistence** - Leverage XRPL-Connect's built-in persistence
-
-7. **Computed for Derived State** - Use computed properties instead of methods
-
-8. **Watch for Side Effects** - Use watch to react to state changes
-
-## Testing
-
-Example test using Vitest:
-
-```typescript
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vite-plus/test';
-import { mount } from '@vue/test-utils';
-import { useWallet } from '@/composables/useWallet';
-
-describe('useWallet', () => {
-  it('should initialize wallet manager', () => {
-    const { walletManager, loading } = useWallet({
-      adapters: [],
-    });
-
-    expect(walletManager.value).toBeDefined();
-  });
-
-  it('should handle connection events', async () => {
-    const mockAdapter = {
-      connect: vi.fn(),
-    };
-
-    const { account, connected } = useWallet({
-      adapters: [mockAdapter],
-    });
-
-    // Test account updates...
-    expect(account.value).toBeNull();
-  });
-});
-```
+The package itself is safe to import during server rendering. The connector is a browser custom
+element, so register `xrpl-connect`, install the plugin, and render the modal from client-only
+code. See the [Nuxt guide](./nuxt) for the client-plugin pattern.

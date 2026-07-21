@@ -401,6 +401,28 @@ importers:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.5
         version: '@voidzero-dev/vite-plus-core@0.2.5(@types/node@20.19.21)(esbuild@0.28.1)(typescript@5.9.3)'
 
+  packages/vue:
+    dependencies:
+      xrpl:
+        specifier: ^3.0.0 || ^4.0.0
+        version: 4.4.2(bufferutil@4.0.9)(utf-8-validate@5.0.10)
+    devDependencies:
+      '@xrpl-connect/core':
+        specifier: workspace:*
+        version: link:../core
+      jsdom:
+        specifier: ^22.1.0
+        version: 22.1.0(bufferutil@4.0.9)(utf-8-validate@5.0.10)
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+      vue:
+        specifier: ^3.5.22
+        version: 3.5.24(typescript@5.9.3)
+      xrpl-connect:
+        specifier: workspace:*
+        version: link:../xrpl-connect
+
   packages/xrpl-connect:
     dependencies:
       '@xrpl-connect/adapter-crossmark':
