@@ -449,6 +449,34 @@ the same typed `WalletError` values as the core manager.
 `wallets`, `theme`, `cssVars`, `style`, `className`, `onConnecting`, `onConnect`,
 and `onError`. See the [React guide](/guide/frameworks/react) for a complete setup.
 
+## Vue API
+
+Install `@xrpl-connect/vue` alongside `xrpl-connect` for Vue 3 and Nuxt applications.
+
+### createXrplConnect
+
+`createXrplConnect(config)` creates an application-scoped Vue plugin and one isolated
+`WalletManager`. Install it with `app.use(...)` before mounting the application. All Vue
+composables and `<WalletConnector>` must run beneath that installation.
+
+### Composables
+
+- `useWallet()` returns the manager, readonly `connected`, `account`, `network`, `connecting`, and `error` refs, plus `connect` and `disconnect`.
+- `useSigner()` returns `sign`, `signAndSubmit`, and `signMessage`.
+- `useWalletModal()` returns `open` and `close` for the most recently mounted connector.
+
+Call `connect(walletId, options?)` for a headless connection flow, or mount at least one
+connector before using the modal composable. Gate optional signing operations with
+`manager.supports(...)`.
+
+### WalletConnector
+
+`<WalletConnector />` accepts `primaryWallet`, `wallets`, `theme`, and `cssVars`, and emits
+`connecting`, `connect`, and typed `error` events. Public types include `XrplConnectConfig`,
+`XrplConnectContextValue`, `WalletConnectorElement`, and `WalletConnectorTheme`. The package
+also re-exports the core wallet error classes, enums, and `isWalletError` guard. See the
+[Vue guide](/guide/frameworks/vue) and [Nuxt guide](/guide/frameworks/nuxt).
+
 ## Direct Wallet SDK Access
 
 `xrpl-connect` exposes the complete upstream APIs used by its Xaman, Crossmark,

@@ -14,6 +14,16 @@ Get up and running with XRPL-Connect in minutes.
 npm install xrpl-connect@^1.0.0 xrpl
 ```
 
+Add the official bindings for your framework:
+
+```bash
+# React
+npm install @xrpl-connect/react@^1.0.0 react react-dom
+
+# Vue 3 or Nuxt
+npm install @xrpl-connect/vue@^1.0.0 vue
+```
+
 ### Using pnpm
 
 ```bash
@@ -31,6 +41,7 @@ The `xrpl-connect` package includes:
 - **Core** - WalletManager, event system, and state management
 - **UI** - Beautiful web component for wallet connection
 - **Adapters** - Built-in support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap
+- **Framework bindings** - Official packages for React and Vue 3 / Nuxt
 
 > **Note:** The `xrpl` package is required for transaction types and utilities.
 

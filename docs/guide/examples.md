@@ -17,6 +17,9 @@ The React example application demonstrates the recommended v1 integration, inclu
 - Real-time event logging
 - Proper TypeScript integration with web components
 
+For Vue 3 and Nuxt, follow the maintained [Vue guide](/guide/frameworks/vue) and
+[Nuxt guide](/guide/frameworks/nuxt).
+
 **Check out the full example:** [`examples/react/`](https://github.com/XRPL-Commons/xrpl-connect/tree/main/examples/react)
 
 The example includes detailed setup instructions, best practices for React integration, and demonstrates how to properly handle web component lifecycle in React applications.

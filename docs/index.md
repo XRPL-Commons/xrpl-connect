@@ -6,7 +6,7 @@ description: A framework-agnostic wallet connection toolkit for the XRP Ledger w
 
 <DownloadLLMsFullDoc />
 
-XRPL Connect is the stable, typed wallet layer for XRP Ledger applications. v1.0 combines a framework-agnostic manager, eight wallet adapters, a customizable web component, and official React bindings.
+XRPL Connect is the stable, typed wallet layer for XRP Ledger applications. v1.0 combines a framework-agnostic manager, eight wallet adapters, a customizable web component, and official React and Vue bindings.
 
 ## What is XRPL-Connect?
 
@@ -15,7 +15,7 @@ XRPL-Connect is a complete solution for integrating wallet functionality into we
 - **Web Component UI** - Beautiful, customizable `<xrpl-wallet-connector>` component for wallet selection and account management
 - **Wallet Manager** - Central event-driven system for managing wallet connections and transactions
 - **Multiple Wallet Support** - Built-in adapters for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap
-- **Official React bindings** - Provider, hooks, and connector component in `@xrpl-connect/react`
+- **Official framework bindings** - Providers, composables, hooks, and connector components for React and Vue
 - **Framework Agnostic** - Works seamlessly with Vanilla JS, React, Vue, Next.js, Nuxt, and any modern web framework
 - **TypeScript Ready** - Full type definitions for a great developer experience
 - **Production Ready** - Used in production applications across the XRPL ecosystem
@@ -101,7 +101,7 @@ The XRPL-Connect package includes:
 - **Core Library** - WalletManager, event system, and state management
 - **Web Component** - Beautiful UI component for wallet connection
 - **Adapters** - Pre-built integrations for major wallets
-- **React bindings** - Official provider, hooks, and connector component
+- **Framework bindings** - Official React and Vue integrations with shared lifecycle management
 - **TypeScript Definitions** - Full type safety and IDE support
 - **Documentation** - Complete guides and API reference
 

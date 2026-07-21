@@ -11,7 +11,7 @@ in the application.
 ## Installation
 
 ```bash
-npm install @xrpl-connect/vue xrpl-connect xrpl vue
+npm install @xrpl-connect/vue@^1.0.0 xrpl-connect@^1.0.0 xrpl vue
 ```
 
 ## Configure the plugin
@@ -48,6 +48,19 @@ from other Vue applications on the same page and are released when the app unmou
 `useWallet()` returns readonly Vue refs, so use them directly in templates and through `.value`
 in scripts. `useWalletModal()` controls the most recently mounted connector.
 
+All composables must run below an application that installed `createXrplConnect()`. Keep one
+mounted `<WalletConnector>` for predictable modal ownership.
+
+For a headless flow, connect directly by adapter ID:
+
+```ts
+const { connect } = useWallet();
+await connect('crossmark');
+```
+
+With `autoConnect: true`, the plugin restores the persisted session on the client after its
+reactive listeners are ready.
+
 ```vue
 <script setup lang="ts">
 import { WalletConnector, useWallet, useWalletModal } from '@xrpl-connect/vue';
@@ -83,7 +96,7 @@ Signing actions are bound to the injected manager and reject with typed `WalletE
 ```vue
 <script setup lang="ts">
 import { ref } from 'vue';
-import { isWalletError, useSigner, useWallet } from '@xrpl-connect/vue';
+import { isWalletError, useSigner, useWallet, WalletErrorCode } from '@xrpl-connect/vue';
 
 const { account, connected } = useWallet();
 const { signAndSubmit } = useSigner();
@@ -103,7 +116,7 @@ async function sendPayment() {
     });
     result.value = submitted.hash;
   } catch (error) {
-    if (isWalletError(error)) console.error(error.code, error.category, error.message);
+    if (isWalletError(error) && error.code === WalletErrorCode.SIGN_REJECTED) return;
     throw error;
   } finally {
     submitting.value = false;
@@ -125,6 +138,10 @@ async function sendPayment() {
 - `useSigner()` returns `sign`, `signAndSubmit`, and `signMessage`.
 - `useWalletModal()` returns `open` and `close`.
 - `<WalletConnector>` wraps the browser custom element with typed Vue props and events.
+
+`WalletConnector` accepts `primaryWallet`, `wallets`, `theme`, and `cssVars`, and emits
+`connecting`, `connect`, and typed `error` events. Use `manager.supports('signMessage')` before
+showing optional signing actions.
 
 ## SSR and Nuxt
 

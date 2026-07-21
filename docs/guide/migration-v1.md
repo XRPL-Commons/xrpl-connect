@@ -4,10 +4,10 @@ description: Upgrade applications from pre-1.0 XRPL Connect releases to v1.0.
 
 # Migrating to v1.0
 
-v1.0 stabilizes the manager, adapter, UI, and React surfaces. Upgrade all XRPL Connect packages together and retest wallet-specific flows.
+v1.0 stabilizes the manager, adapter, UI, React, and Vue surfaces. Upgrade all XRPL Connect packages together and retest wallet-specific flows.
 
 ```bash
-pnpm up xrpl-connect@^1.0.0 @xrpl-connect/react@^1.0.0
+pnpm up xrpl-connect@^1.0.0 @xrpl-connect/react@^1.0.0 @xrpl-connect/vue@^1.0.0
 ```
 
 ## Required checks
@@ -19,11 +19,12 @@ pnpm up xrpl-connect@^1.0.0 @xrpl-connect/react@^1.0.0
 5. Treat `signAndSubmit()` as submission, not validated-ledger confirmation.
 6. Keep one stable Xaman API key per page lifetime.
 7. Use `openAndWait()` when application code needs a modal promise, and handle rejection when the modal closes.
-8. Clean up pending connections when UI ownership ends; the official React provider and connector do this automatically.
+8. Clean up pending connections when UI ownership ends; the official React and Vue integrations do this automatically.
 
 ## New in v1.0
 
 - Official `@xrpl-connect/react` provider, hooks, and connector component.
+- Official `@xrpl-connect/vue` plugin, composables, and connector component for Vue 3 and Nuxt.
 - MetaMask Snap adapter and complete adapter exports from `xrpl-connect`.
 - Capability discovery with `manager.supports()`.
 - Typed error categories and stable error codes.
@@ -34,6 +35,13 @@ pnpm up xrpl-connect@^1.0.0 @xrpl-connect/react@^1.0.0
 ## React migration
 
 Replace custom contexts and custom-element refs with `XrplConnectProvider`, `WalletConnector`, `useWallet`, `useSigner`, and `useWalletModal`. Keep the provider config stable outside render or memoize it.
+
+## Vue migration
+
+Replace hand-written `provide` / `inject` state and direct custom-element refs with
+`createXrplConnect()`, `useWallet()`, `useSigner()`, `useWalletModal()`, and the typed
+`<WalletConnector>`. In Nuxt, install the plugin from `plugins/xrpl-connect.client.ts` and keep
+the connector inside `<ClientOnly>`.
 
 ## Need help?
 
