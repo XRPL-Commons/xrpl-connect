@@ -51,8 +51,8 @@ importers:
         specifier: ^4.4.2
         version: 4.4.2(bufferutil@4.0.9)(utf-8-validate@5.0.10)
       xrpl-connect:
-        specifier: ^0.6.0
-        version: 0.6.0
+        specifier: workspace:*
+        version: link:../packages/xrpl-connect
     devDependencies:
       vitepress:
         specifier: ^1.6.4
@@ -109,6 +109,9 @@ importers:
       '@xrpl-connect/adapter-ledger':
         specifier: workspace:*
         version: link:../../packages/adapters/ledger
+      '@xrpl-connect/adapter-metamask-snap':
+        specifier: workspace:*
+        version: link:../../packages/adapters/metamask-snap
       '@xrpl-connect/adapter-otsu':
         specifier: workspace:*
         version: link:../../packages/adapters/otsu
@@ -4142,9 +4145,6 @@ packages:
 
   xmlchars@2.2.0:
     resolution: {integrity: sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==}
-
-  xrpl-connect@0.6.0:
-    resolution: {integrity: sha512-w7Izg0QqH6iU9/wURYyTG3sFzyeBpIc/c5MGm1eHCW3z1Yj97OrIU0wCCNgAzVHAE4QFF6AF7CrVxIm/jYMz5Q==}
 
   xrpl-secret-numbers@0.3.5:
     resolution: {integrity: sha512-5W2Ijp4nFpplEJ4IEK8JNAnRN9+3/+8BdBQ0hOZ3bZfa/+K9c9GNdN5fHDkKoECJN3nzXNcj6/Ejg7wUQDtRnQ==}
@@ -8328,8 +8328,6 @@ snapshots:
   xml-name-validator@4.0.0: {}
 
   xmlchars@2.2.0: {}
-
-  xrpl-connect@0.6.0: {}
 
   xrpl-secret-numbers@0.3.5(bufferutil@4.0.9)(utf-8-validate@5.0.10):
     dependencies:

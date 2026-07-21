@@ -136,6 +136,7 @@ Ensure your WalletConnect Project ID is valid and your internet connection is st
 - **XRPL Connect Core** - Wallet management
 - **Xaman Adapter** - Xaman Wallet integration
 - **WalletConnect Adapter** - WalletConnect protocol
+- **MetaMask Snap Adapter** - XRPL accounts and transactions through MetaMask Snaps
 - **xrpl.js** - XRPL JavaScript library
 
 ## Learn More

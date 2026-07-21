@@ -1,6 +1,7 @@
 import {
   CrossmarkSDK,
   GemWalletAPI,
+  MetaMaskSnapAdapter,
   WalletConnectorElement,
   XamanOAuth2,
   XamanSDK,
@@ -64,6 +65,7 @@ const walletConnectorConstructor: {
 const metamaskOptions: MetaMaskSnapAdapterOptions = {
   snapId: 'local:http://localhost:8080',
 };
+const metamaskAdapter = new MetaMaskSnapAdapter(metamaskOptions);
 
 void [
   connectOptions,
@@ -81,4 +83,5 @@ void [
   pendingAccount,
   walletConnectorConstructor,
   metamaskOptions,
+  metamaskAdapter,
 ];

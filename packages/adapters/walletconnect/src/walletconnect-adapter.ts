@@ -90,6 +90,7 @@ export class WalletConnectAdapter
   private currentAccount: AccountInfo | null = null;
   private options: WalletConnectAdapterOptions;
   private initializationPromise: Promise<SignClient> | null = null;
+  private connectionAttemptGeneration = 0;
   private pendingConnection: { uri: string; approval: () => Promise<SessionTypes.Struct> } | null =
     null;
   private modal: WalletConnectModal | null = null;
@@ -239,6 +240,7 @@ export class WalletConnectAdapter
    * Connect to WalletConnect
    */
   async connect(options?: ConnectOptions<WalletConnectConnectOptions>): Promise<AccountInfo> {
+    const connectionAttempt = ++this.connectionAttemptGeneration;
     const projectId = options?.projectId || this.options.projectId;
 
     if (!projectId) {
@@ -375,6 +377,17 @@ export class WalletConnectAdapter
         session = await approval();
       }
 
+      // Approval cannot be aborted by SignClient. If the UI cancelled this
+      // attempt while approval was pending, immediately close the late session
+      // instead of exposing it as an orphaned WalletConnect connection.
+      if (connectionAttempt !== this.connectionAttemptGeneration) {
+        await this.client.disconnect({
+          topic: session.topic,
+          reason: DISCONNECT_REASONS.USER_DISCONNECTED,
+        });
+        throw new Error('WalletConnect connection was cancelled');
+      }
+
       // Store session
       this.session = session;
 
@@ -412,6 +425,13 @@ export class WalletConnectAdapter
    * Disconnect from WalletConnect
    */
   async disconnect(): Promise<void> {
+    this.connectionAttemptGeneration += 1;
+    this.pendingConnection = null;
+
+    if (this.modal) {
+      this.modal.closeModal();
+    }
+
     if (!this.client || !this.session) {
       return;
     }

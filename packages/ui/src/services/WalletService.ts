@@ -78,6 +78,17 @@ export class WalletService {
 
       logger.debug('Connecting to wallet:', walletId);
 
+      if (walletId === 'xaman') {
+        logger.info('Xaman UI connection phase: selected', {
+          managerConnected: this.walletManager.connected,
+          activeWalletId: this.walletManager.wallet?.id ?? null,
+          browserUserActivation:
+            typeof navigator !== 'undefined' && 'userActivation' in navigator
+              ? navigator.userActivation.isActive
+              : undefined,
+        });
+      }
+
       if (walletId === 'walletconnect') {
         // Check if wallet adapter supports modal
         const useModal = isModalConfigurableAdapter(wallet)
@@ -168,12 +179,25 @@ export class WalletService {
         this.component.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
 
         // Browser-specific delay (Safari needs immediate connection for user gesture)
-        if (!isSafari()) {
+        if (!isSafari() && walletId !== 'xaman') {
           // Small delay for UI animation on non-Safari browsers
           await delay(TIMINGS.NON_SAFARI_CONNECT_DELAY);
         }
 
+        if (walletId === 'xaman') {
+          logger.info('Xaman UI connection phase: handing off to WalletManager', {
+            browserUserActivation:
+              typeof navigator !== 'undefined' && 'userActivation' in navigator
+                ? navigator.userActivation.isActive
+                : undefined,
+          });
+        }
+
         await this.walletManager.connect(walletId, options);
+
+        if (walletId === 'xaman') {
+          logger.info('Xaman UI connection phase: WalletManager connected');
+        }
         this.component.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
       }
     } catch (error: unknown) {

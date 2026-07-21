@@ -7,6 +7,8 @@ import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
 import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
 import { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
+import { MetaMaskSnapAdapter } from '@xrpl-connect/adapter-metamask-snap';
+
 import { WalletConnectorElement } from '@xrpl-connect/ui';
 import '@xrpl-connect/ui'; // Register the web component
 
@@ -37,6 +39,7 @@ const walletManager = new WalletManager({
     new LedgerAdapter(),
     new XyraAdapter(),
     new OtsuAdapter(),
+    new MetaMaskSnapAdapter(),
   ],
   network: 'testnet',
   autoConnect: true,

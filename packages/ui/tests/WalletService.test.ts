@@ -7,6 +7,30 @@ afterEach(() => {
 });
 
 describe('WalletService', () => {
+  it('starts Xaman connection without deferring beyond the user activation task', async () => {
+    vi.useFakeTimers();
+    const connect = vi.fn(async () => undefined);
+    const mockWalletManager = {
+      wallets: [{ id: 'xaman', name: 'Xaman' }],
+      connect,
+    };
+    const mockComponent = {
+      showLoadingView: vi.fn(),
+      showQRCodeView: vi.fn(),
+      showAccountSelectionView: vi.fn(),
+      showErrorView: vi.fn(),
+      dispatchEvent: vi.fn(),
+      setQRCode: vi.fn(),
+      close: vi.fn(),
+    };
+    const walletService = new WalletService(mockWalletManager as any, mockComponent as any);
+
+    const connection = walletService.connectWallet('xaman');
+
+    expect(connect).toHaveBeenCalledWith('xaman', undefined);
+    await connection;
+  });
+
   it('should connect to a wallet', async () => {
     const isAvailable = vi.fn(async () => true);
     const mockWalletManager = {
