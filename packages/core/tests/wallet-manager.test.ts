@@ -1,6 +1,7 @@
 import { afterEach, describe, it, expect, expectTypeOf, vi } from 'vite-plus/test';
 import EventEmitter from 'eventemitter3';
 import { WalletManager } from '../src/wallet-manager';
+import { createWalletError } from '../src/errors';
 import { MemoryStorageAdapter, Storage } from '../src/storage';
 import { TIME } from '../src/constants';
 import { CAPABILITY_DEFAULTS, WalletErrorCode } from '../src/types';
@@ -11,13 +12,15 @@ import type {
   ReconnectOptions,
   SignedMessage,
   SignedTransaction,
+  StorageAdapter,
+  StoredState,
   SubmittedTransaction,
+  SupportsNetworkSwitch,
   Transaction,
   WalletAdapter,
   WalletAdapterEvent,
   WalletCapabilities,
   SupportsFetchAccount,
-  StorageAdapter,
 } from '../src/types';
 
 const NETWORK: NetworkInfo = { id: 'testnet', name: 'Testnet', wss: 'wss://example' };
@@ -34,15 +37,16 @@ function createFakeAdapter(): WalletAdapter &
     listenerCount: (event: WalletAdapterEvent) => number;
   } {
   const bus = new EventEmitter();
+  const account: AccountInfo = { ...ACCOUNT, network: { ...NETWORK } };
   return {
     id: 'fake',
     name: 'Fake Wallet',
     isAvailable: vi.fn(async () => true),
-    connect: vi.fn(async () => ACCOUNT),
+    connect: vi.fn(async () => account),
     disconnect: vi.fn(async () => {}),
-    getAccount: vi.fn(async () => ACCOUNT),
-    fetchAccount: vi.fn(async () => ACCOUNT),
-    getNetwork: vi.fn(async () => NETWORK),
+    getAccount: vi.fn(async () => account),
+    fetchAccount: vi.fn(async () => account),
+    getNetwork: vi.fn(async () => account.network),
     sign: vi.fn(async () => ({ hash: '0xhash' }) as SignedTransaction),
     signAndSubmit: vi.fn(async () => ({ hash: '0xhash' }) as SubmittedTransaction),
     signMessage: vi.fn(async () => ({ signature: '0xsig' }) as SignedMessage),
@@ -61,7 +65,67 @@ function createFakeAdapter(): WalletAdapter &
   };
 }
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function createTestStorage(): {
+  adapter: StorageAdapter;
+  read: () => string | null;
+} {
+  let value: string | null = null;
+  return {
+    adapter: {
+      get: vi.fn(async () => value),
+      set: vi.fn(async (_key, next) => {
+        value = next;
+      }),
+      remove: vi.fn(async () => {
+        value = null;
+      }),
+      clear: vi.fn(async () => {
+        value = null;
+      }),
+    },
+    read: () => value,
+  };
+}
+
+function readStoredState(value: string | null): StoredState | null {
+  if (!value) return null;
+  return (JSON.parse(value) as { payload: StoredState }).payload;
+}
+
 describe('WalletManager.disconnect()', () => {
+  it('rejects reconnecting while the current session is disconnecting', async () => {
+    const released = deferred<void>();
+    const adapter = {
+      ...createFakeAdapter(),
+      disconnect: vi.fn(() => released.promise),
+    };
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    const disconnecting = manager.disconnect();
+    await vi.waitFor(() => expect(adapter.disconnect).toHaveBeenCalledOnce());
+
+    await expect(manager.connect('fake')).rejects.toMatchObject({ code: 'ALREADY_CONNECTED' });
+    released.resolve(undefined);
+    await disconnecting;
+
+    expect(manager.connected).toBe(false);
+  });
+
   it('persists account and network changes emitted by the adapter', async () => {
     const storageAdapter = new MemoryStorageAdapter();
     const adapter = createFakeAdapter();
@@ -90,21 +154,19 @@ describe('WalletManager.disconnect()', () => {
 
   it('finishes event persistence before disconnect clears storage', async () => {
     let value: string | null = null;
-    let getCalls = 0;
-    let releaseGet!: () => void;
-    let markGetStarted!: () => void;
-    const getStarted = new Promise<void>((resolve) => (markGetStarted = resolve));
-    const delayedGet = new Promise<void>((resolve) => (releaseGet = resolve));
+    let setCalls = 0;
+    let releaseSet!: () => void;
+    let markSetStarted!: () => void;
+    const setStarted = new Promise<void>((resolve) => (markSetStarted = resolve));
+    const delayedSet = new Promise<void>((resolve) => (releaseSet = resolve));
     const storage: StorageAdapter = {
-      get: vi.fn(async () => {
-        getCalls += 1;
-        if (getCalls === 2) {
-          markGetStarted();
-          await delayedGet;
-        }
-        return value;
-      }),
+      get: vi.fn(async () => value),
       set: vi.fn(async (_key, next) => {
+        setCalls += 1;
+        if (setCalls === 2) {
+          markSetStarted();
+          await delayedSet;
+        }
         value = next;
       }),
       remove: vi.fn(async () => {
@@ -119,9 +181,9 @@ describe('WalletManager.disconnect()', () => {
     await manager.connect('fake');
 
     adapter.emitAdapterEvent('accountChanged', { ...ACCOUNT, address: 'rChanged' });
-    await getStarted;
+    await setStarted;
     const disconnecting = manager.disconnect();
-    releaseGet();
+    releaseSet();
 
     await disconnecting;
     expect(manager.connected).toBe(false);
@@ -580,22 +642,21 @@ describe('WalletManager.getAvailableWallets()', () => {
 });
 
 describe('WalletManager.connect()', () => {
-  it('rejects a repeated connection without disturbing the active session', async () => {
+  it('is idempotent when the requested wallet is already connected without disturbing state', async () => {
     const storage = new MemoryStorageAdapter();
     const adapter = createFakeAdapter();
     adapter.disconnect = vi.fn(async () => {});
     const manager = new WalletManager({ adapters: [adapter], storage });
 
-    await manager.connect('fake');
+    const first = await manager.connect('fake');
+    const storedBefore = await new Storage(storage).loadState();
+    await expect(manager.connect('fake')).resolves.toEqual(first);
 
-    await expect(manager.connect('fake')).rejects.toMatchObject({
-      code: WalletErrorCode.ALREADY_CONNECTED,
-    });
     expect(adapter.connect).toHaveBeenCalledOnce();
     expect(adapter.disconnect).not.toHaveBeenCalled();
     expect(manager.connected).toBe(true);
     expect(manager.account).toEqual(ACCOUNT);
-    expect((await new Storage(storage).loadState())?.account).toEqual(ACCOUNT);
+    expect(await new Storage(storage).loadState()).toEqual(storedBefore);
   });
 
   it('rejects a concurrent connection before a second adapter is opened', async () => {
@@ -659,6 +720,633 @@ describe('WalletManager.connect()', () => {
     expect(hung.connect).not.toHaveBeenCalled();
     expect(manager.connected).toBe(false);
   });
+
+  it('does not launch a connection cancelled while availability is pending', async () => {
+    const availability = deferred<boolean>();
+    const adapter = {
+      ...createFakeAdapter(),
+      isAvailable: vi.fn(() => availability.promise),
+    };
+    const manager = new WalletManager({ adapters: [adapter] });
+
+    const connecting = manager.connect('fake');
+    await vi.waitFor(() => expect(adapter.isAvailable).toHaveBeenCalledOnce());
+    await manager.disconnect();
+    availability.resolve(true);
+
+    await expect(connecting).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+    expect(adapter.connect).not.toHaveBeenCalled();
+    expect(manager.connected).toBe(false);
+  });
+
+  it('cancels and cleans up a connection whose storage commit is still pending', async () => {
+    let value: string | null = null;
+    const setStarted = deferred<void>();
+    const setReleased = deferred<void>();
+    const storage: StorageAdapter = {
+      get: vi.fn(async () => value),
+      set: vi.fn(async (_key, next) => {
+        setStarted.resolve(undefined);
+        await setReleased.promise;
+        value = next;
+      }),
+      remove: vi.fn(async () => {
+        value = null;
+      }),
+      clear: vi.fn(async () => {
+        value = null;
+      }),
+    };
+    const adapter = {
+      ...createFakeAdapter(),
+      disconnect: vi.fn(async () => {}),
+    };
+    const manager = new WalletManager({ adapters: [adapter], storage });
+    const onConnect = vi.fn();
+    manager.on('connect', onConnect);
+
+    const connecting = manager.connect('fake');
+    await setStarted.promise;
+    const disconnecting = manager.disconnect();
+    setReleased.resolve(undefined);
+
+    await expect(connecting).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+    await disconnecting;
+    expect(adapter.disconnect).toHaveBeenCalledOnce();
+    expect(manager.connected).toBe(false);
+    expect(onConnect).not.toHaveBeenCalled();
+    expect(value).toBeNull();
+  });
+
+  it('lets a manual connection supersede constructor auto-reconnect', async () => {
+    const storage = new MemoryStorageAdapter();
+    await new Storage(storage).saveState({
+      walletId: 'auto',
+      account: { ...ACCOUNT, network: { ...NETWORK } },
+      network: { ...NETWORK },
+      timestamp: Date.now(),
+    });
+    const automatic = {
+      ...createFakeAdapter(),
+      id: 'auto',
+      name: 'Automatic Wallet',
+      connect: vi.fn(() => new Promise<AccountInfo>(() => {})),
+      disconnect: vi.fn(async () => {}),
+    };
+    const manual = {
+      ...createFakeAdapter(),
+      id: 'manual',
+      name: 'Manual Wallet',
+    };
+    const manager = new WalletManager({
+      adapters: [automatic, manual],
+      storage,
+      autoConnect: true,
+    });
+
+    await vi.waitFor(() => expect(automatic.connect).toHaveBeenCalledOnce());
+    await manager.connect('manual');
+
+    expect(automatic.disconnect).toHaveBeenCalledOnce();
+    expect(manual.connect).toHaveBeenCalledOnce();
+    expect(manager.wallet?.id).toBe('manual');
+    expect((await new Storage(storage).loadState())?.walletId).toBe('manual');
+  });
+
+  it('ignores a cancelled auto-connect result after the same adapter reconnects', async () => {
+    const storage = new MemoryStorageAdapter();
+    await new Storage(storage).saveState({
+      walletId: 'fake',
+      account: { ...ACCOUNT, network: { ...NETWORK } },
+      network: { ...NETWORK },
+      timestamp: Date.now(),
+    });
+    const automaticAccount = deferred<AccountInfo>();
+    const manualAccount = deferred<AccountInfo>();
+    const cancellationReleased = deferred<void>();
+    const adapter = {
+      ...createFakeAdapter(),
+      connect: vi
+        .fn()
+        .mockImplementationOnce(() => automaticAccount.promise)
+        .mockImplementationOnce(() => manualAccount.promise),
+      disconnect: vi.fn(() => {
+        automaticAccount.resolve({ ...ACCOUNT, network: { ...NETWORK } });
+        return cancellationReleased.promise;
+      }),
+    };
+    const manager = new WalletManager({ adapters: [adapter], storage, autoConnect: true });
+    const onConnect = vi.fn();
+    manager.on('connect', onConnect);
+
+    await vi.waitFor(() => expect(adapter.connect).toHaveBeenCalledOnce());
+    const connectingManually = manager.connect('fake');
+    await vi.waitFor(() => expect(adapter.disconnect).toHaveBeenCalledOnce());
+    expect(adapter.connect).toHaveBeenCalledOnce();
+
+    cancellationReleased.resolve(undefined);
+    await vi.waitFor(() => expect(adapter.connect).toHaveBeenCalledTimes(2));
+    await Promise.resolve();
+    expect(adapter.disconnect).toHaveBeenCalledOnce();
+
+    manualAccount.resolve({ ...ACCOUNT, network: { ...NETWORK } });
+    await connectingManually;
+
+    expect(manager.wallet).toBe(adapter);
+    expect(manager.connected).toBe(true);
+    expect(adapter.disconnect).toHaveBeenCalledOnce();
+    expect(onConnect).toHaveBeenCalledOnce();
+    expect((await new Storage(storage).loadState())?.walletId).toBe('fake');
+  });
+});
+
+describe('WalletManager.switchNetwork()', () => {
+  it('rejects adapters without native switching instead of changing only local state', async () => {
+    const adapter = createFakeAdapter();
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    await expect(manager.switchNetwork('mainnet')).rejects.toMatchObject({
+      code: 'UNSUPPORTED_METHOD',
+    });
+    expect(manager.account?.network).toEqual(NETWORK);
+  });
+
+  it('delegates to an adapter that supports native network switching', async () => {
+    const CUSTOM: NetworkInfo = { id: 'custom', name: 'Custom', wss: 'wss://custom' };
+    const switchNetwork = vi.fn(async () => CUSTOM);
+    const adapter = {
+      ...createFakeAdapter(),
+      switchNetwork,
+    } satisfies WalletAdapter & SupportsNetworkSwitch;
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+    const onNetworkChanged = vi.fn();
+    manager.on('networkChanged', onNetworkChanged);
+
+    const applied = await manager.switchNetwork('devnet');
+
+    expect(switchNetwork).toHaveBeenCalledWith('devnet');
+    expect(applied).toEqual(CUSTOM);
+    expect(manager.account?.network).toEqual(CUSTOM);
+    expect(onNetworkChanged).toHaveBeenCalledOnce();
+    expect(onNetworkChanged).toHaveBeenCalledWith(CUSTOM);
+  });
+
+  it('emits when the adapter mutates its shared account object before returning', async () => {
+    const applied: NetworkInfo = { id: 'mainnet', name: 'Mainnet', wss: 'wss://mainnet' };
+    const account: AccountInfo = { ...ACCOUNT, network: { ...NETWORK } };
+    const adapter = {
+      ...createFakeAdapter(),
+      connect: vi.fn(async () => account),
+      getAccount: vi.fn(async () => account),
+      getNetwork: vi.fn(async () => account.network),
+      switchNetwork: vi.fn(async () => {
+        account.network = applied;
+        return applied;
+      }),
+    } satisfies WalletAdapter & SupportsNetworkSwitch;
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+    const onNetworkChanged = vi.fn();
+    manager.on('networkChanged', onNetworkChanged);
+
+    await expect(manager.switchNetwork('mainnet')).resolves.toEqual(applied);
+
+    expect(onNetworkChanged).toHaveBeenCalledOnce();
+    expect(onNetworkChanged).toHaveBeenCalledWith(applied);
+  });
+
+  it('does not duplicate an adapter event emitted by the native switch', async () => {
+    const applied: NetworkInfo = { id: 'mainnet', name: 'Mainnet', wss: 'wss://mainnet' };
+    const eventSource = createFakeAdapter();
+    const adapter = {
+      ...eventSource,
+      switchNetwork: vi.fn(async () => {
+        eventSource.emitAdapterEvent('networkChanged', applied);
+        return applied;
+      }),
+    } satisfies WalletAdapter & SupportsNetworkSwitch;
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+    const onNetworkChanged = vi.fn();
+    manager.on('networkChanged', onNetworkChanged);
+
+    await expect(manager.switchNetwork('mainnet')).resolves.toEqual(applied);
+
+    expect(onNetworkChanged).toHaveBeenCalledOnce();
+    expect(onNetworkChanged).toHaveBeenCalledWith(applied);
+  });
+
+  it('emits once when the adapter mutates its account and emits during the switch', async () => {
+    const applied: NetworkInfo = { id: 'mainnet', name: 'Mainnet', wss: 'wss://mainnet' };
+    const account: AccountInfo = { ...ACCOUNT, network: { ...NETWORK } };
+    const eventSource = createFakeAdapter();
+    const adapter = {
+      ...eventSource,
+      connect: vi.fn(async () => account),
+      getAccount: vi.fn(async () => account),
+      getNetwork: vi.fn(async () => account.network),
+      switchNetwork: vi.fn(async () => {
+        account.network = applied;
+        eventSource.emitAdapterEvent('networkChanged', applied);
+        return applied;
+      }),
+    } satisfies WalletAdapter & SupportsNetworkSwitch;
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+    const onNetworkChanged = vi.fn();
+    manager.on('networkChanged', onNetworkChanged);
+
+    await expect(manager.switchNetwork('mainnet')).resolves.toEqual(applied);
+
+    expect(onNetworkChanged).toHaveBeenCalledOnce();
+    expect(onNetworkChanged).toHaveBeenCalledWith(applied);
+    expect(manager.account?.network).toEqual(applied);
+  });
+
+  it('applies the authoritative result after an intermediate adapter event', async () => {
+    const intermediate: NetworkInfo = {
+      id: 'testnet',
+      name: 'Testnet',
+      wss: 'wss://intermediate',
+    };
+    const applied: NetworkInfo = { id: 'mainnet', name: 'Mainnet', wss: 'wss://mainnet' };
+    const eventSource = createFakeAdapter();
+    const adapter = {
+      ...eventSource,
+      switchNetwork: vi.fn(async () => {
+        eventSource.emitAdapterEvent('networkChanged', intermediate);
+        return applied;
+      }),
+    } satisfies WalletAdapter & SupportsNetworkSwitch;
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+    const onNetworkChanged = vi.fn();
+    manager.on('networkChanged', onNetworkChanged);
+
+    await expect(manager.switchNetwork('mainnet')).resolves.toEqual(applied);
+
+    expect(manager.account?.network).toEqual(applied);
+    expect(onNetworkChanged.mock.calls).toEqual([[intermediate], [applied]]);
+  });
+
+  it('continues a switch when the account changes in the same session', async () => {
+    const pending = deferred<NetworkInfo>();
+    const applied: NetworkInfo = { id: 'mainnet', name: 'Mainnet', wss: 'wss://mainnet' };
+    const eventSource = createFakeAdapter();
+    const adapter = {
+      ...eventSource,
+      switchNetwork: vi.fn(() => pending.promise),
+    } satisfies WalletAdapter & SupportsNetworkSwitch;
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    const switching = manager.switchNetwork('mainnet');
+    await vi.waitFor(() => expect(adapter.switchNetwork).toHaveBeenCalledOnce());
+    eventSource.emitAdapterEvent('accountChanged', {
+      ...ACCOUNT,
+      address: 'rNewAccount',
+      network: { ...NETWORK },
+    });
+    pending.resolve(applied);
+
+    await expect(switching).resolves.toEqual(applied);
+    expect(manager.account).toMatchObject({ address: 'rNewAccount', network: applied });
+  });
+
+  it('serializes concurrent native switches in invocation order', async () => {
+    const first = deferred<NetworkInfo>();
+    const second = deferred<NetworkInfo>();
+    const firstNetwork: NetworkInfo = { id: 'mainnet', name: 'Mainnet', wss: 'wss://mainnet' };
+    const secondNetwork: NetworkInfo = { id: 'devnet', name: 'Devnet', wss: 'wss://devnet' };
+    const switchNetwork = vi
+      .fn<[], Promise<NetworkInfo>>()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    const adapter = {
+      ...createFakeAdapter(),
+      switchNetwork,
+    } satisfies WalletAdapter & SupportsNetworkSwitch;
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+    const onNetworkChanged = vi.fn();
+    manager.on('networkChanged', onNetworkChanged);
+
+    const switchingFirst = manager.switchNetwork('mainnet');
+    const switchingSecond = manager.switchNetwork('devnet');
+    await vi.waitFor(() => expect(switchNetwork).toHaveBeenCalledTimes(1));
+
+    first.resolve(firstNetwork);
+    await expect(switchingFirst).resolves.toEqual(firstNetwork);
+    await vi.waitFor(() => expect(switchNetwork).toHaveBeenCalledTimes(2));
+
+    second.resolve(secondNetwork);
+    await expect(switchingSecond).resolves.toEqual(secondNetwork);
+
+    expect(switchNetwork.mock.calls).toEqual([['mainnet'], ['devnet']]);
+    expect(onNetworkChanged.mock.calls).toEqual([[firstNetwork], [secondNetwork]]);
+    expect(manager.account?.network).toEqual(secondNetwork);
+  });
+
+  it('continues the switch queue after an adapter rejection', async () => {
+    const applied: NetworkInfo = { id: 'devnet', name: 'Devnet', wss: 'wss://devnet' };
+    const switchNetwork = vi
+      .fn<[], Promise<NetworkInfo>>()
+      .mockRejectedValueOnce(new Error('rejected'))
+      .mockResolvedValueOnce(applied);
+    const adapter = {
+      ...createFakeAdapter(),
+      switchNetwork,
+    } satisfies WalletAdapter & SupportsNetworkSwitch;
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    const rejected = manager.switchNetwork('mainnet');
+    const succeeded = manager.switchNetwork('devnet');
+
+    await expect(rejected).rejects.toMatchObject({ code: 'UNKNOWN_ERROR' });
+    await expect(succeeded).resolves.toEqual(applied);
+    expect(manager.account?.network).toEqual(applied);
+  });
+
+  it('throws when not connected', async () => {
+    const manager = new WalletManager({ adapters: [createFakeAdapter()] });
+    await expect(manager.switchNetwork('testnet')).rejects.toMatchObject({
+      code: 'NOT_CONNECTED',
+    });
+  });
+
+  it('does not apply or emit a switch that finishes after disconnect', async () => {
+    let resolveSwitch!: (network: NetworkInfo) => void;
+    const switchNetwork = vi.fn(
+      () => new Promise<NetworkInfo>((resolve) => (resolveSwitch = resolve))
+    );
+    const adapter: WalletAdapter = { ...createFakeAdapter(), switchNetwork };
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+    const onNetworkChanged = vi.fn();
+    manager.on('networkChanged', onNetworkChanged);
+
+    const switching = manager.switchNetwork('devnet');
+    await vi.waitFor(() => expect(switchNetwork).toHaveBeenCalledOnce());
+    await manager.disconnect();
+    resolveSwitch({ id: 'devnet', name: 'Devnet', wss: 'wss://devnet' });
+
+    await expect(switching).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+    expect(manager.account).toBeNull();
+    expect(onNetworkChanged).not.toHaveBeenCalled();
+  });
+
+  it('wraps an invalid adapter response in a typed error', async () => {
+    const adapter: WalletAdapter = {
+      ...createFakeAdapter(),
+      switchNetwork: vi.fn(async () => undefined as never),
+    };
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    await expect(manager.switchNetwork('devnet')).rejects.toMatchObject({
+      code: 'UNKNOWN_ERROR',
+    });
+  });
+
+  it('rejects malformed optional fields in an adapter response', async () => {
+    const adapter = {
+      ...createFakeAdapter(),
+      switchNetwork: vi.fn(async () => ({
+        id: 'devnet',
+        name: 'Devnet',
+        wss: 'wss://devnet',
+        rpc: 42,
+      })),
+    } as unknown as WalletAdapter & SupportsNetworkSwitch;
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    await expect(manager.switchNetwork('devnet')).rejects.toMatchObject({
+      code: 'UNKNOWN_ERROR',
+    });
+  });
+
+  it('keeps a newer adapter event authoritative while switch persistence is delayed', async () => {
+    let value: string | null = null;
+    let blockSet = false;
+    const setStarted = deferred<void>();
+    const setReleased = deferred<void>();
+    const storage: StorageAdapter = {
+      get: vi.fn(async () => value),
+      set: vi.fn(async (_key, next) => {
+        if (blockSet) {
+          setStarted.resolve(undefined);
+          await setReleased.promise;
+        }
+        value = next;
+      }),
+      remove: vi.fn(async () => {
+        value = null;
+      }),
+      clear: vi.fn(async () => {
+        value = null;
+      }),
+    };
+    const applied: NetworkInfo = { id: 'mainnet', name: 'Mainnet', wss: 'wss://mainnet' };
+    const newer: NetworkInfo = { id: 'devnet', name: 'Devnet', wss: 'wss://devnet' };
+    const eventSource = createFakeAdapter();
+    const adapter = {
+      ...eventSource,
+      switchNetwork: vi.fn(async () => applied),
+    } satisfies WalletAdapter & SupportsNetworkSwitch;
+    const manager = new WalletManager({ adapters: [adapter], storage });
+    await manager.connect('fake');
+    const onNetworkChanged = vi.fn();
+    manager.on('networkChanged', onNetworkChanged);
+
+    blockSet = true;
+    const switching = manager.switchNetwork('mainnet');
+    await setStarted.promise;
+    eventSource.emitAdapterEvent('networkChanged', newer);
+    setReleased.resolve(undefined);
+
+    await expect(switching).resolves.toEqual(newer);
+    expect(manager.account?.network).toEqual(newer);
+    expect(onNetworkChanged.mock.calls).toEqual([[applied], [newer]]);
+    expect(readStoredState(value)?.network).toEqual(newer);
+  });
+
+  it('clears storage after a pending switch save when disconnecting', async () => {
+    let value: string | null = null;
+    let blockSet = false;
+    const setStarted = deferred<void>();
+    const setReleased = deferred<void>();
+    const storage: StorageAdapter = {
+      get: vi.fn(async () => value),
+      set: vi.fn(async (_key, next) => {
+        if (blockSet) {
+          setStarted.resolve(undefined);
+          await setReleased.promise;
+        }
+        value = next;
+      }),
+      remove: vi.fn(async () => {
+        value = null;
+      }),
+      clear: vi.fn(async () => {
+        value = null;
+      }),
+    };
+    const applied: NetworkInfo = { id: 'devnet', name: 'Devnet', wss: 'wss://devnet' };
+    const adapter = {
+      ...createFakeAdapter(),
+      switchNetwork: vi.fn(async () => applied),
+    } satisfies WalletAdapter & SupportsNetworkSwitch;
+    const manager = new WalletManager({ adapters: [adapter], storage });
+    await manager.connect('fake');
+
+    blockSet = true;
+    const switching = manager.switchNetwork('devnet');
+    await setStarted.promise;
+    const disconnecting = manager.disconnect();
+    await vi.waitFor(() => expect(manager.connected).toBe(false));
+    setReleased.resolve(undefined);
+
+    await expect(switching).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+    await disconnecting;
+    expect(value).toBeNull();
+  });
+
+  it('does not let an old switch affect a reconnected session using the same objects', async () => {
+    const pending = deferred<NetworkInfo>();
+    const initial: NetworkInfo = { id: 'testnet', name: 'Testnet', wss: 'wss://testnet' };
+    const applied: NetworkInfo = { id: 'devnet', name: 'Devnet', wss: 'wss://devnet' };
+    const account: AccountInfo = { ...ACCOUNT, network: initial };
+    const adapter = {
+      ...createFakeAdapter(),
+      connect: vi.fn(async () => account),
+      getAccount: vi.fn(async () => account),
+      getNetwork: vi.fn(async () => account.network),
+      switchNetwork: vi.fn(async () => {
+        const result = await pending.promise;
+        account.network = result;
+        return result;
+      }),
+    } satisfies WalletAdapter & SupportsNetworkSwitch;
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    const switching = manager.switchNetwork('devnet');
+    await vi.waitFor(() => expect(adapter.switchNetwork).toHaveBeenCalledOnce());
+    await manager.disconnect();
+    await manager.connect('fake');
+    pending.resolve(applied);
+
+    await expect(switching).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+    expect(manager.account?.network).toEqual(initial);
+  });
+
+  it('reconnects with the persisted switched network instead of the manager default', async () => {
+    const storage = createTestStorage();
+    const mainnet: NetworkInfo = { id: 'mainnet', name: 'Mainnet', wss: 'wss://mainnet' };
+    const devnet: NetworkInfo = { id: 'devnet', name: 'Devnet', wss: 'wss://devnet' };
+    const firstAdapter = {
+      ...createFakeAdapter(),
+      switchNetwork: vi.fn(async () => devnet),
+    } satisfies WalletAdapter & SupportsNetworkSwitch;
+    const firstManager = new WalletManager({
+      adapters: [firstAdapter],
+      network: mainnet,
+      storage: storage.adapter,
+    });
+    await firstManager.connect('fake');
+    await firstManager.switchNetwork(devnet);
+
+    const reconnect = vi.fn(async (options?: ConnectOptions) => ({
+      ...ACCOUNT,
+      network: typeof options?.network === 'object' ? options.network : mainnet,
+    }));
+    const secondAdapter: WalletAdapter = { ...createFakeAdapter(), connect: reconnect };
+    const secondManager = new WalletManager({
+      adapters: [secondAdapter],
+      network: mainnet,
+      storage: storage.adapter,
+    });
+
+    await secondManager.reconnect();
+
+    expect(reconnect).toHaveBeenCalledWith({ network: devnet, autoReconnect: true });
+    expect(secondManager.account?.network).toEqual(devnet);
+    expect(readStoredState(storage.read())?.network).toEqual(devnet);
+  });
+});
+
+describe('WalletManager.getNetwork()', () => {
+  it('returns the current network reported by the connected adapter', async () => {
+    const adapter = createFakeAdapter();
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    await expect(manager.getNetwork()).resolves.toEqual(NETWORK);
+    expect(adapter.getNetwork).toHaveBeenCalled();
+  });
+
+  it('throws when not connected', async () => {
+    const manager = new WalletManager({ adapters: [createFakeAdapter()] });
+    await expect(manager.getNetwork()).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+  });
+
+  it('continues when the account changes in the same session', async () => {
+    const pending = deferred<NetworkInfo>();
+    const eventSource = createFakeAdapter();
+    const adapter: WalletAdapter = {
+      ...eventSource,
+      getNetwork: vi.fn(() => pending.promise),
+    };
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    const gettingNetwork = manager.getNetwork();
+    eventSource.emitAdapterEvent('accountChanged', {
+      ...ACCOUNT,
+      address: 'rNewAccount',
+      network: { ...NETWORK },
+    });
+    pending.resolve(NETWORK);
+
+    await expect(gettingNetwork).resolves.toEqual(NETWORK);
+    expect(manager.account?.address).toBe('rNewAccount');
+  });
+
+  it('rejects malformed adapter responses', async () => {
+    const adapter = {
+      ...createFakeAdapter(),
+      getNetwork: vi.fn(async () => ({ id: 'mainnet' }) as NetworkInfo),
+    };
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    await expect(manager.getNetwork()).rejects.toMatchObject({ code: 'UNKNOWN_ERROR' });
+  });
+
+  it('wraps untyped adapter errors and preserves typed wallet errors', async () => {
+    const rawError = new Error('network unavailable');
+    const adapter = {
+      ...createFakeAdapter(),
+      getNetwork: vi.fn(async (): Promise<NetworkInfo> => {
+        throw rawError;
+      }),
+    };
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    await expect(manager.getNetwork()).rejects.toMatchObject({
+      code: 'UNKNOWN_ERROR',
+      originalError: rawError,
+    });
+
+    const typedError = createWalletError.unsupportedMethod('not supported');
+    adapter.getNetwork.mockRejectedValueOnce(typedError);
+    await expect(manager.getNetwork()).rejects.toBe(typedError);
+  });
 });
 
 describe('WalletManager.reconnect()', () => {
@@ -693,17 +1381,55 @@ describe('WalletManager.reconnect()', () => {
     };
   }
 
-  it('returns the active account without clearing its stored session', async () => {
+  it('preserves stored state when reconnect is called during an active session', async () => {
     const storage = new MemoryStorageAdapter();
-    const adapter = createRecordingAdapter([]);
-    const manager = new WalletManager({ adapters: [adapter], storage });
-    await manager.connect('ledger', { derivationPath: "44'/144'/3'/0/0" });
+    const received: Array<ConnectOptions | undefined> = [];
+    const manager = new WalletManager({ adapters: [createRecordingAdapter(received)], storage });
+    const derivationPath = "44'/144'/3'/0/0";
+
+    await manager.connect('ledger', { derivationPath } as ConnectOptions);
     const storedBefore = await new Storage(storage).loadState();
+    await expect(manager.reconnect()).resolves.toBeNull();
 
-    await expect(manager.reconnect()).resolves.toEqual(ACCOUNT);
-
+    expect(storedBefore).toMatchObject({
+      walletId: 'ledger',
+      connectOptions: { derivationPath },
+    });
     expect(await new Storage(storage).loadState()).toEqual(storedBefore);
-    expect(manager.connected).toBe(true);
+  });
+
+  it('does not reconnect after disconnect while storage is still loading', async () => {
+    const backingStorage = new MemoryStorageAdapter();
+    await new Storage(backingStorage).saveState({
+      walletId: 'ledger',
+      account: { ...ACCOUNT, network: { ...NETWORK } },
+      network: { ...NETWORK },
+      timestamp: Date.now(),
+    });
+    const readStarted = deferred<void>();
+    const readReleased = deferred<void>();
+    const storage: StorageAdapter = {
+      get: vi.fn(async (key) => {
+        readStarted.resolve(undefined);
+        await readReleased.promise;
+        return backingStorage.get(key);
+      }),
+      set: (key, value) => backingStorage.set(key, value),
+      remove: (key) => backingStorage.remove(key),
+      clear: () => backingStorage.clear(),
+    };
+    const adapter = createRecordingAdapter([]);
+    adapter.connect = vi.fn(adapter.connect);
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    const reconnecting = manager.reconnect();
+    await readStarted.promise;
+    await manager.disconnect();
+    readReleased.resolve(undefined);
+
+    await expect(reconnecting).resolves.toBeNull();
+    expect(adapter.connect).not.toHaveBeenCalled();
+    expect(manager.connected).toBe(false);
   });
 
   it('replays the wallet-specific connect options (e.g. Ledger derivation path) on reconnect', async () => {
@@ -819,5 +1545,48 @@ describe('WalletManager.reconnect()', () => {
     await new WalletManager({ adapters: [restoredAdapter], storage }).reconnect();
 
     expect(received.at(-1)?.network).toEqual(NETWORK);
+  });
+
+  it('preserves adapter reconnect options when a runtime switch updates storage', async () => {
+    const storage = new MemoryStorageAdapter();
+    const adapter = {
+      ...createRecordingAdapter([]),
+      switchNetwork: vi.fn(async () => MAINNET),
+    } satisfies WalletAdapter & SupportsNetworkSwitch;
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    await manager.connect('ledger', { derivationPath: "44'/144'/3'/0/0" });
+    await manager.switchNetwork('mainnet');
+
+    const stored = await new Storage(storage).loadState();
+    expect(stored?.network).toEqual(MAINNET);
+    expect(stored?.connectOptions).toEqual({ derivationPath: "44'/144'/3'/0/0" });
+  });
+
+  it('drops stale reconnect selectors after the adapter changes account', async () => {
+    const storage = new MemoryStorageAdapter();
+    const eventSource = createFakeAdapter();
+    const adapter = {
+      ...eventSource,
+      id: 'ledger',
+      name: 'Ledger',
+      serializeReconnectOptions: () => ({ derivationPath: "44'/144'/3'/0/0" }),
+      switchNetwork: vi.fn(async () => MAINNET),
+    } satisfies WalletAdapter & SupportsNetworkSwitch;
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    await manager.connect('ledger');
+    eventSource.emitAdapterEvent('accountChanged', {
+      ...ACCOUNT,
+      address: 'rChangedAccount',
+      network: { ...NETWORK },
+    });
+    await manager.switchNetwork('mainnet');
+
+    expect(await new Storage(storage).loadState()).toMatchObject({
+      account: { address: 'rChangedAccount' },
+      network: MAINNET,
+    });
+    expect((await new Storage(storage).loadState())?.connectOptions).toBeUndefined();
   });
 });

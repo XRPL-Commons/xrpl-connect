@@ -179,6 +179,16 @@ interface WalletAdapter {
 type WalletAdapterEvent = 'connect' | 'disconnect' | 'accountChanged' | 'networkChanged' | 'error';
 ```
 
+Optional capabilities extend `WalletAdapter` only when the wallet exposes a verifiable native API. Runtime network switching uses this contract:
+
+```typescript
+interface SupportsNetworkSwitch {
+  switchNetwork(network: NetworkConfig): Promise<NetworkInfo>;
+}
+```
+
+A switch-capable adapter declares `implements WalletAdapter, SupportsNetworkSwitch`. The method must request a real wallet-side switch and return the complete authoritative `NetworkInfo` the wallet actually applied. Adapters that cannot request or verify a native switch must omit the method; `WalletManager.switchNetwork()` then rejects with `UNSUPPORTED_METHOD` without changing local state.
+
 ### 3.2 Create the Adapter Class
 
 Create `src/my-wallet-adapter.ts`:
@@ -559,15 +569,27 @@ private hasStoredSession(): boolean {
 
 ### Handle Network Switching
 
+Only add this method when the wallet SDK exposes a native switch request and lets the adapter verify the resulting network:
+
 ```typescript
-async switchNetwork(network: NetworkInfo): Promise<void> {
+import { resolveNetwork, type NetworkConfig, type NetworkInfo } from '@xrpl-connect/core';
+
+async switchNetwork(network: NetworkConfig): Promise<NetworkInfo> {
+  const requested = resolveNetwork(network);
   const wallet = (window as any).myWallet;
-  await wallet.switchNetwork(network.id);
-  this.network = network;
-  if (this.account) this.account.network = network;
-  this.emit('networkChanged', network);
+  await wallet.switchNetwork(requested.id);
+
+  // Query or map the wallet's authoritative post-switch network instead of
+  // assuming it honored the request.
+  const applied = await this.readCurrentNetworkFromWallet();
+  this.network = applied;
+  if (this.account) this.account = { ...this.account, network: applied };
+  this.emit('networkChanged', applied);
+  return applied;
 }
 ```
+
+Adapt `readCurrentNetworkFromWallet()` to the wallet SDK. Return the settled network in full, propagate typed `WalletError` values on rejection, and continue emitting `networkChanged` for unsolicited changes made in the wallet UI. The manager deduplicates the event emitted during a manager-initiated switch.
 
 ### Timeout for Operations
 

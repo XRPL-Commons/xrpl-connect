@@ -42,7 +42,7 @@ const walletManager = new WalletManager({
 ```typescript
 interface WalletManagerOptions {
   adapters: WalletAdapter[]; // Array of wallet adapters to register
-  network?: NetworkConfig | string; // Default network ('mainnet', 'testnet', 'devnet')
+  network?: NetworkConfig; // Standard network id or a custom NetworkInfo
   autoConnect?: boolean; // Attempt to reconnect from stored state
   storage?: StorageAdapter; // Custom storage implementation (defaults to LocalStorageAdapter)
   logger?: LoggerOptions | LoggerInstance; // Logging configuration — pass options or a custom logger
@@ -233,6 +233,30 @@ console.log('Signed by:', signed.signerAddress);
 
 ---
 
+### Network Methods
+
+#### `getNetwork(): Promise<NetworkInfo>`
+
+Returns the current network reported by the connected adapter. It rejects with `NOT_CONNECTED` when no session is active and preserves typed adapter errors.
+
+#### `switchNetwork(network: NetworkConfig): Promise<NetworkInfo>`
+
+Requests a native wallet-side switch and returns the authoritative network confirmed by the adapter. The connected adapter must implement `SupportsNetworkSwitch`; otherwise the method rejects with `UNSUPPORTED_METHOD` and does not change local or stored state.
+
+```typescript
+import { supportsNetworkSwitch } from '@xrpl-connect/core';
+
+const adapter = walletManager.wallet;
+if (adapter && supportsNetworkSwitch(adapter)) {
+  const applied = await walletManager.switchNetwork('testnet');
+  console.log('Applied network:', applied.id);
+}
+```
+
+Successful changes update `account.network`, persist the applied network, and emit `networkChanged` when the network differs. No bundled adapter currently implements this optional capability.
+
+---
+
 ### Query Methods
 
 #### `supports(capability: keyof WalletCapabilities, adapter?: WalletAdapter | null): boolean`
@@ -419,7 +443,7 @@ walletManager.on('accountChanged', (account: AccountInfo) => {
 
 ### `networkChanged` Event
 
-Emitted when the connected network changes.
+Emitted for wallet-reported network changes and successful native switches requested through the manager. Unsupported requests and no-op changes do not emit.
 
 ```typescript
 walletManager.on('networkChanged', (network: NetworkInfo) => {
@@ -518,9 +542,24 @@ interface NetworkInfo {
   wss: string; // WebSocket endpoint URL
   rpc?: string; // Optional HTTP RPC endpoint
   walletConnectId?: string; // Optional WalletConnect network ID (e.g., 'xrpl:0')
-  chainId?: number; // Optional chain ID
 }
 ```
+
+### NetworkConfig and SupportsNetworkSwitch
+
+```typescript
+type NetworkConfig = string | NetworkInfo;
+
+interface SupportsNetworkSwitch {
+  switchNetwork(network: NetworkConfig): Promise<NetworkInfo>;
+}
+
+function supportsNetworkSwitch(
+  adapter: WalletAdapter
+): adapter is WalletAdapter & SupportsNetworkSwitch;
+```
+
+Adapters must only expose `SupportsNetworkSwitch` when they can request and verify a real wallet-side switch. The returned network is authoritative and may differ from the request.
 
 ---
 
@@ -858,7 +897,19 @@ async function logout() {
 
 ### Network Switching
 
-Some wallets support network switching. Listen for `networkChanged` events:
+Request a native switch only when the connected adapter exposes the optional capability. There is no local-only fallback:
+
+```typescript
+import { supportsNetworkSwitch } from '@xrpl-connect/core';
+
+const adapter = walletManager.wallet;
+if (adapter && supportsNetworkSwitch(adapter)) {
+  const applied = await walletManager.switchNetwork('testnet');
+  console.log('Wallet switched to:', applied.name);
+}
+```
+
+Listen separately for manager-initiated and wallet-initiated changes:
 
 ```typescript
 walletManager.on('networkChanged', (network) => {

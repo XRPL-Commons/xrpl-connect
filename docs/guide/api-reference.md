@@ -26,7 +26,7 @@ const walletManager = new WalletManager(options: WalletManagerOptions)
 | `storage`     | `StorageAdapter`                  | Custom storage adapter (defaults to `LocalStorageAdapter`)                                                                                      |
 | `logger`      | `LoggerOptions \| LoggerInstance` | `{ level?, prefix? }` to configure the built-in logger, or a custom logger object (`{ debug, info, warn, error }`) that receives all log output |
 
-`NetworkConfig` is either one of the standard keys (`'mainnet' | 'testnet' | 'devnet'`) or a `NetworkInfo` object.
+`NetworkConfig` is a string network identifier or a complete `NetworkInfo` object. The built-in standard identifiers are `mainnet`, `testnet`, and `devnet`.
 
 ### Properties
 
@@ -59,6 +59,42 @@ async reconnect(): Promise<AccountInfo | null>
 ```
 
 Reconnect to the previously connected wallet using stored state. Returns `null` when no valid stored session is found.
+
+#### getNetwork()
+
+```typescript
+async getNetwork(): Promise<NetworkInfo>
+```
+
+Returns the current network reported by the connected adapter. The manager must be connected. Adapter `WalletError` values are preserved; malformed responses and other failures are reported as `UNKNOWN_ERROR`.
+
+#### switchNetwork()
+
+```typescript
+async switchNetwork(network: NetworkConfig): Promise<NetworkInfo>
+```
+
+Requests a real wallet-side network switch and returns the authoritative network the adapter confirms was applied. The connected adapter must implement `SupportsNetworkSwitch`; otherwise the call rejects with `UNSUPPORTED_METHOD` without changing account or stored state. Successful changes update `account.network`, persist the applied network, and emit `networkChanged` when the network differs.
+
+No bundled adapter currently implements native switching. Check the adapter capability before requesting it:
+
+```typescript
+import { supportsNetworkSwitch } from 'xrpl-connect';
+
+const adapter = walletManager.wallet;
+if (adapter && supportsNetworkSwitch(adapter)) {
+  const applied = await walletManager.switchNetwork('testnet');
+  console.log(applied.id);
+}
+```
+
+| Error                | Meaning                                                |
+| -------------------- | ------------------------------------------------------ |
+| `NOT_CONNECTED`      | No wallet session is active                            |
+| `UNSUPPORTED_METHOD` | The connected adapter cannot request a native switch   |
+| `UNKNOWN_ERROR`      | The response is malformed or an untyped failure occurs |
+
+Typed `WalletError` values thrown by the adapter are preserved.
 
 #### sign()
 
@@ -573,6 +609,28 @@ interface NetworkInfo {
 }
 ```
 
+### NetworkConfig
+
+```typescript
+type NetworkConfig = string | NetworkInfo;
+```
+
+Use a string network identifier or provide a complete custom `NetworkInfo` object. Strings passed through `resolveNetwork()` must exist in `STANDARD_NETWORKS` at call time (`mainnet`, `testnet`, and `devnet` by default). Switch-capable adapters receive `NetworkConfig` directly and define which identifiers they support.
+
+### SupportsNetworkSwitch
+
+```typescript
+interface SupportsNetworkSwitch {
+  switchNetwork(network: NetworkConfig): Promise<NetworkInfo>;
+}
+
+function supportsNetworkSwitch(
+  adapter: WalletAdapter
+): adapter is WalletAdapter & SupportsNetworkSwitch;
+```
+
+This opt-in capability is only for adapters that can request and verify a wallet-side switch. Its method returns the complete network actually applied, which may differ from the requested network.
+
 ### Transaction
 
 `Transaction` is an alias for `SubmittableTransaction` from the `xrpl` package — any XRPL transaction object, e.g.:
@@ -691,7 +749,7 @@ walletManager.on('accountChanged', (account: AccountInfo) => {
 
 #### networkChanged
 
-Emitted when the network changes.
+Emitted for wallet-reported network changes and successful manager-initiated changes. Unsupported switch requests and no-op changes do not emit this event.
 
 ```javascript
 walletManager.on('networkChanged', (network: NetworkInfo) => {

@@ -43,7 +43,7 @@ export const STANDARD_NETWORKS: Record<string, NetworkInfo> = {
 };
 
 /**
- * Network configuration type - can be a standard network key or custom NetworkInfo
+ * Network configuration type - a string network identifier or custom NetworkInfo
  */
 export type NetworkConfig = keyof typeof STANDARD_NETWORKS | NetworkInfo;
 
@@ -272,6 +272,23 @@ export function supportsReconnectOptions(
   return (
     typeof (adapter as Partial<SupportsReconnectOptions>).serializeReconnectOptions === 'function'
   );
+}
+
+/**
+ * Capability: adapter can request a real wallet-side network switch at runtime.
+ * Implementations must return the complete, authoritative network the wallet
+ * settled on; adapters without a verifiable native switch API must omit this
+ * capability. Adapters may emit their normal `networkChanged` event while the
+ * request resolves—the manager deduplicates that notification.
+ */
+export interface SupportsNetworkSwitch {
+  switchNetwork(network: NetworkConfig): Promise<NetworkInfo>;
+}
+
+export function supportsNetworkSwitch(
+  adapter: WalletAdapter
+): adapter is WalletAdapter & SupportsNetworkSwitch {
+  return typeof (adapter as Partial<SupportsNetworkSwitch>).switchNetwork === 'function';
 }
 
 /**
