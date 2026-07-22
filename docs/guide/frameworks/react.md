@@ -1,754 +1,158 @@
 ---
-description: Integrate XRPL-Connect into your React application using hooks and best practices.
+description: Integrate XRPL Connect v1.0 with React and Next.js using the official provider, hooks, and connector.
 ---
 
-# React & Next.js
+# React and Next.js
 
-Integrate XRPL-Connect into your React application with hooks. This guide covers both standard React and Next.js applications.
+Use the official React bindings instead of building a custom context around the web component.
 
-## Recommended: `@xrpl-connect/react`
-
-The easiest way to use XRPL-Connect in React is the official bindings package — a
-provider that owns a single `WalletManager`, ready-made hooks, and a themeable
-`<WalletConnector>` modal. You no longer need to hand-roll a context/hooks layer.
+## Install
 
 ```bash
-npm install @xrpl-connect/react xrpl-connect xrpl
+pnpm add xrpl-connect@^1.0.0 @xrpl-connect/react@^1.0.0 xrpl react react-dom
 ```
 
+## Configure the provider
+
+Create the adapter configuration once, outside component render. Recreating it on every render can replace connection ownership and restart automatic reconnection.
+
 ```tsx
-// main.tsx — import xrpl-connect once to register the web component
-import 'xrpl-connect';
-import { XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
-import { XrplConnectProvider } from '@xrpl-connect/react';
+import { XrplConnectProvider, WalletConnector } from '@xrpl-connect/react';
+import {
+  CrossmarkAdapter,
+  MetaMaskSnapAdapter,
+  WalletConnectAdapter,
+  XamanAdapter,
+} from 'xrpl-connect';
 
 const config = {
-  adapters: [new XamanAdapter({ apiKey: 'YOUR_KEY' }), new CrossmarkAdapter()],
-  network: 'testnet',
+  adapters: [
+    new XamanAdapter({ apiKey: import.meta.env.VITE_XAMAN_API_KEY }),
+    new CrossmarkAdapter(),
+    new WalletConnectAdapter({
+      projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID,
+    }),
+    new MetaMaskSnapAdapter(),
+  ],
+  network: 'testnet' as const,
   autoConnect: true,
 };
 
-createRoot(document.getElementById('root')!).render(
-  <XrplConnectProvider config={config}>
-    <App />
-  </XrplConnectProvider>
-);
+export function App() {
+  return (
+    <XrplConnectProvider config={config}>
+      <Header />
+      <WalletConnector
+        wallets={['xaman', 'crossmark', 'walletconnect', 'metamask-snap']}
+        theme="dark"
+        onError={(error) => console.error(error.code, error.message)}
+      />
+    </XrplConnectProvider>
+  );
+}
 ```
+
+## Wallet state
+
+`useWallet()` provides the stable manager, reactive state, and direct connect/disconnect actions.
 
 ```tsx
-// App.tsx
-import { useWallet, useSigner, useWalletModal, WalletConnector } from '@xrpl-connect/react';
+import { useWallet, useWalletModal } from '@xrpl-connect/react';
 
-export function App() {
-  const { connected, account, disconnect, error } = useWallet();
+function Header() {
+  const { connected, connecting, account, network, error, disconnect } = useWallet();
   const { open } = useWalletModal();
+
+  if (!connected || !account) {
+    return (
+      <button onClick={open} disabled={connecting}>
+        Connect wallet
+      </button>
+    );
+  }
+
+  return (
+    <div>
+      <span>{account.address}</span>
+      <span>{network?.name}</span>
+      {error && <span role="alert">{error.message}</span>}
+      <button onClick={() => void disconnect()}>Disconnect</button>
+    </div>
+  );
+}
+```
+
+The hook returns `manager`, `connected`, `account`, `network`, `connecting`, `error`, `connect`, and `disconnect`.
+
+## Signing
+
+```tsx
+import { WalletErrorCode, isWalletError } from 'xrpl-connect';
+import { useSigner, useWallet } from '@xrpl-connect/react';
+
+function PaymentButton({ destination }: { destination: string }) {
+  const { account } = useWallet();
   const { signAndSubmit } = useSigner();
 
-  return (
-    <>
-      {connected ? (
-        <button onClick={disconnect}>Disconnect {account?.address}</button>
-      ) : (
-        <button onClick={open}>Connect Wallet</button>
-      )}
-      {error && (
-        <p>
-          Error [{error.code}]: {error.message}
-        </p>
-      )}
-      <WalletConnector theme="dark" onError={(e) => console.error(e.code, e.category)} />
-    </>
-  );
-}
-```
-
-**Hooks:** `useWallet()` (`connected`, `account`, `network`, `connect`, `disconnect`,
-`connecting`, `error`), `useSigner()` (`sign`, `signAndSubmit`, `signMessage` — reject
-with a typed `WalletError`), and `useWalletModal()` (`open`, `close`).
-
-**`<WalletConnector>` props:** `primaryWallet`, `wallets`, `theme`, `cssVars`,
-`onConnecting`, `onConnect`, `onError` — all typed.
-
-> **Next.js (App Router):** these are client components — add `'use client'` to the
-> file that renders the provider/connector.
-
-See the package README for the full API. The manual integration below remains valid
-if you'd rather wire the `WalletManager` and web component yourself.
-
-## Complete Example Application
-
-We provide a comprehensive React example application that demonstrates all XRPL-Connect features:
-
-**📁 [View the React Example →](https://github.com/XRPL-Commons/xrpl-connect/tree/main/examples/react)**
-
-### What's Included
-
-The example demonstrates:
-
-- ✅ Multiple wallet adapter support (Xaman, WalletConnect, Crossmark, GemWallet, Ledger)
-- ✅ Official provider and hooks from `@xrpl-connect/react`
-- ✅ React Context API for global wallet state
-- ✅ Transaction and message signing forms
-- ✅ Dynamic theme switching
-- ✅ Real-time event logging
-- ✅ Typed React wrapper around the wallet-connector web component
-- ✅ Demo-specific activity and status state kept separate from wallet state
-
-### Project Structure
-
-```
-examples/react/
-├── src/
-│   ├── App.tsx                      # Main app component
-│   ├── main.tsx                     # Entry point
-│   ├── components/
-│   │   ├── WalletConnector.tsx     # Web component wrapper
-│   │   ├── AccountInfo.tsx         # Display connected account
-│   │   ├── TransactionForm.tsx     # Sign transactions
-│   │   ├── MessageSignForm.tsx     # Sign messages
-│   │   ├── ThemeSelector.tsx       # Switch themes
-│   │   └── EventLog.tsx            # Display wallet events
-│   ├── context/
-│   │   └── DemoContext.tsx         # Demo activity/status state only
-│   └── types/
-│       └── index.ts                # TypeScript definitions
-```
-
-## Manual integration
-
-The remainder of this guide shows how to build the provider and hooks yourself.
-Use this approach only when you need lifecycle behavior beyond the official package.
-
-### Installation
-
-```bash
-npm install xrpl-connect xrpl
-```
-
-## Quick Start
-
-### 1. Register Web Components
-
-**File: `src/main.tsx`**
-
-In your entry point, import `xrpl-connect` to register the web component:
-
-```typescript
-// src/main.tsx
-import 'xrpl-connect'; // Register web components
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-```
-
-### 2. TypeScript Declarations
-
-**File: `src/vite-env.d.ts`** (or `src/react-app-env.d.ts` for Create React App)
-
-Create TypeScript declarations for the web component:
-
-```typescript
-// src/vite-env.d.ts
-/// <reference types="vite/client" />
-
-declare namespace JSX {
-  interface IntrinsicElements {
-    'xrpl-wallet-connector': React.DetailedHTMLProps<
-      React.HTMLAttributes<HTMLElement> & {
-        'primary-wallet'?: string;
-        ref?: React.Ref<any>;
-      },
-      HTMLElement
-    >;
-  }
-}
-```
-
-### 3. Create Wallet Context
-
-**File: `src/context/WalletContext.tsx`**
-
-Create a context to share wallet state across your app:
-
-```typescript
-// src/context/WalletContext.tsx
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import type { WalletManager } from 'xrpl-connect';
-
-interface AccountInfo {
-  address: string;
-  network: string;
-  walletName: string;
-}
-
-interface WalletContextType {
-  walletManager: WalletManager | null;
-  isConnected: boolean;
-  accountInfo: AccountInfo | null;
-  setWalletManager: (manager: WalletManager) => void;
-  setIsConnected: (connected: boolean) => void;
-  setAccountInfo: (info: AccountInfo | null) => void;
-}
-
-const WalletContext = createContext<WalletContextType | undefined>(undefined);
-
-export function WalletProvider({ children }: { children: ReactNode }) {
-  const [walletManager, setWalletManagerState] = useState<WalletManager | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [accountInfo, setAccountInfo] = useState<AccountInfo | null>(null);
-
-  const setWalletManager = useCallback((manager: WalletManager) => {
-    setWalletManagerState(manager);
-  }, []);
-
-  return (
-    <WalletContext.Provider
-      value={{
-        walletManager,
-        isConnected,
-        accountInfo,
-        setWalletManager,
-        setIsConnected,
-        setAccountInfo,
-      }}
-    >
-      {children}
-    </WalletContext.Provider>
-  );
-}
-
-export function useWallet() {
-  const context = useContext(WalletContext);
-  if (context === undefined) {
-    throw new Error('useWallet must be used within a WalletProvider');
-  }
-  return context;
-}
-```
-
-### 4. Create WalletManager Hook
-
-**File: `src/hooks/useWalletManager.ts`**
-
-Create a hook to initialize and manage the WalletManager:
-
-```typescript
-// src/hooks/useWalletManager.ts
-import { useEffect } from 'react';
-import {
-  WalletManager,
-  XamanAdapter,
-  WalletConnectAdapter,
-  CrossmarkAdapter,
-  GemWalletAdapter,
-  LedgerAdapter,
-} from 'xrpl-connect';
-import { useWallet } from '../context/WalletContext';
-
-// Configuration - ADD YOUR API KEYS HERE
-const XAMAN_API_KEY = 'YOUR_XAMAN_API_KEY';
-const WALLETCONNECT_PROJECT_ID = 'YOUR_WALLETCONNECT_PROJECT_ID';
-
-export function useWalletManager() {
-  const { setWalletManager, setIsConnected, setAccountInfo } = useWallet();
-
-  useEffect(() => {
-    const manager = new WalletManager({
-      adapters: [
-        new XamanAdapter({ apiKey: XAMAN_API_KEY }),
-        new WalletConnectAdapter({ projectId: WALLETCONNECT_PROJECT_ID }),
-        new CrossmarkAdapter(),
-        new GemWalletAdapter(),
-        new LedgerAdapter(), // Hardware wallet support
-      ],
-      network: 'testnet',
-      autoConnect: true,
-      logger: { level: 'info' },
-    });
-
-    setWalletManager(manager);
-
-    // Event listeners
-    manager.on('connect', (account) => {
-      updateConnectionState(manager);
-    });
-
-    manager.on('disconnect', () => {
-      updateConnectionState(manager);
-    });
-
-    // Check initial connection
-    if (manager.connected) {
-      updateConnectionState(manager);
-    }
-  }, [setWalletManager, setIsConnected, setAccountInfo]);
-
-  const updateConnectionState = (manager: WalletManager) => {
-    const connected = manager.connected;
-    setIsConnected(connected);
-
-    if (connected) {
-      const account = manager.account;
-      const wallet = manager.wallet;
-
-      if (account && wallet) {
-        setAccountInfo({
-          address: account.address,
-          network: `${account.network.name} (${account.network.id})`,
-          walletName: wallet.name,
-        });
-      }
-    } else {
-      setAccountInfo(null);
-    }
-  };
-}
-```
-
-### 5. Create Web Component Connector Hook
-
-**File: `src/hooks/useWalletConnector.ts`**
-
-Create a hook to properly connect the web component with the WalletManager:
-
-```typescript
-// src/hooks/useWalletConnector.ts
-import { useEffect, useRef } from 'react';
-import type { WalletManager } from 'xrpl-connect';
-
-export function useWalletConnector(walletManager: WalletManager | null) {
-  const walletConnectorRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!walletConnectorRef.current || !walletManager) return;
-
-    const setupConnector = async () => {
-      // Wait for custom element to be defined
-      await customElements.whenDefined('xrpl-wallet-connector');
-
-      // Small delay to ensure element is fully initialized
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      if (
-        walletConnectorRef.current &&
-        typeof (walletConnectorRef.current as any).setWalletManager === 'function'
-      ) {
-        (walletConnectorRef.current as any).setWalletManager(walletManager);
-      }
-    };
-
-    setupConnector();
-  }, [walletManager]);
-
-  return walletConnectorRef;
-}
-```
-
-### 6. Create Wallet Connector Component
-
-**File: `src/components/WalletConnector.tsx`**
-
-Wrap the web component in a React component:
-
-```typescript
-// src/components/WalletConnector.tsx
-import { useState } from 'react';
-import { useWallet } from '../context/WalletContext';
-import { useWalletConnector } from '../hooks/useWalletConnector';
-
-const THEMES = {
-  dark: {
-    '--xc-background-color': '#1a202c',
-    '--xc-text-color': '#F5F4E7',
-    '--xc-primary-color': '#3b99fc',
-  },
-  light: {
-    '--xc-background-color': '#ffffff',
-    '--xc-text-color': '#111111',
-    '--xc-primary-color': '#2563eb',
-  },
-};
-
-export function WalletConnector() {
-  const { walletManager } = useWallet();
-  const walletConnectorRef = useWalletConnector(walletManager);
-  const [currentTheme] = useState<'dark' | 'light'>('dark');
-
-  return (
-    <xrpl-wallet-connector
-      ref={walletConnectorRef}
-      id="wallet-connector"
-      style={{
-        ...THEMES[currentTheme],
-        '--xc-border-radius': '12px',
-      } as any}
-      primary-wallet="xaman"
-    />
-  );
-}
-```
-
-### 7. Put It All Together
-
-**File: `src/App.tsx`**
-
-Create your main app component:
-
-```typescript
-// src/App.tsx
-import { WalletProvider, useWallet } from './context/WalletContext';
-import { useWalletManager } from './hooks/useWalletManager';
-import { WalletConnector } from './components/WalletConnector';
-
-function AppContent() {
-  const { accountInfo, isConnected } = useWallet();
-  useWalletManager();
-
-  return (
-    <div>
-      <h1>XRPL Connect Demo</h1>
-
-      <WalletConnector />
-
-      {isConnected && accountInfo && (
-        <div>
-          <h2>Connected Account</h2>
-          <p><strong>Address:</strong> {accountInfo.address}</p>
-          <p><strong>Network:</strong> {accountInfo.network}</p>
-          <p><strong>Wallet:</strong> {accountInfo.walletName}</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function App() {
-  return (
-    <WalletProvider>
-      <AppContent />
-    </WalletProvider>
-  );
-}
-
-export default App;
-```
-
-## Signing Transactions
-
-**File: `src/components/TransactionForm.tsx`**
-
-Create a transaction form component:
-
-```typescript
-// src/components/TransactionForm.tsx
-import { useState, FormEvent } from 'react';
-import { useWallet } from '../context/WalletContext';
-
-export function TransactionForm() {
-  const { walletManager, isConnected } = useWallet();
-  const [destination, setDestination] = useState('');
-  const [amount, setAmount] = useState('');
-  const [result, setResult] = useState('');
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-
-    if (!walletManager || !walletManager.account) return;
+  const pay = async () => {
+    if (!account) return;
 
     try {
-      setResult('Signing transaction...');
-
-      const txResult = await walletManager.signAndSubmit({
+      const result = await signAndSubmit({
         TransactionType: 'Payment',
-        Account: walletManager.account.address,
+        Account: account.address,
         Destination: destination,
-        Amount: amount,
+        Amount: '1000000',
       });
-
-      setResult(`Success! Hash: ${(txResult as any).hash}`);
-    } catch (error: any) {
-      setResult(`Failed: ${error.message}`);
+      console.log(result.hash);
+    } catch (error) {
+      if (isWalletError(error) && error.code === WalletErrorCode.SIGN_REJECTED) return;
+      throw error;
     }
   };
 
-  if (!isConnected) {
-    return null;
-  }
-
   return (
-    <form onSubmit={handleSubmit}>
-      <div>
-        <label>Destination Address</label>
-        <input
-          type="text"
-          value={destination}
-          onChange={(e) => setDestination(e.target.value)}
-          placeholder="rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT"
-          required
-        />
-      </div>
-      <div>
-        <label>Amount (drops)</label>
-        <input
-          type="number"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="1000000"
-          required
-        />
-        <small>1 XRP = 1,000,000 drops</small>
-      </div>
-      <button type="submit">Sign & Submit Transaction</button>
-      {result && <div>{result}</div>}
-    </form>
+    <button onClick={() => void pay()} disabled={!account}>
+      Pay 1 XRP
+    </button>
   );
 }
 ```
 
-## Next.js Integration
+`useSigner()` exposes `sign`, `signAndSubmit`, and `signMessage`. Check `manager.supports('signMessage')` before offering arbitrary message signing.
 
-XRPL-Connect works seamlessly with Next.js. Here's how to integrate it:
+## Modal control
 
-### 1. Mark Components as Client Components
+`useWalletModal()` returns `open` and `close`. Render one or more `<WalletConnector>` components inside the provider; modal ownership follows the mounted connector. `WalletConnector` accepts:
 
-**File: `app/components/WalletConnector.tsx`**
+- `primaryWallet` and ordered `wallets`
+- `theme`: `dark`, `light`, or `purple`
+- typed `--xc-*` values through `cssVars`
+- `className`, `style`, `onConnecting`, `onConnect`, and `onError`
 
-Since XRPL-Connect uses browser APIs, mark your wallet components with `'use client'`:
+## Next.js App Router
 
-```typescript
-// app/components/WalletConnector.tsx
+The package is safe to import during server rendering. Provider and wallet UI usage still require a client boundary because they use browser wallet APIs:
+
+```tsx
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { WalletManager, XamanAdapter, LedgerAdapter } from 'xrpl-connect';
+import { XrplConnectProvider, WalletConnector } from '@xrpl-connect/react';
 
-export default function WalletConnector() {
-  const connectorRef = useRef<HTMLElement>(null);
-  const [walletManager, setWalletManager] = useState<WalletManager | null>(null);
-
-  useEffect(() => {
-    const manager = new WalletManager({
-      adapters: [
-        new XamanAdapter({ apiKey: process.env.NEXT_PUBLIC_XAMAN_API_KEY || '' }),
-        new LedgerAdapter(),
-      ],
-      network: 'testnet',
-      autoConnect: true,
-    });
-
-    setWalletManager(manager);
-
-    const setupConnector = async () => {
-      await customElements.whenDefined('xrpl-wallet-connector');
-      if (connectorRef.current) {
-        (connectorRef.current as any).setWalletManager(manager);
-      }
-    };
-
-    setupConnector();
-
-    return () => {
-      manager.disconnect();
-    };
-  }, []);
-
-  return <xrpl-wallet-connector ref={connectorRef} />;
-}
-```
-
-### 2. Environment Variables
-
-**File: `.env.local`** (at the root of your Next.js project)
-
-Create an environment variables file:
-
-```bash
-NEXT_PUBLIC_XAMAN_API_KEY=your_api_key_here
-NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id_here
-```
-
-> **Note:** Variables prefixed with `NEXT_PUBLIC_` are exposed to the browser.
-
-### 3. Use the Same Hooks
-
-You can use the same hooks and context pattern shown above. Just add `'use client'` at the top of each file.
-
-### 4. Dynamic Import (Optional)
-
-**File: `app/page.tsx`**
-
-If you want to avoid SSR issues, use dynamic imports:
-
-```typescript
-// app/page.tsx
-import dynamic from 'next/dynamic';
-
-const WalletConnector = dynamic(
-  () => import('./components/WalletConnector'),
-  { ssr: false }
-);
-
-export default function Home() {
+export function WalletProviders({ children }: { children: React.ReactNode }) {
   return (
-    <main>
-      <h1>My XRPL App</h1>
+    <XrplConnectProvider config={config}>
+      {children}
       <WalletConnector />
-    </main>
+    </XrplConnectProvider>
   );
 }
 ```
 
-## Best Practices
+Expose browser identifiers with `NEXT_PUBLIC_*`; do not expose secrets. Dynamic import with `ssr: false` is optional for route-level code splitting, not required to make the package importable.
 
-### 1. Wait for Custom Element Definition
+## Lifecycle guarantees
 
-Always wait for the custom element to be defined before calling methods:
+The provider owns one manager, subscribes before auto-connect can update state, and cancels owned pending connections on unmount. Do not add a second custom context or duplicate manager listeners around it.
 
-```typescript
-await customElements.whenDefined('xrpl-wallet-connector');
-await new Promise((resolve) => setTimeout(resolve, 0));
-```
-
-### 2. Cleanup on Unmount
-
-Always disconnect the wallet manager when component unmounts:
-
-```typescript
-useEffect(() => {
-  const manager = new WalletManager({...});
-
-  return () => {
-    manager.disconnect();
-  };
-}, []);
-```
-
-### 3. Use TypeScript
-
-Add proper type definitions for the web component in your TypeScript declarations.
-
-### 4. Context for Global State
-
-Use React Context to share wallet state across components instead of prop drilling.
-
-### 5. Memoize Adapters
-
-Use `useMemo` to prevent unnecessary adapter recreation:
-
-```typescript
-const adapters = useMemo(
-  () => [new XamanAdapter({ apiKey: XAMAN_API_KEY }), new LedgerAdapter()],
-  []
-);
-```
-
-### 6. Error Boundaries
-
-Wrap wallet components in error boundaries to handle errors gracefully:
-
-```typescript
-import { Component, ReactNode } from 'react';
-
-class WalletErrorBoundary extends Component<
-  { children: ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return <div>Wallet failed to load. Please refresh.</div>;
-    }
-    return this.props.children;
-  }
-}
-```
-
-## Common Patterns
-
-### Account Display
-
-```typescript
-function AccountDisplay() {
-  const { accountInfo, isConnected } = useWallet();
-
-  if (!isConnected || !accountInfo) {
-    return <p>Please connect your wallet</p>;
-  }
-
-  return (
-    <div>
-      <p>Address: {accountInfo.address}</p>
-      <p>Network: {accountInfo.network}</p>
-      <p>Wallet: {accountInfo.walletName}</p>
-    </div>
-  );
-}
-```
-
-### Protected Component
-
-```typescript
-function ProtectedFeature() {
-  const { isConnected } = useWallet();
-
-  if (!isConnected) {
-    return <p>Please connect your wallet to use this feature</p>;
-  }
-
-  return <div>Protected content here</div>;
-}
-```
-
-### Loading States
-
-```typescript
-function WalletStatus() {
-  const { walletManager, isConnected } = useWallet();
-
-  if (!walletManager) {
-    return <div>Loading wallet...</div>;
-  }
-
-  return isConnected ? <div>Connected</div> : <div>Disconnected</div>;
-}
-```
-
-## Troubleshooting
-
-### "setWalletManager is not a function"
-
-Make sure you're waiting for the custom element to be defined:
-
-```typescript
-await customElements.whenDefined('xrpl-wallet-connector');
-```
-
-### Next.js: "document is not defined"
-
-Add `'use client'` to your component or use dynamic imports with `{ ssr: false }`.
-
-### TypeScript Errors with Web Component
-
-Make sure you have the JSX type declarations in your `vite-env.d.ts` or `react-app-env.d.ts` file.
-
-### Wallet Doesn't Reconnect on Refresh
-
-Ensure `autoConnect: true` is set in your WalletManager configuration.
-
-## Resources
-
-- [Complete React Example](https://github.com/XRPL-Commons/xrpl-connect/tree/main/examples/react)
-- [Next.js Documentation](https://nextjs.org/docs)
-- [React Documentation](https://react.dev/)
-- [XRPL Connect API Reference](/guide/api-reference)
+See [transactions and signing](/guide/transactions), [production and security](/guide/production), and the runnable [`examples/react`](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/examples/react) application.

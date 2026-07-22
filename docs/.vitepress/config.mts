@@ -3,7 +3,7 @@ import llmstxt from 'vitepress-plugin-llms';
 import { copyOrDownloadAsMarkdownButtons } from 'vitepress-plugin-llms';
 
 export default defineConfig({
-  title: ' ',
+  title: 'XRPL Connect',
   description: 'A framework-agnostic wallet connection toolkit for the XRP Ledger',
 
   lang: 'en-US',
@@ -46,7 +46,7 @@ export default defineConfig({
         ],
       },
       {
-        text: 'v0.6.0',
+        text: 'v1.0.0',
         link: 'https://github.com/XRPL-Commons/xrpl-connect/releases',
       },
     ],
@@ -55,13 +55,19 @@ export default defineConfig({
       {
         text: 'Start Here',
         items: [
+          { text: 'Introduction', link: '/' },
+          { text: 'Installation & Quick Start', link: '/guide/getting-started' },
+          { text: 'Core Concepts', link: '/concepts' },
           { text: 'Try It Out', link: '/try-it-out' },
-          { text: 'Concepts', link: '/concepts' },
         ],
       },
       {
-        text: 'Getting Started',
-        items: [{ text: 'Installation & Setup', link: '/guide/getting-started' }],
+        text: 'Build',
+        items: [
+          { text: 'Wallets & Capabilities', link: '/guide/wallets' },
+          { text: 'Transactions & Signing', link: '/guide/transactions' },
+          { text: 'Production & Security', link: '/guide/production' },
+        ],
       },
       {
         text: 'Framework Integration',
@@ -88,7 +94,10 @@ export default defineConfig({
       },
       {
         text: 'Reference',
-        items: [{ text: 'API Reference', link: '/guide/api-reference' }],
+        items: [
+          { text: 'API Reference', link: '/guide/api-reference' },
+          { text: 'Migrating to v1.0', link: '/guide/migration-v1' },
+        ],
       },
     ],
 
@@ -96,7 +105,7 @@ export default defineConfig({
 
     footer: {
       message: 'Released under the MIT License.',
-      copyright: 'Copyright © 2025 XRPL Commons',
+      copyright: 'Copyright © 2026 XRPL Commons',
     },
 
     search: {
@@ -108,6 +117,14 @@ export default defineConfig({
     lineNumbers: true,
     config(md) {
       md.use(copyOrDownloadAsMarkdownButtons);
+    },
+  },
+
+  vue: {
+    template: {
+      compilerOptions: {
+        isCustomElement: (tag) => tag === 'xrpl-wallet-connector',
+      },
     },
   },
 

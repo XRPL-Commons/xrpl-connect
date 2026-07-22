@@ -2,11 +2,11 @@
 description: A framework-agnostic wallet connection toolkit for the XRP Ledger with support for multiple wallet adapters and comprehensive documentation.
 ---
 
-# Introduction to XRPL-Connect
+# XRPL Connect v1.0
 
 <DownloadLLMsFullDoc />
 
-XRPL-Connect is a comprehensive, framework-agnostic wallet connection toolkit for the XRP Ledger. It provides developers with everything needed to add secure wallet connectivity to their applications through a modern, modular architecture.
+XRPL Connect is the stable, typed wallet layer for XRP Ledger applications. v1.0 combines a framework-agnostic manager, eight wallet adapters, a customizable web component, and official React and Vue bindings.
 
 ## What is XRPL-Connect?
 
@@ -14,7 +14,8 @@ XRPL-Connect is a complete solution for integrating wallet functionality into we
 
 - **Web Component UI** - Beautiful, customizable `<xrpl-wallet-connector>` component for wallet selection and account management
 - **Wallet Manager** - Central event-driven system for managing wallet connections and transactions
-- **Multiple Wallet Support** - Built-in adapters for Xaman, Crossmark, GemWallet, WalletConnect, Ledger hardware wallets, Xyra, and Otsu
+- **Multiple Wallet Support** - Built-in adapters for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap
+- **Official framework bindings** - Providers, composables, hooks, and connector components for React and Vue
 - **Framework Agnostic** - Works seamlessly with Vanilla JS, React, Vue, Next.js, Nuxt, and any modern web framework
 - **TypeScript Ready** - Full type definitions for a great developer experience
 - **Production Ready** - Used in production applications across the XRPL ecosystem
@@ -38,7 +39,7 @@ Customize colors, fonts, and styling using CSS variables without touching HTML o
 
 ### 🔌 Multiple Wallets
 
-Support for all major XRP Ledger wallets including Xaman, Crossmark, GemWallet, WalletConnect, Ledger hardware wallets, Xyra, and Otsu. Give users choice without increasing complexity.
+Support Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap through the same manager API.
 
 ### ⚡ Framework Agnostic
 
@@ -65,25 +66,16 @@ Enhanced mobile experience with optimized support for Xaman wallet connections. 
 
 XRPL-Connect uses a modular, adapter-based architecture that separates concerns and makes it easy to extend:
 
-```
-Your Application
-       ↓
-┌─────────────────────────────┐
-│   xrpl-connect/core        │
-│   ┌───────────────────────┐ │
-│   │  WalletManager        │ │
-│   │  - Event system       │ │
-│   │  - State management   │ │
-│   │  - Storage layer      │ │
-│   └───────────────────────┘ │
-└──────────────┬──────────────┘
-               ↓
-    ┌──────────┬──────────┬─────────┬─────────────┬────────┬────────┬────────┐
-    ↓          ↓          ↓         ↓             ↓        ↓        ↓
-┌────────┐ ┌──────────┐ ┌────────┐ ┌─────────┐ ┌────────┐ ┌──────┐ ┌──────┐
-│ Xaman  │ │Crossmark │ │GemWal  │ │WalletCon│ │Ledger  │ │Xyra  │ │Otsu  │
-│ Adapter│ │Adapter   │ │Adapter │ │Adapter  │ │Adapter │ │Adptr │ │Adptr │
-└────────┘ └──────────┘ └────────┘ └─────────┘ └────────┘ └──────┘ └──────┘
+```text
+Application UI / framework bindings
+                ↓
+          WalletManager
+   (state, events, persistence)
+                ↓
+         WalletAdapter API
+                ↓
+Xaman · Crossmark · GemWallet · WalletConnect
+Ledger · Xyra · Otsu · MetaMask Snap
 ```
 
 ## How It Works
@@ -109,6 +101,7 @@ The XRPL-Connect package includes:
 - **Core Library** - WalletManager, event system, and state management
 - **Web Component** - Beautiful UI component for wallet connection
 - **Adapters** - Pre-built integrations for major wallets
+- **Framework bindings** - Official React and Vue integrations with shared lifecycle management
 - **TypeScript Definitions** - Full type safety and IDE support
 - **Documentation** - Complete guides and API reference
 
@@ -126,6 +119,7 @@ Ready to get started? Here's the recommended learning path:
    - [Nuxt](/guide/frameworks/nuxt)
 5. **[Customization](/guide/customization)** - Style the component to match your design
 6. **[API Reference](/guide/api-reference)** - Deep dive into the complete API
+7. **[Migrating to v1.0](/guide/migration-v1)** - Upgrade pre-1.0 applications safely
 
 ## Community & Support
 

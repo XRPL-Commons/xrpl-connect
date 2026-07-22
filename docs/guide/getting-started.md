@@ -11,26 +11,37 @@ Get up and running with XRPL-Connect in minutes.
 ### Using npm
 
 ```bash
-npm install xrpl-connect xrpl
+npm install xrpl-connect@^1.0.0 xrpl
+```
+
+Add the official bindings for your framework:
+
+```bash
+# React
+npm install @xrpl-connect/react@^1.0.0 react react-dom
+
+# Vue 3 or Nuxt
+npm install @xrpl-connect/vue@^1.0.0 vue
 ```
 
 ### Using pnpm
 
 ```bash
-pnpm add xrpl-connect xrpl
+pnpm add xrpl-connect@^1.0.0 xrpl
 ```
 
 ### Using yarn
 
 ```bash
-yarn add xrpl-connect xrpl
+yarn add xrpl-connect@^1.0.0 xrpl
 ```
 
 The `xrpl-connect` package includes:
 
 - **Core** - WalletManager, event system, and state management
 - **UI** - Beautiful web component for wallet connection
-- **Adapters** - Built-in support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger hardware wallets, Xyra, and Otsu
+- **Adapters** - Built-in support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap
+- **Framework bindings** - Official packages for React and Vue 3 / Nuxt
 
 > **Note:** The `xrpl` package is required for transaction types and utilities.
 
@@ -78,6 +89,7 @@ const crossmarkAdapter = new CrossmarkAdapter();
 const gemWalletAdapter = new GemWalletAdapter();
 const xyraAdapter = new XyraAdapter();
 const otsuAdapter = new OtsuAdapter();
+const metaMaskAdapter = new MetaMaskSnapAdapter();
 ```
 
 ### Ledger Hardware Wallet
@@ -118,7 +130,13 @@ A minimal, copy-pasteable example covering the patterns you almost always need: 
 ```
 
 ```javascript
-import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
+import {
+  CrossmarkAdapter,
+  WalletErrorCode,
+  WalletManager,
+  XamanAdapter,
+  isWalletError,
+} from 'xrpl-connect';
 
 const walletManager = new WalletManager({
   adapters: [new XamanAdapter({ apiKey: 'YOUR_API_KEY' }), new CrossmarkAdapter()],
@@ -158,7 +176,7 @@ async function sendPayment() {
     });
     console.log('Signed:', signed);
   } catch (error) {
-    if (error.code === 'SIGN_FAILED') {
+    if (isWalletError(error) && error.code === WalletErrorCode.SIGN_REJECTED) {
       // User rejected the prompt in their wallet — usually a no-op.
       console.log('User rejected the transaction');
     } else {

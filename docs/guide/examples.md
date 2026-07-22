@@ -8,14 +8,17 @@ Real-world examples and pre-built theme configurations.
 
 ## Live React Example
 
-We now have a comprehensive React example application that demonstrates all features of XRPL-Connect, including:
+The React example application demonstrates the recommended v1 integration, including:
 
-- Multiple wallet adapter support (Xaman, WalletConnect, Crossmark, GemWallet, Ledger)
-- Custom React hooks for wallet management
-- Transaction and message signing
+- Multiple wallet adapters
+- The official provider and hooks from `@xrpl-connect/react`
+- Capability-aware transaction and message signing
 - Dynamic theme customization
 - Real-time event logging
 - Proper TypeScript integration with web components
+
+For Vue 3 and Nuxt, follow the maintained [Vue guide](/guide/frameworks/vue) and
+[Nuxt guide](/guide/frameworks/nuxt).
 
 **Check out the full example:** [`examples/react/`](https://github.com/XRPL-Commons/xrpl-connect/tree/main/examples/react)
 
@@ -169,7 +172,7 @@ Complete example with wallet connection and transaction signing:
 
 ## React Example
 
-> **Note:** For a complete, production-ready React example with all features, see the [React example application](https://github.com/XRPL-Commons/xrpl-connect/tree/main/examples/react).
+> **Note:** For the maintained v1 React integration, use the [React guide](/guide/frameworks/react) and [React example application](https://github.com/XRPL-Commons/xrpl-connect/tree/main/examples/react).
 
 ```jsx
 import { useEffect, useRef, useState } from 'react';

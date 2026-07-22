@@ -1,7 +1,6 @@
 import { h } from 'vue';
 import type { Theme } from 'vitepress';
 import DefaultTheme from 'vitepress/theme';
-import CopyOrDownloadAsMarkdownButtons from 'vitepress-plugin-llms/vitepress-components/CopyOrDownloadAsMarkdownButtons.vue';
 import DownloadLLMsFullDoc from './DownloadLLMsFullDoc.vue';
 import './custom.css';
 
@@ -13,19 +12,24 @@ export default {
     return h(DefaultTheme.Layout, null, {});
   },
   async enhanceApp({ app }) {
-    // Register CopyOrDownloadAsMarkdownButtons component
-    app.component('CopyOrDownloadAsMarkdownButtons', CopyOrDownloadAsMarkdownButtons);
+    if (typeof window !== 'undefined') {
+      const { default: CopyOrDownloadAsMarkdownButtons } =
+        await import('vitepress-plugin-llms/vitepress-components/CopyOrDownloadAsMarkdownButtons.vue');
+      app.component('CopyOrDownloadAsMarkdownButtons', CopyOrDownloadAsMarkdownButtons);
+    } else {
+      app.component('CopyOrDownloadAsMarkdownButtons', { render: () => null });
+    }
 
     // Register DownloadLLMsFullDoc component
     app.component('DownloadLLMsFullDoc', DownloadLLMsFullDoc);
 
-    // Only import web components on client side
+    // Register the web component without loading every wallet adapter.
     if (typeof window !== 'undefined' && !componentImported) {
       try {
-        await import('xrpl-connect');
+        await import('@xrpl-connect/ui');
         componentImported = true;
       } catch (err) {
-        console.error('Failed to import xrpl-connect:', err);
+        console.error('Failed to register XRPL Connect web components:', err);
       }
     }
 

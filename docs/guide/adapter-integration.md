@@ -84,7 +84,7 @@ Use the Xaman adapter as a template. Replace `my-wallet` and `MyWallet` with you
 ```json
 {
   "name": "@xrpl-connect/adapter-my-wallet",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "My Wallet adapter for XRPL Connect",
   "author": "Your Name",
   "license": "MIT",

@@ -226,6 +226,14 @@ close(): void
 
 Close any open modals.
 
+#### toggle()
+
+```typescript
+toggle(): void
+```
+
+Open the wallet modal when it is closed, or close it when it is open.
+
 Wallet choices are ordered by most recent successful use. The component stores
 that ordering in `localStorage` under `xrpl-connect:mru-wallets`; an explicit
 `primary-wallet` still takes precedence.
@@ -278,9 +286,17 @@ Emitted when connection fails.
 
 ```javascript
 connector.addEventListener('error', (e) => {
-  console.error('Error:', e.detail.error.message);
+  console.error(e.detail.walletId, e.detail.errorType, e.detail.error.message);
 });
 ```
+
+Event details are typed as follows:
+
+| Event        | `detail` payload                                                    |
+| ------------ | ------------------------------------------------------------------- |
+| `connecting` | `{ walletId: string }`                                              |
+| `connected`  | `{ walletId: string }` plus Ledger account metadata when applicable |
+| `error`      | `{ error: WalletError, walletId: string, errorType: string }`       |
 
 ## Wallet Adapters
 
@@ -390,6 +406,76 @@ const adapter = new OtsuAdapter();
 
 **Supported Features:** Transaction signing, message signing, and live account
 refresh
+
+### MetaMask Snap Adapter
+
+```typescript
+import { MetaMaskSnapAdapter } from 'xrpl-connect';
+
+const adapter = new MetaMaskSnapAdapter({
+  // Optional. Defaults to the production XRPL Snap.
+  snapId: 'npm:xrpl-snap',
+});
+```
+
+**Supported Features:** Transaction signing and message signing through
+MetaMask. The adapter does not require an application API key.
+
+Use a custom `snapId` only when developing or auditing a different Snap.
+
+## React API
+
+Install `@xrpl-connect/react` alongside `xrpl-connect` when using React.
+
+### XrplConnectProvider
+
+`<XrplConnectProvider config={config}>` creates one `WalletManager` and shares it
+with its subtree. `config` accepts the core `WalletManagerOptions`: `adapters`,
+`network`, `autoConnect`, `storage`, and `logger`. The manager is created once on
+mount; use a React `key` when an intentional configuration change must rebuild it.
+
+### Hooks
+
+- `useWallet()` returns `{ manager, connected, account, network, connecting, error, connect, disconnect }`.
+- `useSigner()` returns `{ sign, signAndSubmit, signMessage }`.
+- `useWalletModal()` returns `{ open, close }` for the mounted connector modal.
+
+All hooks must be used below `XrplConnectProvider`. Signing methods reject with
+the same typed `WalletError` values as the core manager.
+
+### WalletConnector
+
+`<WalletConnector />` wraps the web component. It accepts `primaryWallet`,
+`wallets`, `theme`, `cssVars`, `style`, `className`, `onConnecting`, `onConnect`,
+and `onError`. See the [React guide](/guide/frameworks/react) for a complete setup.
+
+## Vue API
+
+Install `@xrpl-connect/vue` alongside `xrpl-connect` for Vue 3 and Nuxt applications.
+
+### createXrplConnect
+
+`createXrplConnect(config)` creates an application-scoped Vue plugin and one isolated
+`WalletManager`. Install it with `app.use(...)` before mounting the application. All Vue
+composables and `<WalletConnector>` must run beneath that installation.
+
+### Composables
+
+- `useWallet()` returns the manager, readonly `connected`, `account`, `network`, `connecting`, and `error` refs, plus `connect` and `disconnect`.
+- `useSigner()` returns `sign`, `signAndSubmit`, and `signMessage`.
+- `useWalletModal()` returns `open` and `close` for the most recently mounted connector.
+
+Call `connect(walletId, options?)` for a headless connection flow, or mount at least one
+connector before using the modal composable. Gate optional signing operations with
+`manager.supports(...)`.
+
+### WalletConnector
+
+`<WalletConnector />` accepts `primaryWallet`, `wallets`, `theme`, and `cssVars`, and emits
+`connecting`, `connect`, and typed `error` events. Public types include `XrplConnectConfig`,
+`XrplConnectContextValue`, `WalletConnectorElement`, and `WalletConnectorTheme`. The package
+also re-exports the core wallet error classes, enums, and `isWalletError` guard. See the
+[Vue guide](/guide/frameworks/vue) and [Nuxt guide](/guide/frameworks/nuxt).
 
 ## Direct Wallet SDK Access
 
