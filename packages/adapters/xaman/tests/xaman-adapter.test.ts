@@ -1018,7 +1018,6 @@ describe('XamanAdapter.sign', () => {
       expect.any(Function)
     );
   });
-
 });
 
 describe('XamanAdapter.signMessage', () => {
