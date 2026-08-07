@@ -963,6 +963,62 @@ describe('XamanAdapter.sign', () => {
     await rejection;
     expect(subscription.close).toHaveBeenCalledTimes(1);
   });
+
+  it('passes a returnUrl (constructor and per-connect) through to the payload', async () => {
+    mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
+    const adapter = new XamanAdapter({
+      apiKey: 'test-key',
+      returnUrl: { app: 'xaman://app-home', web: 'https://example.test/wallet' },
+    });
+    await adapter.connect({ network: 'mainnet', onQRCode: () => {} });
+    const subscription = createSubscriptionHarness();
+    mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false));
+
+    const signPromise = adapter.sign({ TransactionType: 'Payment' } as never);
+    await subscription.emit({ opened: true });
+    await subscription.emit({ signed: true });
+    await signPromise;
+
+    // Constructor returnUrl is included in the payload options by default.
+    expect(mockXummInstance.payload.createAndSubscribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          return_url: { app: 'xaman://app-home', web: 'https://example.test/wallet' },
+        }),
+      }),
+      expect.any(Function)
+    );
+  });
+
+  it('lets a per-connect returnUrl override the constructor returnUrl', async () => {
+    mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
+    const adapter = new XamanAdapter({
+      apiKey: 'test-key',
+      returnUrl: { web: 'https://constructor.test' },
+    });
+    await adapter.connect({
+      network: 'mainnet',
+      onQRCode: () => {},
+      returnUrl: { web: 'https://connect.test/after-sign' },
+    });
+    const subscription = createSubscriptionHarness();
+    mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false));
+
+    const signPromise = adapter.sign({ TransactionType: 'Payment' } as never);
+    await subscription.emit({ opened: true });
+    await subscription.emit({ signed: true });
+    await signPromise;
+
+    expect(mockXummInstance.payload.createAndSubscribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          return_url: { web: 'https://connect.test/after-sign' },
+        }),
+      }),
+      expect.any(Function)
+    );
+  });
+
 });
 
 describe('XamanAdapter.signMessage', () => {
