@@ -376,6 +376,17 @@ describe('LedgerAdapter.getAccounts', () => {
     expect(xrpAppInstance.getAddress).toHaveBeenCalledTimes(2);
     expect(mockTransport.close).toHaveBeenCalledTimes(1);
   });
+
+  it('retains structured Ledger status details when every account lookup fails', async () => {
+    installNavigator({ usb: {} });
+    xrpAppInstance.getAddress.mockRejectedValue({ statusCode: 0x6804 });
+
+    await expect(new LedgerAdapter().getAccounts()).rejects.toMatchObject({
+      code: WalletErrorCode.UNKNOWN_ERROR,
+      message: expect.stringContaining('Please unlock your Ledger device'),
+    });
+    expect(mockTransport.close).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('LedgerAdapter reconnect options', () => {

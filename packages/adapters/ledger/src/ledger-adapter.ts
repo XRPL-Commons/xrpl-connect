@@ -472,7 +472,7 @@ export class LedgerAdapter
       }
 
       const accounts = [];
-      let lastError: Error | null = null;
+      let lastError: unknown = null;
 
       for (let i = 0; i < count; i++) {
         const accountIndex = startIndex + i;
@@ -493,7 +493,7 @@ export class LedgerAdapter
         } catch (error) {
           if (isWalletError(error) || isLedgerUserCancelled(error)) throw error;
 
-          lastError = error instanceof Error ? error : formattedLedgerError(error);
+          lastError = error;
           console.warn(`Failed to get account at index ${accountIndex}:`, error);
         }
       }
