@@ -40,8 +40,10 @@ Replace custom contexts and custom-element refs with `XrplConnectProvider`, `Wal
 
 Replace hand-written `provide` / `inject` state and direct custom-element refs with
 `createXrplConnect()`, `useWallet()`, `useSigner()`, `useWalletModal()`, and the typed
-`<WalletConnector>`. In Nuxt, install the plugin from `plugins/xrpl-connect.client.ts` and keep
-the connector inside `<ClientOnly>`.
+`<WalletConnector>`. In Nuxt, install the plugin from `plugins/xrpl-connect.client.ts` and put
+every component that invokes the injected composables in a `.client.vue` file or wholly below a
+client-only child boundary. Wrapping only template markup in `<ClientOnly>` does not prevent the
+containing universal component's `<script setup>` from executing during SSR.
 
 ## Need help?
 
