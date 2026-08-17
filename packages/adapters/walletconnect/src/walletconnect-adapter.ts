@@ -5,6 +5,8 @@
 import SignClient from '@walletconnect/sign-client';
 import { WalletConnectModal } from '@walletconnect/modal';
 import type { SignClientTypes, SessionTypes } from '@walletconnect/types';
+import { parseUri } from '@walletconnect/utils';
+import { isValidClassicAddress } from 'xrpl';
 import type {
   WalletAdapter,
   AccountInfo,
@@ -21,15 +23,10 @@ import type {
 } from '@xrpl-connect/core';
 import { createWalletError, resolveNetwork, createLogger, isMobile } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
-import {
-  DISCONNECT_REASONS,
-  DEFAULT_METADATA,
-  LOGGING,
-  ACCOUNT_FORMAT,
-  XRPL_NAMESPACE,
-} from './constants';
+import { DISCONNECT_REASONS, DEFAULT_METADATA, LOGGING, XRPL_NAMESPACE } from './constants';
 
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
+const MAX_XRPL_NETWORK_ID = 0xffff_ffff;
 
 /**
  * Logger instance for WalletConnect adapter
@@ -50,6 +47,77 @@ export enum XRPLMethod {
  * alongside the standard XRPL transaction fields.
  */
 type WalletConnectSignedTxJson = Transaction & { hash?: string };
+
+type ConnectionProposal = {
+  uri?: string;
+  approval: () => Promise<SessionTypes.Struct>;
+  approvalPromise?: Promise<SessionTypes.Struct>;
+  cancellationPromise: Promise<void>;
+  cancel: () => void;
+  chainId: string;
+  projectId: string;
+  client: SignClient;
+};
+
+type PendingConnection = ConnectionProposal & { uri: string };
+
+type SessionLifecycleEvent = { topic: string };
+
+function isValidXrplChainId(chainId: string): boolean {
+  const match = chainId.match(/^xrpl:(0|[1-9]\d*)$/);
+  if (!match) return false;
+
+  const networkId = Number(match[1]);
+  return Number.isSafeInteger(networkId) && networkId <= MAX_XRPL_NETWORK_ID;
+}
+
+function getXrplChainId(network: NetworkInfo): string {
+  const chainId = network.walletConnectId ?? `xrpl:${network.id}`;
+  if (!isValidXrplChainId(chainId)) {
+    throw new Error(`Invalid WalletConnect XRPL chain ID: ${chainId}`);
+  }
+  return chainId;
+}
+
+function selectAccountForChain(accounts: string[], requestedChainId: string): string {
+  if (accounts.length === 0) {
+    throw new Error('No accounts returned from WalletConnect session');
+  }
+
+  const parsedAccounts = accounts.map((account) => {
+    const parts = account.split(':');
+    if (
+      parts.length !== 3 ||
+      parts[0] !== XRPL_NAMESPACE.KEY ||
+      parts[1].length === 0 ||
+      parts[2].length === 0
+    ) {
+      throw new Error('WalletConnect returned a malformed XRPL CAIP-10 account');
+    }
+
+    const chainId = `${parts[0]}:${parts[1]}`;
+    if (!isValidXrplChainId(chainId)) {
+      throw new Error('WalletConnect returned an invalid XRPL CAIP-10 chain reference');
+    }
+
+    const address = parts[2];
+    if (!isValidClassicAddress(address)) {
+      throw new Error('WalletConnect returned an invalid XRPL classic address');
+    }
+
+    return {
+      chainId,
+      address,
+    };
+  });
+
+  const matchingAccount = parsedAccounts.find((account) => account.chainId === requestedChainId);
+  if (!matchingAccount) {
+    throw new Error(`WalletConnect did not return an account for ${requestedChainId}`);
+  }
+
+  return matchingAccount.address;
+}
 
 /**
  * WalletConnect adapter options
@@ -90,15 +158,131 @@ export class WalletConnectAdapter
   private currentAccount: AccountInfo | null = null;
   private options: WalletConnectAdapterOptions;
   private initializationPromise: Promise<SignClient> | null = null;
+  private initializationProjectId: string | null = null;
+  private clientProjectId: string | null = null;
   private connectionAttemptGeneration = 0;
-  private pendingConnection: { uri: string; approval: () => Promise<SessionTypes.Struct> } | null =
-    null;
+  private pendingConnection: PendingConnection | null = null;
+  private activeConnectionProposals = new Map<number, ConnectionProposal>();
+  private closedConnectionProposals = new WeakSet<ConnectionProposal>();
   private modal: WalletConnectModal | null = null;
-  private sessionDeleteHandler: (() => void) | null = null;
-  private sessionExpireHandler: (() => void) | null = null;
+  private eventListenerClient: SignClient | null = null;
+  private sessionDeleteHandler: ((event: SessionLifecycleEvent) => void) | null = null;
+  private sessionExpireHandler: ((event: SessionLifecycleEvent) => void) | null = null;
 
   constructor(options: WalletConnectAdapterOptions = {}) {
     this.options = options;
+  }
+
+  private async getOrInitializeClient(projectId: string): Promise<SignClient> {
+    if (this.client) {
+      if (this.clientProjectId !== projectId) {
+        throw new Error('Cannot change WalletConnect project ID after initialization');
+      }
+      return this.client;
+    }
+
+    let initialization = this.initializationPromise;
+    if (initialization && this.initializationProjectId !== projectId) {
+      throw new Error('Cannot change WalletConnect project ID while initialization is pending');
+    }
+    if (!initialization) {
+      initialization = SignClient.init({
+        projectId,
+        metadata: this.options.metadata || {
+          name: DEFAULT_METADATA.NAME,
+          description: DEFAULT_METADATA.DESCRIPTION,
+          url:
+            typeof window !== 'undefined' ? window.location.origin : DEFAULT_METADATA.DEFAULT_URL,
+          icons: [DEFAULT_METADATA.DEFAULT_ICON],
+        },
+      });
+      this.initializationPromise = initialization;
+      this.initializationProjectId = projectId;
+    }
+
+    try {
+      const client = await initialization;
+      if (this.initializationPromise === initialization) {
+        this.client = client;
+        this.clientProjectId = projectId;
+      }
+      return client;
+    } catch (error) {
+      if (this.initializationPromise === initialization) {
+        this.initializationPromise = null;
+        this.initializationProjectId = null;
+      }
+      throw error;
+    }
+  }
+
+  private async closeConnectionProposal(proposal: ConnectionProposal): Promise<void> {
+    if (this.closedConnectionProposals.has(proposal)) {
+      return;
+    }
+    this.closedConnectionProposals.add(proposal);
+    proposal.cancel();
+
+    void this.approveConnectionProposal(proposal)
+      .then((session) =>
+        proposal.client.disconnect({
+          topic: session.topic,
+          reason: DISCONNECT_REASONS.USER_DISCONNECTED,
+        })
+      )
+      .catch((error) => {
+        logger.debug('Unused WalletConnect proposal ended:', error);
+      });
+
+    if (proposal.uri) {
+      try {
+        await proposal.client.core.pairing.disconnect({ topic: parseUri(proposal.uri).topic });
+      } catch (error) {
+        logger.warn('Failed to close unused WalletConnect proposal:', error);
+      }
+    }
+  }
+
+  private approveConnectionProposal(proposal: ConnectionProposal): Promise<SessionTypes.Struct> {
+    proposal.approvalPromise ??= Promise.resolve().then(() => proposal.approval());
+    return proposal.approvalPromise;
+  }
+
+  private waitForConnectionProposal(proposal: ConnectionProposal): Promise<SessionTypes.Struct> {
+    return Promise.race([
+      this.approveConnectionProposal(proposal),
+      proposal.cancellationPromise.then(() => {
+        throw new Error('WalletConnect connection was cancelled');
+      }),
+    ]);
+  }
+
+  private createConnectionProposal(
+    client: SignClient,
+    chainId: string,
+    projectId: string,
+    result: { uri?: string; approval: () => Promise<SessionTypes.Struct> }
+  ): ConnectionProposal {
+    let cancel!: () => void;
+    const cancellationPromise = new Promise<void>((resolve) => {
+      cancel = resolve;
+    });
+    return { ...result, cancellationPromise, cancel, chainId, projectId, client };
+  }
+
+  private async closeActiveConnectionProposals(): Promise<void> {
+    const proposals = [...this.activeConnectionProposals.values()];
+    this.activeConnectionProposals.clear();
+    await Promise.all(proposals.map((proposal) => this.closeConnectionProposal(proposal)));
+  }
+
+  private releaseActiveConnectionProposal(
+    connectionAttempt: number,
+    proposal: ConnectionProposal
+  ): void {
+    if (this.activeConnectionProposals.get(connectionAttempt) === proposal) {
+      this.activeConnectionProposals.delete(connectionAttempt);
+    }
   }
 
   /**
@@ -154,6 +338,7 @@ export class WalletConnectAdapter
    */
   async preInitialize(network?: NetworkConfig, onQRCode?: (uri: string) => void): Promise<void> {
     const pid = this.options.projectId;
+    let proposal: ConnectionProposal | null = null;
 
     if (!pid) {
       logger.warn('Cannot pre-initialize without project ID');
@@ -165,41 +350,43 @@ export class WalletConnectAdapter
       this.options.onQRCode = onQRCode;
     }
 
-    if (this.pendingConnection) {
-      logger.debug('Already has pending connection, skipping pre-init');
-      return;
-    }
-
-    logger.debug('Pre-initializing connection session...');
-
     try {
-      // Initialize SignClient if not already done
-      if (!this.client) {
-        if (!this.initializationPromise) {
-          this.initializationPromise = SignClient.init({
-            projectId: pid,
-            metadata: this.options.metadata || {
-              name: DEFAULT_METADATA.NAME,
-              description: DEFAULT_METADATA.DESCRIPTION,
-              url:
-                typeof window !== 'undefined'
-                  ? window.location.origin
-                  : DEFAULT_METADATA.DEFAULT_URL,
-              icons: [DEFAULT_METADATA.DEFAULT_ICON],
-            },
-          });
-        }
-        this.client = await this.initializationPromise;
-        logger.debug('SignClient initialized');
+      const networkInfo = resolveNetwork(network);
+      const requestedChainId = getXrplChainId(networkInfo);
+      const existingPending = this.pendingConnection;
+
+      if (existingPending?.chainId === requestedChainId && existingPending.projectId === pid) {
+        logger.debug('Already has matching pending connection, skipping pre-init');
+        return;
       }
 
-      // Determine network for pre-initialization
-      const networkInfo = resolveNetwork(network);
+      const preInitializationAttempt = ++this.connectionAttemptGeneration;
+      logger.debug('Pre-initializing connection session...');
+
+      if (this.activeConnectionProposals.size > 0) {
+        await this.closeActiveConnectionProposals();
+      }
+
+      if (existingPending && this.pendingConnection === existingPending) {
+        this.pendingConnection = null;
+        await this.closeConnectionProposal(existingPending);
+      }
+
+      if (preInitializationAttempt !== this.connectionAttemptGeneration) {
+        return;
+      }
+
+      const client = await this.getOrInitializeClient(pid);
+      logger.debug('SignClient initialized');
+
+      if (preInitializationAttempt !== this.connectionAttemptGeneration) {
+        return;
+      }
 
       // Start connection to generate URI (ConnectKit pattern)
       const requiredNamespaces = {
         [XRPL_NAMESPACE.KEY]: {
-          chains: [networkInfo.walletConnectId || `xrpl:${networkInfo.id}`],
+          chains: [requestedChainId],
           methods: [
             XRPLMethod.SIGN_TRANSACTION,
             XRPLMethod.SIGN_TRANSACTION_FOR,
@@ -209,30 +396,41 @@ export class WalletConnectAdapter
         },
       };
 
-      const { uri, approval } = await this.client.connect({
+      const result = await client.connect({
         requiredNamespaces,
       });
+      proposal = this.createConnectionProposal(client, requestedChainId, pid, result);
 
-      if (!uri) {
+      if (!proposal.uri) {
         throw new Error('Failed to generate WalletConnect URI during pre-initialization');
       }
 
+      if (preInitializationAttempt !== this.connectionAttemptGeneration) {
+        await this.closeConnectionProposal(proposal);
+        proposal = null;
+        return;
+      }
+
       // Store the pending connection
-      this.pendingConnection = { uri, approval };
+      this.pendingConnection = proposal as PendingConnection;
 
       logger.debug(
         'QR code URI pre-generated:',
-        uri.substring(0, LOGGING.URI_PREVIEW_LENGTH) + '...'
+        proposal.uri.substring(0, LOGGING.URI_PREVIEW_LENGTH) + '...'
       );
 
       if (this.options.onQRCode) {
         logger.debug('Calling onQRCode callback during pre-init');
-        this.options.onQRCode(uri);
+        this.options.onQRCode(proposal.uri);
       }
     } catch (error) {
+      if (proposal) {
+        if (this.pendingConnection === proposal) {
+          this.pendingConnection = null;
+        }
+        await this.closeConnectionProposal(proposal);
+      }
       logger.error('Pre-initialization failed:', error);
-      this.initializationPromise = null;
-      this.pendingConnection = null;
     }
   }
 
@@ -240,7 +438,6 @@ export class WalletConnectAdapter
    * Connect to WalletConnect
    */
   async connect(options?: ConnectOptions<WalletConnectConnectOptions>): Promise<AccountInfo> {
-    const connectionAttempt = ++this.connectionAttemptGeneration;
     const projectId = options?.projectId || this.options.projectId;
 
     if (!projectId) {
@@ -250,6 +447,41 @@ export class WalletConnectAdapter
           'WalletConnect project ID is required. Get one from https://cloud.walletconnect.com or https://dashboard.reown.com'
         )
       );
+    }
+
+    if (this.client && this.clientProjectId !== projectId) {
+      const pending = this.pendingConnection;
+      this.pendingConnection = null;
+      if (pending) {
+        await this.closeConnectionProposal(pending);
+      }
+      throw createWalletError.connectionFailed(
+        this.name,
+        new Error('Cannot change WalletConnect project ID after initialization')
+      );
+    }
+
+    let network: NetworkInfo;
+    let requestedChainId: string;
+    try {
+      network = resolveNetwork(options?.network);
+      requestedChainId = getXrplChainId(network);
+    } catch (error) {
+      throw createWalletError.connectionFailed(this.name, error as Error);
+    }
+
+    const connectionAttempt = ++this.connectionAttemptGeneration;
+    const replacedClient = this.client;
+    const replacedSession = this.session;
+    let proposal: ConnectionProposal | null = null;
+
+    // A direct connect() while already connected is a replacement. Detach the
+    // old handlers synchronously so a late lifecycle event cannot clear the
+    // client while the new approval is pending.
+    if (replacedClient && replacedSession) {
+      this.removeEventListeners();
+      this.session = null;
+      this.currentAccount = null;
     }
 
     // Merge runtime options with constructor options (runtime takes precedence)
@@ -262,35 +494,29 @@ export class WalletConnectAdapter
       useModal && (modalMode === 'always' || (modalMode === 'mobile-only' && isMobile()));
 
     try {
-      // Determine network
-      const network = resolveNetwork(options?.network);
+      if (this.activeConnectionProposals.size > 0) {
+        await this.closeActiveConnectionProposals();
+      }
+      if (replacedClient && replacedSession) {
+        await this.disconnectSession(
+          replacedClient,
+          replacedSession,
+          'Failed to disconnect replaced WalletConnect session:'
+        );
+      }
+      if (connectionAttempt !== this.connectionAttemptGeneration) {
+        throw new Error('WalletConnect connection was cancelled');
+      }
 
-      // Initialize SignClient if needed
-      if (!this.client) {
-        if (this.initializationPromise) {
-          logger.debug('Using pre-initialized SignClient');
-          this.client = await this.initializationPromise;
-        } else {
-          logger.debug('Initializing SignClient');
-          this.client = await SignClient.init({
-            projectId,
-            metadata: this.options.metadata || {
-              name: DEFAULT_METADATA.NAME,
-              description: DEFAULT_METADATA.DESCRIPTION,
-              url:
-                typeof window !== 'undefined'
-                  ? window.location.origin
-                  : DEFAULT_METADATA.DEFAULT_URL,
-              icons: [DEFAULT_METADATA.DEFAULT_ICON],
-            },
-          });
-        }
+      const client = await this.getOrInitializeClient(projectId);
+      if (connectionAttempt !== this.connectionAttemptGeneration) {
+        throw new Error('WalletConnect connection was cancelled');
       }
 
       // Prepare namespace for XRPL
       const requiredNamespaces = {
         [XRPL_NAMESPACE.KEY]: {
-          chains: [network.walletConnectId || `xrpl:${network.id}`],
+          chains: [requestedChainId],
           methods: [
             XRPLMethod.SIGN_TRANSACTION,
             XRPLMethod.SIGN_TRANSACTION_FOR,
@@ -303,6 +529,12 @@ export class WalletConnectAdapter
       let session: SessionTypes.Struct;
 
       if (shouldUseModal) {
+        const pending = this.pendingConnection;
+        this.pendingConnection = null;
+        if (pending) {
+          await this.closeConnectionProposal(pending);
+        }
+
         // ===== MODAL FLOW (Mobile deeplinks) =====
         logger.debug('Using WalletConnect modal for connection (mobile deeplink mode)');
 
@@ -310,18 +542,32 @@ export class WalletConnectAdapter
         await this.initializeModal(projectId);
 
         // Connect and get URI
-        const { uri, approval } = await this.client.connect({
+        const result = await client.connect({
           requiredNamespaces,
         });
+        proposal = this.createConnectionProposal(client, requestedChainId, projectId, result);
 
-        if (uri && this.modal) {
+        if (connectionAttempt !== this.connectionAttemptGeneration) {
+          await this.closeConnectionProposal(proposal);
+          proposal = null;
+          throw new Error('WalletConnect connection was cancelled');
+        }
+        this.activeConnectionProposals.set(connectionAttempt, proposal);
+
+        if (!proposal.uri) {
+          throw new Error('Failed to generate WalletConnect URI');
+        }
+
+        if (this.modal) {
           // Open modal with the URI - modal handles deeplinks automatically
-          this.modal.openModal({ uri });
+          this.modal.openModal({ uri: proposal.uri });
           logger.debug('WalletConnect modal opened with URI');
         }
 
         // Wait for user to connect via modal
-        session = await approval();
+        session = await this.waitForConnectionProposal(proposal);
+        this.releaseActiveConnectionProposal(connectionAttempt, proposal);
+        proposal = null;
 
         // Close modal after successful connection
         if (this.modal) {
@@ -333,7 +579,6 @@ export class WalletConnectAdapter
         logger.debug('Using custom QR code for connection (desktop mode)');
 
         let uri: string;
-        let approval: () => Promise<SessionTypes.Struct>;
 
         // Check if we have a pending connection from pre-initialization.
         // Consume it immediately so a retry after this connect() fails (or a
@@ -341,29 +586,44 @@ export class WalletConnectAdapter
         const pending = this.pendingConnection;
         this.pendingConnection = null;
 
-        if (pending) {
+        if (
+          pending?.chainId === requestedChainId &&
+          pending.projectId === projectId &&
+          pending.client === client
+        ) {
           logger.debug('Using pre-generated connection');
           uri = pending.uri;
-          approval = pending.approval;
+          proposal = pending;
+          this.activeConnectionProposals.set(connectionAttempt, proposal);
 
           if (onQRCode) {
             logger.debug('Calling onQRCode callback with pre-generated URI');
             onQRCode(uri);
           }
         } else {
+          if (pending) {
+            await this.closeConnectionProposal(pending);
+          }
           logger.debug('No pre-generated connection, creating now');
 
           // Connect and get URI
-          const result = await this.client.connect({
+          const result = await client.connect({
             requiredNamespaces,
           });
+          proposal = this.createConnectionProposal(client, requestedChainId, projectId, result);
 
-          if (!result.uri) {
+          if (connectionAttempt !== this.connectionAttemptGeneration) {
+            await this.closeConnectionProposal(proposal);
+            proposal = null;
+            throw new Error('WalletConnect connection was cancelled');
+          }
+          this.activeConnectionProposals.set(connectionAttempt, proposal);
+
+          if (!proposal.uri) {
             throw new Error('Failed to generate WalletConnect URI');
           }
 
-          uri = result.uri;
-          approval = result.approval;
+          uri = proposal.uri;
 
           logger.debug('Generated URI:', uri.substring(0, LOGGING.URI_PREVIEW_LENGTH) + '...');
 
@@ -374,33 +634,33 @@ export class WalletConnectAdapter
         }
 
         // Wait for approval
-        session = await approval();
+        session = await this.waitForConnectionProposal(proposal);
+        this.releaseActiveConnectionProposal(connectionAttempt, proposal);
+        proposal = null;
       }
 
       // Approval cannot be aborted by SignClient. If the UI cancelled this
       // attempt while approval was pending, immediately close the late session
       // instead of exposing it as an orphaned WalletConnect connection.
       if (connectionAttempt !== this.connectionAttemptGeneration) {
-        await this.client.disconnect({
-          topic: session.topic,
-          reason: DISCONNECT_REASONS.USER_DISCONNECTED,
-        });
+        await this.disconnectSession(
+          client,
+          session,
+          'Failed to disconnect stale WalletConnect session:'
+        );
         throw new Error('WalletConnect connection was cancelled');
       }
 
-      // Store session
-      this.session = session;
-
-      // Extract account info from session
-      const accounts = this.session.namespaces.xrpl?.accounts || [];
-      if (accounts.length === 0) {
-        throw new Error('No accounts returned from WalletConnect session');
+      let address: string;
+      try {
+        address = selectAccountForChain(session.namespaces.xrpl?.accounts || [], requestedChainId);
+      } catch (error) {
+        await this.closeApprovedSession(client, session, connectionAttempt);
+        throw error;
       }
 
-      // Parse account (format: "xrpl:chainId:rAddress")
-      const accountString = accounts[0];
-      const address = accountString.split(':')[ACCOUNT_FORMAT.ADDRESS_INDEX];
-
+      // Commit approved session state only after its account and chain are valid.
+      this.session = session;
       this.currentAccount = {
         address,
         network,
@@ -411,12 +671,21 @@ export class WalletConnectAdapter
 
       return this.currentAccount;
     } catch (error) {
-      // Close modal on error
-      if (this.modal) {
-        this.modal.closeModal();
+      if (proposal) {
+        this.releaseActiveConnectionProposal(connectionAttempt, proposal);
+        await this.closeConnectionProposal(proposal);
       }
-      // Drop any stale pending connection so the next connect() starts fresh
-      this.pendingConnection = null;
+      // A stale attempt must not close or clear resources owned by a newer one.
+      if (connectionAttempt === this.connectionAttemptGeneration) {
+        if (this.modal) {
+          this.modal.closeModal();
+        }
+        const pending = this.pendingConnection;
+        this.pendingConnection = null;
+        if (pending) {
+          await this.closeConnectionProposal(pending);
+        }
+      }
       throw createWalletError.connectionFailed(this.name, error as Error);
     }
   }
@@ -425,26 +694,94 @@ export class WalletConnectAdapter
    * Disconnect from WalletConnect
    */
   async disconnect(): Promise<void> {
-    this.connectionAttemptGeneration += 1;
+    const disconnectAttempt = ++this.connectionAttemptGeneration;
+    const initialization = this.initializationPromise;
+    const pending = this.pendingConnection;
+    const client = this.client;
+    const session = this.session;
     this.pendingConnection = null;
+
+    if (initialization && this.initializationPromise === initialization) {
+      this.initializationPromise = null;
+      this.initializationProjectId = null;
+    }
 
     if (this.modal) {
       this.modal.closeModal();
     }
 
-    if (!this.client || !this.session) {
+    if (pending) {
+      await this.closeConnectionProposal(pending);
+    }
+    await this.closeActiveConnectionProposals();
+
+    if (disconnectAttempt !== this.connectionAttemptGeneration) {
+      return;
+    }
+
+    if (!client || !session) {
+      this.cleanup();
       return;
     }
 
     try {
-      await this.client.disconnect({
-        topic: this.session.topic,
+      await client.disconnect({
+        topic: session.topic,
         reason: DISCONNECT_REASONS.USER_DISCONNECTED,
       });
-      this.cleanup();
     } catch (error) {
       // Disconnect might fail if already disconnected, that's okay
-      this.cleanup();
+    } finally {
+      if (
+        disconnectAttempt === this.connectionAttemptGeneration &&
+        this.client === client &&
+        this.session === session
+      ) {
+        this.cleanup();
+      }
+    }
+  }
+
+  /**
+   * Disconnect an approved session without allowing relay cleanup failures to
+   * replace the connection result that caused the cleanup.
+   */
+  private async disconnectSession(
+    client: SignClient,
+    session: SessionTypes.Struct,
+    warning: string
+  ): Promise<void> {
+    try {
+      await client.disconnect({
+        topic: session.topic,
+        reason: DISCONNECT_REASONS.USER_DISCONNECTED,
+      });
+    } catch (error) {
+      logger.warn(warning, error);
+    }
+  }
+
+  /**
+   * Close a session that was approved but cannot be used by this connection
+   * attempt. Cleanup must complete even if the remote disconnect already raced
+   * with the wallet or relay.
+   */
+  private async closeApprovedSession(
+    client: SignClient,
+    session: SessionTypes.Struct,
+    connectionAttempt: number
+  ): Promise<void> {
+    try {
+      await this.disconnectSession(
+        client,
+        session,
+        'Failed to disconnect unusable WalletConnect session:'
+      );
+    } finally {
+      // Do not let an older failed approval clear a newer connection attempt.
+      if (connectionAttempt === this.connectionAttemptGeneration) {
+        this.cleanup();
+      }
     }
   }
 
@@ -561,28 +898,38 @@ export class WalletConnectAdapter
    * Setup event listeners for session
    */
   private setupEventListeners(): void {
-    if (!this.client) return;
+    if (!this.client || !this.session) return;
 
     // Tear down any handlers from a previous session before re-binding, so
     // listeners don't accumulate across connect/disconnect cycles.
     this.removeEventListeners();
 
-    this.sessionDeleteHandler = () => this.cleanup();
-    this.sessionExpireHandler = () => this.cleanup();
+    const client = this.client;
+    const session = this.session;
+    const cleanupSession = (event: SessionLifecycleEvent): void => {
+      if (event.topic === session.topic && this.client === client && this.session === session) {
+        this.cleanup();
+      }
+    };
 
-    this.client.on('session_delete', this.sessionDeleteHandler);
-    this.client.on('session_expire', this.sessionExpireHandler);
+    this.eventListenerClient = client;
+    this.sessionDeleteHandler = cleanupSession;
+    this.sessionExpireHandler = cleanupSession;
+
+    client.on('session_delete', this.sessionDeleteHandler);
+    client.on('session_expire', this.sessionExpireHandler);
   }
 
   private removeEventListeners(): void {
-    if (this.client) {
+    if (this.eventListenerClient) {
       if (this.sessionDeleteHandler) {
-        this.client.off('session_delete', this.sessionDeleteHandler);
+        this.eventListenerClient.off('session_delete', this.sessionDeleteHandler);
       }
       if (this.sessionExpireHandler) {
-        this.client.off('session_expire', this.sessionExpireHandler);
+        this.eventListenerClient.off('session_expire', this.sessionExpireHandler);
       }
     }
+    this.eventListenerClient = null;
     this.sessionDeleteHandler = null;
     this.sessionExpireHandler = null;
   }
@@ -592,6 +939,12 @@ export class WalletConnectAdapter
    */
   private cleanup(): void {
     this.removeEventListeners();
+    const pending = this.pendingConnection;
+    this.pendingConnection = null;
+    if (pending) {
+      void this.closeConnectionProposal(pending);
+    }
+    void this.closeActiveConnectionProposals();
 
     // Close and cleanup modal
     if (this.modal) {
@@ -603,7 +956,8 @@ export class WalletConnectAdapter
     this.session = null;
     this.currentAccount = null;
     this.initializationPromise = null;
-    this.pendingConnection = null;
+    this.initializationProjectId = null;
+    this.clientProjectId = null;
   }
 
   /**

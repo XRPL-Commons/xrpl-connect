@@ -30,13 +30,6 @@ export const LOGGING = {
 } as const;
 
 /**
- * Account parsing configuration
- */
-export const ACCOUNT_FORMAT = {
-  ADDRESS_INDEX: 2, // Index of address in "xrpl:chainId:rAddress" format
-} as const;
-
-/**
  * XRPL WalletConnect namespace configuration
  */
 export const XRPL_NAMESPACE = {

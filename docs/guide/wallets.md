@@ -64,7 +64,7 @@ Connect-time options can override supported adapter settings. Configure Xaman re
 
 ## Networks
 
-Pass `mainnet`, `testnet`, `devnet`, or a supported `NetworkConfig` to `WalletManager`. Adapters validate the selected network and reject contradictory wallet responses. Start development on testnet and display the active network beside every signing action.
+Pass `mainnet`, `testnet`, `devnet`, or a supported `NetworkConfig` to `WalletManager`. Adapters validate the selected network and reject contradictory wallet responses. In particular, WalletConnect accepts only a well-formed CAIP-10 account with a valid XRPL classic address on the requested chain; malformed responses or sessions without a matching chain are disconnected and rejected. Start development on testnet and display the active network beside every signing action.
 
 ## Availability and ordering
 
