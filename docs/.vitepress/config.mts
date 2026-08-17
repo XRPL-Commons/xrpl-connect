@@ -46,7 +46,7 @@ export default defineConfig({
         ],
       },
       {
-        text: 'v1.0.0',
+        text: 'v1.0.0-rc.0',
         link: 'https://github.com/XRPL-Commons/xrpl-connect/releases',
       },
     ],
@@ -131,6 +131,7 @@ export default defineConfig({
   vite: {
     plugins: [
       llmstxt({
+        excludeIndexPage: false,
         generateLLMsFullTxt: true,
         ignoreFiles: [],
       }),

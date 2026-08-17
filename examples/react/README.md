@@ -75,15 +75,15 @@ The application will be available at [http://localhost:5173](http://localhost:51
 
 This example demonstrates how to integrate the XRPL Connect web component in a React application. Key integration points:
 
-### 1. Import xrpl-connect
+### 1. Import adapters from xrpl-connect
 
-First, import `xrpl-connect` in your entry point (`main.tsx`) to register the custom elements:
+Import the adapters you use from `xrpl-connect` in your entry point (`main.tsx`):
 
 ```typescript
-import 'xrpl-connect'; // Register web components
+import { XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
 ```
 
-This ensures the `<xrpl-wallet-connector>` custom element is registered before React renders.
+Loading any named export also registers the `<xrpl-wallet-connector>` custom element before React renders.
 
 ### 2. TypeScript Declarations
 

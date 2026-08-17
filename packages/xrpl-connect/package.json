@@ -53,7 +53,7 @@
   "scripts": {
     "build": "vp pack",
     "dev": "vp pack --watch",
-    "prepublishOnly": "node -e \"const { npm_config_tag: tag, npm_config_access: access } = process.env; if (tag !== 'rc' || access !== 'public') { console.error('Publish requires --tag rc --access public'); process.exit(1); }\"",
+    "prepublishOnly": "node -e \"const { npm_config_tag: tag, npm_config_access: access, npm_config_registry: registry } = process.env; if (tag !== 'rc' || access !== 'public' || registry !== 'https://registry.npmjs.org/') { console.error('Publish requires --tag rc --access public --registry https://registry.npmjs.org/'); process.exit(1); }\"",
     "publish:build": "vp run -F '{.}^...' --no-cache build && vp pack && vp build -c vite.config.ts && node scripts/build-types.mjs && node scripts/prepare-publish.mjs",
     "publish:rc": "node scripts/publish-rc.mjs",
     "test": "node scripts/run-command.test.mjs",

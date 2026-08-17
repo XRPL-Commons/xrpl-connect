@@ -18,9 +18,19 @@ const PUBLISH_CONFIG = {
   tag: 'rc',
 };
 const PUBLISH_GUARD =
-  "node -e \"const { npm_config_tag: tag, npm_config_access: access } = process.env; if (tag !== 'rc' || access !== 'public') { console.error('Publish requires --tag rc --access public'); process.exit(1); }\"";
+  "node -e \"const { npm_config_tag: tag, npm_config_access: access, npm_config_registry: registry } = process.env; if (tag !== 'rc' || access !== 'public' || registry !== 'https://registry.npmjs.org/') { console.error('Publish requires --tag rc --access public --registry https://registry.npmjs.org/'); process.exit(1); }\"";
+const inheritedPnpmConfig = [
+  'npm_config_peer_dependency_rules',
+  'npm_config_recursive',
+  'npm_config_verify_deps_before_run',
+  'npm_config_catalog',
+  'npm_config__jsr_registry',
+  'npm_config_overrides',
+  'npm_config__cypher_laboratory_registry',
+];
 const registryRunOptions = {
   env: { npm_config_cache: path.join(os.tmpdir(), 'xrpl-connect-registry-cache') },
+  unsetEnv: inheritedPnpmConfig,
 };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -28,6 +38,7 @@ const projectFolder = path.join(__dirname, '..');
 const repositoryRoot = path.join(projectFolder, '..', '..');
 const fixturesFolder = path.join(projectFolder, 'tests', 'publish');
 const reactFixturesFolder = path.join(repositoryRoot, 'packages', 'react', 'tests', 'publish');
+const vueFixturesFolder = path.join(repositoryRoot, 'packages', 'vue', 'tests', 'publish');
 const candidatePackages = [
   {
     name: 'xrpl-connect',
@@ -35,6 +46,7 @@ const candidatePackages = [
     requiredFiles: [
       'package.json',
       'README.md',
+      'LICENSE',
       'index.d.ts',
       'xrpl-connect.mjs',
       'xrpl-connect.umd.js',
@@ -46,6 +58,7 @@ const candidatePackages = [
     requiredFiles: [
       'package.json',
       'README.md',
+      'LICENSE',
       'dist/index.d.ts',
       'dist/index.d.mts',
       'dist/index.js',
@@ -58,6 +71,7 @@ const candidatePackages = [
     requiredFiles: [
       'package.json',
       'README.md',
+      'LICENSE',
       'dist/index.d.ts',
       'dist/index.d.mts',
       'dist/index.js',
@@ -85,7 +99,19 @@ function verifyNpmAccess() {
     : Object.prototype.hasOwnProperty.call(members, username);
 
   assert(isMember, `${username} is not a member of the @${NPM_ORGANIZATION} npm organization`);
+  const owners = run('npm', ['owner', 'ls', 'xrpl-connect', '--registry', NPM_REGISTRY], {
+    ...registryRunOptions,
+    capture: true,
+  })
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(/\s+/, 1)[0])
+    .filter(Boolean);
+  assert(
+    owners.includes(username),
+    `${username} is not an owner of the existing unscoped xrpl-connect package`
+  );
   console.log(`✓ ${username} can publish first-time packages under @${NPM_ORGANIZATION}`);
+  console.log(`✓ ${username} can publish the existing unscoped xrpl-connect package`);
 }
 
 function readRegistryTags(packageName) {
@@ -139,7 +165,10 @@ if (modes.has('--check-registry')) verifyRegistryTags();
 if (modes.size > 0) process.exit(0);
 
 const temporaryRoot = mkdtempSync(path.join(os.tmpdir(), 'xrpl-connect-publish-'));
-const runOptions = { env: { npm_config_cache: path.join(temporaryRoot, '.npm-cache') } };
+const runOptions = {
+  env: { npm_config_cache: path.join(temporaryRoot, '.npm-cache') },
+  unsetEnv: inheritedPnpmConfig,
+};
 
 try {
   const tarballs = [];
@@ -207,6 +236,7 @@ try {
       'react@^18.3.1',
       'react-dom@^18.3.1',
       'vue@^3.5.22',
+      '@vue/server-renderer@^3.5.22',
     ],
     { ...runOptions, cwd: consumerFolder }
   );
@@ -249,6 +279,28 @@ try {
       ),
     /Publish requires --tag rc --access public/
   );
+  assert.throws(
+    () =>
+      run(
+        'npm',
+        [
+          'publish',
+          '--dry-run',
+          '--tag',
+          'rc',
+          '--access',
+          'public',
+          '--registry',
+          'https://registry.example/',
+        ],
+        {
+          ...runOptions,
+          capture: true,
+          cwd: candidatePackages[0].folder,
+        }
+      ),
+    /Publish requires .*--registry https:\/\/registry\.npmjs\.org\//
+  );
   assert.equal(
     installedManifests['@xrpl-connect/react'].peerDependencies?.['xrpl-connect'],
     FRAMEWORK_PEER_RANGE
@@ -290,19 +342,28 @@ try {
     );
   }
 
-  const installedReactFolder = path.join(consumerFolder, 'node_modules', '@xrpl-connect', 'react');
-  for (const declaration of ['dist/index.d.ts', 'dist/index.d.mts']) {
-    const contents = readFileSync(path.join(installedReactFolder, declaration), 'utf-8');
-    assert(
-      !contents.includes('@xrpl-connect/core'),
-      `${declaration} leaks the development-only @xrpl-connect/core package`
+  for (const framework of ['react', 'vue']) {
+    const installedFrameworkFolder = path.join(
+      consumerFolder,
+      'node_modules',
+      '@xrpl-connect',
+      framework
     );
+    for (const declaration of ['dist/index.d.ts', 'dist/index.d.mts']) {
+      const contents = readFileSync(path.join(installedFrameworkFolder, declaration), 'utf-8');
+      assert(
+        !contents.includes('@xrpl-connect/core'),
+        `${framework}/${declaration} leaks the development-only @xrpl-connect/core package`
+      );
+    }
   }
 
   const fixtures = [
     'runtime-env.cjs',
     'runtime-esm.mjs',
     'runtime-cjs.cjs',
+    'runtime-ssr-esm.mjs',
+    'runtime-ssr-cjs.cjs',
     'types-esm.mts',
     'types-cjs.cts',
     'tsconfig.esm.json',
@@ -319,6 +380,13 @@ try {
   ]) {
     copyFileSync(path.join(reactFixturesFolder, fixture), path.join(consumerFolder, fixture));
   }
+  for (const fixture of ['types-vue-esm.mts', 'types-vue-cjs.cts', 'tsconfig.vue.json']) {
+    copyFileSync(path.join(vueFixturesFolder, fixture), path.join(consumerFolder, fixture));
+  }
+  copyFileSync(
+    path.join(vueFixturesFolder, 'runtime-ssr.mjs'),
+    path.join(consumerFolder, 'vue-runtime-ssr.mjs')
+  );
 
   const tscPath = path.join(repositoryRoot, 'node_modules', 'typescript', 'bin', 'tsc');
   console.log('→ Type-checking packed ESM consumer');
@@ -336,12 +404,23 @@ try {
     ...runOptions,
     cwd: consumerFolder,
   });
+  console.log('→ Type-checking packed Vue ESM and CommonJS consumers');
+  run(process.execPath, [tscPath, '--project', 'tsconfig.vue.json'], {
+    ...runOptions,
+    cwd: consumerFolder,
+  });
+  console.log('→ Loading packed umbrella ESM without browser globals');
+  run(process.execPath, ['runtime-ssr-esm.mjs'], { ...runOptions, cwd: consumerFolder });
+  console.log('→ Loading packed umbrella CommonJS without browser globals');
+  run(process.execPath, ['runtime-ssr-cjs.cjs'], { ...runOptions, cwd: consumerFolder });
   console.log('→ Loading packed ESM runtime');
   run(process.execPath, ['runtime-esm.mjs'], { ...runOptions, cwd: consumerFolder });
   console.log('→ Loading packed CommonJS runtime');
   run(process.execPath, ['runtime-cjs.cjs'], { ...runOptions, cwd: consumerFolder });
   console.log('→ Loading packed React ESM and CommonJS entries in SSR');
   run(process.execPath, ['runtime-ssr.mjs'], { ...runOptions, cwd: consumerFolder });
+  console.log('→ Loading packed Vue ESM and CommonJS entries in SSR');
+  run(process.execPath, ['vue-runtime-ssr.mjs'], { ...runOptions, cwd: consumerFolder });
 
   console.log('✓ Packed candidates passed manifest, publish, peer, runtime, and type checks');
 } finally {

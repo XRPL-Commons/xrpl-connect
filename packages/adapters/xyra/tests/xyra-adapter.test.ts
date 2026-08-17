@@ -85,6 +85,18 @@ describe('XyraAdapter.connect', () => {
       code: WalletErrorCode.CONNECTION_FAILED,
     });
   });
+
+  it('destroys an SDK that finishes initializing after the adapter is destroyed', async () => {
+    const adapter = new XyraAdapter();
+    const connection = adapter.connect();
+
+    adapter.destroy();
+
+    await expect(connection).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+    expect(mockSdk.destroy).toHaveBeenCalledOnce();
+  });
 });
 
 describe('XyraAdapter.sign', () => {

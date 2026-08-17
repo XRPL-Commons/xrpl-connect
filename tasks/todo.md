@@ -89,3 +89,33 @@ non-404 registry failures abort. Verification passed with a frozen install, the 
 tests, live read-only registry preflight, Vue type-checking, all three packed-candidate consumer
 checks, the docs production build, formatting over 238 files, linting over 94 files, the full
 recursive build/test suite, and both staged and cumulative diff checks.
+
+## Release-readiness follow-up
+
+- [x] Make the umbrella artifact genuinely safe to import without browser globals and add an
+      unmasked packed ESM/CommonJS SSR regression test.
+- [x] Make interrupted publishing recover missing `rc` tags, reject dirty source trees, pin the
+      lifecycle registry, and verify both scoped and unscoped npm permissions.
+- [x] Exercise the packed Vue artifact through ESM/CommonJS types, runtime loading, and SSR.
+- [x] Repair audited documentation, examples, licensing, version labels, release instructions,
+      workspace compatibility guidance, and supported-runtime CI coverage.
+- [x] Run the complete release verification matrix and review the cumulative diff.
+- [x] Sign, commit, push, and confirm PR #133 checks.
+
+### Follow-up result
+
+The four release blockers are resolved. The exact candidate artifacts now import without browser
+globals, packed Vue consumers cover both module systems plus SSR and NodeNext declarations, and the
+publisher rejects dirty or misconfigured releases while safely repairing an interrupted `rc` tag.
+Standalone Crossmark ESM/CommonJS interop, package licenses, CI runtime coverage, frozen installs,
+broken links, environment examples, RC labels, changelog state, and release instructions were also
+repaired. The UI peer remains intentionally at `@xrpl-connect/core@^0.8.3`: UI consumes the new
+shared `isMobile` API introduced after core 0.8.2, so widening it to 0.8.2 would advertise an
+incompatible standalone pairing; the v1 candidate bundles the workspace source and is unaffected.
+
+Verification passed the full recursive build/test suite, repository format/lint checks, docs and
+React example production builds, the exact frozen docs install, public npm registry preflight,
+standalone Crossmark module smoke tests, focused publisher and adapter tests, and the complete
+three-tarball strict-peer pack/install/type/runtime/SSR matrix. The production audit reports only
+the accepted, documented low-severity unpatched `elliptic` advisory in Crossmark's declaration-only
+dependency graph.

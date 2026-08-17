@@ -177,28 +177,30 @@ Maintainers cut releases as follows:
 1. Make sure `develop` is green and the `CHANGELOG.md` `[Unreleased]` section is up to date.
 2. Bump the version in the relevant `package.json` files and move the `[Unreleased]` entries into a new dated version section.
 3. Merge `develop` → `main` via PR.
-4. Tag the merge commit (e.g. `v0.8.0`) and push the tag. The publish workflow takes it from there.
+4. Publish from the clean merge commit using the maintainer release procedure, verify the registry, then tag that exact commit (for example, `v0.8.0`) and push the tag. Stable publishing is currently a maintainer-run operation; this repository does not have a tag-triggered publish workflow.
 
 If you are not a maintainer, you do not need to bump versions or update `main` in your PR — leave that to the release process.
 
 ### Release candidates
 
 Release candidates must never move the `latest` dist-tag. The candidate manifests declare the
-public npm registry and the `rc` tag, while the release command fixes those values, rejects missing
-confirmation, verifies npm access and registry state, rebuilds and dry-runs every artifact, and
-checks the resulting dist-tags:
+public npm registry and the `rc` tag, while the release command fixes those values, rejects dirty
+source trees or missing confirmation, verifies npm access, package ownership, and registry state,
+rebuilds and dry-runs every artifact, and checks the resulting dist-tags:
 
 ```bash
-pnpm --filter xrpl-connect publish:rc --confirm 1.0.0-rc.0
+pnpm --filter xrpl-connect run publish:rc -- --confirm 1.0.0-rc.0
 ```
 
 The preflight requires `xrpl-connect@latest` at `0.8.2`; each candidate must be either unpublished
-or already tagged at the exact confirmed version. The packed candidate test performs each dry-run
-and installs the exact tarballs together with strict peer checking. The publisher skips exact
-candidates that a previous attempt already uploaded, then the final registry check requires `rc` to
-point to the candidate, keeps the umbrella `latest` at `0.8.2`, and rejects unintended framework
-`latest` tags. If an attempt is interrupted, rerun the same command; do not bypass it with a manual
-publish.
+or already present at the exact confirmed version. The packed candidate test performs each dry-run
+and installs the exact tarballs together with strict peer checking. For an exact candidate uploaded
+by an interrupted attempt, the publisher verifies its immutable integrity and restores the `rc` tag.
+The final registry check requires `rc` to point to the candidate, keeps the umbrella `latest` at
+`0.8.2`, and rejects unintended framework `latest` tags. If an attempt is interrupted, rerun the same
+command; do not bypass it with a manual publish. Before running it, move the changelog entries into
+a dated `[1.0.0-rc.0]` section, reset `[Unreleased]`, and commit those release changes. After the
+registry verification succeeds, tag that same clean commit as `v1.0.0-rc.0` and push the tag.
 
 ## Reporting Security Issues
 

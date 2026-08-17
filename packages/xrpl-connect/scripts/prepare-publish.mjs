@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootPkgPath = path.join(__dirname, '../package.json');
 const distPkgPath = path.join(__dirname, '../dist-publish/package.json');
+const licensePath = path.join(__dirname, '../../../LICENSE');
 
 // Read main package.json
 const mainPkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf-8'));
@@ -103,4 +104,5 @@ if (!fs.existsSync(distDir)) {
 
 // Write the package.json
 fs.writeFileSync(distPkgPath, JSON.stringify(distPkg, null, 2) + '\n');
+fs.copyFileSync(licensePath, path.join(distDir, 'LICENSE'));
 console.log('✓ Updated dist-publish/package.json with version', mainPkg.version);

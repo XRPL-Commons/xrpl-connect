@@ -9,8 +9,6 @@
  * @example
  * ```typescript
  * import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
- * import 'xrpl-connect/ui';
- *
  * const walletManager = new WalletManager({
  *   adapters: [new XamanAdapter(), new CrossmarkAdapter()],
  *   network: 'testnet',

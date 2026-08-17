@@ -3,10 +3,12 @@ import crossSpawn from 'cross-spawn';
 /** Create a command runner with argv preserved across platform command shims. */
 export function createCommandRunner(spawnSync) {
   return function run(command, args, options = {}) {
+    const env = { ...process.env, ...options.env };
+    for (const key of options.unsetEnv ?? []) delete env[key];
     const result = spawnSync(command, args, {
       cwd: options.cwd,
       encoding: 'utf-8',
-      env: { ...process.env, ...options.env },
+      env,
       stdio: options.capture ? 'pipe' : 'inherit',
     });
 

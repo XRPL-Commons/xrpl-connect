@@ -14,7 +14,7 @@ pnpm add xrpl-connect@rc @xrpl-connect/react@rc xrpl react react-dom
 
 ## Configure the provider
 
-Create the adapter configuration once, outside component render. Recreating it on every render can replace connection ownership and restart automatic reconnection.
+Create the adapter configuration once, outside component render. Recreating it on every render can replace connection ownership and restart automatic reconnection. This Vite example uses client-visible `VITE_*` variables:
 
 ```tsx
 import { XrplConnectProvider, WalletConnector } from '@xrpl-connect/react';
@@ -138,8 +138,20 @@ The package is safe to import during server rendering. Provider and wallet UI us
 'use client';
 
 import { XrplConnectProvider, WalletConnector } from '@xrpl-connect/react';
+import type { ReactNode } from 'react';
+import { WalletConnectAdapter, XamanAdapter } from 'xrpl-connect';
 
-export function WalletProviders({ children }: { children: React.ReactNode }) {
+const config = {
+  adapters: [
+    new XamanAdapter({ apiKey: process.env.NEXT_PUBLIC_XAMAN_API_KEY! }),
+    new WalletConnectAdapter({
+      projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!,
+    }),
+  ],
+  network: 'testnet' as const,
+};
+
+export function WalletProviders({ children }: { children: ReactNode }) {
   return (
     <XrplConnectProvider config={config}>
       {children}

@@ -10,9 +10,19 @@ const LATEST_VERSION = '0.8.2';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectFolder = path.join(__dirname, '..');
 const repositoryRoot = path.join(projectFolder, '..', '..');
+const inheritedPnpmConfig = [
+  'npm_config_peer_dependency_rules',
+  'npm_config_recursive',
+  'npm_config_verify_deps_before_run',
+  'npm_config_catalog',
+  'npm_config__jsr_registry',
+  'npm_config_overrides',
+  'npm_config__cypher_laboratory_registry',
+];
 const registryRunOptions = {
   capture: true,
   env: { npm_config_cache: path.join(os.tmpdir(), 'xrpl-connect-registry-cache') },
+  unsetEnv: inheritedPnpmConfig,
 };
 const candidatePackages = [
   { name: 'xrpl-connect', folder: path.join(projectFolder, 'dist-publish') },
@@ -37,12 +47,17 @@ export function assertSafePrepublishRegistryState(tagsByPackage) {
   for (const packageName of ['@xrpl-connect/react', '@xrpl-connect/vue']) {
     const tags = tagsByPackage[packageName];
     if (tags === null) continue;
-    assert.deepEqual(
-      tags,
-      { rc: CANDIDATE_VERSION },
-      `${packageName} must be unpublished or expose only the confirmed rc tag`
-    );
+    const expectedTags = tags.rc === undefined ? {} : { rc: CANDIDATE_VERSION };
+    assert.deepEqual(tags, expectedTags, `${packageName} has unexpected dist-tags`);
   }
+}
+
+function assertCleanReleaseWorktree(run) {
+  const status = run('git', ['status', '--porcelain=v1', '--untracked-files=all'], {
+    cwd: repositoryRoot,
+    capture: true,
+  }).trim();
+  assert.equal(status, '', `Release worktree must be clean:\n${status}`);
 }
 
 function readLocalCandidateIntegrity(run, { name, folder }) {
@@ -87,10 +102,13 @@ export function createRcPublisher(run = defaultRun) {
       `Refusing to publish without --confirm ${CANDIDATE_VERSION}`
     );
 
+    assertCleanReleaseWorktree(run);
+
     run(process.execPath, ['scripts/test-publish.mjs', '--check-access', '--check-prepublish'], {
       cwd: projectFolder,
     });
     run('pnpm', ['test:publish'], { cwd: projectFolder });
+    assertCleanReleaseWorktree(run);
 
     for (const candidate of candidatePackages) {
       const { name, folder } = candidate;
@@ -102,10 +120,17 @@ export function createRcPublisher(run = defaultRun) {
           localIntegrity,
           `${name}@${CANDIDATE_VERSION} is already published with different contents`
         );
-        console.log(`↷ ${name}@${CANDIDATE_VERSION} is already published; skipping`);
+        run(
+          'npm',
+          ['dist-tag', 'add', `${name}@${CANDIDATE_VERSION}`, 'rc', '--registry', NPM_REGISTRY],
+          { ...registryRunOptions, capture: false }
+        );
+        console.log(`↷ ${name}@${CANDIDATE_VERSION} already exists; ensured the rc tag`);
         continue;
       }
       run('npm', ['publish', '--tag', 'rc', '--access', 'public', '--registry', NPM_REGISTRY], {
+        ...registryRunOptions,
+        capture: false,
         cwd: folder,
       });
     }

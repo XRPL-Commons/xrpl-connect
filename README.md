@@ -129,10 +129,10 @@ const address = await GemWalletAPI.getAddress();
 
 ## 📚 Documentation
 
-- **[Getting Started Guide](./docs/GETTING_STARTED.md)** - Complete introduction to XRPL Connect
-- **[Vanilla JS Integration](./docs/VANILLA_JS.md)** - Using XRPL Connect with vanilla JavaScript
-- **[React Integration](./docs/REACT.md)** - React integration patterns and best practices
-- **[Vue Integration](./docs/VUE.md)** - Vue 3 integration guide
+- **[Getting Started Guide](./docs/guide/getting-started.md)** - Complete introduction to XRPL Connect
+- **[Vanilla JS Integration](./docs/guide/frameworks/vanilla-js.md)** - Using XRPL Connect with vanilla JavaScript
+- **[React Integration](./docs/guide/frameworks/react.md)** - React integration patterns and best practices
+- **[Vue Integration](./docs/guide/frameworks/vue.md)** - Vue 3 integration guide
 
 ## 🏗️ Architecture
 

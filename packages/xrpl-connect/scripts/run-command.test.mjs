@@ -16,7 +16,12 @@ test('run preserves command arguments without invoking a shell', () => {
   const commandArgs = ['install', 'C:\\Temp Folder\\package.tgz'];
 
   assert.equal(
-    run('npm', commandArgs, { capture: true, cwd: 'consumer', env: { TEST_ENV: 'set' } }),
+    run('npm', commandArgs, {
+      capture: true,
+      cwd: 'consumer',
+      env: { TEST_ENV: 'set', TEST_REMOVED: 'remove-me' },
+      unsetEnv: ['TEST_REMOVED'],
+    }),
     'packed'
   );
   assert.equal(calls.length, 1);
@@ -24,6 +29,7 @@ test('run preserves command arguments without invoking a shell', () => {
   assert.strictEqual(calls[0][1], commandArgs);
   assert.equal(calls[0][2].cwd, 'consumer');
   assert.equal(calls[0][2].env.TEST_ENV, 'set');
+  assert.equal('TEST_REMOVED' in calls[0][2].env, false);
   assert.equal(calls[0][2].stdio, 'pipe');
   assert.equal('shell' in calls[0][2], false);
 });
@@ -69,8 +75,13 @@ test('RC registry preflight accepts only fresh, partial, or complete candidate s
     ...partial,
     '@xrpl-connect/vue': { rc: CANDIDATE_VERSION },
   };
+  const interrupted = {
+    'xrpl-connect': { latest: '0.8.2' },
+    '@xrpl-connect/react': {},
+    '@xrpl-connect/vue': null,
+  };
 
-  for (const state of [pristine, partial, complete]) {
+  for (const state of [pristine, partial, complete, interrupted]) {
     assert.doesNotThrow(() => assertSafePrepublishRegistryState(state));
   }
   assert.throws(
@@ -87,7 +98,7 @@ test('RC registry preflight accepts only fresh, partial, or complete candidate s
         ...pristine,
         '@xrpl-connect/react': { latest: CANDIDATE_VERSION },
       }),
-    /must be unpublished or expose only the confirmed rc tag/
+    /unexpected dist-tags/
   );
 });
 
@@ -95,6 +106,7 @@ function recordPublisherCalls(publishedPackages = new Set()) {
   const calls = [];
   const publishRc = createRcPublisher((command, args, options) => {
     calls.push({ command, args, cwd: options.cwd });
+    if (command === 'git') return '';
     if (command === 'npm' && args[0] === 'pack') {
       const name = options.cwd.endsWith('dist-publish')
         ? 'xrpl-connect'
@@ -117,13 +129,13 @@ test('RC publisher preflights, verifies, and publishes only through the fixed re
 
   publishRc(['--', '--confirm', CANDIDATE_VERSION]);
 
-  assert.equal(calls.length, 12);
-  assert.deepEqual(calls[0].args, [
+  assert.equal(calls.length, 14);
+  assert.deepEqual(calls[1].args, [
     'scripts/test-publish.mjs',
     '--check-access',
     '--check-prepublish',
   ]);
-  assert.deepEqual(calls[1].args, ['test:publish']);
+  assert.deepEqual(calls[2].args, ['test:publish']);
   const publishCalls = calls.filter(({ args }) => args[0] === 'publish');
   assert.equal(publishCalls.length, 3);
   for (const call of publishCalls) {
@@ -141,7 +153,7 @@ test('RC publisher preflights, verifies, and publishes only through the fixed re
   assert.deepEqual(calls.at(-1).args, ['scripts/test-publish.mjs', '--check-registry']);
 });
 
-test('RC publisher resumes by skipping exact candidates already on npm', () => {
+test('RC publisher resumes by restoring rc tags for exact candidates already on npm', () => {
   const { calls, publishRc } = recordPublisherCalls(
     new Set(['xrpl-connect', '@xrpl-connect/react'])
   );
@@ -151,6 +163,28 @@ test('RC publisher resumes by skipping exact candidates already on npm', () => {
   const publishCalls = calls.filter(({ args }) => args[0] === 'publish');
   assert.equal(publishCalls.length, 1);
   assert.match(publishCalls[0].cwd, /packages[/\\]vue$/);
+  const tagCalls = calls.filter(({ args }) => args[0] === 'dist-tag');
+  assert.deepEqual(
+    tagCalls.map(({ args }) => args),
+    [
+      [
+        'dist-tag',
+        'add',
+        `xrpl-connect@${CANDIDATE_VERSION}`,
+        'rc',
+        '--registry',
+        'https://registry.npmjs.org/',
+      ],
+      [
+        'dist-tag',
+        'add',
+        `@xrpl-connect/react@${CANDIDATE_VERSION}`,
+        'rc',
+        '--registry',
+        'https://registry.npmjs.org/',
+      ],
+    ]
+  );
   assert.deepEqual(calls.at(-1).args, ['scripts/test-publish.mjs', '--check-registry']);
 });
 
@@ -158,6 +192,7 @@ test('RC publisher rejects a published candidate with different contents', () =>
   const calls = [];
   const publishRc = createRcPublisher((command, args, options) => {
     calls.push({ command, args, cwd: options.cwd });
+    if (command === 'git') return '';
     if (command === 'npm' && args[0] === 'pack') {
       return JSON.stringify([
         { name: 'xrpl-connect', version: CANDIDATE_VERSION, integrity: 'local-integrity' },
@@ -179,6 +214,7 @@ test('RC publisher rejects a published candidate with different contents', () =>
 test('RC publisher propagates registry failures other than a missing candidate', () => {
   const registryError = new Error('npm view failed with code E500');
   const publishRc = createRcPublisher((command, args) => {
+    if (command === 'git') return '';
     if (command === 'npm' && args[0] === 'pack') {
       return JSON.stringify([
         {
@@ -194,5 +230,22 @@ test('RC publisher propagates registry failures other than a missing candidate',
   assert.throws(
     () => publishRc(['--confirm', CANDIDATE_VERSION]),
     (error) => error === registryError
+  );
+});
+
+test('RC publisher rejects a dirty release worktree before running release checks', () => {
+  const calls = [];
+  const publishRc = createRcPublisher((command, args) => {
+    calls.push({ command, args });
+    if (command === 'git') return ' M packages/xrpl-connect/package.json';
+  });
+
+  assert.throws(
+    () => publishRc(['--confirm', CANDIDATE_VERSION]),
+    /Release worktree must be clean.*package\.json/s
+  );
+  assert.deepEqual(
+    calls.map(({ command }) => command),
+    ['git']
   );
 });
