@@ -43,7 +43,8 @@
     "dev": "vp pack --watch",
     "lint": "vp lint src",
     "type-check": "tsc --noEmit",
-    "test": "node tests/ssr-smoke.mjs && vp test run",
+    "test": "pnpm test:types && node tests/ssr-smoke.mjs && vp test run",
+    "test:types": "tsc -p tests/tsconfig.types.json",
     "test:watch": "vp test",
     "clean": "rm -rf dist"
   },
