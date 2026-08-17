@@ -48,6 +48,13 @@ From the monorepo root:
 pnpm install
 ```
 
+The monorepo uses workspace links. When copying this example into a standalone project, install
+the published release candidates explicitly:
+
+```bash
+pnpm add @xrpl-connect/react@rc xrpl-connect@rc xrpl react react-dom
+```
+
 ### 4. Run Development Server
 
 From this directory:

@@ -3,11 +3,12 @@ import crossSpawn from 'cross-spawn';
 /** Create a command runner with argv preserved across platform command shims. */
 export function createCommandRunner(spawnSync) {
   return function run(command, args, options = {}) {
+    const capturesOutput = options.capture || options.captureResult;
     const result = spawnSync(command, args, {
       cwd: options.cwd,
       encoding: 'utf-8',
       env: { ...process.env, ...options.env },
-      stdio: options.capture ? 'pipe' : 'inherit',
+      stdio: capturesOutput ? 'pipe' : 'inherit',
     });
 
     if (result.error) {
@@ -20,6 +21,9 @@ export function createCommandRunner(spawnSync) {
       );
     }
 
+    if (options.captureResult) {
+      return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+    }
     return result.stdout;
   };
 }

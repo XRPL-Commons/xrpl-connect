@@ -10,7 +10,7 @@ XRPL Connect's modal is a browser custom element. In Nuxt, register it and insta
 ## Installation
 
 ```bash
-npm install @xrpl-connect/vue@^1.0.0 xrpl-connect@^1.0.0 xrpl vue
+npm install @xrpl-connect/vue@rc xrpl-connect@rc xrpl vue
 ```
 
 ## Client plugin

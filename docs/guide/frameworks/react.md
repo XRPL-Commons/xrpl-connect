@@ -9,7 +9,7 @@ Use the official React bindings instead of building a custom context around the 
 ## Install
 
 ```bash
-pnpm add xrpl-connect@^1.0.0 @xrpl-connect/react@^1.0.0 xrpl react react-dom
+pnpm add xrpl-connect@rc @xrpl-connect/react@rc xrpl react react-dom
 ```
 
 ## Configure the provider

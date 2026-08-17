@@ -1,17 +1,22 @@
 {
   "name": "@xrpl-connect/react",
-  "version": "0.8.2",
+  "version": "1.0.0-rc.0",
   "description": "React bindings (provider, hooks, modal component) for XRPL Connect",
   "author": "XRPL Connect Contributors",
   "license": "MIT",
   "homepage": "https://github.com/XRPL-Commons/xrpl-connect#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/XRPL-Commons/xrpl-connect",
+    "url": "git+https://github.com/XRPL-Commons/xrpl-connect.git",
     "directory": "packages/react"
   },
   "bugs": {
     "url": "https://github.com/XRPL-Commons/xrpl-connect/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "tag": "rc"
   },
   "keywords": [
     "xrpl",
@@ -41,6 +46,7 @@
   "scripts": {
     "build": "vp pack && node scripts/prepare-types.mjs",
     "dev": "vp pack --watch",
+    "prepublishOnly": "node -e \"const { npm_config_tag: tag, npm_config_access: access } = process.env; if (tag !== 'rc' || access !== 'public') { console.error('Publish requires --tag rc --access public'); process.exit(1); }\"",
     "lint": "vp lint src",
     "type-check": "tsc --noEmit",
     "test": "node tests/ssr-smoke.mjs && vp test run",
@@ -51,7 +57,7 @@
     "react": "^18.0.0 || ^19.0.0",
     "react-dom": "^18.0.0 || ^19.0.0",
     "xrpl": "^3.0.0 || ^4.0.0",
-    "xrpl-connect": "^0.8.0"
+    "xrpl-connect": "^1.0.0-rc.0"
   },
   "devDependencies": {
     "@microsoft/api-extractor": "^7.47.0",

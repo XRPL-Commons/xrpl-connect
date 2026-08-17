@@ -5,35 +5,165 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { run } from './run-command.mjs';
 
+const CANDIDATE_VERSION = '1.0.0-rc.0';
+const FRAMEWORK_PEER_RANGE = '^1.0.0-rc.0';
+const NPM_ORGANIZATION = 'xrpl-connect';
+const NPM_REGISTRY = 'https://registry.npmjs.org/';
+const PUBLISH_CONFIG = {
+  access: 'public',
+  registry: NPM_REGISTRY,
+  tag: 'rc',
+};
+const PUBLISH_GUARD =
+  "node -e \"const { npm_config_tag: tag, npm_config_access: access } = process.env; if (tag !== 'rc' || access !== 'public') { console.error('Publish requires --tag rc --access public'); process.exit(1); }\"";
+const registryRunOptions = {
+  env: { npm_config_cache: path.join(os.tmpdir(), 'xrpl-connect-registry-cache') },
+};
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectFolder = path.join(__dirname, '..');
 const repositoryRoot = path.join(projectFolder, '..', '..');
-const publishFolder = path.join(projectFolder, 'dist-publish');
 const fixturesFolder = path.join(projectFolder, 'tests', 'publish');
-const temporaryRoot = mkdtempSync(path.join(os.tmpdir(), 'xrpl-connect-publish-'));
+const candidatePackages = [
+  {
+    name: 'xrpl-connect',
+    folder: path.join(projectFolder, 'dist-publish'),
+    requiredFiles: [
+      'package.json',
+      'README.md',
+      'index.d.ts',
+      'xrpl-connect.mjs',
+      'xrpl-connect.umd.js',
+    ],
+  },
+  {
+    name: '@xrpl-connect/react',
+    folder: path.join(repositoryRoot, 'packages', 'react'),
+    requiredFiles: [
+      'package.json',
+      'README.md',
+      'dist/index.d.ts',
+      'dist/index.js',
+      'dist/index.mjs',
+    ],
+  },
+  {
+    name: '@xrpl-connect/vue',
+    folder: path.join(repositoryRoot, 'packages', 'vue'),
+    requiredFiles: [
+      'package.json',
+      'README.md',
+      'dist/index.d.ts',
+      'dist/index.js',
+      'dist/index.mjs',
+    ],
+  },
+];
 
+function parseJson(command, args, options) {
+  return JSON.parse(run(command, args, { ...options, capture: true }));
+}
+
+function verifyNpmAccess() {
+  const username = run('npm', ['whoami', '--registry', NPM_REGISTRY], {
+    ...registryRunOptions,
+    capture: true,
+  }).trim();
+  const members = parseJson(
+    'npm',
+    ['org', 'ls', NPM_ORGANIZATION, '--json', '--registry', NPM_REGISTRY],
+    registryRunOptions
+  );
+  const isMember = Array.isArray(members)
+    ? members.includes(username)
+    : Object.prototype.hasOwnProperty.call(members, username);
+
+  assert(isMember, `${username} is not a member of the @${NPM_ORGANIZATION} npm organization`);
+  console.log(`✓ ${username} can publish first-time packages under @${NPM_ORGANIZATION}`);
+}
+
+function readRegistryTags(packageName) {
+  return parseJson(
+    'npm',
+    ['view', packageName, 'dist-tags', '--json', '--registry', NPM_REGISTRY],
+    registryRunOptions
+  );
+}
+
+function verifyPrepublishRegistryState() {
+  assert.deepEqual(readRegistryTags('xrpl-connect'), { latest: '0.8.2' });
+  for (const packageName of ['@xrpl-connect/react', '@xrpl-connect/vue']) {
+    assert.throws(() => readRegistryTags(packageName), /E404/);
+  }
+  console.log('✓ Registry preflight preserves xrpl-connect@latest and finds no package collisions');
+}
+
+function verifyRegistryTags() {
+  const tagsByPackage = Object.fromEntries(
+    candidatePackages.map(({ name }) => [name, readRegistryTags(name)])
+  );
+
+  assert.deepEqual(tagsByPackage['xrpl-connect'], {
+    latest: '0.8.2',
+    rc: CANDIDATE_VERSION,
+  });
+  assert.deepEqual(tagsByPackage['@xrpl-connect/react'], { rc: CANDIDATE_VERSION });
+  assert.deepEqual(tagsByPackage['@xrpl-connect/vue'], { rc: CANDIDATE_VERSION });
+  console.log('✓ Registry tags expose only the intended release candidate and preserve latest');
+}
+
+const modes = new Set(process.argv.slice(2));
+const knownModes = new Set(['--check-access', '--check-prepublish', '--check-registry']);
+for (const mode of modes) {
+  assert(knownModes.has(mode), `Unknown argument: ${mode}`);
+}
+
+if (modes.has('--check-access')) verifyNpmAccess();
+if (modes.has('--check-prepublish')) verifyPrepublishRegistryState();
+if (modes.has('--check-registry')) verifyRegistryTags();
+if (modes.size > 0) process.exit(0);
+
+const temporaryRoot = mkdtempSync(path.join(os.tmpdir(), 'xrpl-connect-publish-'));
 const runOptions = { env: { npm_config_cache: path.join(temporaryRoot, '.npm-cache') } };
 
 try {
-  const packOutput = run('npm', ['pack', '--json', '--pack-destination', temporaryRoot], {
-    ...runOptions,
-    cwd: publishFolder,
-    capture: true,
-  });
-  const [packMetadata] = JSON.parse(packOutput);
-  const packedFiles = new Set(packMetadata.files.map((file) => file.path));
+  const tarballs = [];
+  for (const candidate of candidatePackages) {
+    const [packMetadata] = parseJson(
+      'npm',
+      ['pack', '--json', '--pack-destination', temporaryRoot],
+      { ...runOptions, cwd: candidate.folder }
+    );
+    assert.equal(packMetadata.name, candidate.name);
+    assert.equal(packMetadata.version, CANDIDATE_VERSION);
 
-  for (const requiredFile of [
-    'package.json',
-    'README.md',
-    'index.d.ts',
-    'xrpl-connect.mjs',
-    'xrpl-connect.umd.js',
-  ]) {
-    assert(packedFiles.has(requiredFile), `Packed package is missing ${requiredFile}`);
+    const packedFiles = new Set(packMetadata.files.map((file) => file.path));
+    for (const requiredFile of candidate.requiredFiles) {
+      assert(packedFiles.has(requiredFile), `${candidate.name} is missing ${requiredFile}`);
+    }
+
+    tarballs.push(path.join(temporaryRoot, packMetadata.filename));
+    console.log(`→ Dry-running ${candidate.name}@${CANDIDATE_VERSION}`);
+    run(
+      'npm',
+      [
+        'publish',
+        '--dry-run',
+        '--json',
+        '--tag',
+        'rc',
+        '--access',
+        'public',
+        '--registry',
+        NPM_REGISTRY,
+      ],
+      {
+        ...runOptions,
+        cwd: candidate.folder,
+      }
+    );
   }
 
-  const tarballPath = path.join(temporaryRoot, packMetadata.filename);
   const consumerFolder = path.join(temporaryRoot, 'consumer');
   mkdirSync(consumerFolder);
   writeFileSync(
@@ -45,24 +175,89 @@ try {
     )
   );
 
-  run(
+  const installResult = run(
     'npm',
     [
       'install',
+      '--strict-peer-deps',
       '--ignore-scripts',
       '--no-audit',
       '--no-fund',
       '--package-lock=false',
-      tarballPath,
+      ...tarballs,
       'xrpl@^4.0.0',
       'jsdom@^22.1.0',
+      'react@^18.3.1',
+      'react-dom@^18.3.1',
+      'vue@^3.5.22',
     ],
-    { ...runOptions, cwd: consumerFolder }
+    { ...runOptions, captureResult: true, cwd: consumerFolder }
+  );
+  const installOutput = `${installResult.stdout}\n${installResult.stderr}`;
+  assert.doesNotMatch(installOutput, /npm warn.*(?:peer|ERESOLVE)|ERESOLVE.*peer/i);
+  console.log('✓ Clean candidate install completed without peer warnings');
+
+  const installedManifests = Object.fromEntries(
+    candidatePackages.map(({ name }) => [
+      name,
+      JSON.parse(
+        readFileSync(path.join(consumerFolder, 'node_modules', name, 'package.json'), 'utf-8')
+      ),
+    ])
   );
 
-  const installedManifest = JSON.parse(
-    readFileSync(path.join(consumerFolder, 'node_modules', 'xrpl-connect', 'package.json'), 'utf-8')
+  for (const [name, manifest] of Object.entries(installedManifests)) {
+    assert.equal(manifest.version, CANDIDATE_VERSION, `${name} has the wrong packed version`);
+    assert.deepEqual(manifest.publishConfig, PUBLISH_CONFIG, `${name} has unsafe publish defaults`);
+    assert.equal(manifest.scripts?.prepublishOnly, PUBLISH_GUARD, `${name} has no publish guard`);
+  }
+
+  assert.throws(
+    () =>
+      run(
+        'npm',
+        [
+          'publish',
+          '--dry-run',
+          '--tag',
+          'latest',
+          '--access',
+          'public',
+          '--registry',
+          NPM_REGISTRY,
+        ],
+        {
+          ...runOptions,
+          capture: true,
+          cwd: candidatePackages[0].folder,
+        }
+      ),
+    /Publish requires --tag rc --access public/
   );
+  assert.equal(
+    installedManifests['@xrpl-connect/react'].peerDependencies?.['xrpl-connect'],
+    FRAMEWORK_PEER_RANGE
+  );
+  assert.equal(
+    installedManifests['@xrpl-connect/vue'].peerDependencies?.['xrpl-connect'],
+    FRAMEWORK_PEER_RANGE
+  );
+  assert.deepEqual(installedManifests['xrpl-connect'].peerDependencies, {
+    xrpl: '^3.0.0 || ^4.0.0',
+  });
+  assert.deepEqual(installedManifests['@xrpl-connect/react'].peerDependencies, {
+    react: '^18.0.0 || ^19.0.0',
+    'react-dom': '^18.0.0 || ^19.0.0',
+    xrpl: '^3.0.0 || ^4.0.0',
+    'xrpl-connect': FRAMEWORK_PEER_RANGE,
+  });
+  assert.deepEqual(installedManifests['@xrpl-connect/vue'].peerDependencies, {
+    vue: '^3.5.0',
+    xrpl: '^3.0.0 || ^4.0.0',
+    'xrpl-connect': FRAMEWORK_PEER_RANGE,
+  });
+
+  const umbrellaManifest = installedManifests['xrpl-connect'];
   for (const dependency of [
     '@walletconnect/types',
     '@xyrawallet/sdk',
@@ -75,8 +270,8 @@ try {
     '@types/node-forge',
   ]) {
     assert(
-      installedManifest.dependencies?.[dependency],
-      `Published manifest is missing ${dependency}`
+      umbrellaManifest.dependencies?.[dependency],
+      `Published xrpl-connect manifest is missing ${dependency}`
     );
   }
 
@@ -109,7 +304,9 @@ try {
   console.log('→ Loading packed CommonJS runtime');
   run(process.execPath, ['runtime-cjs.cjs'], { ...runOptions, cwd: consumerFolder });
 
-  console.log('✓ Packed xrpl-connect package passed ESM, CommonJS, and TypeScript consumer tests');
+  console.log(
+    '✓ Packed candidates passed manifest, publish, and peer checks; xrpl-connect passed runtime and type checks'
+  );
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true });
 }

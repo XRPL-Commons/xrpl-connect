@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - UI: `<xrpl-wallet-connector>.openAndWait()` opens the modal and returns a `Promise<AccountInfo>` that resolves when a wallet connects and rejects if the user closes the modal first — so callers can `await` a connection in one call instead of wiring up `connected` / `close` listeners.
 - UI: the wallet list now surfaces the most-recently-used wallet first. The connector remembers the last-used wallets (localStorage) and orders the list by usage, keeping the original order for wallets with no history. An explicit `primary-wallet` still takes precedence.
 
+### Changed
+
+- Release: prepare `xrpl-connect`, `@xrpl-connect/react`, and `@xrpl-connect/vue` as `1.0.0-rc.0` with RC-compatible peers, guarded `rc` publishing defaults, and combined packed-artifact verification (#119).
+
 ### Fixed
 
 - MetaMask Snap adapter: discover MetaMask through EIP-6963 without polluting global provider types, invalidate partial reconnects, accept queued submissions, reject lossy byte-message decoding, and preserve typed wallet errors.

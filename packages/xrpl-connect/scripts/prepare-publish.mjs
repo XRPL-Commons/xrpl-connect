@@ -87,6 +87,8 @@ const distPkg = {
   // bundle) to resolve. Without this, npm gives no peer hint and a type-only
   // consumer who hasn't installed `xrpl` gets an unresolved import.
   peerDependencies: mainPkg.peerDependencies,
+  publishConfig: mainPkg.publishConfig,
+  scripts: { prepublishOnly: mainPkg.scripts.prepublishOnly },
   keywords: mainPkg.keywords,
   repository: mainPkg.repository,
   bugs: mainPkg.bugs,

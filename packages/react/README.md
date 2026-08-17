@@ -7,7 +7,7 @@ modal component — so you configure your wallets once and never re-create objec
 ## Install
 
 ```bash
-npm install @xrpl-connect/react xrpl-connect xrpl
+npm install @xrpl-connect/react@rc xrpl-connect@rc xrpl react react-dom
 ```
 
 > `react` / `react-dom` are peer dependencies. The web component is registered by

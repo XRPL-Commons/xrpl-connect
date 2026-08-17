@@ -7,7 +7,7 @@ description: Upgrade applications from pre-1.0 XRPL Connect releases to v1.0.
 v1.0 stabilizes the manager, adapter, UI, React, and Vue surfaces. Upgrade all XRPL Connect packages together and retest wallet-specific flows.
 
 ```bash
-pnpm up xrpl-connect@^1.0.0 @xrpl-connect/react@^1.0.0 @xrpl-connect/vue@^1.0.0
+pnpm up xrpl-connect@rc @xrpl-connect/react@rc @xrpl-connect/vue@rc
 ```
 
 ## Required checks

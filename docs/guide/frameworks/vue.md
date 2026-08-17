@@ -11,7 +11,7 @@ in the application.
 ## Installation
 
 ```bash
-npm install @xrpl-connect/vue@^1.0.0 xrpl-connect@^1.0.0 xrpl vue
+npm install @xrpl-connect/vue@rc xrpl-connect@rc xrpl vue
 ```
 
 ## Configure the plugin

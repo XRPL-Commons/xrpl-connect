@@ -181,6 +181,23 @@ Maintainers cut releases as follows:
 
 If you are not a maintainer, you do not need to bump versions or update `main` in your PR — leave that to the release process.
 
+### Release candidates
+
+Release candidates must never move the `latest` dist-tag. The candidate manifests declare the
+public npm registry and the `rc` tag, while the release command fixes those values, rejects missing
+confirmation, verifies npm access and registry state, rebuilds and dry-runs every artifact, and
+checks the resulting dist-tags:
+
+```bash
+pnpm --filter xrpl-connect publish:rc -- --confirm 1.0.0-rc.0
+```
+
+The preflight requires `xrpl-connect@latest` at `0.8.2` and both scoped package names to be
+unpublished. The packed candidate test performs each dry-run and installs the exact tarballs
+together with strict peer checking. The final registry check requires `rc` to point to the candidate,
+keeps the umbrella `latest` at `0.8.2`, and rejects unintended framework `latest` tags. If any step
+fails, stop; do not bypass the command with a manual publish.
+
 ## Reporting Security Issues
 
 Please **do not** open public issues for security vulnerabilities. Email the maintainers via the contact details in the [`xrpl-connect` GitHub organization page](https://github.com/XRPL-Commons) instead.
