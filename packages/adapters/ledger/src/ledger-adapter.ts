@@ -24,7 +24,12 @@ import { createWalletError, isWalletError, resolveNetwork } from '@xrpl-connect/
 
 import type { LedgerAdapterOptions, LedgerConnectOptions } from './types';
 import { LedgerDeviceState } from './types';
-import { parseLedgerError, isBrowserSupported, formatLedgerError } from './errors';
+import {
+  parseLedgerError,
+  isBrowserSupported,
+  formatLedgerError,
+  isLedgerUserCancelled,
+} from './errors';
 import iconSvg from './assets/icon.svg';
 
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
@@ -145,7 +150,10 @@ export class LedgerAdapter
 
       const { state, message } = parseLedgerError(error);
 
-      if (state === LedgerDeviceState.READY && message.includes('rejected')) {
+      if (
+        isLedgerUserCancelled(error) ||
+        (state === LedgerDeviceState.READY && message.includes('rejected'))
+      ) {
         throw createWalletError.connectionRejected(
           this.name,
           error instanceof Error ? error : new Error(message)
@@ -333,7 +341,10 @@ export class LedgerAdapter
 
       const { state, message } = parseLedgerError(error);
 
-      if (state === LedgerDeviceState.READY && message.includes('rejected')) {
+      if (
+        isLedgerUserCancelled(error) ||
+        (state === LedgerDeviceState.READY && message.includes('rejected'))
+      ) {
         throw createWalletError.signRejected(
           error instanceof Error ? error : new Error(formatLedgerError(error))
         );
@@ -368,7 +379,10 @@ export class LedgerAdapter
 
       const { state, message } = parseLedgerError(error);
 
-      if (state === LedgerDeviceState.READY && message.includes('rejected')) {
+      if (
+        isLedgerUserCancelled(error) ||
+        (state === LedgerDeviceState.READY && message.includes('rejected'))
+      ) {
         throw createWalletError.signRejected(
           error instanceof Error ? error : new Error(formatLedgerError(error))
         );
@@ -415,7 +429,10 @@ export class LedgerAdapter
       if (isWalletError(error)) throw error;
 
       const { state, message } = parseLedgerError(error);
-      if (state === LedgerDeviceState.READY && message.includes('rejected')) {
+      if (
+        isLedgerUserCancelled(error) ||
+        (state === LedgerDeviceState.READY && message.includes('rejected'))
+      ) {
         throw createWalletError.signRejected(
           error instanceof Error ? error : formattedLedgerError(error)
         );
@@ -498,31 +515,48 @@ export class LedgerAdapter
    */
   private async createTransport(): Promise<Transport> {
     const browserSupport = isBrowserSupported();
+    const transports = this.preferWebHID
+      ? [
+          {
+            name: 'WebHID',
+            supported: browserSupport.webHID,
+            create: () => TransportWebHID.create(),
+          },
+          {
+            name: 'WebUSB',
+            supported: browserSupport.webUSB,
+            create: () => TransportWebUSB.create(),
+          },
+        ]
+      : [
+          {
+            name: 'WebUSB',
+            supported: browserSupport.webUSB,
+            create: () => TransportWebUSB.create(),
+          },
+          {
+            name: 'WebHID',
+            supported: browserSupport.webHID,
+            create: () => TransportWebHID.create(),
+          },
+        ];
+    const availableTransports = transports.filter(({ supported }) => supported);
+    let lastError: unknown;
 
-    if (this.preferWebHID && browserSupport.webHID) {
+    for (const [index, transport] of availableTransports.entries()) {
       try {
-        return await TransportWebHID.create();
+        return await transport.create();
       } catch (error) {
-        console.warn('WebHID transport failed, trying WebUSB:', error);
+        if (isLedgerUserCancelled(error)) throw error;
+
+        lastError = error;
+        if (index < availableTransports.length - 1) {
+          console.warn(`${transport.name} transport failed, trying fallback:`, error);
+        }
       }
     }
 
-    if (browserSupport.webUSB) {
-      return await TransportWebUSB.create();
-    }
-
-    if (!this.preferWebHID && browserSupport.webUSB) {
-      try {
-        return await TransportWebUSB.create();
-      } catch (error) {
-        console.warn('WebUSB transport failed, trying WebHID:', error);
-      }
-    }
-
-    if (browserSupport.webHID) {
-      return await TransportWebHID.create();
-    }
-
+    if (lastError) throw lastError;
     throw new Error('No compatible transport available');
   }
 

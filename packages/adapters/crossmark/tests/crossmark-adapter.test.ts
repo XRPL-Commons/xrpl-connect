@@ -249,6 +249,23 @@ describe('CrossmarkAdapter.connect', () => {
       code: WalletErrorCode.CONNECTION_REJECTED,
     });
   });
+
+  it('maps Crossmark rejection metadata to a connection-rejected error', async () => {
+    sdk.sync.isInstalled.mockReturnValue(true);
+    sdk.methods.signInAndWait.mockResolvedValue({
+      response: {
+        data: {
+          address: '',
+          publicKey: '',
+          meta: { isRejected: true },
+        },
+      },
+    });
+
+    await expect(new CrossmarkAdapter().connect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_REJECTED,
+    });
+  });
 });
 
 describe('CrossmarkAdapter.sign', () => {
@@ -289,7 +306,44 @@ describe('CrossmarkAdapter.sign', () => {
     });
   });
 
-  it('maps cancellation from submit and message signing to sign-rejected', async () => {
+  it('maps Crossmark rejection metadata from every signing method to sign-rejected', async () => {
+    const adapter = await connected();
+    sdk.methods.signAndWait.mockResolvedValue({
+      response: {
+        data: { txBlob: '', meta: { isRejected: true } },
+      },
+    });
+    sdk.methods.signAndSubmitAndWait.mockResolvedValue({
+      response: {
+        data: {
+          resp: { result: { hash: '' } },
+          meta: { isRejected: true },
+        },
+      },
+    });
+    sdk.methods.signInAndWait.mockResolvedValue({
+      response: {
+        data: {
+          address: '',
+          publicKey: '',
+          meta: { isRejected: true },
+        },
+      },
+    });
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_REJECTED,
+    });
+    await expect(
+      adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+    ).rejects.toMatchObject({ code: WalletErrorCode.SIGN_REJECTED });
+
+    await expect(adapter.signMessage('hello')).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_REJECTED,
+    });
+  });
+
+  it('maps thrown cancellation errors from submit and message signing to sign-rejected', async () => {
     const adapter = await connected();
     sdk.methods.signAndSubmitAndWait.mockRejectedValue(new Error('User cancelled'));
 

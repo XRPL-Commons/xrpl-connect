@@ -25,6 +25,14 @@ function isUserRejection(error: unknown): error is Error {
   return message.includes('reject') || message.includes('cancel');
 }
 
+function isRejectedResponse(response: unknown): boolean {
+  if (!response || typeof response !== 'object') return false;
+
+  const data = (response as { response?: { data?: { meta?: { isRejected?: unknown } } } }).response
+    ?.data;
+  return data?.meta?.isRejected === true;
+}
+
 /**
  * Crossmark adapter options
  */
@@ -84,6 +92,9 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
       // Request sign-in from Crossmark
       const signInResponse = await sdk.methods.signInAndWait(hash);
 
+      if (isRejectedResponse(signInResponse)) {
+        throw createWalletError.connectionRejected(this.name);
+      }
       if (!signInResponse || !signInResponse.response || !signInResponse.response.data) {
         throw new Error('Failed to sign in with Crossmark');
       }
@@ -256,6 +267,7 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
         tx as Parameters<typeof sdk.methods.signAndWait>[0]
       );
 
+      if (isRejectedResponse(signResponse)) throw createWalletError.signRejected();
       if (!signResponse.response.data.txBlob) {
         throw new Error('Failed to sign transaction with Crossmark');
       }
@@ -288,6 +300,7 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
         tx as Parameters<typeof sdk.methods.signAndSubmitAndWait>[0]
       );
 
+      if (isRejectedResponse(signResponse)) throw createWalletError.signRejected();
       if (!signResponse.response.data.resp.result.hash) {
         throw new Error('Failed to sign transaction with Crossmark');
       }
@@ -316,6 +329,7 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
       // We can use signInAndWait with the message as the hash
       const signResponse = await sdk.methods.signInAndWait(messageStr);
 
+      if (isRejectedResponse(signResponse)) throw createWalletError.signRejected();
       if (!signResponse || !signResponse.response || !signResponse.response.data) {
         throw new Error('Failed to sign message with Crossmark');
       }

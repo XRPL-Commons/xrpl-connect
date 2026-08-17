@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
-import { WalletErrorCode } from '@xrpl-connect/core';
+import { WalletErrorCategory, WalletErrorCode } from '@xrpl-connect/core';
 
 const mocks = vi.hoisted(() => {
   const transportWebHID = { create: vi.fn() };
@@ -41,6 +41,7 @@ vi.mock('xrpl', () => ({
 }));
 
 import { LedgerAdapter } from '../src/ledger-adapter';
+import { LedgerDeviceState } from '../src/types';
 
 function installNavigator(value: Record<string, unknown> | undefined) {
   if (value === undefined) {
@@ -112,6 +113,63 @@ describe('LedgerAdapter.connect', () => {
     await expect(new LedgerAdapter().connect()).rejects.toMatchObject({
       code: WalletErrorCode.CONNECTION_REJECTED,
     });
+  });
+
+  it('maps Ledger transport chooser cancellation to connection-rejected', async () => {
+    installNavigator({ usb: {} });
+    const rejected = Object.assign(new Error('No device selected.'), {
+      name: 'TransportOpenUserCancelled',
+    });
+    transportWebUSB.create.mockRejectedValue(rejected);
+
+    await expect(new LedgerAdapter().connect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_REJECTED,
+      category: WalletErrorCategory.USER_ACTION,
+      originalError: rejected,
+    });
+  });
+
+  it('does not open a fallback chooser after transport cancellation', async () => {
+    installNavigator({ hid: {}, usb: {} });
+    const rejected = Object.assign(new Error('The user aborted a request.'), {
+      name: 'TransportOpenUserCancelled',
+    });
+    transportWebHID.create.mockRejectedValue(rejected);
+
+    await expect(new LedgerAdapter().connect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_REJECTED,
+      originalError: rejected,
+    });
+    expect(transportWebUSB.create).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the alternate transport after a generic transport failure', async () => {
+    installNavigator({ hid: {}, usb: {} });
+    transportWebHID.create.mockRejectedValue(new Error('WebHID unavailable'));
+    xrpAppInstance.getAddress.mockResolvedValue({ address: 'rLedger', publicKey: 'aabbcc' });
+
+    await expect(new LedgerAdapter().connect()).resolves.toMatchObject({ address: 'rLedger' });
+    expect(transportWebUSB.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not infer cancellation from an untyped no-device message', async () => {
+    installNavigator({ usb: {} });
+    transportWebUSB.create.mockRejectedValue(new Error('No device selected.'));
+
+    await expect(new LedgerAdapter().connect()).rejects.toMatchObject({
+      code: WalletErrorCode.WALLET_NOT_INSTALLED,
+    });
+  });
+});
+
+describe('LedgerAdapter.getDeviceState', () => {
+  it('does not report a cancelled transport chooser as ready', async () => {
+    installNavigator({ usb: {} });
+    transportWebUSB.create.mockRejectedValue(
+      Object.assign(new Error('No device selected.'), { name: 'TransportOpenUserCancelled' })
+    );
+
+    await expect(new LedgerAdapter().getDeviceState()).resolves.toBe(LedgerDeviceState.UNKNOWN);
   });
 });
 

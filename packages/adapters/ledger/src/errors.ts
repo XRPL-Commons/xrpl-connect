@@ -4,6 +4,16 @@
 
 import { LedgerDeviceState, LedgerErrorCode, LEDGER_STATE_MESSAGES } from './types';
 
+/** Check for Ledger's explicit browser transport cancellation error. */
+export function isLedgerUserCancelled(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    'name' in error &&
+    error.name === 'TransportOpenUserCancelled'
+  );
+}
+
 /**
  * Parse Ledger error and determine device state
  */
@@ -13,6 +23,13 @@ export function parseLedgerError(error: unknown): {
 } {
   if (error && typeof error === 'object') {
     const err = error;
+
+    if (isLedgerUserCancelled(error)) {
+      return {
+        state: LedgerDeviceState.UNKNOWN,
+        message: 'Operation rejected on Ledger device',
+      };
+    }
 
     if ('statusCode' in err) {
       const statusCode = err.statusCode;
