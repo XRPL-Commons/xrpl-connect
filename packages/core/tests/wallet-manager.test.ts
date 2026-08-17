@@ -693,6 +693,78 @@ describe('WalletManager.reconnect()', () => {
     };
   }
 
+  it('does not reconnect after disconnect while persisted state is loading', async () => {
+    const backingStorage = new MemoryStorageAdapter();
+    await new Storage(backingStorage).saveState({
+      walletId: 'fake',
+      account: ACCOUNT,
+      network: NETWORK,
+      timestamp: Date.now(),
+    });
+
+    let releaseGet!: () => void;
+    let markGetStarted!: () => void;
+    const getStarted = new Promise<void>((resolve) => (markGetStarted = resolve));
+    const getBlocked = new Promise<void>((resolve) => (releaseGet = resolve));
+    const storage: StorageAdapter = {
+      get: vi.fn(async (key) => {
+        const stored = await backingStorage.get(key);
+        markGetStarted();
+        await getBlocked;
+        return stored;
+      }),
+      set: (key, value) => backingStorage.set(key, value),
+      remove: (key) => backingStorage.remove(key),
+      clear: () => backingStorage.clear(),
+    };
+    const adapter = createFakeAdapter();
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    const reconnecting = manager.reconnect();
+    await getStarted;
+    await manager.disconnect();
+    releaseGet();
+
+    await expect(reconnecting).resolves.toBeNull();
+    expect(adapter.connect).not.toHaveBeenCalled();
+    expect(manager.connected).toBe(false);
+    expect(await new Storage(backingStorage).loadState()).toBeNull();
+  });
+
+  it('does not let a cancelled reconnect clear a newer manual session', async () => {
+    const storage = new MemoryStorageAdapter();
+    await new Storage(storage).saveState({
+      walletId: 'fake',
+      account: ACCOUNT,
+      network: NETWORK,
+      timestamp: Date.now(),
+    });
+
+    let resolveReconnect!: (account: AccountInfo) => void;
+    const adapter = createFakeAdapter();
+    adapter.connect = vi
+      .fn()
+      .mockImplementationOnce(
+        () => new Promise<AccountInfo>((resolve) => (resolveReconnect = resolve))
+      )
+      .mockResolvedValueOnce(ACCOUNT);
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    const reconnecting = manager.reconnect();
+    await vi.waitFor(() => expect(adapter.connect).toHaveBeenCalledTimes(1));
+    await manager.disconnect();
+    await manager.connect('fake');
+    resolveReconnect(ACCOUNT);
+
+    await expect(reconnecting).resolves.toBeNull();
+    expect(manager.connected).toBe(true);
+    expect(manager.account).toEqual(ACCOUNT);
+    expect(await new Storage(storage).loadState()).toMatchObject({
+      walletId: 'fake',
+      account: ACCOUNT,
+    });
+  });
+
   it('returns the active account without clearing its stored session', async () => {
     const storage = new MemoryStorageAdapter();
     const adapter = createRecordingAdapter([]);

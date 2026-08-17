@@ -58,10 +58,22 @@ function asErrorLike(value: unknown): ErrorLike {
 }
 
 export class WalletService {
+  private nextConnectionAttemptId = 0;
+
   constructor(
     private walletManager: WalletManager,
     private component: WalletConnectorContext
   ) {}
+
+  private dispatchConnecting(walletId: string, detail: Record<string, unknown> = {}): number {
+    const connectionAttemptId = ++this.nextConnectionAttemptId;
+    this.component.dispatchEvent(
+      new CustomEvent('connecting', {
+        detail: { walletId, ...detail, connectionAttemptId },
+      })
+    );
+    return connectionAttemptId;
+  }
 
   async connectWallet(walletId: string, options?: ConnectOptions) {
     if (!this.walletManager) {
@@ -69,6 +81,7 @@ export class WalletService {
       return;
     }
 
+    let connectionAttemptId: number | undefined;
     try {
       // Get wallet info
       const wallet = this.walletManager.wallets.find((w) => w.id === walletId);
@@ -112,14 +125,16 @@ export class WalletService {
           // Show loading state first (with spinning animation like Xaman)
           this.component.showLoadingView(walletId, wallet.name, wallet.icon);
 
-          this.component.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
+          connectionAttemptId = this.dispatchConnecting(walletId);
 
           // Small delay to show the loading animation before WC modal appears
           await delay(TIMINGS.NON_SAFARI_CONNECT_DELAY);
 
           // Connect - WalletConnect modal will open on top of our loading view
           await this.walletManager.connect(walletId, options);
-          this.component.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
+          this.component.dispatchEvent(
+            new CustomEvent('connected', { detail: { walletId, connectionAttemptId } })
+          );
 
           // Close our modal after successful connection
           this.component.close();
@@ -139,9 +154,11 @@ export class WalletService {
             },
           };
 
-          this.component.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
+          connectionAttemptId = this.dispatchConnecting(walletId);
           await this.walletManager.connect(walletId, connectOptions);
-          this.component.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
+          this.component.dispatchEvent(
+            new CustomEvent('connected', { detail: { walletId, connectionAttemptId } })
+          );
         }
       } else if (walletId === 'ledger') {
         // For Ledger, show account selection first
@@ -176,7 +193,7 @@ export class WalletService {
         // Show loading state
         this.component.showLoadingView(walletId, wallet.name, wallet.icon);
 
-        this.component.dispatchEvent(new CustomEvent('connecting', { detail: { walletId } }));
+        connectionAttemptId = this.dispatchConnecting(walletId);
 
         // Browser-specific delay (Safari needs immediate connection for user gesture)
         if (!isSafari() && walletId !== 'xaman') {
@@ -198,7 +215,9 @@ export class WalletService {
         if (walletId === 'xaman') {
           logger.info('Xaman UI connection phase: WalletManager connected');
         }
-        this.component.dispatchEvent(new CustomEvent('connected', { detail: { walletId } }));
+        this.component.dispatchEvent(
+          new CustomEvent('connected', { detail: { walletId, connectionAttemptId } })
+        );
       }
     } catch (error: unknown) {
       const err = asErrorLike(error);
@@ -233,7 +252,9 @@ export class WalletService {
 
       this.component.showErrorView(walletId, wallet?.name || 'Wallet', new Error(errorMessage));
       this.component.dispatchEvent(
-        new CustomEvent('error', { detail: { error, walletId, errorType } })
+        new CustomEvent('error', {
+          detail: { error, walletId, errorType, connectionAttemptId },
+        })
       );
       logger.error('Failed to connect:', error);
     }
@@ -243,6 +264,7 @@ export class WalletService {
     if (!this.walletManager || !this.component.accountSelectionData) return;
 
     const { walletId, walletName, walletIcon } = this.component.accountSelectionData;
+    let connectionAttemptId: number | undefined;
 
     try {
       // Show loading state
@@ -254,15 +276,15 @@ export class WalletService {
       }
 
       logger.debug('Connecting to Ledger with account index:', accountIndex);
-      this.component.dispatchEvent(
-        new CustomEvent('connecting', { detail: { walletId, accountIndex } })
-      );
+      connectionAttemptId = this.dispatchConnecting(walletId, { accountIndex });
 
       const ledgerOptions: ConnectOptions<LedgerConnectOptions> = { accountIndex };
       await this.walletManager.connect(walletId, ledgerOptions);
 
       this.component.dispatchEvent(
-        new CustomEvent('connected', { detail: { walletId, accountIndex } })
+        new CustomEvent('connected', {
+          detail: { walletId, accountIndex, connectionAttemptId },
+        })
       );
     } catch (error: unknown) {
       const err = asErrorLike(error);
@@ -281,7 +303,9 @@ export class WalletService {
       logger.debug('Connection error type:', errorType, 'Code:', err.code);
       this.component.showErrorView(walletId, walletName, new Error(errorMessage));
       this.component.dispatchEvent(
-        new CustomEvent('error', { detail: { error, walletId, errorType } })
+        new CustomEvent('error', {
+          detail: { error, walletId, errorType, connectionAttemptId },
+        })
       );
       logger.error('Failed to connect:', error);
     }
@@ -291,6 +315,7 @@ export class WalletService {
     if (!this.walletManager || !this.component.accountSelectionData) return;
 
     const { walletId, walletName, walletIcon } = this.component.accountSelectionData;
+    let connectionAttemptId: number | undefined;
 
     try {
       // Validate derivation path format
@@ -308,15 +333,15 @@ export class WalletService {
       }
 
       logger.debug('Connecting to Ledger with custom derivation path:', derivationPath);
-      this.component.dispatchEvent(
-        new CustomEvent('connecting', { detail: { walletId, derivationPath } })
-      );
+      connectionAttemptId = this.dispatchConnecting(walletId, { derivationPath });
 
       const ledgerOptions: ConnectOptions<LedgerConnectOptions> = { derivationPath };
       await this.walletManager.connect(walletId, ledgerOptions);
 
       this.component.dispatchEvent(
-        new CustomEvent('connected', { detail: { walletId, derivationPath } })
+        new CustomEvent('connected', {
+          detail: { walletId, derivationPath, connectionAttemptId },
+        })
       );
     } catch (error: unknown) {
       const err = asErrorLike(error);
@@ -335,7 +360,9 @@ export class WalletService {
       logger.debug('Connection error type:', errorType, 'Code:', err.code);
       this.component.showErrorView(walletId, walletName, new Error(errorMessage));
       this.component.dispatchEvent(
-        new CustomEvent('error', { detail: { error, walletId, errorType } })
+        new CustomEvent('error', {
+          detail: { error, walletId, errorType, connectionAttemptId },
+        })
       );
       logger.error('Failed to connect:', error);
     }
