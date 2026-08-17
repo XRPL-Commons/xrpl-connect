@@ -1,9 +1,9 @@
 import { useCallback } from 'react';
 import type {
+  ManagedSignedMessage,
+  ManagedSignedTransaction,
   Transaction,
-  SignedTransaction,
   SubmittedTransaction,
-  SignedMessage,
 } from '@xrpl-connect/core';
 import { useXrplConnectContext } from './provider';
 
@@ -34,7 +34,7 @@ export function useSigner() {
   const { manager } = useXrplConnectContext();
 
   const sign = useCallback(
-    (transaction: Transaction): Promise<SignedTransaction> => manager.sign(transaction),
+    (transaction: Transaction): Promise<ManagedSignedTransaction> => manager.sign(transaction),
     [manager]
   );
   const signAndSubmit = useCallback(
@@ -42,7 +42,7 @@ export function useSigner() {
     [manager]
   );
   const signMessage = useCallback(
-    (message: string | Uint8Array): Promise<SignedMessage> => manager.signMessage(message),
+    (message: string | Uint8Array): Promise<ManagedSignedMessage> => manager.signMessage(message),
     [manager]
   );
 
