@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { WalletManager, isWalletError } from '@xrpl-connect/core';
+import { WalletErrorCode, WalletManager, isWalletError } from '@xrpl-connect/core';
 import type { AccountInfo, NetworkInfo, WalletError, ConnectOptions } from '@xrpl-connect/core';
 import type {
   XrplConnectContextValue,
@@ -37,6 +37,8 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
   const mountedRef = useRef(false);
 
   const connectorsRef = useRef<Set<WalletConnectorElement>>(new Set());
+  const connectionAttemptsRef = useRef<Set<symbol>>(new Set());
+  const modalConnectingRef = useRef(false);
 
   const [connected, setConnected] = useState<boolean>(manager.connected);
   const [account, setAccount] = useState<AccountInfo | null>(manager.account);
@@ -44,8 +46,38 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
   const [connecting, setConnecting] = useState<boolean>(false);
   const [error, setError] = useState<WalletError | null>(null);
 
+  const syncConnecting = useCallback(() => {
+    if (mountedRef.current) {
+      setConnecting(connectionAttemptsRef.current.size > 0 || modalConnectingRef.current);
+    }
+  }, []);
+  const beginConnectionAttempt = useCallback(() => {
+    const attempt = Symbol('connectionAttempt');
+    connectionAttemptsRef.current.add(attempt);
+    if (mountedRef.current) setError(null);
+    syncConnecting();
+    return attempt;
+  }, [syncConnecting]);
+  const finishConnectionAttempt = useCallback(
+    (attempt: symbol, failure?: unknown) => {
+      if (!connectionAttemptsRef.current.delete(attempt) || !mountedRef.current) return;
+      if (failure !== undefined && isWalletError(failure) && !manager.connected) {
+        setError(failure);
+      }
+      syncConnecting();
+    },
+    [manager, syncConnecting]
+  );
+  const cancelConnectionState = useCallback(() => {
+    connectionAttemptsRef.current.clear();
+    modalConnectingRef.current = false;
+    if (mountedRef.current) setError(null);
+    syncConnecting();
+  }, [syncConnecting]);
+
   useEffect(() => {
     mountedRef.current = true;
+    syncConnecting();
     const sync = () => {
       setConnected(manager.connected);
       setAccount(manager.account);
@@ -53,14 +85,16 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
     };
     const onConnect = () => {
       setError(null);
-      setConnecting(false);
+      modalConnectingRef.current = false;
+      syncConnecting();
       sync();
     };
     const onDisconnect = () => sync();
     const onAccountChanged = () => sync();
     const onNetworkChanged = () => sync();
     const onError = (err: unknown) => {
-      setConnecting(false);
+      modalConnectingRef.current = false;
+      syncConnecting();
       if (isWalletError(err)) setError(err);
     };
 
@@ -74,16 +108,24 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
 
     let disposed = false;
     if (autoConnectRef.current) {
+      const attempt = beginConnectionAttempt();
       // StrictMode replays effects before microtasks run. Deferring here means
       // the throwaway setup is cancelled and only the live setup reconnects.
       queueMicrotask(() => {
-        if (disposed) return;
+        if (disposed) {
+          finishConnectionAttempt(attempt);
+          return;
+        }
         void manager.reconnect().then(
           () => {
             if (disposed && manager.connected) void manager.disconnect().catch(() => undefined);
+            finishConnectionAttempt(attempt);
           },
           (reconnectError: unknown) => {
-            if (!disposed && isWalletError(reconnectError)) setError(reconnectError);
+            const expectedOverlap =
+              isWalletError(reconnectError) &&
+              reconnectError.code === WalletErrorCode.ALREADY_CONNECTED;
+            finishConnectionAttempt(attempt, expectedOverlap ? undefined : reconnectError);
           }
         );
       });
@@ -92,19 +134,27 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
     return () => {
       disposed = true;
       mountedRef.current = false;
+      cancelConnectionState();
       manager.off('connect', onConnect);
       manager.off('disconnect', onDisconnect);
       manager.off('accountChanged', onAccountChanged);
       manager.off('networkChanged', onNetworkChanged);
       manager.off('error', onError);
+      connectorsRef.current.clear();
       void manager.disconnect().catch(() => undefined);
     };
-  }, [manager]);
+  }, [
+    manager,
+    beginConnectionAttempt,
+    finishConnectionAttempt,
+    cancelConnectionState,
+    syncConnecting,
+  ]);
 
   const connect = useCallback(
     async (walletId: string, options?: ConnectOptions) => {
-      setConnecting(true);
-      setError(null);
+      const attempt = beginConnectionAttempt();
+      let failure: unknown;
       try {
         const connectedAccount = await manager.connect(walletId, options);
         if (!mountedRef.current && manager.connected) {
@@ -112,17 +162,19 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
         }
         return connectedAccount;
       } catch (err) {
-        if (mountedRef.current) {
-          setConnecting(false);
-          if (isWalletError(err)) setError(err);
-        }
+        failure = err;
         throw err;
+      } finally {
+        finishConnectionAttempt(attempt, failure);
       }
     },
-    [manager]
+    [manager, beginConnectionAttempt, finishConnectionAttempt]
   );
 
-  const disconnect = useCallback(() => manager.disconnect(), [manager]);
+  const disconnect = useCallback(async () => {
+    cancelConnectionState();
+    await manager.disconnect();
+  }, [manager, cancelConnectionState]);
 
   const registerConnector = useCallback((el: WalletConnectorElement) => {
     connectorsRef.current.add(el);
@@ -131,13 +183,18 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
     connectorsRef.current.delete(el);
   }, []);
   const reportModalConnecting = useCallback(() => {
-    setConnecting(true);
-    setError(null);
-  }, []);
-  const reportModalError = useCallback((modalError: WalletError) => {
-    setConnecting(false);
-    setError(modalError);
-  }, []);
+    modalConnectingRef.current = true;
+    if (mountedRef.current) setError(null);
+    syncConnecting();
+  }, [syncConnecting]);
+  const reportModalError = useCallback(
+    (modalError: WalletError) => {
+      modalConnectingRef.current = false;
+      if (mountedRef.current) setError(modalError);
+      syncConnecting();
+    },
+    [syncConnecting]
+  );
 
   const getActiveConnector = useCallback(() => {
     const connectors = [...connectorsRef.current];

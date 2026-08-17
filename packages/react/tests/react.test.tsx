@@ -21,6 +21,14 @@ import {
 
 const ACCOUNT: AccountInfo = { address: 'rTEST', network: STANDARD_NETWORKS.testnet };
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function makeAdapter(overrides: Partial<WalletAdapter> = {}): WalletAdapter {
   return {
     id: 'fake',
@@ -113,6 +121,58 @@ describe('XrplConnectProvider + hooks', () => {
     await waitFor(() => expect(storage.get).toHaveBeenCalledTimes(1));
   });
 
+  it('tracks auto-connect without surfacing an expected manual overlap error', async () => {
+    const storedState = deferred<string | null>();
+    const pendingConnection = deferred<AccountInfo>();
+    const connect = vi.fn(() => pendingConnection.promise);
+    const storage: StorageAdapter = {
+      get: vi.fn(() => storedState.promise),
+      set: vi.fn(async () => {}),
+      remove: vi.fn(async () => {}),
+      clear: vi.fn(async () => {}),
+    };
+    const adapters = [makeAdapter({ connect })];
+    const { result, unmount } = renderHook(() => useWallet(), {
+      wrapper: ({ children }) => (
+        <XrplConnectProvider config={{ adapters, autoConnect: true, storage }}>
+          {children}
+        </XrplConnectProvider>
+      ),
+    });
+
+    await waitFor(() => expect(storage.get).toHaveBeenCalledTimes(1));
+    expect(result.current.connecting).toBe(true);
+
+    let manualConnection!: Promise<AccountInfo>;
+    act(() => {
+      manualConnection = result.current.connect('fake');
+    });
+    await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      storedState.resolve(
+        JSON.stringify({
+          walletId: 'fake',
+          account: ACCOUNT,
+          network: ACCOUNT.network,
+          timestamp: Date.now(),
+        })
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(result.current.connecting).toBe(true);
+    expect(result.current.error).toBeNull();
+
+    await act(async () => {
+      pendingConnection.resolve(ACCOUNT);
+      await expect(manualConnection).resolves.toEqual(ACCOUNT);
+    });
+    await waitFor(() => expect(result.current.connecting).toBe(false));
+    expect(result.current.connected).toBe(true);
+    expect(result.current.error).toBeNull();
+    unmount();
+  });
+
   it('reflects connect/disconnect state through useWallet', async () => {
     const { result } = renderHook(() => useWallet(), { wrapper: wrapper([makeAdapter()]) });
 
@@ -132,6 +192,64 @@ describe('XrplConnectProvider + hooks', () => {
     expect(result.current.account).toBeNull();
   });
 
+  it('keeps connecting true until every concurrent connection attempt settles', async () => {
+    const pending = deferred<AccountInfo>();
+    const connect = vi.fn(() => pending.promise);
+    const { result, unmount } = renderHook(() => useWallet(), {
+      wrapper: wrapper([makeAdapter({ connect })]),
+    });
+
+    let firstConnection!: Promise<AccountInfo>;
+    act(() => {
+      firstConnection = result.current.connect('fake');
+    });
+    await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await expect(result.current.connect('fake')).rejects.toMatchObject({
+        code: WalletErrorCode.ALREADY_CONNECTED,
+      });
+    });
+    expect(result.current.connecting).toBe(true);
+
+    await act(async () => {
+      pending.resolve(ACCOUNT);
+      await expect(firstConnection).resolves.toEqual(ACCOUNT);
+    });
+    expect(result.current.connected).toBe(true);
+    expect(result.current.connecting).toBe(false);
+    expect(result.current.error).toBeNull();
+    unmount();
+  });
+
+  it('clears connection state when a pending connection is cancelled', async () => {
+    const pending = deferred<AccountInfo>();
+    const connect = vi.fn(() => pending.promise);
+    const disconnect = vi.fn(async () => {});
+    const { result } = renderHook(() => useWallet(), {
+      wrapper: wrapper([makeAdapter({ connect, disconnect })]),
+    });
+
+    let connection!: Promise<AccountInfo>;
+    act(() => {
+      connection = result.current.connect('fake');
+    });
+    await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await result.current.disconnect();
+    });
+    expect(result.current.connecting).toBe(false);
+    expect(result.current.error).toBeNull();
+
+    await act(async () => {
+      pending.resolve(ACCOUNT);
+      await expect(connection).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    });
+    expect(result.current.connecting).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
   it('disconnects an owned manager when the provider unmounts', async () => {
     const disconnect = vi.fn(async () => {});
     const { result, unmount } = renderHook(() => useWallet(), {
@@ -145,11 +263,35 @@ describe('XrplConnectProvider + hooks', () => {
     await waitFor(() => expect(disconnect).toHaveBeenCalledTimes(1));
   });
 
-  it('cancels a direct manager connection that resolves after unmount', async () => {
-    let resolveConnect!: (account: AccountInfo) => void;
+  it('cancels a provider connection that resolves after unmount', async () => {
+    const pending = deferred<AccountInfo>();
     const disconnect = vi.fn(async () => {});
     const adapter = makeAdapter({
-      connect: vi.fn(() => new Promise<AccountInfo>((resolve) => (resolveConnect = resolve))),
+      connect: vi.fn(() => pending.promise),
+      disconnect,
+    });
+    const { result, unmount } = renderHook(() => useWallet(), { wrapper: wrapper([adapter]) });
+
+    const manager = result.current.manager;
+    let connecting!: Promise<AccountInfo>;
+    act(() => {
+      connecting = result.current.connect('fake');
+    });
+    await waitFor(() => expect(adapter.connect).toHaveBeenCalledTimes(1));
+    unmount();
+    await waitFor(() => expect(disconnect).toHaveBeenCalledTimes(1));
+    pending.resolve(ACCOUNT);
+
+    await expect(connecting).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    expect(disconnect).toHaveBeenCalled();
+    expect(manager.connected).toBe(false);
+  });
+
+  it('cancels a direct manager connection that resolves after unmount', async () => {
+    const pending = deferred<AccountInfo>();
+    const disconnect = vi.fn(async () => {});
+    const adapter = makeAdapter({
+      connect: vi.fn(() => pending.promise),
       disconnect,
     });
     let manager: WalletManager | null = null;
@@ -167,7 +309,7 @@ describe('XrplConnectProvider + hooks', () => {
     await waitFor(() => expect(adapter.connect).toHaveBeenCalledTimes(1));
     unmount();
     await waitFor(() => expect(disconnect).toHaveBeenCalledTimes(1));
-    resolveConnect(ACCOUNT);
+    pending.resolve(ACCOUNT);
 
     await expect(connecting).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
     expect(disconnect).toHaveBeenCalled();
@@ -334,6 +476,58 @@ describe('<WalletConnector>', () => {
     expect(onError).toHaveBeenLastCalledWith(
       expect.objectContaining({ code: WalletErrorCode.WALLET_NOT_INSTALLED })
     );
+  });
+
+  it('keeps connecting true when a modal error overlaps a manual connection', async () => {
+    const pending = deferred<AccountInfo>();
+    const connect = vi.fn(() => pending.promise);
+    const onConnect = vi.fn();
+    const onError = vi.fn();
+    let walletState: ReturnType<typeof useWallet> | null = null;
+    function Capture() {
+      walletState = useWallet();
+      return null;
+    }
+    const { unmount } = render(
+      <XrplConnectProvider config={{ adapters: [makeAdapter({ connect })], autoConnect: false }}>
+        <Capture />
+        <WalletConnector onConnect={onConnect} onError={onError} />
+      </XrplConnectProvider>
+    );
+
+    const el = document.querySelector('xrpl-wallet-connector') as HTMLElement & {
+      manager: unknown;
+    };
+    await waitFor(() => expect(el.manager).not.toBeNull());
+
+    let manualConnection!: Promise<AccountInfo>;
+    act(() => {
+      manualConnection = walletState!.connect('fake');
+    });
+    await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      el.dispatchEvent(new CustomEvent('connecting', { detail: { walletId: 'fake' } }));
+    });
+    const modalError = createWalletError.connectionRejected('Fake');
+    act(() => {
+      el.dispatchEvent(
+        new CustomEvent('error', { detail: { error: modalError, walletId: 'fake' } })
+      );
+    });
+    await waitFor(() => expect(walletState!.error).toBe(modalError));
+    expect(walletState!.connecting).toBe(true);
+    expect(onError).toHaveBeenCalledWith(modalError);
+
+    await act(async () => {
+      pending.resolve(ACCOUNT);
+      await expect(manualConnection).resolves.toEqual(ACCOUNT);
+    });
+    await waitFor(() => expect(walletState!.connecting).toBe(false));
+    expect(walletState!.connected).toBe(true);
+    expect(walletState!.error).toBeNull();
+    expect(onConnect).toHaveBeenCalledWith(ACCOUNT);
+    unmount();
   });
 
   it('keeps the remaining connector registered when a sibling unmounts', async () => {
