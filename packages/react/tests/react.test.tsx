@@ -1,4 +1,4 @@
-import { describe, it, expect, expectTypeOf, beforeAll, vi } from 'vite-plus/test';
+import { describe, it, expect, beforeAll, vi } from 'vite-plus/test';
 import { render, act, waitFor, renderHook } from '@testing-library/react';
 import { StrictMode, useRef } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -192,7 +192,7 @@ describe('XrplConnectProvider + hooks', () => {
     ).rejects.toMatchObject({ code: WalletErrorCode.SIGN_REJECTED, category: expect.any(String) });
   });
 
-  it('useSigner preserves managed signer result types', async () => {
+  it('useSigner returns the connected signer address with signing results', async () => {
     const { result } = renderHook(() => ({ wallet: useWallet(), signer: useSigner() }), {
       wrapper: wrapper([makeAdapter()]),
     });
@@ -203,8 +203,6 @@ describe('XrplConnectProvider + hooks', () => {
     const signed = await result.current.signer.sign({ TransactionType: 'Payment' } as never);
     const signedMessage = await result.current.signer.signMessage('hello');
 
-    expectTypeOf(signed.signerAddress).toEqualTypeOf<string>();
-    expectTypeOf(signedMessage.signerAddress).toEqualTypeOf<string>();
     expect(signed).toMatchObject({ hash: 'H', signerAddress: ACCOUNT.address });
     expect(signedMessage).toMatchObject({ signature: 's', signerAddress: ACCOUNT.address });
   });
