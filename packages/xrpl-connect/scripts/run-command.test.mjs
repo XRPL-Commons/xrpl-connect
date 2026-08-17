@@ -126,7 +126,7 @@ test('RC registry preflight accepts only fresh, partial, or complete candidate s
 function recordPublisherCalls(publishedPackages = new Set()) {
   const calls = [];
   const publishRc = createRcPublisher((command, args, options) => {
-    calls.push({ command, args, cwd: options.cwd });
+    calls.push({ command, args, cwd: options.cwd, env: options.env });
     if (command === 'git') return '';
     if (command === 'npm' && args[0] === 'pack') {
       const name = options.cwd.endsWith('dist-publish')
@@ -170,6 +170,9 @@ test('RC publisher preflights, verifies, and publishes only through the fixed re
       '--registry',
       'https://registry.npmjs.org/',
     ]);
+    assert.equal(call.env.npm_config_access, 'public');
+    assert.equal(call.env.npm_config_registry, 'https://registry.npmjs.org/');
+    assert.equal(call.env.npm_config_tag, 'rc');
   }
   assert.deepEqual(calls.at(-1).args, ['scripts/test-publish.mjs', '--check-registry']);
 });

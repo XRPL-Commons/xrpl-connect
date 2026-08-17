@@ -169,6 +169,15 @@ const runOptions = {
   env: { npm_config_cache: path.join(temporaryRoot, '.npm-cache') },
   unsetEnv: inheritedPnpmConfig,
 };
+const publishRunOptions = (tag, registry) => ({
+  ...runOptions,
+  env: {
+    ...runOptions.env,
+    npm_config_access: 'public',
+    npm_config_registry: registry,
+    npm_config_tag: tag,
+  },
+});
 
 try {
   const tarballs = [];
@@ -202,7 +211,7 @@ try {
         NPM_REGISTRY,
       ],
       {
-        ...runOptions,
+        ...publishRunOptions('rc', NPM_REGISTRY),
         cwd: candidate.folder,
       }
     );
@@ -272,7 +281,7 @@ try {
           NPM_REGISTRY,
         ],
         {
-          ...runOptions,
+          ...publishRunOptions('latest', NPM_REGISTRY),
           capture: true,
           cwd: candidatePackages[0].folder,
         }
@@ -294,7 +303,7 @@ try {
           'https://registry.example/',
         ],
         {
-          ...runOptions,
+          ...publishRunOptions('rc', 'https://registry.example/'),
           capture: true,
           cwd: candidatePackages[0].folder,
         }

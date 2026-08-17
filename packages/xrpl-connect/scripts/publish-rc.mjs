@@ -24,6 +24,15 @@ const registryRunOptions = {
   env: { npm_config_cache: path.join(os.tmpdir(), 'xrpl-connect-registry-cache') },
   unsetEnv: inheritedPnpmConfig,
 };
+const publishRunOptions = {
+  ...registryRunOptions,
+  env: {
+    ...registryRunOptions.env,
+    npm_config_access: 'public',
+    npm_config_registry: NPM_REGISTRY,
+    npm_config_tag: 'rc',
+  },
+};
 const candidatePackages = [
   { name: 'xrpl-connect', folder: path.join(projectFolder, 'dist-publish') },
   { name: '@xrpl-connect/react', folder: path.join(repositoryRoot, 'packages', 'react') },
@@ -129,7 +138,7 @@ export function createRcPublisher(run = defaultRun) {
         continue;
       }
       run('npm', ['publish', '--tag', 'rc', '--access', 'public', '--registry', NPM_REGISTRY], {
-        ...registryRunOptions,
+        ...publishRunOptions,
         capture: false,
         cwd: folder,
       });
