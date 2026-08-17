@@ -18,7 +18,7 @@ const PUBLISH_CONFIG = {
   tag: 'rc',
 };
 const PUBLISH_GUARD =
-  "node -e \"const { npm_config_tag: tag, npm_config_access: access, npm_config_registry: registry } = process.env; if (tag !== 'rc' || access !== 'public' || registry !== 'https://registry.npmjs.org/') { console.error('Publish requires --tag rc --access public --registry https://registry.npmjs.org/'); process.exit(1); }\"";
+  "node -e \"const { npm_config_tag: tag, npm_config_access: access, npm_config_registry: registry } = process.env; let registryUrl = ''; try { registryUrl = new URL(registry).href; } catch {} if (tag !== 'rc' || access !== 'public' || registryUrl !== 'https://registry.npmjs.org/') { console.error('Publish requires --tag rc --access public --registry https://registry.npmjs.org/'); process.exit(1); }\"";
 const inheritedPnpmConfig = [
   'npm_config_peer_dependency_rules',
   'npm_config_recursive',

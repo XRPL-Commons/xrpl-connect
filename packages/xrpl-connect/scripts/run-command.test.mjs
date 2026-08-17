@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   CANDIDATE_VERSION,
@@ -48,6 +50,25 @@ test('run reports non-zero exits with captured output', () => {
     () => run('npm', ['pack'], { capture: true }),
     /npm pack failed with exit code 2\nout\nerr/
   );
+});
+
+test('publish guard accepts normalized npmjs registry URLs only', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
+  const prefix = 'node -e "';
+  const guard = manifest.scripts.prepublishOnly.slice(prefix.length, -1);
+  const runGuard = (registry) =>
+    spawnSync(process.execPath, ['-e', guard], {
+      env: {
+        ...process.env,
+        npm_config_access: 'public',
+        npm_config_registry: registry,
+        npm_config_tag: 'rc',
+      },
+    });
+
+  assert.equal(runGuard('https://registry.npmjs.org').status, 0);
+  assert.equal(runGuard('https://registry.npmjs.org/').status, 0);
+  assert.equal(runGuard('https://registry.example/').status, 1);
 });
 
 test('RC publisher requires exact confirmation before running commands', () => {
