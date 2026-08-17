@@ -1,4 +1,5 @@
-import { createApp, defineComponent, h, nextTick } from 'vue';
+import { Comment, createApp, createSSRApp, defineComponent, h, nextTick } from 'vue';
+import { renderToString } from '@vue/server-renderer';
 import type { AccountInfo, WalletAdapter } from '@xrpl-connect/core';
 import { createWalletError, MemoryStorageAdapter, WalletErrorCode } from '@xrpl-connect/core';
 import {
@@ -249,6 +250,49 @@ describe('Vue plugin and composables', () => {
     expect(wallet!.connected.value).toBe(true);
     expect(wallet!.error.value).toBeNull();
     app.unmount();
+  });
+});
+
+describe('client-only SSR boundaries', () => {
+  const ServerClientOnly = defineComponent({
+    setup() {
+      return () => h(Comment);
+    },
+  });
+
+  it('still executes setup when only the template content is client-only', async () => {
+    const universalWalletControls = defineComponent({
+      setup() {
+        useWallet();
+        return () => h(ServerClientOnly);
+      },
+    });
+
+    await expect(renderToString(createSSRApp(universalWalletControls))).rejects.toThrow(
+      /app\.use\(createXrplConnect/
+    );
+  });
+
+  it('does not execute composables in a child below the client-only boundary', async () => {
+    const walletSetup = vi.fn();
+    const clientWalletControls = defineComponent({
+      setup() {
+        walletSetup();
+        useWallet();
+        return () => null;
+      },
+    });
+    const universalPage = defineComponent({
+      setup() {
+        return () =>
+          h(ServerClientOnly, null, {
+            default: () => h(clientWalletControls),
+          });
+      },
+    });
+
+    await expect(renderToString(createSSRApp(universalPage))).resolves.toBe('<!---->');
+    expect(walletSetup).not.toHaveBeenCalled();
   });
 });
 

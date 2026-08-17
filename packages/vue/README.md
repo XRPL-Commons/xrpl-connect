@@ -14,7 +14,6 @@ npm install @xrpl-connect/vue xrpl-connect xrpl vue
 ```ts
 // main.ts
 import { createApp } from 'vue';
-import 'xrpl-connect';
 import { XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
 import { createXrplConnect } from '@xrpl-connect/vue';
 import App from './App.vue';
@@ -57,5 +56,8 @@ const { open } = useWalletModal();
 - `<WalletConnector>` accepts `primaryWallet`, `wallets`, `theme`, and `cssVars`, and emits
   `connecting`, `connect`, and typed `error` events.
 
-Importing the package is SSR-safe. Install and render the wallet UI only on the client because
-the underlying modal is a browser custom element.
+The named `xrpl-connect` import also registers the wallet connector custom element, so a separate
+side-effect import is not needed. Importing `@xrpl-connect/vue` is SSR-safe, but plugin
+installation, injected composable calls, and wallet UI rendering must stay on the client. In
+Nuxt, put composable consumers in `.client.vue` components or wholly below a client-only child
+boundary; wrapping only the template does not stop universal setup from running during SSR.
