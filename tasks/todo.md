@@ -16,7 +16,7 @@
 - [x] Add a practical regression fixture or document why a behavioral fixture is disproportionate.
 - [x] Run formatting, docs build, and relevant checks.
 - [x] Review the final diff for minimality and correctness.
-- [ ] Commit, push, and open a PR that fixes #124.
+- [x] Commit, push, and open PR #134 that fixes #124.
 
 ## Review
 
