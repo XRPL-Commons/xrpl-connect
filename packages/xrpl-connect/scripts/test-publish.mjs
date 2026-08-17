@@ -3,12 +3,15 @@ import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSy
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  CANDIDATE_VERSION,
+  NPM_REGISTRY,
+  assertSafePrepublishRegistryState,
+} from './publish-rc.mjs';
 import { run } from './run-command.mjs';
 
-const CANDIDATE_VERSION = '1.0.0-rc.0';
 const FRAMEWORK_PEER_RANGE = '^1.0.0-rc.0';
 const NPM_ORGANIZATION = 'xrpl-connect';
-const NPM_REGISTRY = 'https://registry.npmjs.org/';
 const PUBLISH_CONFIG = {
   access: 'public',
   registry: NPM_REGISTRY,
@@ -24,6 +27,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectFolder = path.join(__dirname, '..');
 const repositoryRoot = path.join(projectFolder, '..', '..');
 const fixturesFolder = path.join(projectFolder, 'tests', 'publish');
+const reactFixturesFolder = path.join(repositoryRoot, 'packages', 'react', 'tests', 'publish');
 const candidatePackages = [
   {
     name: 'xrpl-connect',
@@ -43,6 +47,7 @@ const candidatePackages = [
       'package.json',
       'README.md',
       'dist/index.d.ts',
+      'dist/index.d.mts',
       'dist/index.js',
       'dist/index.mjs',
     ],
@@ -54,6 +59,7 @@ const candidatePackages = [
       'package.json',
       'README.md',
       'dist/index.d.ts',
+      'dist/index.d.mts',
       'dist/index.js',
       'dist/index.mjs',
     ],
@@ -90,12 +96,21 @@ function readRegistryTags(packageName) {
   );
 }
 
-function verifyPrepublishRegistryState() {
-  assert.deepEqual(readRegistryTags('xrpl-connect'), { latest: '0.8.2' });
-  for (const packageName of ['@xrpl-connect/react', '@xrpl-connect/vue']) {
-    assert.throws(() => readRegistryTags(packageName), /E404/);
+function readOptionalRegistryTags(packageName) {
+  try {
+    return readRegistryTags(packageName);
+  } catch (error) {
+    if (/\bcode E404\b/.test(error instanceof Error ? error.message : String(error))) return null;
+    throw error;
   }
-  console.log('✓ Registry preflight preserves xrpl-connect@latest and finds no package collisions');
+}
+
+function verifyPrepublishRegistryState() {
+  const tagsByPackage = Object.fromEntries(
+    candidatePackages.map(({ name }) => [name, readOptionalRegistryTags(name)])
+  );
+  assertSafePrepublishRegistryState(tagsByPackage);
+  console.log('✓ Registry preflight is safe for a fresh or resumed candidate publication');
 }
 
 function verifyRegistryTags() {
@@ -175,7 +190,7 @@ try {
     )
   );
 
-  const installResult = run(
+  run(
     'npm',
     [
       'install',
@@ -185,17 +200,17 @@ try {
       '--no-fund',
       '--package-lock=false',
       ...tarballs,
+      '@types/react@^18.3.0',
+      '@types/react-dom@^18.3.0',
       'xrpl@^4.0.0',
       'jsdom@^22.1.0',
       'react@^18.3.1',
       'react-dom@^18.3.1',
       'vue@^3.5.22',
     ],
-    { ...runOptions, captureResult: true, cwd: consumerFolder }
+    { ...runOptions, cwd: consumerFolder }
   );
-  const installOutput = `${installResult.stdout}\n${installResult.stderr}`;
-  assert.doesNotMatch(installOutput, /npm warn.*(?:peer|ERESOLVE)|ERESOLVE.*peer/i);
-  console.log('✓ Clean candidate install completed without peer warnings');
+  console.log('✓ Candidate install completed with strict peer dependency checks');
 
   const installedManifests = Object.fromEntries(
     candidatePackages.map(({ name }) => [
@@ -275,6 +290,15 @@ try {
     );
   }
 
+  const installedReactFolder = path.join(consumerFolder, 'node_modules', '@xrpl-connect', 'react');
+  for (const declaration of ['dist/index.d.ts', 'dist/index.d.mts']) {
+    const contents = readFileSync(path.join(installedReactFolder, declaration), 'utf-8');
+    assert(
+      !contents.includes('@xrpl-connect/core'),
+      `${declaration} leaks the development-only @xrpl-connect/core package`
+    );
+  }
+
   const fixtures = [
     'runtime-env.cjs',
     'runtime-esm.mjs',
@@ -286,6 +310,14 @@ try {
   ];
   for (const fixture of fixtures) {
     copyFileSync(path.join(fixturesFolder, fixture), path.join(consumerFolder, fixture));
+  }
+  for (const fixture of [
+    'runtime-ssr.mjs',
+    'types-react-esm.mts',
+    'types-react-cjs.cts',
+    'tsconfig.react.json',
+  ]) {
+    copyFileSync(path.join(reactFixturesFolder, fixture), path.join(consumerFolder, fixture));
   }
 
   const tscPath = path.join(repositoryRoot, 'node_modules', 'typescript', 'bin', 'tsc');
@@ -299,14 +331,19 @@ try {
     ...runOptions,
     cwd: consumerFolder,
   });
+  console.log('→ Type-checking packed React ESM and CommonJS consumers');
+  run(process.execPath, [tscPath, '--project', 'tsconfig.react.json'], {
+    ...runOptions,
+    cwd: consumerFolder,
+  });
   console.log('→ Loading packed ESM runtime');
   run(process.execPath, ['runtime-esm.mjs'], { ...runOptions, cwd: consumerFolder });
   console.log('→ Loading packed CommonJS runtime');
   run(process.execPath, ['runtime-cjs.cjs'], { ...runOptions, cwd: consumerFolder });
+  console.log('→ Loading packed React ESM and CommonJS entries in SSR');
+  run(process.execPath, ['runtime-ssr.mjs'], { ...runOptions, cwd: consumerFolder });
 
-  console.log(
-    '✓ Packed candidates passed manifest, publish, and peer checks; xrpl-connect passed runtime and type checks'
-  );
+  console.log('✓ Packed candidates passed manifest, publish, peer, runtime, and type checks');
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true });
 }

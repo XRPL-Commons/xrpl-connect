@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { isWalletError } from './errors';
+import { createWalletError, isWalletError } from './errors';
 import { WalletErrorCategory, WalletErrorCode } from './types';
 
 describe('isWalletError', () => {
@@ -15,5 +15,27 @@ describe('isWalletError', () => {
 
   it('does not recognize unrelated errors', () => {
     expect(isWalletError(new Error('Rejected'))).toBe(false);
+  });
+});
+
+describe('createWalletError failure factories', () => {
+  it('preserves existing typed errors instead of changing their code or category', () => {
+    const typedError = createWalletError.notConnected();
+
+    expect(createWalletError.connectionFailed('Test Wallet', typedError)).toBe(typedError);
+    expect(createWalletError.signFailed(typedError)).toBe(typedError);
+  });
+
+  it('wraps unknown failures and retains the original error', () => {
+    const cause = new Error('Provider failed');
+
+    expect(createWalletError.connectionFailed('Test Wallet', cause)).toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+      originalError: cause,
+    });
+    expect(createWalletError.signFailed(cause)).toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+      originalError: cause,
+    });
   });
 });

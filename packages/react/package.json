@@ -49,7 +49,8 @@
     "prepublishOnly": "node -e \"const { npm_config_tag: tag, npm_config_access: access } = process.env; if (tag !== 'rc' || access !== 'public') { console.error('Publish requires --tag rc --access public'); process.exit(1); }\"",
     "lint": "vp lint src",
     "type-check": "tsc --noEmit",
-    "test": "node tests/ssr-smoke.mjs && vp test run",
+    "test": "pnpm test:types && node tests/ssr-smoke.mjs && vp test run",
+    "test:types": "tsc -p tests/tsconfig.types.json",
     "test:watch": "vp test",
     "clean": "rm -rf dist"
   },

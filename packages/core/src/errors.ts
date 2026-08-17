@@ -113,27 +113,36 @@ export const createWalletError = {
     ),
 
   connectionFailed: (walletName: string, originalError?: Error): WalletError =>
-    new WalletError(
-      WalletErrorCode.CONNECTION_FAILED,
-      `Failed to connect to ${walletName}. ${originalError?.message || ''}`,
-      originalError
-    ),
+    isWalletError(originalError)
+      ? originalError
+      : new WalletError(
+          WalletErrorCode.CONNECTION_FAILED,
+          `Failed to connect to ${walletName}. ${originalError?.message || ''}`,
+          originalError
+        ),
 
-  connectionRejected: (walletName: string): WalletError =>
+  connectionRejected: (walletName: string, originalError?: Error): WalletError =>
     new WalletError(
       WalletErrorCode.CONNECTION_REJECTED,
-      `Connection to ${walletName} was rejected by the user.`
+      `Connection to ${walletName} was rejected by the user.`,
+      originalError
     ),
 
   signFailed: (originalError?: Error): WalletError =>
+    isWalletError(originalError)
+      ? originalError
+      : new WalletError(
+          WalletErrorCode.SIGN_FAILED,
+          `Failed to sign transaction. ${originalError?.message || ''}`,
+          originalError
+        ),
+
+  signRejected: (originalError?: Error): WalletError =>
     new WalletError(
-      WalletErrorCode.SIGN_FAILED,
-      `Failed to sign transaction. ${originalError?.message || ''}`,
+      WalletErrorCode.SIGN_REJECTED,
+      'Transaction signing was rejected by the user.',
       originalError
     ),
-
-  signRejected: (): WalletError =>
-    new WalletError(WalletErrorCode.SIGN_REJECTED, 'Transaction signing was rejected by the user.'),
 
   networkNotSupported: (networkId: string, walletName: string): WalletError =>
     new WalletError(

@@ -145,6 +145,10 @@ interface XamanAdapterOptions {
   apiKey?: string; // Xumm API key (required for actual usage)
   onQRCode?: (uri: string) => void; // Callback when QR code is available
   onDeepLink?: (uri: string) => string; // Transform deep links (mobile)
+  returnUrl?: {
+    app?: string; // URL or deep link opened from the Xaman app
+    web?: string; // URL opened from Xaman's browser flow
+  };
 }
 ```
 
@@ -156,6 +160,10 @@ import { WalletManager } from '@xrpl-connect/core';
 
 const xamanAdapter = new XamanAdapter({
   apiKey: process.env.XUMM_API_KEY,
+  returnUrl: {
+    app: 'myapp://wallet',
+    web: 'https://example.com/wallet',
+  },
   onQRCode: (uri) => {
     console.log('QR Code URI:', uri);
     // Display QR code to user
@@ -167,11 +175,12 @@ const walletManager = new WalletManager({
   adapters: [xamanAdapter],
 });
 
-// Connect with API key
-const account = await walletManager.connect('xaman', {
-  apiKey: process.env.XUMM_API_KEY,
-});
+const account = await walletManager.connect('xaman');
 ```
+
+Return URLs provide navigation after Xaman resolves a signing request; keep application
+state recoverable instead of treating navigation as the signing result. When using the
+adapter directly, `xamanAdapter.connect()` can override `returnUrl` for that session.
 
 #### Implementation Details
 
@@ -313,7 +322,7 @@ WalletConnect is a multi-wallet connection protocol supporting dozens of mobile 
 - ✅ QR code-based pairing
 - ✅ Mobile-first design
 - ✅ Pre-initialization for faster loading
-- ✅ Supports XRPL and other blockchains
+- ✅ Supports XRPL mainnet, testnet, devnet, and custom XRPL networks
 
 #### Constructor
 
@@ -355,7 +364,7 @@ For improved user experience, pre-initialize WalletConnect before the user inter
 
 ```typescript
 // Initialize during app load, not on first user click
-await wcAdapter.preInitialize('your-project-id', 'mainnet');
+await wcAdapter.preInitialize('mainnet');
 ```
 
 This eagerly initializes the WalletConnect infrastructure, reducing latency when the user first clicks "Connect".
@@ -366,6 +375,7 @@ This eagerly initializes the WalletConnect infrastructure, reducing latency when
 - **connect()**: Generates QR code and waits for wallet connection
 - **Multi-wallet**: Shows wallet selection after QR scan
 - **Namespace**: Uses `xrpl` namespace for XRPL networks
+- **Validation**: Accepts only a valid XRPL classic address whose CAIP-10 chain matches the requested network; invalid approved sessions are disconnected
 
 ---
 

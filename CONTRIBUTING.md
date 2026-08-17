@@ -189,14 +189,16 @@ confirmation, verifies npm access and registry state, rebuilds and dry-runs ever
 checks the resulting dist-tags:
 
 ```bash
-pnpm --filter xrpl-connect publish:rc -- --confirm 1.0.0-rc.0
+pnpm --filter xrpl-connect publish:rc --confirm 1.0.0-rc.0
 ```
 
-The preflight requires `xrpl-connect@latest` at `0.8.2` and both scoped package names to be
-unpublished. The packed candidate test performs each dry-run and installs the exact tarballs
-together with strict peer checking. The final registry check requires `rc` to point to the candidate,
-keeps the umbrella `latest` at `0.8.2`, and rejects unintended framework `latest` tags. If any step
-fails, stop; do not bypass the command with a manual publish.
+The preflight requires `xrpl-connect@latest` at `0.8.2`; each candidate must be either unpublished
+or already tagged at the exact confirmed version. The packed candidate test performs each dry-run
+and installs the exact tarballs together with strict peer checking. The publisher skips exact
+candidates that a previous attempt already uploaded, then the final registry check requires `rc` to
+point to the candidate, keeps the umbrella `latest` at `0.8.2`, and rejects unintended framework
+`latest` tags. If an attempt is interrupted, rerun the same command; do not bypass it with a manual
+publish.
 
 ## Reporting Security Issues
 

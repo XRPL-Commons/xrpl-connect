@@ -6,7 +6,10 @@ description: Production, security, SSR, persistence, and browser guidance for XR
 
 ## Client boundaries and SSR
 
-Wallet adapters interact with browser APIs. Create the manager and render the connector in client code. The official React and Vue packages can be imported during SSR, but their provider/plugin and connector setup belongs in client code.
+Wallet adapters interact with browser APIs. Create the manager and render the connector in client
+code. The official React and Vue packages can be imported during SSR, but importing a package is
+different from executing provider/plugin setup or injected composables. Those operations and the
+connector belong in client code.
 
 ```tsx
 'use client';
@@ -14,8 +17,11 @@ Wallet adapters interact with browser APIs. Create the manager and render the co
 import { XrplConnectProvider, WalletConnector } from '@xrpl-connect/react';
 ```
 
-For Nuxt, install `createXrplConnect()` from a `.client.ts` plugin and render
-`<WalletConnector>` inside `<ClientOnly>`. See the [Nuxt guide](/guide/frameworks/nuxt).
+For Nuxt, install `createXrplConnect()` from a `.client.ts` plugin. Components that call
+`useWallet()`, `useSigner()`, or `useWalletModal()` must be `.client.vue` components or children
+that are wholly below a client-only boundary. A `<ClientOnly>` in a universal component's
+template does not stop that component's setup function from running during SSR. See the
+[Nuxt guide](/guide/frameworks/nuxt).
 
 ## Credentials
 

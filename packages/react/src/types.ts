@@ -34,22 +34,26 @@ export interface XrplConnectContextValue {
   registerConnector: (el: WalletConnectorElement) => void;
   /** @internal — removes only the connector that is being unmounted. */
   unregisterConnector: (el: WalletConnectorElement) => void;
-  /** @internal — mirrors modal lifecycle events into provider state. */
-  reportModalConnecting: () => void;
-  /** @internal — mirrors typed modal failures into provider state. */
-  reportModalError: (error: WalletError) => void;
+  /** @internal — starts an independently owned modal connection attempt. */
+  reportModalConnecting: () => symbol;
+  /** @internal — reports a typed failure only for the matching live attempt. */
+  reportModalError: (attempt: symbol | null, error: WalletError) => boolean;
+  /** @internal — cancels modal attempts owned by a closing connector. */
+  reportModalClosed: (attempts: readonly symbol[]) => void;
   openModal: () => void;
   closeModal: () => void;
 }
 
 /**
- * Minimal typed surface of the `<xrpl-wallet-connector>` custom element that the
- * React layer drives.
+ * Public API exposed by the `<xrpl-wallet-connector>` custom element. Mirrors
+ * `WalletConnectorElementInstance` from `@xrpl-connect/ui`.
  */
 export interface WalletConnectorElement extends HTMLElement {
   setWalletManager(manager: WalletManager): void;
-  open(): void;
+  open(): Promise<void>;
+  openAndWait(): Promise<AccountInfo>;
   close(): void;
+  toggle(): void;
 }
 
 export interface XrplConnectProviderProps {

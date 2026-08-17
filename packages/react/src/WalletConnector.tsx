@@ -56,6 +56,7 @@ export function WalletConnector({
     unregisterConnector,
     reportModalConnecting,
     reportModalError,
+    reportModalClosed,
   } = useXrplConnectContext();
   const elRef = useRef<WalletConnectorElement | null>(null);
 
@@ -69,6 +70,16 @@ export function WalletConnector({
     let detach: (() => void) | undefined;
     let registeredElement: WalletConnectorElement | null = null;
     let notifiedAccountKey: string | null = null;
+    const modalAttempts = new Map<number, symbol>();
+    let legacyModalAttempt: symbol | null = null;
+
+    const cancelModalAttempts = () => {
+      const attempts = [...modalAttempts.values()];
+      if (legacyModalAttempt) attempts.push(legacyModalAttempt);
+      modalAttempts.clear();
+      legacyModalAttempt = null;
+      if (attempts.length > 0) reportModalClosed(attempts);
+    };
 
     const onMgrConnect = (account: AccountInfo) => {
       const accountKey = `${account.address}:${account.network.id}`;
@@ -94,9 +105,19 @@ export function WalletConnector({
       registeredElement = el;
 
       const onWcConnecting = (e: Event) => {
-        const walletId = (e as CustomEvent<{ walletId: string }>).detail?.walletId;
+        const detail = (e as CustomEvent<{ walletId?: string; connectionAttemptId?: number }>)
+          .detail;
+        const walletId = detail?.walletId;
         if (walletId) {
-          reportModalConnecting();
+          const attempt = reportModalConnecting();
+          if (detail?.connectionAttemptId === undefined) {
+            if (legacyModalAttempt) reportModalClosed([legacyModalAttempt]);
+            legacyModalAttempt = attempt;
+          } else {
+            const previousAttempt = modalAttempts.get(detail.connectionAttemptId);
+            if (previousAttempt) reportModalClosed([previousAttempt]);
+            modalAttempts.set(detail.connectionAttemptId, attempt);
+          }
           callbacksRef.current.onConnecting?.(walletId);
         }
       };
@@ -106,19 +127,32 @@ export function WalletConnector({
             error?: unknown;
             errorType?: 'rejected' | 'unavailable' | 'failed';
             walletId?: string;
+            connectionAttemptId?: number;
           }>
         ).detail;
         const error = normalizeModalError(detail?.error, detail?.errorType, detail?.walletId);
-        reportModalError(error);
-        callbacksRef.current.onError?.(error);
+        let attempt: symbol | null;
+        if (detail?.connectionAttemptId === undefined) {
+          attempt = legacyModalAttempt;
+          legacyModalAttempt = null;
+        } else {
+          attempt = modalAttempts.get(detail.connectionAttemptId) ?? null;
+          if (attempt === null) return;
+          modalAttempts.delete(detail.connectionAttemptId);
+        }
+        if (reportModalError(attempt, error)) callbacksRef.current.onError?.(error);
       };
+      const onWcClose = () => cancelModalAttempts();
 
       el.addEventListener('connecting', onWcConnecting);
       el.addEventListener('error', onWcError);
+      el.addEventListener('close', onWcClose);
 
       detach = () => {
         el.removeEventListener('connecting', onWcConnecting);
         el.removeEventListener('error', onWcError);
+        el.removeEventListener('close', onWcClose);
+        cancelModalAttempts();
       };
     });
 
@@ -129,7 +163,14 @@ export function WalletConnector({
       if (registeredElement) unregisterConnector(registeredElement);
       detach?.();
     };
-  }, [manager, registerConnector, unregisterConnector, reportModalConnecting, reportModalError]);
+  }, [
+    manager,
+    registerConnector,
+    unregisterConnector,
+    reportModalConnecting,
+    reportModalError,
+    reportModalClosed,
+  ]);
 
   const mergedStyle = {
     ...(theme ? THEMES[theme] : {}),

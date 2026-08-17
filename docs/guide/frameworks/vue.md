@@ -16,13 +16,13 @@ npm install @xrpl-connect/vue@rc xrpl-connect@rc xrpl vue
 
 ## Configure the plugin
 
-Import `xrpl-connect` once in the browser entry point to register the wallet connector custom
-element, then install the Vue plugin before mounting the application:
+Import adapters from `xrpl-connect` in the browser entry point. Evaluating that package entry
+also registers the wallet connector custom element. Then install the Vue plugin before mounting
+the application:
 
 ```ts
 // main.ts
 import { createApp } from 'vue';
-import 'xrpl-connect';
 import { CrossmarkAdapter, XamanAdapter } from 'xrpl-connect';
 import { createXrplConnect } from '@xrpl-connect/vue';
 import App from './App.vue';
@@ -146,5 +146,7 @@ showing optional signing actions.
 ## SSR and Nuxt
 
 The package itself is safe to import during server rendering. The connector is a browser custom
-element, so register `xrpl-connect`, install the plugin, and render the modal from client-only
-code. See the [Nuxt guide](./nuxt) for the client-plugin pattern.
+element, so evaluate `xrpl-connect`, install the plugin, and invoke the injected composables only
+from client code. In Nuxt, a template `<ClientOnly>` does not prevent the same component's setup
+function from running during SSR; use a `.client.vue` consumer or a child wholly below the
+client-only boundary. See the [Nuxt guide](./nuxt) for the complete pattern.

@@ -1,0 +1,23 @@
+import type { AccountInfo } from '@xrpl-connect/core';
+import type { WalletConnectorElement } from '../dist/index';
+
+declare const connector: WalletConnectorElement;
+declare const manager: Parameters<WalletConnectorElement['setWalletManager']>[0];
+
+const managerResult: void = connector.setWalletManager(manager);
+const openResult: Promise<void> = connector.open();
+const accountResult: Promise<AccountInfo> = connector.openAndWait();
+const closeResult: void = connector.close();
+const toggleResult: void = connector.toggle();
+
+// Implementation details must not leak into the public element contract.
+// @ts-expect-error openAccountModal is internal to the web component implementation.
+connector.openAccountModal();
+// @ts-expect-error closeAccountModal is internal to the web component implementation.
+connector.closeAccountModal();
+
+void managerResult;
+void openResult;
+void accountResult;
+void closeResult;
+void toggleResult;
