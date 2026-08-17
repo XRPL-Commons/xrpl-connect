@@ -119,9 +119,9 @@ const logger = createLogger('[Xaman]');
  * Xaman adapter options
  */
 export interface XamanReturnUrl {
-  /** URL to return to inside the Xaman mobile app after signing */
+  /** URL or registered deep link opened by the Xaman app after signing */
   app?: string;
-  /** URL to return to in the browser after signing */
+  /** URL opened by Xaman's browser flow after signing */
   web?: string;
 }
 
@@ -129,8 +129,7 @@ export interface XamanAdapterOptions {
   apiKey?: string; // Xumm API key (can also be provided in connect options)
   onQRCode?: (uri: string) => void; // Callback for QR code URI
   onDeepLink?: (uri: string) => string; // Transform URI for deep linking
-  // Where Xaman sends the user after they approve or reject a signing request.
-  // Without this, users can get stuck inside the Xaman app on mobile after signing.
+  /** Optional navigation destinations offered after a signing request is resolved */
   returnUrl?: XamanReturnUrl;
 }
 
@@ -167,7 +166,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
   private disconnecting = false;
   private connectionAttemptDone: Promise<void> | null = null;
   private disconnectPromise: Promise<void> | null = null;
-  // Per-connection callback overrides. Populated by connect() and cleared by
+  // Per-connection option overrides. Populated by connect() and cleared by
   // cleanup(); avoids mutating constructor-supplied options across calls.
   private activeCallbacks: {
     onQRCode?: (uri: string) => void;
@@ -616,9 +615,6 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
         force_network: xamanNetwork.forceNetwork,
         signers: [expectedAccount],
         ...(multisign ? { multisign: true } : {}),
-        // Without a return_url Xaman has nowhere to send the user after signing,
-        // which strands them inside the Xaman app on mobile and makes the calling
-        // site's post-signing follow-up (e.g. a pending API call) never run.
         ...(returnUrl ? { return_url: returnUrl } : {}),
       },
     };

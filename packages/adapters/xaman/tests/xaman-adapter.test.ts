@@ -964,11 +964,23 @@ describe('XamanAdapter.sign', () => {
     expect(subscription.close).toHaveBeenCalledTimes(1);
   });
 
-  it('passes a returnUrl (constructor and per-connect) through to the payload', async () => {
+  it('omits return_url when no return destination is configured', async () => {
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false));
+
+    const signPromise = adapter.sign({ TransactionType: 'Payment' } as never);
+    await subscription.emit({ signed: true });
+    await signPromise;
+
+    const [payloadBody] = mockXummInstance.payload.createAndSubscribe.mock.calls.at(-1) ?? [];
+    expect(payloadBody.options).not.toHaveProperty('return_url');
+  });
+
+  it('passes a constructor returnUrl through to the payload', async () => {
     mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
     const adapter = new XamanAdapter({
       apiKey: 'test-key',
-      returnUrl: { app: 'xaman://app-home', web: 'https://example.test/wallet' },
+      returnUrl: { app: 'myapp://wallet', web: 'https://example.test/wallet' },
     });
     await adapter.connect({ network: 'mainnet', onQRCode: () => {} });
     const subscription = createSubscriptionHarness();
@@ -983,7 +995,7 @@ describe('XamanAdapter.sign', () => {
     expect(mockXummInstance.payload.createAndSubscribe).toHaveBeenCalledWith(
       expect.objectContaining({
         options: expect.objectContaining({
-          return_url: { app: 'xaman://app-home', web: 'https://example.test/wallet' },
+          return_url: { app: 'myapp://wallet', web: 'https://example.test/wallet' },
         }),
       }),
       expect.any(Function)
@@ -1013,6 +1025,40 @@ describe('XamanAdapter.sign', () => {
       expect.objectContaining({
         options: expect.objectContaining({
           return_url: { web: 'https://connect.test/after-sign' },
+        }),
+      }),
+      expect.any(Function)
+    );
+  });
+
+  it('clears a per-connect returnUrl when the session is disconnected', async () => {
+    mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
+    const adapter = new XamanAdapter({
+      apiKey: 'test-key',
+      onQRCode: () => {},
+      returnUrl: { web: 'https://constructor.test/after-sign' },
+    });
+    await adapter.connect({
+      network: 'mainnet',
+      onQRCode: () => {},
+      returnUrl: { web: 'https://connect.test/after-sign' },
+    });
+    mockXummInstance.logout.mockResolvedValue(undefined);
+    await adapter.disconnect();
+
+    mockXummInstance.user.account = Promise.resolve(CONNECTED_ACCOUNT);
+    await adapter.checkXamanState({ network: 'mainnet' });
+    const subscription = createSubscriptionHarness();
+    mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false));
+
+    const signPromise = adapter.sign({ TransactionType: 'Payment' } as never);
+    await subscription.emit({ signed: true });
+    await signPromise;
+
+    expect(mockXummInstance.payload.createAndSubscribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          return_url: { web: 'https://constructor.test/after-sign' },
         }),
       }),
       expect.any(Function)

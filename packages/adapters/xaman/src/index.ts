@@ -4,7 +4,7 @@
  */
 
 export { XamanAdapter } from './xaman-adapter';
-export type { XamanAdapterOptions, XamanConnectOptions } from './xaman-adapter';
+export type { XamanAdapterOptions, XamanConnectOptions, XamanReturnUrl } from './xaman-adapter';
 
 // Namespace exports expose the complete upstream APIs without flattening generic
 // names into the adapter or meta-package public surface.

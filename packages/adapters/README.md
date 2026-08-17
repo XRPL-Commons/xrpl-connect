@@ -145,6 +145,10 @@ interface XamanAdapterOptions {
   apiKey?: string; // Xumm API key (required for actual usage)
   onQRCode?: (uri: string) => void; // Callback when QR code is available
   onDeepLink?: (uri: string) => string; // Transform deep links (mobile)
+  returnUrl?: {
+    app?: string; // URL or deep link opened from the Xaman app
+    web?: string; // URL opened from Xaman's browser flow
+  };
 }
 ```
 
@@ -156,6 +160,10 @@ import { WalletManager } from '@xrpl-connect/core';
 
 const xamanAdapter = new XamanAdapter({
   apiKey: process.env.XUMM_API_KEY,
+  returnUrl: {
+    app: 'myapp://wallet',
+    web: 'https://example.com/wallet',
+  },
   onQRCode: (uri) => {
     console.log('QR Code URI:', uri);
     // Display QR code to user
@@ -167,11 +175,12 @@ const walletManager = new WalletManager({
   adapters: [xamanAdapter],
 });
 
-// Connect with API key
-const account = await walletManager.connect('xaman', {
-  apiKey: process.env.XUMM_API_KEY,
-});
+const account = await walletManager.connect('xaman');
 ```
+
+Return URLs provide navigation after Xaman resolves a signing request; keep application
+state recoverable instead of treating navigation as the signing result. When using the
+adapter directly, `xamanAdapter.connect()` can override `returnUrl` for that session.
 
 #### Implementation Details
 
