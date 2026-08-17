@@ -1,5 +1,5 @@
 import { Comment, createApp, createSSRApp, defineComponent, h, nextTick } from 'vue';
-import { renderToString } from '@vue/server-renderer';
+import { renderToString } from 'vue/server-renderer';
 import type { AccountInfo, WalletAdapter } from '@xrpl-connect/core';
 import { createWalletError, MemoryStorageAdapter, WalletErrorCode } from '@xrpl-connect/core';
 import {

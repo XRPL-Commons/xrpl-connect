@@ -36,3 +36,18 @@
   - `pnpm run docs:build`
   - `pnpm exec vp check` (230 files formatted; 93 files linted with no warnings)
   - `pnpm test` (full recursive build and package test suite)
+
+## PR #134 review fix
+
+- [x] Confirm the existing issue #124 worktree is clean and matches the current PR head.
+- [x] Replace the independently resolved server renderer with Vue's matched SSR subpath export.
+- [x] Refresh the lockfile and prove the Vue and renderer versions are aligned.
+- [x] Run focused Vue tests, type-checking, formatting, and repository consistency checks.
+- [x] Review the final diff, commit, push, and confirm the remote PR head.
+
+### Result
+
+The SSR tests now import `renderToString` through `vue/server-renderer`, which resolves Vue and
+its renderer to the same 3.5.24 release. The redundant direct renderer dependency and lockfile
+importer entry were removed. The full recursive build/test matrix, all 13 Vue tests, Vue
+type-checking, formatting over 230 files, linting over 93 files, and `git diff --check` pass.
