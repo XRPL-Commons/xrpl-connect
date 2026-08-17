@@ -118,17 +118,26 @@ const logger = createLogger('[Xaman]');
 /**
  * Xaman adapter options
  */
+export interface XamanReturnUrl {
+  /** URL or registered deep link opened by the Xaman app after signing */
+  app?: string;
+  /** URL opened by Xaman's browser flow after signing */
+  web?: string;
+}
+
 export interface XamanAdapterOptions {
   apiKey?: string; // Xumm API key (can also be provided in connect options)
   onQRCode?: (uri: string) => void; // Callback for QR code URI
   onDeepLink?: (uri: string) => string; // Transform URI for deep linking
-  // returnUrl?: string; // URL to return to after signing on mobile (appends ?payloadId=xxx). If not provided, keeps listening in background
+  /** Optional navigation destinations offered after a signing request is resolved */
+  returnUrl?: XamanReturnUrl;
 }
 
 export type XamanConnectOptions = {
   apiKey?: string;
   onQRCode?: (uri: string) => void;
   onDeepLink?: (uri: string) => string;
+  returnUrl?: XamanReturnUrl;
 };
 
 /**
@@ -157,11 +166,12 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
   private disconnecting = false;
   private connectionAttemptDone: Promise<void> | null = null;
   private disconnectPromise: Promise<void> | null = null;
-  // Per-connection callback overrides. Populated by connect() and cleared by
+  // Per-connection option overrides. Populated by connect() and cleared by
   // cleanup(); avoids mutating constructor-supplied options across calls.
   private activeCallbacks: {
     onQRCode?: (uri: string) => void;
     onDeepLink?: (uri: string) => string;
+    returnUrl?: XamanReturnUrl;
   } = {};
 
   constructor(options: XamanAdapterOptions = {}) {
@@ -351,6 +361,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
         this.activeCallbacks = {
           onQRCode: options?.onQRCode,
           onDeepLink: options?.onDeepLink,
+          returnUrl: options?.returnUrl,
         };
         return this.currentAccount;
       }
@@ -372,6 +383,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
     this.activeCallbacks = {
       onQRCode: options?.onQRCode,
       onDeepLink: options?.onDeepLink,
+      returnUrl: options?.returnUrl,
     };
 
     let client: Xumm | null = null;
@@ -592,6 +604,9 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
     let handleAbort: (() => void) | undefined;
     this.activePayloadOperations.add(operation);
 
+    // Per-connection return URL (from connect options) wins over the constructor value.
+    const returnUrl = this.activeCallbacks.returnUrl || this.options.returnUrl;
+
     // oxlint-disable-next-line typescript/no-explicit-any
     const payloadBody: any = {
       txjson: transaction,
@@ -600,6 +615,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
         force_network: xamanNetwork.forceNetwork,
         signers: [expectedAccount],
         ...(multisign ? { multisign: true } : {}),
+        ...(returnUrl ? { return_url: returnUrl } : {}),
       },
     };
 

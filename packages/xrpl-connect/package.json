@@ -48,9 +48,9 @@
   "scripts": {
     "build": "vp pack",
     "dev": "vp pack --watch",
-    "publish:build": "vp run -F '{.}^...' --no-cache build && vp build -c vite.config.ts && node scripts/build-types.mjs && node scripts/prepare-publish.mjs",
+    "publish:build": "vp run -F '{.}^...' --no-cache build && vp pack && vp build -c vite.config.ts && node scripts/build-types.mjs && node scripts/prepare-publish.mjs",
     "test": "node scripts/run-command.test.mjs",
-    "test:publish": "pnpm publish:build && node scripts/test-publish.mjs",
+    "test:publish": "pnpm publish:build && pnpm --filter @xrpl-connect/react build && node scripts/test-publish.mjs",
     "clean": "rm -rf dist dist-publish"
   },
   "dependencies": {
