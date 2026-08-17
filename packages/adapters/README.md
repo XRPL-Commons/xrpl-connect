@@ -313,7 +313,7 @@ WalletConnect is a multi-wallet connection protocol supporting dozens of mobile 
 - ✅ QR code-based pairing
 - ✅ Mobile-first design
 - ✅ Pre-initialization for faster loading
-- ✅ Supports XRPL and other blockchains
+- ✅ Supports XRPL mainnet, testnet, devnet, and custom XRPL networks
 
 #### Constructor
 
@@ -355,7 +355,7 @@ For improved user experience, pre-initialize WalletConnect before the user inter
 
 ```typescript
 // Initialize during app load, not on first user click
-await wcAdapter.preInitialize('your-project-id', 'mainnet');
+await wcAdapter.preInitialize('mainnet');
 ```
 
 This eagerly initializes the WalletConnect infrastructure, reducing latency when the user first clicks "Connect".
@@ -366,6 +366,7 @@ This eagerly initializes the WalletConnect infrastructure, reducing latency when
 - **connect()**: Generates QR code and waits for wallet connection
 - **Multi-wallet**: Shows wallet selection after QR scan
 - **Namespace**: Uses `xrpl` namespace for XRPL networks
+- **Validation**: Accepts only a valid XRPL classic address whose CAIP-10 chain matches the requested network; invalid approved sessions are disconnected
 
 ---
 

@@ -21,11 +21,14 @@ import SignClient from '@walletconnect/sign-client';
 import { WalletConnectAdapter } from '../src/walletconnect-adapter';
 
 const SignClientMock = SignClient as unknown as { init: ReturnType<typeof vi.fn> };
+const MAINNET_ADDRESS = 'rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh';
+const TESTNET_ADDRESS = 'rN7n7otQDd6FczFgLdSqtcsAUxDkw6fzRH';
 
 beforeEach(() => {
   SignClientMock.init.mockReset();
   mockClient.connect.mockReset();
   mockClient.disconnect.mockReset();
+  mockClient.disconnect.mockResolvedValue(undefined);
   mockClient.request.mockReset();
   mockClient.on.mockReset();
   mockClient.off.mockReset();
@@ -51,15 +54,249 @@ describe('WalletConnectAdapter.connect', () => {
       uri: 'wc:example',
       approval: vi.fn().mockResolvedValue({
         topic: 'topic-1',
-        namespaces: { xrpl: { accounts: ['xrpl:0:rWCAddress'] } },
+        namespaces: { xrpl: { accounts: [`xrpl:0:${MAINNET_ADDRESS}`] } },
       }),
     });
 
     const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
     const account = await adapter.connect();
 
-    expect(account.address).toBe('rWCAddress');
+    expect(account.address).toBe(MAINNET_ADDRESS);
     expect(account.network.id).toBe('mainnet');
+  });
+
+  it('selects the account whose CAIP-10 chain matches the requested network', async () => {
+    mockClient.connect.mockResolvedValue({
+      uri: 'wc:example',
+      approval: vi.fn().mockResolvedValue({
+        topic: 'topic-multiple',
+        namespaces: {
+          xrpl: {
+            accounts: [`xrpl:1:${TESTNET_ADDRESS}`, `xrpl:0:${MAINNET_ADDRESS}`],
+          },
+        },
+      }),
+    });
+
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+    const account = await adapter.connect({ network: 'mainnet' });
+
+    expect(account).toMatchObject({ address: MAINNET_ADDRESS, network: { id: 'mainnet' } });
+    expect(mockClient.disconnect).not.toHaveBeenCalled();
+  });
+
+  it.each(['21338', '4294967295'])(
+    'matches an account against custom XRPL network ID %s',
+    async (networkId) => {
+      mockClient.connect.mockResolvedValue({
+        uri: 'wc:example',
+        approval: vi.fn().mockResolvedValue({
+          topic: 'topic-custom',
+          namespaces: { xrpl: { accounts: [`xrpl:${networkId}:${MAINNET_ADDRESS}`] } },
+        }),
+      });
+
+      const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+      const account = await adapter.connect({
+        network: {
+          id: 'custom',
+          name: 'Custom',
+          wss: 'wss://example.com',
+          walletConnectId: `xrpl:${networkId}`,
+        },
+      });
+
+      expect(account).toMatchObject({ address: MAINNET_ADDRESS, network: { id: 'custom' } });
+    }
+  );
+
+  it.each(['', 'xrpl:01', 'xrpl:not-a-network', 'xrpl:4294967296', 'eip155:1'])(
+    'rejects invalid requested XRPL chain ID %s before connecting',
+    async (walletConnectId) => {
+      const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+
+      await expect(
+        adapter.connect({
+          network: {
+            id: 'custom',
+            name: 'Custom',
+            wss: 'wss://example.com',
+            walletConnectId,
+          },
+        })
+      ).rejects.toMatchObject({ code: WalletErrorCode.CONNECTION_FAILED });
+
+      expect(SignClientMock.init).not.toHaveBeenCalled();
+      expect(mockClient.connect).not.toHaveBeenCalled();
+    }
+  );
+
+  it('preserves a newer pre-initialized connection when older validation cleanup finishes', async () => {
+    let finishDisconnect!: () => void;
+    const disconnect = new Promise<void>((resolve) => {
+      finishDisconnect = resolve;
+    });
+
+    mockClient.connect
+      .mockResolvedValueOnce({
+        uri: 'wc:invalid',
+        approval: vi.fn().mockResolvedValue({
+          topic: 'topic-invalid',
+          namespaces: { xrpl: { accounts: [`xrpl:1:${TESTNET_ADDRESS}`] } },
+        }),
+      })
+      .mockResolvedValueOnce({
+        uri: 'wc:newer',
+        approval: vi.fn().mockResolvedValue({
+          topic: 'topic-newer',
+          namespaces: { xrpl: { accounts: [`xrpl:0:${MAINNET_ADDRESS}`] } },
+        }),
+      });
+    mockClient.disconnect.mockReturnValue(disconnect);
+
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+    const invalidConnection = adapter.connect();
+    await vi.waitFor(() => expect(mockClient.disconnect).toHaveBeenCalledOnce());
+
+    await adapter.preInitialize('mainnet');
+    finishDisconnect();
+    await expect(invalidConnection).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+
+    const account = await adapter.connect();
+    expect(account.address).toBe(MAINNET_ADDRESS);
+    expect(mockClient.connect).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not create a stale pre-initialized proposal after connect takes ownership', async () => {
+    let finishInitialization!: () => void;
+    const initialization = new Promise<typeof mockClient>((resolve) => {
+      finishInitialization = () => resolve(mockClient);
+    });
+    SignClientMock.init.mockReturnValue(initialization);
+    mockClient.connect.mockResolvedValue({
+      uri: 'wc:current',
+      approval: vi.fn().mockResolvedValue({
+        topic: 'topic-current',
+        namespaces: { xrpl: { accounts: [`xrpl:0:${MAINNET_ADDRESS}`] } },
+      }),
+    });
+
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+    const preInitialization = adapter.preInitialize('mainnet');
+    await vi.waitFor(() => expect(SignClientMock.init).toHaveBeenCalledOnce());
+
+    const connection = adapter.connect();
+    finishInitialization();
+
+    await preInitialization;
+    await expect(connection).resolves.toMatchObject({ address: MAINNET_ADDRESS });
+    expect(mockClient.connect).toHaveBeenCalledOnce();
+  });
+
+  it('does not accept a custom chain by its network name without a numeric walletConnectId', async () => {
+    mockClient.connect.mockResolvedValue({
+      uri: 'wc:example',
+      approval: vi.fn().mockResolvedValue({
+        topic: 'topic-custom',
+        namespaces: { xrpl: { accounts: [`xrpl:0:${MAINNET_ADDRESS}`] } },
+      }),
+    });
+
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+    await expect(
+      adapter.connect({ network: { id: 'custom', name: 'Custom', wss: 'wss://example.com' } })
+    ).rejects.toMatchObject({ code: WalletErrorCode.CONNECTION_FAILED });
+    expect(mockClient.connect).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['missing address', 'xrpl:0'],
+    ['empty address', 'xrpl:0:'],
+    ['extra component', `xrpl:0:${MAINNET_ADDRESS}:extra`],
+    ['wrong namespace', `eip155:0:${MAINNET_ADDRESS}`],
+    ['non-canonical chain reference', `xrpl:01:${MAINNET_ADDRESS}`],
+    ['out-of-range chain reference', `xrpl:4294967296:${MAINNET_ADDRESS}`],
+    ['invalid classic address', 'xrpl:0:rNotAValidClassicAddress'],
+  ])('rejects and cleans up a malformed approved account (%s)', async (_case, account) => {
+    mockClient.connect.mockResolvedValue({
+      uri: 'wc:example',
+      approval: vi.fn().mockResolvedValue({
+        topic: 'topic-malformed',
+        namespaces: { xrpl: { accounts: [account] } },
+      }),
+    });
+
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+
+    await expect(adapter.connect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+    expect(mockClient.disconnect).toHaveBeenCalledWith(
+      expect.objectContaining({ topic: 'topic-malformed' })
+    );
+    expect(await adapter.getAccount()).toBeNull();
+    await expect(adapter.getNetwork()).rejects.toMatchObject({
+      code: WalletErrorCode.NOT_CONNECTED,
+    });
+  });
+
+  it.each([
+    ['no XRPL accounts', []],
+    ['only an account on another chain', [`xrpl:1:${TESTNET_ADDRESS}`]],
+  ])('rejects and cleans up an approved session with %s', async (_case, accounts) => {
+    mockClient.connect.mockResolvedValue({
+      uri: 'wc:example',
+      approval: vi.fn().mockResolvedValue({
+        topic: 'topic-wrong-chain',
+        namespaces: { xrpl: { accounts } },
+      }),
+    });
+
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+
+    await expect(adapter.connect({ network: 'mainnet' })).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+    expect(mockClient.disconnect).toHaveBeenCalledWith(
+      expect.objectContaining({ topic: 'topic-wrong-chain' })
+    );
+    expect(await adapter.getAccount()).toBeNull();
+  });
+
+  it('clears local state when disconnecting an invalid approved session fails', async () => {
+    mockClient.connect.mockResolvedValue({
+      uri: 'wc:example',
+      approval: vi.fn().mockResolvedValue({
+        topic: 'topic-disconnect-failure',
+        namespaces: { xrpl: { accounts: [`xrpl:1:${TESTNET_ADDRESS}`] } },
+      }),
+    });
+    mockClient.disconnect.mockRejectedValue(new Error('Relay unavailable'));
+
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+
+    await expect(adapter.connect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+      originalError: {
+        message: 'WalletConnect did not return an account for xrpl:0',
+      },
+    });
+    expect(await adapter.getAccount()).toBeNull();
+
+    mockClient.disconnect.mockResolvedValue(undefined);
+    mockClient.connect.mockResolvedValue({
+      uri: 'wc:retry',
+      approval: vi.fn().mockResolvedValue({
+        topic: 'topic-retry',
+        namespaces: { xrpl: { accounts: [`xrpl:0:${MAINNET_ADDRESS}`] } },
+      }),
+    });
+
+    await expect(adapter.connect()).resolves.toMatchObject({ address: MAINNET_ADDRESS });
+    expect(SignClientMock.init).toHaveBeenCalledTimes(2);
+    expect(mockClient.disconnect).toHaveBeenCalledOnce();
   });
 
   it('throws a wrapped error when no project ID is provided', async () => {
@@ -88,7 +325,7 @@ describe('WalletConnectAdapter.sign', () => {
       uri: 'wc:example',
       approval: vi.fn().mockResolvedValue({
         topic: 'topic-1',
-        namespaces: { xrpl: { accounts: ['xrpl:0:rWCAddress'] } },
+        namespaces: { xrpl: { accounts: [`xrpl:0:${MAINNET_ADDRESS}`] } },
       }),
     });
     const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
@@ -146,7 +383,7 @@ describe('WalletConnectAdapter.signAndSubmit', () => {
       uri: 'wc:example',
       approval: vi.fn().mockResolvedValue({
         topic: 'topic-1',
-        namespaces: { xrpl: { accounts: ['xrpl:0:rWCAddress'] } },
+        namespaces: { xrpl: { accounts: [`xrpl:0:${MAINNET_ADDRESS}`] } },
       }),
     });
     const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
@@ -212,7 +449,7 @@ describe('WalletConnectAdapter.disconnect', () => {
     await adapter.disconnect();
     approve({
       topic: 'late-topic',
-      namespaces: { xrpl: { accounts: ['xrpl:0:rLateAddress'] } },
+      namespaces: { xrpl: { accounts: [`xrpl:0:${MAINNET_ADDRESS}`] } },
     });
 
     await expect(connection).rejects.toMatchObject({ code: WalletErrorCode.CONNECTION_FAILED });
@@ -227,7 +464,7 @@ describe('WalletConnectAdapter.disconnect', () => {
       uri: 'wc:example',
       approval: vi.fn().mockResolvedValue({
         topic: 'topic-1',
-        namespaces: { xrpl: { accounts: ['xrpl:0:rWCAddress'] } },
+        namespaces: { xrpl: { accounts: [`xrpl:0:${MAINNET_ADDRESS}`] } },
       }),
     });
     mockClient.disconnect.mockResolvedValue(undefined);

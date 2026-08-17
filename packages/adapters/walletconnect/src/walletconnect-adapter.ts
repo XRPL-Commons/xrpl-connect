@@ -5,6 +5,7 @@
 import SignClient from '@walletconnect/sign-client';
 import { WalletConnectModal } from '@walletconnect/modal';
 import type { SignClientTypes, SessionTypes } from '@walletconnect/types';
+import { isValidClassicAddress } from 'xrpl';
 import type {
   WalletAdapter,
   AccountInfo,
@@ -21,15 +22,10 @@ import type {
 } from '@xrpl-connect/core';
 import { createWalletError, resolveNetwork, createLogger, isMobile } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
-import {
-  DISCONNECT_REASONS,
-  DEFAULT_METADATA,
-  LOGGING,
-  ACCOUNT_FORMAT,
-  XRPL_NAMESPACE,
-} from './constants';
+import { DISCONNECT_REASONS, DEFAULT_METADATA, LOGGING, XRPL_NAMESPACE } from './constants';
 
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
+const MAX_XRPL_NETWORK_ID = 0xffff_ffff;
 
 /**
  * Logger instance for WalletConnect adapter
@@ -50,6 +46,62 @@ export enum XRPLMethod {
  * alongside the standard XRPL transaction fields.
  */
 type WalletConnectSignedTxJson = Transaction & { hash?: string };
+
+function isValidXrplChainId(chainId: string): boolean {
+  const match = chainId.match(/^xrpl:(0|[1-9]\d*)$/);
+  if (!match) return false;
+
+  const networkId = Number(match[1]);
+  return Number.isSafeInteger(networkId) && networkId <= MAX_XRPL_NETWORK_ID;
+}
+
+function getXrplChainId(network: NetworkInfo): string {
+  const chainId = network.walletConnectId ?? `xrpl:${network.id}`;
+  if (!isValidXrplChainId(chainId)) {
+    throw new Error(`Invalid WalletConnect XRPL chain ID: ${chainId}`);
+  }
+  return chainId;
+}
+
+function selectAccountForChain(accounts: string[], requestedChainId: string): string {
+  if (accounts.length === 0) {
+    throw new Error('No accounts returned from WalletConnect session');
+  }
+
+  const parsedAccounts = accounts.map((account) => {
+    const parts = account.split(':');
+    if (
+      parts.length !== 3 ||
+      parts[0] !== XRPL_NAMESPACE.KEY ||
+      parts[1].length === 0 ||
+      parts[2].length === 0
+    ) {
+      throw new Error('WalletConnect returned a malformed XRPL CAIP-10 account');
+    }
+
+    const chainId = `${parts[0]}:${parts[1]}`;
+    if (!isValidXrplChainId(chainId)) {
+      throw new Error('WalletConnect returned an invalid XRPL CAIP-10 chain reference');
+    }
+
+    const address = parts[2];
+    if (!isValidClassicAddress(address)) {
+      throw new Error('WalletConnect returned an invalid XRPL classic address');
+    }
+
+    return {
+      chainId,
+      address,
+    };
+  });
+
+  const matchingAccount = parsedAccounts.find((account) => account.chainId === requestedChainId);
+  if (!matchingAccount) {
+    throw new Error(`WalletConnect did not return an account for ${requestedChainId}`);
+  }
+
+  return matchingAccount.address;
+}
 
 /**
  * WalletConnect adapter options
@@ -170,9 +222,13 @@ export class WalletConnectAdapter
       return;
     }
 
+    const preInitializationAttempt = ++this.connectionAttemptGeneration;
     logger.debug('Pre-initializing connection session...');
 
     try {
+      const networkInfo = resolveNetwork(network);
+      const requestedChainId = getXrplChainId(networkInfo);
+
       // Initialize SignClient if not already done
       if (!this.client) {
         if (!this.initializationPromise) {
@@ -193,13 +249,14 @@ export class WalletConnectAdapter
         logger.debug('SignClient initialized');
       }
 
-      // Determine network for pre-initialization
-      const networkInfo = resolveNetwork(network);
+      if (preInitializationAttempt !== this.connectionAttemptGeneration) {
+        return;
+      }
 
       // Start connection to generate URI (ConnectKit pattern)
       const requiredNamespaces = {
         [XRPL_NAMESPACE.KEY]: {
-          chains: [networkInfo.walletConnectId || `xrpl:${networkInfo.id}`],
+          chains: [requestedChainId],
           methods: [
             XRPLMethod.SIGN_TRANSACTION,
             XRPLMethod.SIGN_TRANSACTION_FOR,
@@ -212,6 +269,10 @@ export class WalletConnectAdapter
       const { uri, approval } = await this.client.connect({
         requiredNamespaces,
       });
+
+      if (preInitializationAttempt !== this.connectionAttemptGeneration) {
+        return;
+      }
 
       if (!uri) {
         throw new Error('Failed to generate WalletConnect URI during pre-initialization');
@@ -231,8 +292,10 @@ export class WalletConnectAdapter
       }
     } catch (error) {
       logger.error('Pre-initialization failed:', error);
-      this.initializationPromise = null;
-      this.pendingConnection = null;
+      if (preInitializationAttempt === this.connectionAttemptGeneration) {
+        this.initializationPromise = null;
+        this.pendingConnection = null;
+      }
     }
   }
 
@@ -264,6 +327,7 @@ export class WalletConnectAdapter
     try {
       // Determine network
       const network = resolveNetwork(options?.network);
+      const requestedChainId = getXrplChainId(network);
 
       // Initialize SignClient if needed
       if (!this.client) {
@@ -290,7 +354,7 @@ export class WalletConnectAdapter
       // Prepare namespace for XRPL
       const requiredNamespaces = {
         [XRPL_NAMESPACE.KEY]: {
-          chains: [network.walletConnectId || `xrpl:${network.id}`],
+          chains: [requestedChainId],
           methods: [
             XRPLMethod.SIGN_TRANSACTION,
             XRPLMethod.SIGN_TRANSACTION_FOR,
@@ -388,19 +452,16 @@ export class WalletConnectAdapter
         throw new Error('WalletConnect connection was cancelled');
       }
 
-      // Store session
-      this.session = session;
-
-      // Extract account info from session
-      const accounts = this.session.namespaces.xrpl?.accounts || [];
-      if (accounts.length === 0) {
-        throw new Error('No accounts returned from WalletConnect session');
+      let address: string;
+      try {
+        address = selectAccountForChain(session.namespaces.xrpl?.accounts || [], requestedChainId);
+      } catch (error) {
+        await this.closeApprovedSession(session, connectionAttempt);
+        throw error;
       }
 
-      // Parse account (format: "xrpl:chainId:rAddress")
-      const accountString = accounts[0];
-      const address = accountString.split(':')[ACCOUNT_FORMAT.ADDRESS_INDEX];
-
+      // Commit approved session state only after its account and chain are valid.
+      this.session = session;
       this.currentAccount = {
         address,
         network,
@@ -411,12 +472,13 @@ export class WalletConnectAdapter
 
       return this.currentAccount;
     } catch (error) {
-      // Close modal on error
-      if (this.modal) {
-        this.modal.closeModal();
+      // A stale attempt must not close or clear resources owned by a newer one.
+      if (connectionAttempt === this.connectionAttemptGeneration) {
+        if (this.modal) {
+          this.modal.closeModal();
+        }
+        this.pendingConnection = null;
       }
-      // Drop any stale pending connection so the next connect() starts fresh
-      this.pendingConnection = null;
       throw createWalletError.connectionFailed(this.name, error as Error);
     }
   }
@@ -445,6 +507,30 @@ export class WalletConnectAdapter
     } catch (error) {
       // Disconnect might fail if already disconnected, that's okay
       this.cleanup();
+    }
+  }
+
+  /**
+   * Close a session that was approved but cannot be used by this connection
+   * attempt. Cleanup must complete even if the remote disconnect already raced
+   * with the wallet or relay.
+   */
+  private async closeApprovedSession(
+    session: SessionTypes.Struct,
+    connectionAttempt: number
+  ): Promise<void> {
+    try {
+      await this.client?.disconnect({
+        topic: session.topic,
+        reason: DISCONNECT_REASONS.USER_DISCONNECTED,
+      });
+    } catch (error) {
+      logger.warn('Failed to disconnect unusable WalletConnect session:', error);
+    } finally {
+      // Do not let an older failed approval clear a newer connection attempt.
+      if (connectionAttempt === this.connectionAttemptGeneration) {
+        this.cleanup();
+      }
     }
   }
 
