@@ -13,6 +13,7 @@ import {
   type WalletConnectConnectOptions,
   type WalletConnectorElementInstance,
   type XamanConnectOptions,
+  type XamanReturnUrl,
   type XyraConnectOptions,
 } from 'xrpl-connect';
 
@@ -29,6 +30,10 @@ const connectOptions: [
 ];
 
 const xamanConstructor: typeof XamanSDK.Xumm = XamanSDK.Xumm;
+const xamanReturnUrl: XamanReturnUrl = {
+  app: 'myapp://wallet',
+  web: 'https://example.com/wallet',
+};
 const oauthConstructor: typeof XamanOAuth2.XummPkce = XamanOAuth2.XummPkce;
 const crossmarkSignIn: typeof CrossmarkSDK.default.methods.signInAndWait =
   CrossmarkSDK.default.methods.signInAndWait;
@@ -70,6 +75,7 @@ const metamaskAdapter = new MetaMaskSnapAdapter(metamaskOptions);
 void [
   connectOptions,
   xamanConstructor,
+  xamanReturnUrl,
   oauthConstructor,
   crossmarkSignIn,
   crossmarkSignResponse,

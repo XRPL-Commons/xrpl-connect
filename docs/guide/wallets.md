@@ -54,13 +54,13 @@ Xaman API keys and WalletConnect project IDs are browser identifiers, not server
 
 ## Adapter options
 
-- `XamanAdapter`: `apiKey`, QR callback, and deep-link transformation.
+- `XamanAdapter`: `apiKey`, QR callback, deep-link transformation, and post-signing return URLs.
 - `WalletConnectAdapter`: `projectId`, metadata, QR/deep-link callbacks, modal mode, and theme.
 - `LedgerAdapter`: derivation path, operation timeout, and WebHID preference. Ledger requires HTTPS outside localhost.
 - `MetaMaskSnapAdapter`: optional `snapId`; use the default published Snap unless developing a local Snap.
 - Xyra, Otsu, Crossmark, and GemWallet work without application credentials.
 
-Connect-time options can override supported adapter settings. Keep the Xaman API key stable for the lifetime of the page because its browser SDK owns page-global OAuth state.
+Connect-time options can override supported adapter settings. Configure Xaman return URLs on the adapter constructor when connecting through `WalletManager`; direct `XamanAdapter.connect()` calls can override them for one session. Return navigation may open another browser tab, so restore application state and use the signing result—not navigation—as confirmation. Keep the Xaman API key stable for the lifetime of the page because its browser SDK owns page-global OAuth state.
 
 ## Networks
 

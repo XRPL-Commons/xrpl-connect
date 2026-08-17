@@ -309,6 +309,11 @@ import { XamanAdapter } from 'xrpl-connect';
 
 const adapter = new XamanAdapter({
   apiKey: 'YOUR_API_KEY', // Get from https://apps.xumm.dev/
+  // Optional: destinations offered after a signing request is resolved
+  returnUrl: {
+    app: 'myapp://wallet',
+    web: 'https://example.com/wallet',
+  },
   // Optional: customize QR / deep link handling
   // onQRCode: (uri) => { /* ... */ },
   // onDeepLink: (uri) => uri,
@@ -317,6 +322,8 @@ const adapter = new XamanAdapter({
 
 **Supported Features:** Transaction signing, live account refresh, QR codes.
 Arbitrary message signing is not supported.
+
+Return URLs control navigation only. Use the resolved signing operation as confirmation and restore application state if Xaman opens a different browser tab. Callers using `XamanAdapter` directly may provide a per-session `returnUrl` to `connect()`; `WalletManager` callers should configure it on the adapter constructor.
 
 **Get API Key:** [https://apps.xumm.dev/](https://apps.xumm.dev/)
 
