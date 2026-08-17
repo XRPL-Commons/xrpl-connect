@@ -459,8 +459,9 @@ export class LedgerAdapter
     count: number = 5,
     startIndex: number = 0
   ): Promise<Array<{ address: string; publicKey: string; path: string; index: number }>> {
+    const needsCleanup = !this.transport;
+
     try {
-      const needsCleanup = !this.transport;
       if (!this.transport) {
         this.transport = await this.createTransport();
         this.xrpApp = new Xrp(this.transport);
@@ -490,23 +491,29 @@ export class LedgerAdapter
             index: accountIndex,
           });
         } catch (error) {
-          lastError = error as Error;
+          if (isWalletError(error) || isLedgerUserCancelled(error)) throw error;
+
+          lastError = error instanceof Error ? error : formattedLedgerError(error);
           console.warn(`Failed to get account at index ${accountIndex}:`, error);
         }
       }
 
-      if (needsCleanup) {
-        await this.cleanup();
-      }
-
       if (accounts.length === 0 && lastError) {
-        const parsedError = parseLedgerError(lastError);
-        throw parsedError;
+        throw new Error(parseLedgerError(lastError).message);
       }
 
       return accounts;
     } catch (error) {
+      if (isWalletError(error)) throw error;
+      if (isLedgerUserCancelled(error)) {
+        throw createWalletError.connectionRejected(
+          this.name,
+          error instanceof Error ? error : formattedLedgerError(error)
+        );
+      }
       throw createWalletError.unknown(`Failed to retrieve accounts: ${(error as Error).message}`);
+    } finally {
+      if (needsCleanup) await this.cleanup();
     }
   }
 
@@ -547,7 +554,7 @@ export class LedgerAdapter
       try {
         return await transport.create();
       } catch (error) {
-        if (isLedgerUserCancelled(error)) throw error;
+        if (isWalletError(error) || isLedgerUserCancelled(error)) throw error;
 
         lastError = error;
         if (index < availableTransports.length - 1) {

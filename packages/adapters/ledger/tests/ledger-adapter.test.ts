@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
-import { WalletErrorCategory, WalletErrorCode } from '@xrpl-connect/core';
+import { createWalletError, WalletErrorCategory, WalletErrorCode } from '@xrpl-connect/core';
 
 const mocks = vi.hoisted(() => {
   const transportWebHID = { create: vi.fn() };
@@ -312,6 +312,69 @@ describe('LedgerAdapter.fetchAccount', () => {
       code: WalletErrorCode.WALLET_NOT_INSTALLED,
     });
     await expect(adapter.getAccount()).resolves.toMatchObject({ address: 'rLedger' });
+  });
+});
+
+describe('LedgerAdapter.getAccounts', () => {
+  it('maps transport chooser cancellation to connection-rejected with its cause', async () => {
+    installNavigator({ usb: {} });
+    const rejected = Object.assign(new Error('No device selected.'), {
+      name: 'TransportOpenUserCancelled',
+    });
+    transportWebUSB.create.mockRejectedValue(rejected);
+
+    await expect(new LedgerAdapter().getAccounts()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_REJECTED,
+      category: WalletErrorCategory.USER_ACTION,
+      originalError: rejected,
+    });
+    expect(xrpAppInstance.getAddress).not.toHaveBeenCalled();
+  });
+
+  it('stops account discovery on cancellation and closes its temporary transport', async () => {
+    installNavigator({ usb: {} });
+    const rejected = Object.assign(new Error('The user aborted a request.'), {
+      name: 'TransportOpenUserCancelled',
+    });
+    xrpAppInstance.getAddress.mockRejectedValue(rejected);
+
+    await expect(new LedgerAdapter().getAccounts()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_REJECTED,
+      originalError: rejected,
+    });
+    expect(xrpAppInstance.getAddress).toHaveBeenCalledTimes(1);
+    expect(mockTransport.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves typed account-discovery errors and closes its temporary transport', async () => {
+    installNavigator({ usb: {} });
+    const typedError = createWalletError.notConnected();
+    xrpAppInstance.getAddress.mockRejectedValue(typedError);
+
+    await expect(new LedgerAdapter().getAccounts()).rejects.toBe(typedError);
+    expect(xrpAppInstance.getAddress).toHaveBeenCalledTimes(1);
+    expect(mockTransport.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fall back to another transport after a typed transport error', async () => {
+    installNavigator({ hid: {}, usb: {} });
+    const typedError = createWalletError.notConnected();
+    transportWebHID.create.mockRejectedValue(typedError);
+
+    await expect(new LedgerAdapter().getAccounts()).rejects.toBe(typedError);
+    expect(transportWebUSB.create).not.toHaveBeenCalled();
+  });
+
+  it('retains the generic all-accounts-failed classification and closes the transport', async () => {
+    installNavigator({ usb: {} });
+    xrpAppInstance.getAddress.mockRejectedValue(new Error('No device found'));
+
+    await expect(new LedgerAdapter().getAccounts(2)).rejects.toMatchObject({
+      code: WalletErrorCode.UNKNOWN_ERROR,
+      message: expect.stringContaining('Please connect your Ledger device via USB'),
+    });
+    expect(xrpAppInstance.getAddress).toHaveBeenCalledTimes(2);
+    expect(mockTransport.close).toHaveBeenCalledTimes(1);
   });
 });
 
