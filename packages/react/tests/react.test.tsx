@@ -384,6 +384,21 @@ describe('XrplConnectProvider + hooks', () => {
       result.current.signer.sign({ TransactionType: 'Payment' } as never)
     ).rejects.toMatchObject({ code: WalletErrorCode.SIGN_REJECTED, category: expect.any(String) });
   });
+
+  it('useSigner returns the connected signer address with signing results', async () => {
+    const { result } = renderHook(() => ({ wallet: useWallet(), signer: useSigner() }), {
+      wrapper: wrapper([makeAdapter()]),
+    });
+    await act(async () => {
+      await result.current.wallet.connect('fake');
+    });
+
+    const signed = await result.current.signer.sign({ TransactionType: 'Payment' } as never);
+    const signedMessage = await result.current.signer.signMessage('hello');
+
+    expect(signed).toMatchObject({ hash: 'H', signerAddress: ACCOUNT.address });
+    expect(signedMessage).toMatchObject({ signature: 's', signerAddress: ACCOUNT.address });
+  });
 });
 
 describe('<WalletConnector>', () => {
