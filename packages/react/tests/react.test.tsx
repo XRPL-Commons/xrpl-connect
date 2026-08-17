@@ -152,10 +152,13 @@ describe('XrplConnectProvider + hooks', () => {
     await act(async () => {
       storedState.resolve(
         JSON.stringify({
-          walletId: 'fake',
-          account: ACCOUNT,
-          network: ACCOUNT.network,
-          timestamp: Date.now(),
+          version: 1,
+          payload: {
+            walletId: 'fake',
+            account: ACCOUNT,
+            network: ACCOUNT.network,
+            timestamp: Date.now(),
+          },
         })
       );
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -171,6 +174,54 @@ describe('XrplConnectProvider + hooks', () => {
     expect(result.current.connected).toBe(true);
     expect(result.current.error).toBeNull();
     unmount();
+  });
+
+  it('cancels auto-connect while persisted state is still loading', async () => {
+    const storedState = deferred<string | null>();
+    const connect = vi.fn(async () => ACCOUNT);
+    const storage: StorageAdapter = {
+      get: vi.fn(() => storedState.promise),
+      set: vi.fn(async () => {}),
+      remove: vi.fn(async () => {}),
+      clear: vi.fn(async () => {}),
+    };
+    const { result } = renderHook(() => useWallet(), {
+      wrapper: ({ children }) => (
+        <XrplConnectProvider
+          config={{ adapters: [makeAdapter({ connect })], autoConnect: true, storage }}
+        >
+          {children}
+        </XrplConnectProvider>
+      ),
+    });
+
+    await waitFor(() => expect(storage.get).toHaveBeenCalledTimes(1));
+    expect(result.current.connecting).toBe(true);
+
+    await act(async () => {
+      await result.current.disconnect();
+    });
+    expect(result.current.connecting).toBe(false);
+
+    await act(async () => {
+      storedState.resolve(
+        JSON.stringify({
+          version: 1,
+          payload: {
+            walletId: 'fake',
+            account: ACCOUNT,
+            network: ACCOUNT.network,
+            timestamp: Date.now(),
+          },
+        })
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(connect).not.toHaveBeenCalled();
+    expect(result.current.connected).toBe(false);
+    expect(result.current.connecting).toBe(false);
+    expect(result.current.error).toBeNull();
   });
 
   it('reflects connect/disconnect state through useWallet', async () => {
@@ -528,6 +579,158 @@ describe('<WalletConnector>', () => {
     expect(walletState!.error).toBeNull();
     expect(onConnect).toHaveBeenCalledWith(ACCOUNT);
     unmount();
+  });
+
+  it('ignores a stale modal error after a manual connection succeeds', async () => {
+    const onError = vi.fn();
+    let walletState: ReturnType<typeof useWallet> | null = null;
+    function Capture() {
+      walletState = useWallet();
+      return null;
+    }
+    render(
+      <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+        <Capture />
+        <WalletConnector onError={onError} />
+      </XrplConnectProvider>
+    );
+
+    const el = document.querySelector('xrpl-wallet-connector') as HTMLElement & {
+      manager: unknown;
+    };
+    await waitFor(() => expect(el.manager).not.toBeNull());
+
+    act(() => {
+      el.dispatchEvent(
+        new CustomEvent('connecting', {
+          detail: { walletId: 'fake', connectionAttemptId: 1 },
+        })
+      );
+    });
+    await act(async () => {
+      await walletState!.connect('fake');
+    });
+    expect(walletState!.connected).toBe(true);
+    expect(walletState!.error).toBeNull();
+
+    const staleError = createWalletError.alreadyConnected('Fake');
+    act(() => {
+      el.dispatchEvent(
+        new CustomEvent('error', {
+          detail: { error: staleError, walletId: 'fake', connectionAttemptId: 1 },
+        })
+      );
+    });
+
+    expect(walletState!.connected).toBe(true);
+    expect(walletState!.connecting).toBe(false);
+    expect(walletState!.error).toBeNull();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('keeps sibling modal attempts active when one connector closes', async () => {
+    let walletState: ReturnType<typeof useWallet> | null = null;
+    function Capture() {
+      walletState = useWallet();
+      return null;
+    }
+    render(
+      <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+        <Capture />
+        <WalletConnector className="first" />
+        <WalletConnector className="second" />
+      </XrplConnectProvider>
+    );
+
+    const first = document.querySelector('.first') as HTMLElement & { manager: unknown };
+    const second = document.querySelector('.second') as HTMLElement & { manager: unknown };
+    await waitFor(() => {
+      expect(first.manager).not.toBeNull();
+      expect(second.manager).not.toBeNull();
+    });
+
+    act(() => {
+      first.dispatchEvent(
+        new CustomEvent('connecting', {
+          detail: { walletId: 'fake', connectionAttemptId: 1 },
+        })
+      );
+      second.dispatchEvent(
+        new CustomEvent('connecting', {
+          detail: { walletId: 'fake', connectionAttemptId: 1 },
+        })
+      );
+    });
+    await waitFor(() => expect(walletState!.connecting).toBe(true));
+
+    act(() => first.dispatchEvent(new CustomEvent('close')));
+    expect(walletState!.connecting).toBe(true);
+
+    act(() => second.dispatchEvent(new CustomEvent('close')));
+    expect(walletState!.connecting).toBe(false);
+  });
+
+  it('does not let a cancelled modal error clear a newer retry', async () => {
+    const onError = vi.fn();
+    let walletState: ReturnType<typeof useWallet> | null = null;
+    function Capture() {
+      walletState = useWallet();
+      return null;
+    }
+    render(
+      <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+        <Capture />
+        <WalletConnector onError={onError} />
+      </XrplConnectProvider>
+    );
+
+    const el = document.querySelector('xrpl-wallet-connector') as HTMLElement & {
+      manager: unknown;
+    };
+    await waitFor(() => expect(el.manager).not.toBeNull());
+
+    act(() => {
+      el.dispatchEvent(
+        new CustomEvent('connecting', {
+          detail: { walletId: 'fake', connectionAttemptId: 1 },
+        })
+      );
+    });
+    await act(async () => {
+      await walletState!.disconnect();
+    });
+    act(() => {
+      el.dispatchEvent(
+        new CustomEvent('connecting', {
+          detail: { walletId: 'fake', connectionAttemptId: 2 },
+        })
+      );
+    });
+
+    const staleError = createWalletError.notConnected();
+    act(() => {
+      el.dispatchEvent(
+        new CustomEvent('error', {
+          detail: { error: staleError, walletId: 'fake', connectionAttemptId: 1 },
+        })
+      );
+    });
+    expect(walletState!.connecting).toBe(true);
+    expect(walletState!.error).toBeNull();
+    expect(onError).not.toHaveBeenCalled();
+
+    const currentError = createWalletError.connectionRejected('Fake');
+    act(() => {
+      el.dispatchEvent(
+        new CustomEvent('error', {
+          detail: { error: currentError, walletId: 'fake', connectionAttemptId: 2 },
+        })
+      );
+    });
+    expect(walletState!.connecting).toBe(false);
+    expect(walletState!.error).toBe(currentError);
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError).toHaveBeenCalledWith(currentError);
   });
 
   it('keeps the remaining connector registered when a sibling unmounts', async () => {

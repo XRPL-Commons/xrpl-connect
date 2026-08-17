@@ -29,6 +29,43 @@ describe('WalletService', () => {
 
     expect(connect).toHaveBeenCalledWith('xaman', undefined);
     await connection;
+
+    const lifecycleEvents = mockComponent.dispatchEvent.mock.calls.map(
+      ([event]) => event as CustomEvent<{ connectionAttemptId?: number }>
+    );
+    const connecting = lifecycleEvents.find((event) => event.type === 'connecting');
+    const connected = lifecycleEvents.find((event) => event.type === 'connected');
+    expect(connecting?.detail.connectionAttemptId).toEqual(expect.any(Number));
+    expect(connected?.detail.connectionAttemptId).toBe(connecting?.detail.connectionAttemptId);
+  });
+
+  it('uses the same attempt id for a connection failure', async () => {
+    const connectionError = new Error('rejected');
+    const mockWalletManager = {
+      wallets: [{ id: 'xaman', name: 'Xaman' }],
+      connect: vi.fn(async () => {
+        throw connectionError;
+      }),
+    };
+    const mockComponent = {
+      showLoadingView: vi.fn(),
+      showQRCodeView: vi.fn(),
+      showAccountSelectionView: vi.fn(),
+      showErrorView: vi.fn(),
+      dispatchEvent: vi.fn(),
+      setQRCode: vi.fn(),
+      close: vi.fn(),
+    };
+    const walletService = new WalletService(mockWalletManager as any, mockComponent as any);
+
+    await walletService.connectWallet('xaman');
+
+    const lifecycleEvents = mockComponent.dispatchEvent.mock.calls.map(
+      ([event]) => event as CustomEvent<{ connectionAttemptId?: number }>
+    );
+    const connecting = lifecycleEvents.find((event) => event.type === 'connecting');
+    const error = lifecycleEvents.find((event) => event.type === 'error');
+    expect(error?.detail.connectionAttemptId).toBe(connecting?.detail.connectionAttemptId);
   });
 
   it('should connect to a wallet', async () => {

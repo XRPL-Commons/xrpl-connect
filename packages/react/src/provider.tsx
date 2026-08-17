@@ -38,7 +38,7 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
 
   const connectorsRef = useRef<Set<WalletConnectorElement>>(new Set());
   const connectionAttemptsRef = useRef<Set<symbol>>(new Set());
-  const modalConnectingRef = useRef(false);
+  const modalConnectionAttemptsRef = useRef<Set<symbol>>(new Set());
 
   const [connected, setConnected] = useState<boolean>(manager.connected);
   const [account, setAccount] = useState<AccountInfo | null>(manager.account);
@@ -48,7 +48,9 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
 
   const syncConnecting = useCallback(() => {
     if (mountedRef.current) {
-      setConnecting(connectionAttemptsRef.current.size > 0 || modalConnectingRef.current);
+      setConnecting(
+        connectionAttemptsRef.current.size > 0 || modalConnectionAttemptsRef.current.size > 0
+      );
     }
   }, []);
   const beginConnectionAttempt = useCallback(() => {
@@ -70,7 +72,7 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
   );
   const cancelConnectionState = useCallback(() => {
     connectionAttemptsRef.current.clear();
-    modalConnectingRef.current = false;
+    modalConnectionAttemptsRef.current.clear();
     if (mountedRef.current) setError(null);
     syncConnecting();
   }, [syncConnecting]);
@@ -85,7 +87,7 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
     };
     const onConnect = () => {
       setError(null);
-      modalConnectingRef.current = false;
+      modalConnectionAttemptsRef.current.clear();
       syncConnecting();
       sync();
     };
@@ -93,7 +95,7 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
     const onAccountChanged = () => sync();
     const onNetworkChanged = () => sync();
     const onError = (err: unknown) => {
-      modalConnectingRef.current = false;
+      modalConnectionAttemptsRef.current.clear();
       syncConnecting();
       if (isWalletError(err)) setError(err);
     };
@@ -183,14 +185,28 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
     connectorsRef.current.delete(el);
   }, []);
   const reportModalConnecting = useCallback(() => {
-    modalConnectingRef.current = true;
+    const attempt = Symbol('modalConnectionAttempt');
+    modalConnectionAttemptsRef.current.add(attempt);
     if (mountedRef.current) setError(null);
     syncConnecting();
+    return attempt;
   }, [syncConnecting]);
   const reportModalError = useCallback(
-    (modalError: WalletError) => {
-      modalConnectingRef.current = false;
-      if (mountedRef.current) setError(modalError);
+    (attempt: symbol | null, modalError: WalletError) => {
+      if (attempt !== null && !modalConnectionAttemptsRef.current.delete(attempt)) return false;
+      if (!mountedRef.current || manager.connected) {
+        syncConnecting();
+        return false;
+      }
+      setError(modalError);
+      syncConnecting();
+      return true;
+    },
+    [manager, syncConnecting]
+  );
+  const reportModalClosed = useCallback(
+    (attempts: readonly symbol[]) => {
+      for (const attempt of attempts) modalConnectionAttemptsRef.current.delete(attempt);
       syncConnecting();
     },
     [syncConnecting]
@@ -217,6 +233,7 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
       unregisterConnector,
       reportModalConnecting,
       reportModalError,
+      reportModalClosed,
       openModal,
       closeModal,
     }),
@@ -233,6 +250,7 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
       unregisterConnector,
       reportModalConnecting,
       reportModalError,
+      reportModalClosed,
       openModal,
       closeModal,
     ]

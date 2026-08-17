@@ -51,6 +51,8 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }> = [];
   private sessionGeneration = 0;
   private connectionAttemptGeneration = 0;
+  private reconnectGeneration = 0;
+  private pendingReconnects = 0;
   private stateRevision = 0;
   private storageTail: Promise<void> = Promise.resolve();
 
@@ -276,6 +278,8 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * Disconnect from current wallet
    */
   async disconnect(): Promise<void> {
+    this.reconnectGeneration += 1;
+
     if (!this.currentAdapter) {
       const connectingAdapter = this.connectingAdapter;
       if (connectingAdapter) {
@@ -288,6 +292,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
           this.logger.warn(`Failed to cancel connection to ${connectingAdapter.name}:`, error);
         }
         return;
+      }
+      if (this.pendingReconnects > 0) {
+        await this.queueStorage(() => this.storage.clearState());
       }
       return;
     }
@@ -320,13 +327,17 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       throw createWalletError.alreadyConnected(this.connectingAdapter.name);
     }
 
-    const stored = await this.storage.loadState();
-    if (!stored) {
-      this.logger.debug('No stored state found for reconnection');
-      return null;
-    }
+    const reconnectGeneration = this.reconnectGeneration;
+    this.pendingReconnects += 1;
 
     try {
+      const stored = await this.storage.loadState();
+      if (reconnectGeneration !== this.reconnectGeneration) return null;
+      if (!stored) {
+        this.logger.debug('No stored state found for reconnection');
+        return null;
+      }
+
       // Replay the original connect options so wallet-specific selections
       // (e.g. the Ledger derivation path / account index) are restored instead
       // of reconnecting to the default account.
@@ -339,6 +350,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         stored
       );
     } catch (error) {
+      // disconnect() invalidates reconnect work before cancelling or replacing
+      // its adapter. A stale failure must not clear a newer session's storage.
+      if (reconnectGeneration !== this.reconnectGeneration) return null;
       // A connection may have started after the ownership check above. Do not
       // erase its persisted state by treating that overlap as a failed restore.
       if (isWalletError(error) && error.code === WalletErrorCode.ALREADY_CONNECTED) {
@@ -347,6 +361,8 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       this.logger.warn('Reconnection failed:', error);
       await this.queueStorage(() => this.storage.clearState());
       return null;
+    } finally {
+      this.pendingReconnects -= 1;
     }
   }
 
