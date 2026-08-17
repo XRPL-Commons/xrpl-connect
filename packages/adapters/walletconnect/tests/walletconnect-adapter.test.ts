@@ -1,5 +1,10 @@
 import { describe, it, expect, expectTypeOf, vi, beforeEach } from 'vite-plus/test';
-import { WalletErrorCode, type Transaction } from '@xrpl-connect/core';
+import {
+  createWalletError,
+  WalletErrorCategory,
+  WalletErrorCode,
+  type Transaction,
+} from '@xrpl-connect/core';
 
 const mockClient = {
   connect: vi.fn(),
@@ -69,16 +74,42 @@ describe('WalletConnectAdapter.connect', () => {
     });
   });
 
-  it('wraps user rejection into a connection error', async () => {
+  it('maps message-based user rejection to connection-rejected and retains its cause', async () => {
+    const rejection = new Error('User rejected');
     mockClient.connect.mockResolvedValue({
       uri: 'wc:example',
-      approval: vi.fn().mockRejectedValue(new Error('User rejected')),
+      approval: vi.fn().mockRejectedValue(rejection),
     });
 
     const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
     await expect(adapter.connect()).rejects.toMatchObject({
-      code: WalletErrorCode.CONNECTION_FAILED,
+      code: WalletErrorCode.CONNECTION_REJECTED,
+      category: WalletErrorCategory.USER_ACTION,
+      originalError: rejection,
     });
+  });
+
+  it('maps documented structured Reown rejection codes to connection-rejected', async () => {
+    const rejection = { code: 5002, message: 'La demande a été refusée.' };
+    mockClient.connect.mockResolvedValue({
+      uri: 'wc:example',
+      approval: vi.fn().mockRejectedValue(rejection),
+    });
+
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+    await expect(adapter.connect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_REJECTED,
+      category: WalletErrorCategory.USER_ACTION,
+      originalError: expect.objectContaining({ cause: rejection }),
+    });
+  });
+
+  it('passes through an existing typed connection error unchanged', async () => {
+    const typedError = createWalletError.networkNotSupported('sidechain', 'WalletConnect');
+    mockClient.connect.mockRejectedValue(typedError);
+
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+    await expect(adapter.connect()).rejects.toBe(typedError);
   });
 });
 
@@ -123,19 +154,41 @@ describe('WalletConnectAdapter.sign', () => {
     expectTypeOf(result.tx_json).toEqualTypeOf<Transaction | undefined>();
   });
 
-  it('maps a rejected request to sign-rejected', async () => {
+  it('maps a rejected request to sign-rejected and retains its cause', async () => {
     const adapter = await connected();
-    mockClient.request.mockRejectedValue(new Error('User rejected the request'));
+    const rejection = new Error('User rejected the request');
+    mockClient.request.mockRejectedValue(rejection);
 
     await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_REJECTED,
+      category: WalletErrorCategory.USER_ACTION,
+      originalError: rejection,
     });
   });
 
   it('throws notConnected before any session is established', async () => {
     const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
     await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NOT_CONNECTED,
+    });
+  });
+
+  it('passes through an existing typed signing error unchanged', async () => {
+    const adapter = await connected();
+    const typedError = createWalletError.unsupportedMethod('Unsupported by the wallet');
+    mockClient.request.mockRejectedValue(typedError);
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toBe(typedError);
+  });
+
+  it('maps only unknown signing failures to sign-failed and retains their cause', async () => {
+    const adapter = await connected();
+    const failure = new Error('Transport unavailable');
+    mockClient.request.mockRejectedValue(failure);
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_FAILED,
+      originalError: failure,
     });
   });
 });
@@ -175,14 +228,17 @@ describe('WalletConnectAdapter.signAndSubmit', () => {
     expectTypeOf(result.tx_json).toEqualTypeOf<Transaction | undefined>();
   });
 
-  it('maps a rejected request to sign-rejected', async () => {
+  it('maps a structured Reown rejection to sign-rejected', async () => {
     const adapter = await connected();
-    mockClient.request.mockRejectedValue(new Error('User rejected the request'));
+    const rejection = { code: 5000, message: 'Request declined.' };
+    mockClient.request.mockRejectedValue(rejection);
 
     await expect(
       adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
     ).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_REJECTED,
+      category: WalletErrorCategory.USER_ACTION,
+      originalError: expect.objectContaining({ cause: rejection }),
     });
   });
 });
@@ -215,7 +271,7 @@ describe('WalletConnectAdapter.disconnect', () => {
       namespaces: { xrpl: { accounts: ['xrpl:0:rLateAddress'] } },
     });
 
-    await expect(connection).rejects.toMatchObject({ code: WalletErrorCode.CONNECTION_FAILED });
+    await expect(connection).rejects.toMatchObject({ code: WalletErrorCode.CONNECTION_REJECTED });
     expect(mockClient.disconnect).toHaveBeenCalledWith(
       expect.objectContaining({ topic: 'late-topic' })
     );

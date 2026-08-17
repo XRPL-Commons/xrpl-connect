@@ -104,13 +104,13 @@ describe('LedgerAdapter.connect', () => {
     });
   });
 
-  it('wraps user rejection (statusCode 0x6985) as a connection failure', async () => {
+  it('maps user rejection (statusCode 0x6985) to connection-rejected', async () => {
     installNavigator({ hid: {} });
     const rejected = Object.assign(new Error('rejected'), { statusCode: 0x6985 });
     xrpAppInstance.getAddress.mockRejectedValue(rejected);
 
     await expect(new LedgerAdapter().connect()).rejects.toMatchObject({
-      code: WalletErrorCode.CONNECTION_FAILED,
+      code: WalletErrorCode.CONNECTION_REJECTED,
     });
   });
 });
@@ -131,8 +131,7 @@ describe('LedgerAdapter.sign', () => {
     installNavigator({ hid: {} });
     const adapter = new LedgerAdapter();
     await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
-      // The adapter wraps the underlying notConnected in signFailed
-      code: WalletErrorCode.SIGN_FAILED,
+      code: WalletErrorCode.NOT_CONNECTED,
     });
   });
 
@@ -153,6 +152,28 @@ describe('LedgerAdapter.sign', () => {
 
     await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_REJECTED,
+    });
+  });
+
+  it('maps a user-rejected message signature to sign-rejected', async () => {
+    const adapter = await connected();
+    const rejected = Object.assign(new Error('rejected'), { statusCode: 0x6985 });
+    xrpAppInstance.signTransaction.mockRejectedValue(rejected);
+
+    await expect(adapter.signMessage('hello')).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_REJECTED,
+      originalError: rejected,
+    });
+  });
+
+  it('retains the provider cause for unknown signing failures', async () => {
+    const adapter = await connected();
+    const failure = new Error('Transport failed');
+    xrpAppInstance.signTransaction.mockRejectedValue(failure);
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+      originalError: expect.objectContaining({ cause: failure }),
     });
   });
 });

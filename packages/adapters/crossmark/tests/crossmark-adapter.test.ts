@@ -231,22 +231,22 @@ describe('CrossmarkAdapter.connect', () => {
     expect(account.network.id).toBe('mainnet');
   });
 
-  it('wraps "not installed" into a connection error', async () => {
+  it('preserves the typed not-installed error', async () => {
     sdk.sync.isInstalled.mockReturnValue(false);
     const adapter = new CrossmarkAdapter();
 
     await expect(adapter.connect()).rejects.toMatchObject({
-      code: WalletErrorCode.CONNECTION_FAILED,
+      code: WalletErrorCode.WALLET_NOT_INSTALLED,
     });
   });
 
-  it('wraps user rejection into a connection error', async () => {
+  it('maps user rejection to a connection-rejected error', async () => {
     sdk.sync.isInstalled.mockReturnValue(true);
     sdk.methods.signInAndWait.mockRejectedValue(new Error('User rejected'));
     const adapter = new CrossmarkAdapter();
 
     await expect(adapter.connect()).rejects.toMatchObject({
-      code: WalletErrorCode.CONNECTION_FAILED,
+      code: WalletErrorCode.CONNECTION_REJECTED,
     });
   });
 });
@@ -285,6 +285,20 @@ describe('CrossmarkAdapter.sign', () => {
     sdk.methods.signAndWait.mockRejectedValue(new Error('User Rejected the signature'));
 
     await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_REJECTED,
+    });
+  });
+
+  it('maps cancellation from submit and message signing to sign-rejected', async () => {
+    const adapter = await connected();
+    sdk.methods.signAndSubmitAndWait.mockRejectedValue(new Error('User cancelled'));
+
+    await expect(
+      adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+    ).rejects.toMatchObject({ code: WalletErrorCode.SIGN_REJECTED });
+
+    sdk.methods.signInAndWait.mockRejectedValue(new Error('User cancelled'));
+    await expect(adapter.signMessage('hello')).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_REJECTED,
     });
   });

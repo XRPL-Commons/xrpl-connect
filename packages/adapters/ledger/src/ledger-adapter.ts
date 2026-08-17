@@ -29,6 +29,12 @@ import iconSvg from './assets/icon.svg';
 
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
 
+function formattedLedgerError(error: unknown): Error {
+  const formatted = new Error(formatLedgerError(error));
+  (formatted as Error & { cause?: unknown }).cause = error;
+  return formatted;
+}
+
 /**
  * Default timeout for Ledger operations (60 seconds)
  * Users need time to confirm on device
@@ -135,9 +141,16 @@ export class LedgerAdapter
       return this.currentAccount;
     } catch (error) {
       await this.cleanup();
+      if (isWalletError(error)) throw error;
+
       const { state, message } = parseLedgerError(error);
 
-      if (state === LedgerDeviceState.NOT_CONNECTED) {
+      if (state === LedgerDeviceState.READY && message.includes('rejected')) {
+        throw createWalletError.connectionRejected(
+          this.name,
+          error instanceof Error ? error : new Error(message)
+        );
+      } else if (state === LedgerDeviceState.NOT_CONNECTED) {
         throw createWalletError.notInstalled(
           'Ledger device not found. Please connect your Ledger via USB.'
         );
@@ -152,10 +165,7 @@ export class LedgerAdapter
           new Error('XRP app is not open. Please open the XRP application on your Ledger device.')
         );
       } else {
-        throw createWalletError.connectionFailed(
-          this.name,
-          new Error(message || (error as Error).message)
-        );
+        throw createWalletError.connectionFailed(this.name, formattedLedgerError(error));
       }
     }
   }
@@ -319,13 +329,17 @@ export class LedgerAdapter
         tx_blob,
       };
     } catch (error) {
+      if (isWalletError(error)) throw error;
+
       const { state, message } = parseLedgerError(error);
 
       if (state === LedgerDeviceState.READY && message.includes('rejected')) {
-        throw createWalletError.signRejected();
+        throw createWalletError.signRejected(
+          error instanceof Error ? error : new Error(formatLedgerError(error))
+        );
       }
 
-      throw createWalletError.signFailed(new Error(formatLedgerError(error)));
+      throw createWalletError.signFailed(formattedLedgerError(error));
     }
   }
 
@@ -350,13 +364,17 @@ export class LedgerAdapter
         throw error;
       }
     } catch (error) {
+      if (isWalletError(error)) throw error;
+
       const { state, message } = parseLedgerError(error);
 
       if (state === LedgerDeviceState.READY && message.includes('rejected')) {
-        throw createWalletError.signRejected();
+        throw createWalletError.signRejected(
+          error instanceof Error ? error : new Error(formatLedgerError(error))
+        );
       }
 
-      throw createWalletError.signFailed(new Error(formatLedgerError(error)));
+      throw createWalletError.signFailed(formattedLedgerError(error));
     }
   }
 
@@ -394,7 +412,15 @@ export class LedgerAdapter
         publicKey: this.currentAccount.publicKey || '',
       };
     } catch (error) {
-      throw createWalletError.signFailed(new Error(formatLedgerError(error)));
+      if (isWalletError(error)) throw error;
+
+      const { state, message } = parseLedgerError(error);
+      if (state === LedgerDeviceState.READY && message.includes('rejected')) {
+        throw createWalletError.signRejected(
+          error instanceof Error ? error : formattedLedgerError(error)
+        );
+      }
+      throw createWalletError.signFailed(formattedLedgerError(error));
     }
   }
 
