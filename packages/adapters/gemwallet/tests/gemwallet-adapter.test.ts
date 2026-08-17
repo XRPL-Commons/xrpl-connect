@@ -153,27 +153,36 @@ describe('GemWalletAdapter.connect', () => {
     expect(account.network.id).toBe('mainnet');
   });
 
-  it('throws a wrapped connection error when not installed', async () => {
+  it('preserves the typed not-installed error', async () => {
     api.isInstalled.mockResolvedValue({ result: { isInstalled: false } });
     await expect(new GemWalletAdapter().connect()).rejects.toMatchObject({
-      code: WalletErrorCode.CONNECTION_FAILED,
+      code: WalletErrorCode.WALLET_NOT_INSTALLED,
     });
   });
 
-  it('wraps user rejection into a connection error', async () => {
+  it('maps user rejection to a connection-rejected error', async () => {
     api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
     api.getPublicKey.mockRejectedValue(new Error('User rejected request'));
     await expect(new GemWalletAdapter().connect()).rejects.toMatchObject({
-      code: WalletErrorCode.CONNECTION_FAILED,
+      code: WalletErrorCode.CONNECTION_REJECTED,
     });
   });
 
-  it('fails within the availability timeout when the extension does not answer', async () => {
+  it('maps an explicit rejection response to a connection-rejected error', async () => {
+    api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
+    api.getPublicKey.mockResolvedValue({ type: 'reject' });
+
+    await expect(new GemWalletAdapter().connect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_REJECTED,
+    });
+  });
+
+  it('preserves the typed not-installed error after the availability timeout', async () => {
     vi.useFakeTimers();
     api.isInstalled.mockReturnValue(new Promise(() => {}));
 
     const rejection = expect(new GemWalletAdapter().connect()).rejects.toMatchObject({
-      code: WalletErrorCode.CONNECTION_FAILED,
+      code: WalletErrorCode.WALLET_NOT_INSTALLED,
     });
     await vi.advanceTimersByTimeAsync(TIME.AVAILABILITY_TIMEOUT);
 
@@ -212,6 +221,23 @@ describe('GemWalletAdapter.sign', () => {
     api.signTransaction.mockRejectedValue(new Error('User Rejected'));
 
     await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_REJECTED,
+    });
+  });
+
+  it('maps explicit rejection responses from every signing method to sign-rejected', async () => {
+    const adapter = await connected();
+    api.signTransaction.mockResolvedValue({ type: 'reject' });
+    api.submitTransaction.mockResolvedValue({ type: 'reject' });
+    api.signMessage.mockResolvedValue({ type: 'reject' });
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_REJECTED,
+    });
+    await expect(
+      adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+    ).rejects.toMatchObject({ code: WalletErrorCode.SIGN_REJECTED });
+    await expect(adapter.signMessage('hello')).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_REJECTED,
     });
   });

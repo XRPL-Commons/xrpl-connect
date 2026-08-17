@@ -5,7 +5,7 @@
 import SignClient from '@walletconnect/sign-client';
 import { WalletConnectModal } from '@walletconnect/modal';
 import type { SignClientTypes, SessionTypes } from '@walletconnect/types';
-import { parseUri } from '@walletconnect/utils';
+import { getSdkError, parseUri } from '@walletconnect/utils';
 import { isValidClassicAddress } from 'xrpl';
 import type {
   WalletAdapter,
@@ -21,7 +21,14 @@ import type {
   SupportsPreInitialize,
   WalletCapabilities,
 } from '@xrpl-connect/core';
-import { createWalletError, resolveNetwork, createLogger, isMobile } from '@xrpl-connect/core';
+import {
+  createWalletError,
+  resolveNetwork,
+  createLogger,
+  getErrorMessage,
+  isMobile,
+  isWalletError,
+} from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
 import { DISCONNECT_REASONS, DEFAULT_METADATA, LOGGING, XRPL_NAMESPACE } from './constants';
 
@@ -32,6 +39,40 @@ const MAX_XRPL_NETWORK_ID = 0xffff_ffff;
  * Logger instance for WalletConnect adapter
  */
 const logger = createLogger('[WalletConnect]');
+
+const REOWN_REJECTION_CODES = new Set([
+  getSdkError('USER_REJECTED').code,
+  getSdkError('USER_REJECTED_CHAINS').code,
+  getSdkError('USER_REJECTED_METHODS').code,
+  getSdkError('USER_REJECTED_EVENTS').code,
+]);
+
+function isUserRejection(error: unknown): boolean {
+  if (error && typeof error === 'object') {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === 'number' && REOWN_REJECTION_CODES.has(code)) return true;
+  }
+
+  return (
+    error instanceof Error &&
+    (error.message.toLowerCase().includes('reject') ||
+      error.message.toLowerCase().includes('cancel'))
+  );
+}
+
+function normalizeError(error: unknown): Error {
+  if (error instanceof Error) return error;
+
+  const structuredMessage =
+    error &&
+    typeof error === 'object' &&
+    typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : undefined;
+  const normalized = new Error(structuredMessage ?? getErrorMessage(error));
+  (normalized as Error & { cause?: unknown }).cause = error;
+  return normalized;
+}
 
 /**
  * XRPL methods supported by WalletConnect
@@ -686,7 +727,13 @@ export class WalletConnectAdapter
           await this.closeConnectionProposal(pending);
         }
       }
-      throw createWalletError.connectionFailed(this.name, error as Error);
+      if (isWalletError(error)) throw error;
+
+      const originalError = normalizeError(error);
+      if (isUserRejection(error)) {
+        throw createWalletError.connectionRejected(this.name, originalError);
+      }
+      throw createWalletError.connectionFailed(this.name, originalError);
     }
   }
 
@@ -856,10 +903,11 @@ export class WalletConnectAdapter
         tx_json: resultTx,
       };
     } catch (error) {
-      if (error instanceof Error && error.message.toLowerCase().includes('reject')) {
-        throw createWalletError.signRejected();
-      }
-      throw createWalletError.signFailed(error as Error);
+      if (isWalletError(error)) throw error;
+
+      const originalError = normalizeError(error);
+      if (isUserRejection(error)) throw createWalletError.signRejected(originalError);
+      throw createWalletError.signFailed(originalError);
     }
   }
 
@@ -877,10 +925,11 @@ export class WalletConnectAdapter
         tx_json: resultTx,
       };
     } catch (error) {
-      if (error instanceof Error && error.message.toLowerCase().includes('reject')) {
-        throw createWalletError.signRejected();
-      }
-      throw createWalletError.signFailed(error as Error);
+      if (isWalletError(error)) throw error;
+
+      const originalError = normalizeError(error);
+      if (isUserRejection(error)) throw createWalletError.signRejected(originalError);
+      throw createWalletError.signFailed(originalError);
     }
   }
 

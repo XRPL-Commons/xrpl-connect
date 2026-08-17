@@ -21,11 +21,23 @@ import type {
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
-import { createWalletError, resolveNetwork, TIME, withTimeout } from '@xrpl-connect/core';
+import {
+  createWalletError,
+  isWalletError,
+  resolveNetwork,
+  TIME,
+  withTimeout,
+} from '@xrpl-connect/core';
 import type { SubmittableTransaction } from 'xrpl';
 import iconSvg from './assets/icon.svg';
 
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
+
+function isUserRejection(error: unknown): error is Error {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return message.includes('reject') || message.includes('cancel');
+}
 
 /**
  * GemWallet adapter options
@@ -87,6 +99,9 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
       // Get public key (which also returns the address)
       const publicKeyResponse = await getPublicKey();
 
+      if (publicKeyResponse.type === 'reject') {
+        throw createWalletError.connectionRejected(this.name);
+      }
       if (!publicKeyResponse.result || !publicKeyResponse.result.address) {
         throw new Error('Failed to get address from GemWallet');
       }
@@ -102,6 +117,10 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
 
       return this.currentAccount;
     } catch (error) {
+      if (isWalletError(error)) throw error;
+      if (isUserRejection(error)) {
+        throw createWalletError.connectionRejected(this.name, error);
+      }
       throw createWalletError.connectionFailed(this.name, error as Error);
     }
   }
@@ -225,6 +244,7 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
         transaction: tx as SubmittableTransaction,
       });
 
+      if (signResponse.type === 'reject') throw createWalletError.signRejected();
       if (!signResponse.result) {
         throw new Error('Failed to sign transaction with GemWallet');
       }
@@ -234,9 +254,8 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
         tx_blob: signResponse.result.signature || '',
       };
     } catch (error) {
-      if (error instanceof Error && error.message.toLowerCase().includes('reject')) {
-        throw createWalletError.signRejected();
-      }
+      if (isWalletError(error)) throw error;
+      if (isUserRejection(error)) throw createWalletError.signRejected(error);
       throw createWalletError.signFailed(error as Error);
     }
   }
@@ -260,6 +279,7 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
         transaction: tx as SubmittableTransaction,
       });
 
+      if (submitResponse.type === 'reject') throw createWalletError.signRejected();
       if (!submitResponse.result || !submitResponse.result.hash) {
         throw new Error('Failed to submit transaction with GemWallet');
       }
@@ -268,9 +288,8 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
         hash: submitResponse.result.hash,
       };
     } catch (error) {
-      if (error instanceof Error && error.message.toLowerCase().includes('reject')) {
-        throw createWalletError.signRejected();
-      }
+      if (isWalletError(error)) throw error;
+      if (isUserRejection(error)) throw createWalletError.signRejected(error);
       throw createWalletError.signFailed(error as Error);
     }
   }
@@ -289,6 +308,7 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
       // Sign message with GemWallet
       const signResponse = await signMessage(messageStr);
 
+      if (signResponse.type === 'reject') throw createWalletError.signRejected();
       if (!signResponse.result || !signResponse.result.signedMessage) {
         throw new Error('Failed to sign message with GemWallet');
       }
@@ -301,6 +321,8 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
         publicKey: this.currentAccount.publicKey || '',
       };
     } catch (error) {
+      if (isWalletError(error)) throw error;
+      if (isUserRejection(error)) throw createWalletError.signRejected(error);
       throw createWalletError.signFailed(error as Error);
     }
   }

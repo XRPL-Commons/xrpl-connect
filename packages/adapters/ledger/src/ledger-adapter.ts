@@ -24,10 +24,21 @@ import { createWalletError, isWalletError, resolveNetwork } from '@xrpl-connect/
 
 import type { LedgerAdapterOptions, LedgerConnectOptions } from './types';
 import { LedgerDeviceState } from './types';
-import { parseLedgerError, isBrowserSupported, formatLedgerError } from './errors';
+import {
+  parseLedgerError,
+  isBrowserSupported,
+  formatLedgerError,
+  isLedgerUserCancelled,
+} from './errors';
 import iconSvg from './assets/icon.svg';
 
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
+
+function formattedLedgerError(error: unknown): Error {
+  const formatted = new Error(formatLedgerError(error));
+  (formatted as Error & { cause?: unknown }).cause = error;
+  return formatted;
+}
 
 /**
  * Default timeout for Ledger operations (60 seconds)
@@ -135,9 +146,19 @@ export class LedgerAdapter
       return this.currentAccount;
     } catch (error) {
       await this.cleanup();
+      if (isWalletError(error)) throw error;
+
       const { state, message } = parseLedgerError(error);
 
-      if (state === LedgerDeviceState.NOT_CONNECTED) {
+      if (
+        isLedgerUserCancelled(error) ||
+        (state === LedgerDeviceState.READY && message.includes('rejected'))
+      ) {
+        throw createWalletError.connectionRejected(
+          this.name,
+          error instanceof Error ? error : new Error(message)
+        );
+      } else if (state === LedgerDeviceState.NOT_CONNECTED) {
         throw createWalletError.notInstalled(
           'Ledger device not found. Please connect your Ledger via USB.'
         );
@@ -152,10 +173,7 @@ export class LedgerAdapter
           new Error('XRP app is not open. Please open the XRP application on your Ledger device.')
         );
       } else {
-        throw createWalletError.connectionFailed(
-          this.name,
-          new Error(message || (error as Error).message)
-        );
+        throw createWalletError.connectionFailed(this.name, formattedLedgerError(error));
       }
     }
   }
@@ -319,13 +337,20 @@ export class LedgerAdapter
         tx_blob,
       };
     } catch (error) {
+      if (isWalletError(error)) throw error;
+
       const { state, message } = parseLedgerError(error);
 
-      if (state === LedgerDeviceState.READY && message.includes('rejected')) {
-        throw createWalletError.signRejected();
+      if (
+        isLedgerUserCancelled(error) ||
+        (state === LedgerDeviceState.READY && message.includes('rejected'))
+      ) {
+        throw createWalletError.signRejected(
+          error instanceof Error ? error : new Error(formatLedgerError(error))
+        );
       }
 
-      throw createWalletError.signFailed(new Error(formatLedgerError(error)));
+      throw createWalletError.signFailed(formattedLedgerError(error));
     }
   }
 
@@ -350,13 +375,20 @@ export class LedgerAdapter
         throw error;
       }
     } catch (error) {
+      if (isWalletError(error)) throw error;
+
       const { state, message } = parseLedgerError(error);
 
-      if (state === LedgerDeviceState.READY && message.includes('rejected')) {
-        throw createWalletError.signRejected();
+      if (
+        isLedgerUserCancelled(error) ||
+        (state === LedgerDeviceState.READY && message.includes('rejected'))
+      ) {
+        throw createWalletError.signRejected(
+          error instanceof Error ? error : new Error(formatLedgerError(error))
+        );
       }
 
-      throw createWalletError.signFailed(new Error(formatLedgerError(error)));
+      throw createWalletError.signFailed(formattedLedgerError(error));
     }
   }
 
@@ -394,7 +426,18 @@ export class LedgerAdapter
         publicKey: this.currentAccount.publicKey || '',
       };
     } catch (error) {
-      throw createWalletError.signFailed(new Error(formatLedgerError(error)));
+      if (isWalletError(error)) throw error;
+
+      const { state, message } = parseLedgerError(error);
+      if (
+        isLedgerUserCancelled(error) ||
+        (state === LedgerDeviceState.READY && message.includes('rejected'))
+      ) {
+        throw createWalletError.signRejected(
+          error instanceof Error ? error : formattedLedgerError(error)
+        );
+      }
+      throw createWalletError.signFailed(formattedLedgerError(error));
     }
   }
 
@@ -416,8 +459,9 @@ export class LedgerAdapter
     count: number = 5,
     startIndex: number = 0
   ): Promise<Array<{ address: string; publicKey: string; path: string; index: number }>> {
+    const needsCleanup = !this.transport;
+
     try {
-      const needsCleanup = !this.transport;
       if (!this.transport) {
         this.transport = await this.createTransport();
         this.xrpApp = new Xrp(this.transport);
@@ -428,7 +472,7 @@ export class LedgerAdapter
       }
 
       const accounts = [];
-      let lastError: Error | null = null;
+      let lastError: unknown = null;
 
       for (let i = 0; i < count; i++) {
         const accountIndex = startIndex + i;
@@ -447,23 +491,29 @@ export class LedgerAdapter
             index: accountIndex,
           });
         } catch (error) {
-          lastError = error as Error;
+          if (isWalletError(error) || isLedgerUserCancelled(error)) throw error;
+
+          lastError = error;
           console.warn(`Failed to get account at index ${accountIndex}:`, error);
         }
       }
 
-      if (needsCleanup) {
-        await this.cleanup();
-      }
-
       if (accounts.length === 0 && lastError) {
-        const parsedError = parseLedgerError(lastError);
-        throw parsedError;
+        throw new Error(parseLedgerError(lastError).message);
       }
 
       return accounts;
     } catch (error) {
+      if (isWalletError(error)) throw error;
+      if (isLedgerUserCancelled(error)) {
+        throw createWalletError.connectionRejected(
+          this.name,
+          error instanceof Error ? error : formattedLedgerError(error)
+        );
+      }
       throw createWalletError.unknown(`Failed to retrieve accounts: ${(error as Error).message}`);
+    } finally {
+      if (needsCleanup) await this.cleanup();
     }
   }
 
@@ -472,31 +522,48 @@ export class LedgerAdapter
    */
   private async createTransport(): Promise<Transport> {
     const browserSupport = isBrowserSupported();
+    const transports = this.preferWebHID
+      ? [
+          {
+            name: 'WebHID',
+            supported: browserSupport.webHID,
+            create: () => TransportWebHID.create(),
+          },
+          {
+            name: 'WebUSB',
+            supported: browserSupport.webUSB,
+            create: () => TransportWebUSB.create(),
+          },
+        ]
+      : [
+          {
+            name: 'WebUSB',
+            supported: browserSupport.webUSB,
+            create: () => TransportWebUSB.create(),
+          },
+          {
+            name: 'WebHID',
+            supported: browserSupport.webHID,
+            create: () => TransportWebHID.create(),
+          },
+        ];
+    const availableTransports = transports.filter(({ supported }) => supported);
+    let lastError: unknown;
 
-    if (this.preferWebHID && browserSupport.webHID) {
+    for (const [index, transport] of availableTransports.entries()) {
       try {
-        return await TransportWebHID.create();
+        return await transport.create();
       } catch (error) {
-        console.warn('WebHID transport failed, trying WebUSB:', error);
+        if (isWalletError(error) || isLedgerUserCancelled(error)) throw error;
+
+        lastError = error;
+        if (index < availableTransports.length - 1) {
+          console.warn(`${transport.name} transport failed, trying fallback:`, error);
+        }
       }
     }
 
-    if (browserSupport.webUSB) {
-      return await TransportWebUSB.create();
-    }
-
-    if (!this.preferWebHID && browserSupport.webUSB) {
-      try {
-        return await TransportWebUSB.create();
-      } catch (error) {
-        console.warn('WebUSB transport failed, trying WebHID:', error);
-      }
-    }
-
-    if (browserSupport.webHID) {
-      return await TransportWebHID.create();
-    }
-
+    if (lastError) throw lastError;
     throw new Error('No compatible transport available');
   }
 
