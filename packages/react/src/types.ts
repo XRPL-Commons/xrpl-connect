@@ -43,13 +43,15 @@ export interface XrplConnectContextValue {
 }
 
 /**
- * Minimal typed surface of the `<xrpl-wallet-connector>` custom element that the
- * React layer drives.
+ * Public API exposed by the `<xrpl-wallet-connector>` custom element. Mirrors
+ * `WalletConnectorElementInstance` from `@xrpl-connect/ui`.
  */
 export interface WalletConnectorElement extends HTMLElement {
   setWalletManager(manager: WalletManager): void;
-  open(): void;
+  open(): Promise<void>;
+  openAndWait(): Promise<AccountInfo>;
   close(): void;
+  toggle(): void;
 }
 
 export interface XrplConnectProviderProps {
