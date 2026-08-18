@@ -55,7 +55,7 @@ jobs:
         run: vp install --frozen-lockfile --filter docs
 
       - name: Check versioned docs snapshot
-        run: pnpm run docs:snapshot:check
+        run: node docs/scripts/prepare-versioned-docs.mjs --check
 
       - name: Build docs
         run: vp run docs:build
