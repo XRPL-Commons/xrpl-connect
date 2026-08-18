@@ -160,9 +160,10 @@ function verifyRegistryTags() {
     latest: '0.8.2',
     rc: CANDIDATE_VERSION,
   });
-  assert.deepEqual(tagsByPackage['@xrpl-commons/xrpl-connect-react'], { rc: CANDIDATE_VERSION });
-  assert.deepEqual(tagsByPackage['@xrpl-commons/xrpl-connect-vue'], { rc: CANDIDATE_VERSION });
-  console.log('✓ Registry tags expose only the intended release candidate and preserve latest');
+  const frameworkTags = { latest: CANDIDATE_VERSION, rc: CANDIDATE_VERSION };
+  assert.deepEqual(tagsByPackage['@xrpl-commons/xrpl-connect-react'], frameworkTags);
+  assert.deepEqual(tagsByPackage['@xrpl-commons/xrpl-connect-vue'], frameworkTags);
+  console.log('✓ Registry tags expose the coordinated candidate and preserve umbrella latest');
 }
 
 const modes = new Set(process.argv.slice(2));

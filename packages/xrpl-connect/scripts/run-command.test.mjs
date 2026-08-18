@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   CANDIDATE_VERSION,
+  REGISTRY_VERIFY_RETRY_DELAYS_MS,
   assertSafePrepublishRegistryState,
   createRcPublisher,
 } from './publish-rc.mjs';
@@ -70,12 +71,12 @@ test('publish build uses a cross-platform quoted workspace filter', () => {
   assert.doesNotMatch(manifest.scripts['publish:build'], /vp run -F '\{\.\}\^\.\.\.'/);
 });
 
-test('RC publisher requires exact confirmation before running commands', () => {
+test('RC publisher requires exact confirmation before running commands', async () => {
   const publishRc = createRcPublisher(() => assert.fail('must not run a command'));
 
-  assert.throws(() => publishRc([]), new RegExp(`--confirm ${CANDIDATE_VERSION}`));
-  assert.throws(
-    () => publishRc(['--confirm', '1.0.0-rc.1']),
+  await assert.rejects(publishRc([]), new RegExp(`--confirm ${CANDIDATE_VERSION}`));
+  await assert.rejects(
+    publishRc(['--confirm', '1.0.0-rc.1']),
     new RegExp(`--confirm ${CANDIDATE_VERSION}`)
   );
 });
@@ -88,16 +89,22 @@ test('RC registry preflight accepts only fresh, partial, or complete candidate s
   };
   const partial = {
     'xrpl-connect': { latest: '0.8.2', rc: CANDIDATE_VERSION },
-    '@xrpl-commons/xrpl-connect-react': { rc: CANDIDATE_VERSION },
+    '@xrpl-commons/xrpl-connect-react': {
+      latest: CANDIDATE_VERSION,
+      rc: CANDIDATE_VERSION,
+    },
     '@xrpl-commons/xrpl-connect-vue': null,
   };
   const complete = {
     ...partial,
-    '@xrpl-commons/xrpl-connect-vue': { rc: CANDIDATE_VERSION },
+    '@xrpl-commons/xrpl-connect-vue': {
+      latest: CANDIDATE_VERSION,
+      rc: CANDIDATE_VERSION,
+    },
   };
   const interrupted = {
     'xrpl-connect': { latest: '0.8.2' },
-    '@xrpl-commons/xrpl-connect-react': {},
+    '@xrpl-commons/xrpl-connect-react': { latest: CANDIDATE_VERSION },
     '@xrpl-commons/xrpl-connect-vue': null,
   };
 
@@ -116,38 +123,54 @@ test('RC registry preflight accepts only fresh, partial, or complete candidate s
     () =>
       assertSafePrepublishRegistryState({
         ...pristine,
-        '@xrpl-commons/xrpl-connect-react': { latest: CANDIDATE_VERSION },
+        '@xrpl-commons/xrpl-connect-react': { latest: '0.8.2' },
       }),
-    /unexpected dist-tags/
+    /@latest must point/
   );
 });
 
-function recordPublisherCalls(publishedPackages = new Set()) {
+function recordPublisherCalls(publishedPackages = new Set(), registryFailures = 0) {
   const calls = [];
-  const publishRc = createRcPublisher((command, args, options) => {
-    calls.push({ command, args, cwd: options.cwd, env: options.env });
-    if (command === 'git') return '';
-    if (command === 'npm' && args[0] === 'pack') {
-      const name = options.cwd.endsWith('dist-publish')
-        ? 'xrpl-connect'
-        : options.cwd.endsWith('react')
-          ? '@xrpl-commons/xrpl-connect-react'
-          : '@xrpl-commons/xrpl-connect-vue';
-      return JSON.stringify([{ name, version: CANDIDATE_VERSION, integrity: `integrity:${name}` }]);
+  const waits = [];
+  let remainingRegistryFailures = registryFailures;
+  const publishRc = createRcPublisher(
+    (command, args, options) => {
+      calls.push({ command, args, cwd: options.cwd, env: options.env });
+      if (command === 'git') return '';
+      if (command === process.execPath && args.includes('--check-registry')) {
+        if (remainingRegistryFailures > 0) {
+          remainingRegistryFailures -= 1;
+          throw new Error('npm view failed with code E404 during registry propagation');
+        }
+        return '';
+      }
+      if (command === 'npm' && args[0] === 'pack') {
+        const name = options.cwd.endsWith('dist-publish')
+          ? 'xrpl-connect'
+          : options.cwd.endsWith('react')
+            ? '@xrpl-commons/xrpl-connect-react'
+            : '@xrpl-commons/xrpl-connect-vue';
+        return JSON.stringify([
+          { name, version: CANDIDATE_VERSION, integrity: `integrity:${name}` },
+        ]);
+      }
+      if (command === 'npm' && args[0] === 'view') {
+        const packageName = args[1].slice(0, -`@${CANDIDATE_VERSION}`.length);
+        if (publishedPackages.has(packageName)) return JSON.stringify(`integrity:${packageName}`);
+        throw new Error(`npm view failed with code E404 for ${packageName}`);
+      }
+    },
+    async (delayMs) => {
+      waits.push(delayMs);
     }
-    if (command === 'npm' && args[0] === 'view') {
-      const packageName = args[1].slice(0, -`@${CANDIDATE_VERSION}`.length);
-      if (publishedPackages.has(packageName)) return JSON.stringify(`integrity:${packageName}`);
-      throw new Error(`npm view failed with code E404 for ${packageName}`);
-    }
-  });
-  return { calls, publishRc };
+  );
+  return { calls, publishRc, waits };
 }
 
-test('RC publisher preflights, verifies, and publishes only through the fixed registry', () => {
+test('RC publisher preflights, verifies, and publishes only through the fixed registry', async () => {
   const { calls, publishRc } = recordPublisherCalls();
 
-  publishRc(['--', '--confirm', CANDIDATE_VERSION]);
+  await publishRc(['--', '--confirm', CANDIDATE_VERSION]);
 
   assert.equal(calls.length, 14);
   assert.deepEqual(calls[1].args, [
@@ -176,12 +199,39 @@ test('RC publisher preflights, verifies, and publishes only through the fixed re
   assert.deepEqual(calls.at(-1).args, ['scripts/test-publish.mjs', '--check-registry']);
 });
 
-test('RC publisher resumes by restoring rc tags for exact candidates already on npm', () => {
+test('RC publisher retries post-publish verification during registry propagation', async () => {
+  const { calls, publishRc, waits } = recordPublisherCalls(new Set(), 2);
+
+  await publishRc(['--confirm', CANDIDATE_VERSION]);
+
+  const verificationCalls = calls.filter(
+    ({ command, args }) => command === process.execPath && args.includes('--check-registry')
+  );
+  assert.equal(verificationCalls.length, 3);
+  assert.deepEqual(waits, REGISTRY_VERIFY_RETRY_DELAYS_MS.slice(0, 2));
+});
+
+test('RC publisher stops retrying registry verification after the bounded delay schedule', async () => {
+  const { calls, publishRc, waits } = recordPublisherCalls(new Set(), Number.POSITIVE_INFINITY);
+
+  await assert.rejects(
+    publishRc(['--confirm', CANDIDATE_VERSION]),
+    /E404 during registry propagation/
+  );
+
+  const verificationCalls = calls.filter(
+    ({ command, args }) => command === process.execPath && args.includes('--check-registry')
+  );
+  assert.equal(verificationCalls.length, REGISTRY_VERIFY_RETRY_DELAYS_MS.length + 1);
+  assert.deepEqual(waits, REGISTRY_VERIFY_RETRY_DELAYS_MS);
+});
+
+test('RC publisher resumes by restoring rc tags for exact candidates already on npm', async () => {
   const { calls, publishRc } = recordPublisherCalls(
     new Set(['xrpl-connect', '@xrpl-commons/xrpl-connect-react'])
   );
 
-  publishRc(['--confirm', CANDIDATE_VERSION]);
+  await publishRc(['--confirm', CANDIDATE_VERSION]);
 
   const publishCalls = calls.filter(({ args }) => args[0] === 'publish');
   assert.equal(publishCalls.length, 1);
@@ -211,7 +261,7 @@ test('RC publisher resumes by restoring rc tags for exact candidates already on 
   assert.deepEqual(calls.at(-1).args, ['scripts/test-publish.mjs', '--check-registry']);
 });
 
-test('RC publisher rejects a published candidate with different contents', () => {
+test('RC publisher rejects a published candidate with different contents', async () => {
   const calls = [];
   const publishRc = createRcPublisher((command, args, options) => {
     calls.push({ command, args, cwd: options.cwd });
@@ -224,8 +274,8 @@ test('RC publisher rejects a published candidate with different contents', () =>
     if (command === 'npm' && args[0] === 'view') return JSON.stringify('registry-integrity');
   });
 
-  assert.throws(
-    () => publishRc(['--confirm', CANDIDATE_VERSION]),
+  await assert.rejects(
+    publishRc(['--confirm', CANDIDATE_VERSION]),
     /already published with different contents/
   );
   assert.equal(
@@ -234,7 +284,7 @@ test('RC publisher rejects a published candidate with different contents', () =>
   );
 });
 
-test('RC publisher propagates registry failures other than a missing candidate', () => {
+test('RC publisher propagates registry failures other than a missing candidate', async () => {
   const registryError = new Error('npm view failed with code E500');
   const publishRc = createRcPublisher((command, args) => {
     if (command === 'git') return '';
@@ -250,21 +300,21 @@ test('RC publisher propagates registry failures other than a missing candidate',
     if (command === 'npm' && args[0] === 'view') throw registryError;
   });
 
-  assert.throws(
-    () => publishRc(['--confirm', CANDIDATE_VERSION]),
+  await assert.rejects(
+    publishRc(['--confirm', CANDIDATE_VERSION]),
     (error) => error === registryError
   );
 });
 
-test('RC publisher rejects a dirty release worktree before running release checks', () => {
+test('RC publisher rejects a dirty release worktree before running release checks', async () => {
   const calls = [];
   const publishRc = createRcPublisher((command, args) => {
     calls.push({ command, args });
     if (command === 'git') return ' M packages/xrpl-connect/package.json';
   });
 
-  assert.throws(
-    () => publishRc(['--confirm', CANDIDATE_VERSION]),
+  await assert.rejects(
+    publishRc(['--confirm', CANDIDATE_VERSION]),
     /Release worktree must be clean.*package\.json/s
   );
   assert.deepEqual(

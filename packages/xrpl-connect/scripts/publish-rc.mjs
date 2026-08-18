@@ -6,6 +6,7 @@ import { run as defaultRun } from './run-command.mjs';
 
 export const CANDIDATE_VERSION = '1.0.0-rc.0';
 export const NPM_REGISTRY = 'https://registry.npmjs.org/';
+export const REGISTRY_VERIFY_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000];
 const LATEST_VERSION = '0.8.2';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectFolder = path.join(__dirname, '..');
@@ -63,8 +64,20 @@ export function assertSafePrepublishRegistryState(tagsByPackage) {
   ]) {
     const tags = tagsByPackage[packageName];
     if (tags === null) continue;
-    const expectedTags = tags.rc === undefined ? {} : { rc: CANDIDATE_VERSION };
-    assert.deepEqual(tags, expectedTags, `${packageName} has unexpected dist-tags`);
+    assert.equal(
+      tags.latest,
+      CANDIDATE_VERSION,
+      `${packageName}@latest must point to ${CANDIDATE_VERSION}`
+    );
+    assert(
+      tags.rc === undefined || tags.rc === CANDIDATE_VERSION,
+      `${packageName}@rc must be absent or point to ${CANDIDATE_VERSION}`
+    );
+    assert.deepEqual(
+      Object.keys(tags).sort(),
+      tags.rc === undefined ? ['latest'] : ['latest', 'rc'],
+      `${packageName} has unexpected dist-tags`
+    );
   }
 }
 
@@ -109,8 +122,26 @@ function readPublishedCandidateIntegrity(run, packageName) {
   }
 }
 
-export function createRcPublisher(run = defaultRun) {
-  return function publishRc(args = process.argv.slice(2)) {
+const defaultWait = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs));
+
+async function verifyPublishedRegistry(run, wait) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      run(process.execPath, ['scripts/test-publish.mjs', '--check-registry'], {
+        cwd: projectFolder,
+      });
+      return;
+    } catch (error) {
+      const delayMs = REGISTRY_VERIFY_RETRY_DELAYS_MS[attempt];
+      if (delayMs === undefined) throw error;
+      console.warn(`Registry verification attempt ${attempt + 1} failed; retrying in ${delayMs}ms`);
+      await wait(delayMs);
+    }
+  }
+}
+
+export function createRcPublisher(run = defaultRun, wait = defaultWait) {
+  return async function publishRc(args = process.argv.slice(2)) {
     const confirmationArgs = args[0] === '--' ? args.slice(1) : args;
     assert.deepEqual(
       confirmationArgs,
@@ -151,12 +182,10 @@ export function createRcPublisher(run = defaultRun) {
       });
     }
 
-    run(process.execPath, ['scripts/test-publish.mjs', '--check-registry'], {
-      cwd: projectFolder,
-    });
+    await verifyPublishedRegistry(run, wait);
   };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  createRcPublisher()();
+  await createRcPublisher()();
 }
