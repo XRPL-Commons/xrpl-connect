@@ -5,13 +5,13 @@ description: Integrate XRPL-Connect into Nuxt with the first-party Vue bindings.
 # Nuxt
 
 XRPL Connect's modal is a browser custom element. In Nuxt, register it and install the
-`@xrpl-connect/vue` plugin from a client-only Nuxt plugin. Components that call the injected
+`@xrpl-commons/xrpl-connect-vue` plugin from a client-only Nuxt plugin. Components that call the injected
 Vue composables must also run only on the client.
 
 ## Installation
 
 ```bash
-npm install @xrpl-connect/vue@rc xrpl-connect@rc xrpl vue
+npm install @xrpl-commons/xrpl-connect-vue@rc xrpl-connect@rc xrpl vue
 ```
 
 ## Client plugin
@@ -20,7 +20,7 @@ Create `plugins/xrpl-connect.client.ts`:
 
 ```ts
 import { CrossmarkAdapter, XamanAdapter } from 'xrpl-connect';
-import { createXrplConnect } from '@xrpl-connect/vue';
+import { createXrplConnect } from '@xrpl-commons/xrpl-connect-vue';
 
 export default defineNuxtPlugin((nuxtApp) => {
   nuxtApp.vueApp.use(
@@ -56,7 +56,7 @@ secrets in `runtimeConfig.public`.
 The `.client.ts` suffix prevents wallet adapters, plugin installation, and custom-element
 registration from running during server rendering. The named `xrpl-connect` import evaluates
 the package entry and registers the custom element, so a separate side-effect import is not
-needed. `@xrpl-connect/vue` itself remains safe to import in universal modules.
+needed. `@xrpl-commons/xrpl-connect-vue` itself remains safe to import in universal modules.
 
 ## Wallet component
 
@@ -66,7 +66,7 @@ the template.
 
 ```vue
 <script setup lang="ts">
-import { WalletConnector, useWallet, useWalletModal } from '@xrpl-connect/vue';
+import { WalletConnector, useWallet, useWalletModal } from '@xrpl-commons/xrpl-connect-vue';
 
 const { connected, account, connecting, error, disconnect } = useWallet();
 const { open } = useWalletModal();
@@ -98,7 +98,12 @@ component, create `components/PaymentButton.client.vue`:
 
 ```vue
 <script setup lang="ts">
-import { isWalletError, useSigner, useWallet, WalletErrorCode } from '@xrpl-connect/vue';
+import {
+  isWalletError,
+  useSigner,
+  useWallet,
+  WalletErrorCode,
+} from '@xrpl-commons/xrpl-connect-vue';
 
 const { account, connected } = useWallet();
 const { signAndSubmit } = useSigner();

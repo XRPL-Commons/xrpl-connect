@@ -11,7 +11,7 @@ import {
 import { run } from './run-command.mjs';
 
 const FRAMEWORK_PEER_RANGE = '^1.0.0-rc.0';
-const NPM_ORGANIZATION = 'xrpl-connect';
+const NPM_ORGANIZATION = 'xrpl-commons';
 const SUPPORTED_NODE_RANGE = '^20.19.0 || ^22.18.0 || >=24.11.0';
 const PUBLISH_CONFIG = {
   access: 'public',
@@ -21,6 +21,7 @@ const PUBLISH_CONFIG = {
 const PUBLISH_GUARD =
   "node -e \"const { npm_config_tag: tag, npm_config_access: access, npm_config_registry: registry } = process.env; let registryUrl = ''; try { registryUrl = new URL(registry).href; } catch {} if (tag !== 'rc' || access !== 'public' || registryUrl !== 'https://registry.npmjs.org/') { console.error('Publish requires --tag rc --access public --registry https://registry.npmjs.org/'); process.exit(1); }\"";
 const inheritedPnpmConfig = [
+  'npm_config_dir',
   'npm_config_peer_dependency_rules',
   'npm_config_recursive',
   'npm_config_verify_deps_before_run',
@@ -57,7 +58,7 @@ const candidatePackages = [
     ],
   },
   {
-    name: '@xrpl-connect/react',
+    name: '@xrpl-commons/xrpl-connect-react',
     folder: path.join(repositoryRoot, 'packages', 'react'),
     requiredFiles: [
       'package.json',
@@ -70,7 +71,7 @@ const candidatePackages = [
     ],
   },
   {
-    name: '@xrpl-connect/vue',
+    name: '@xrpl-commons/xrpl-connect-vue',
     folder: path.join(repositoryRoot, 'packages', 'vue'),
     requiredFiles: [
       'package.json',
@@ -83,6 +84,13 @@ const candidatePackages = [
     ],
   },
 ];
+
+for (const { name } of candidatePackages.slice(1)) {
+  assert(
+    name.startsWith(`@${NPM_ORGANIZATION}/`),
+    `${name} is outside the @${NPM_ORGANIZATION} npm organization scope`
+  );
+}
 
 function parseJson(command, args, options) {
   return JSON.parse(run(command, args, { ...options, capture: true }));
@@ -152,8 +160,8 @@ function verifyRegistryTags() {
     latest: '0.8.2',
     rc: CANDIDATE_VERSION,
   });
-  assert.deepEqual(tagsByPackage['@xrpl-connect/react'], { rc: CANDIDATE_VERSION });
-  assert.deepEqual(tagsByPackage['@xrpl-connect/vue'], { rc: CANDIDATE_VERSION });
+  assert.deepEqual(tagsByPackage['@xrpl-commons/xrpl-connect-react'], { rc: CANDIDATE_VERSION });
+  assert.deepEqual(tagsByPackage['@xrpl-commons/xrpl-connect-vue'], { rc: CANDIDATE_VERSION });
   console.log('✓ Registry tags expose only the intended release candidate and preserve latest');
 }
 
@@ -354,23 +362,23 @@ try {
     /Publish requires .*--registry https:\/\/registry\.npmjs\.org\//
   );
   assert.equal(
-    installedManifests['@xrpl-connect/react'].peerDependencies?.['xrpl-connect'],
+    installedManifests['@xrpl-commons/xrpl-connect-react'].peerDependencies?.['xrpl-connect'],
     FRAMEWORK_PEER_RANGE
   );
   assert.equal(
-    installedManifests['@xrpl-connect/vue'].peerDependencies?.['xrpl-connect'],
+    installedManifests['@xrpl-commons/xrpl-connect-vue'].peerDependencies?.['xrpl-connect'],
     FRAMEWORK_PEER_RANGE
   );
   assert.deepEqual(installedManifests['xrpl-connect'].peerDependencies, {
     xrpl: '^3.0.0 || ^4.0.0',
   });
-  assert.deepEqual(installedManifests['@xrpl-connect/react'].peerDependencies, {
+  assert.deepEqual(installedManifests['@xrpl-commons/xrpl-connect-react'].peerDependencies, {
     react: '^18.0.0 || ^19.0.0',
     'react-dom': '^18.0.0 || ^19.0.0',
     xrpl: '^3.0.0 || ^4.0.0',
     'xrpl-connect': FRAMEWORK_PEER_RANGE,
   });
-  assert.deepEqual(installedManifests['@xrpl-connect/vue'].peerDependencies, {
+  assert.deepEqual(installedManifests['@xrpl-commons/xrpl-connect-vue'].peerDependencies, {
     vue: '^3.5.0',
     xrpl: '^3.0.0 || ^4.0.0',
     'xrpl-connect': FRAMEWORK_PEER_RANGE,
@@ -394,18 +402,13 @@ try {
     );
   }
 
-  for (const framework of ['react', 'vue']) {
-    const installedFrameworkFolder = path.join(
-      consumerFolder,
-      'node_modules',
-      '@xrpl-connect',
-      framework
-    );
+  for (const { name } of candidatePackages.slice(1)) {
+    const installedFrameworkFolder = path.join(consumerFolder, 'node_modules', name);
     for (const declaration of ['dist/index.d.ts', 'dist/index.d.mts']) {
       const contents = readFileSync(path.join(installedFrameworkFolder, declaration), 'utf-8');
       assert(
         !contents.includes('@xrpl-connect/core'),
-        `${framework}/${declaration} leaks the development-only @xrpl-connect/core package`
+        `${name}/${declaration} leaks the development-only @xrpl-connect/core package`
       );
     }
   }

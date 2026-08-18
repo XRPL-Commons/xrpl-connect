@@ -1,5 +1,5 @@
 /**
- * @xrpl-connect/react
+ * @xrpl-commons/xrpl-connect-react
  * React bindings for XRPL Connect: a provider that owns a single WalletManager,
  * hooks to use it, and a `<WalletConnector>` modal component. (#33)
  *

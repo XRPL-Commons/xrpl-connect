@@ -1,5 +1,5 @@
 {
-  "name": "@xrpl-connect/react",
+  "name": "@xrpl-commons/xrpl-connect-react",
   "version": "1.0.0-rc.0",
   "description": "React bindings (provider, hooks, modal component) for XRPL Connect",
   "author": "XRPL Connect Contributors",

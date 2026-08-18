@@ -1,5 +1,5 @@
 {
-  "name": "@xrpl-connect/vue",
+  "name": "@xrpl-commons/xrpl-connect-vue",
   "version": "1.0.0-rc.0",
   "description": "Vue 3 bindings (plugin, composables, modal component) for XRPL Connect",
   "author": "XRPL Connect Contributors",

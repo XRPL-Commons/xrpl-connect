@@ -11,6 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectFolder = path.join(__dirname, '..');
 const repositoryRoot = path.join(projectFolder, '..', '..');
 const inheritedPnpmConfig = [
+  'npm_config_dir',
   'npm_config_peer_dependency_rules',
   'npm_config_recursive',
   'npm_config_verify_deps_before_run',
@@ -35,8 +36,11 @@ const publishRunOptions = {
 };
 const candidatePackages = [
   { name: 'xrpl-connect', folder: path.join(projectFolder, 'dist-publish') },
-  { name: '@xrpl-connect/react', folder: path.join(repositoryRoot, 'packages', 'react') },
-  { name: '@xrpl-connect/vue', folder: path.join(repositoryRoot, 'packages', 'vue') },
+  {
+    name: '@xrpl-commons/xrpl-connect-react',
+    folder: path.join(repositoryRoot, 'packages', 'react'),
+  },
+  { name: '@xrpl-commons/xrpl-connect-vue', folder: path.join(repositoryRoot, 'packages', 'vue') },
 ];
 
 export function assertSafePrepublishRegistryState(tagsByPackage) {
@@ -53,7 +57,10 @@ export function assertSafePrepublishRegistryState(tagsByPackage) {
     'xrpl-connect has unexpected dist-tags'
   );
 
-  for (const packageName of ['@xrpl-connect/react', '@xrpl-connect/vue']) {
+  for (const packageName of [
+    '@xrpl-commons/xrpl-connect-react',
+    '@xrpl-commons/xrpl-connect-vue',
+  ]) {
     const tags = tagsByPackage[packageName];
     if (tags === null) continue;
     const expectedTags = tags.rc === undefined ? {} : { rc: CANDIDATE_VERSION };

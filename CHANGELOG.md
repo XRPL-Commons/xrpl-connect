@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- New package `@xrpl-connect/react`: official React bindings so consumers no longer hand-roll a context/hooks layer. Provides `<XrplConnectProvider config={…}>` (owns a single `WalletManager`, configured once), the hooks `useWallet`, `useSigner`, `useWalletModal`, and a themeable `<WalletConnector>` modal component with typed props and typed-`WalletError` callbacks (`onError(err) → err.code`/`err.category`). Ships its own tests (#33).
+- New package `@xrpl-commons/xrpl-connect-react`: official React bindings so consumers no longer hand-roll a context/hooks layer. Provides `<XrplConnectProvider config={…}>` (owns a single `WalletManager`, configured once), the hooks `useWallet`, `useSigner`, `useWalletModal`, and a themeable `<WalletConnector>` modal component with typed props and typed-`WalletError` callbacks (`onError(err) → err.code`/`err.category`). Ships its own tests (#33).
 - New adapter `@xrpl-connect/adapter-metamask-snap`: connect XRPL through MetaMask via the `xrpl-snap` Snap (provider RPC, no extra npm dependency). Wired into the `xrpl-connect` meta-package (`MetaMaskSnapAdapter`, `Adapters.MetaMaskSnap`). Adapter authored by @LeJamon; modernised to current conventions (shared tsup config, SVG icon asset, typed EIP-1193 provider) with added Vitest coverage (#46).
 - UI: optional `show-unavailable` attribute on `<xrpl-wallet-connector>`. By default the modal hides wallets that aren't installed (unchanged). With `show-unavailable` set, those wallets are listed with an "Install" label that opens the wallet's download page (`url`) instead of attempting to connect. Mirrors Stellar Wallets Kit's `hideUnsupportedWallets` / install-label option.
 - Core: add declarative signing capabilities through `WalletAdapter.capabilities`, `WalletManager.supports()`, `adapterSupports()`, and `CAPABILITY_DEFAULTS`. Undeclared `sign`, `signAndSubmit`, and `signMessage` flags default to `true` for compatibility; explicitly unsupported manager operations fail with typed `UNSUPPORTED_METHOD` before the adapter is called. Xaman and WalletConnect now declare arbitrary message signing unsupported.
@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Release: prepare `xrpl-connect`, `@xrpl-connect/react`, and `@xrpl-connect/vue` as `1.0.0-rc.0` with RC-compatible peers, guarded `rc` publishing defaults, and combined packed-artifact verification (#119).
+- Release: prepare `xrpl-connect`, `@xrpl-commons/xrpl-connect-react`, and `@xrpl-commons/xrpl-connect-vue` as `1.0.0-rc.0` with RC-compatible peers, guarded `rc` publishing defaults, and combined packed-artifact verification (#119).
 - Release tooling: reject dirty worktrees and non-npm registries, verify ownership of the unscoped package, and safely restore missing `rc` tags after interrupted publishes.
 - DevEx: test all supported Node.js release lines in CI with frozen installs, ship an MIT license in every candidate artifact, and align release, framework, and RC documentation.
 

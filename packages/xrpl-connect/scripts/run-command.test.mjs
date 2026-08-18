@@ -83,22 +83,22 @@ test('RC publisher requires exact confirmation before running commands', () => {
 test('RC registry preflight accepts only fresh, partial, or complete candidate state', () => {
   const pristine = {
     'xrpl-connect': { latest: '0.8.2' },
-    '@xrpl-connect/react': null,
-    '@xrpl-connect/vue': null,
+    '@xrpl-commons/xrpl-connect-react': null,
+    '@xrpl-commons/xrpl-connect-vue': null,
   };
   const partial = {
     'xrpl-connect': { latest: '0.8.2', rc: CANDIDATE_VERSION },
-    '@xrpl-connect/react': { rc: CANDIDATE_VERSION },
-    '@xrpl-connect/vue': null,
+    '@xrpl-commons/xrpl-connect-react': { rc: CANDIDATE_VERSION },
+    '@xrpl-commons/xrpl-connect-vue': null,
   };
   const complete = {
     ...partial,
-    '@xrpl-connect/vue': { rc: CANDIDATE_VERSION },
+    '@xrpl-commons/xrpl-connect-vue': { rc: CANDIDATE_VERSION },
   };
   const interrupted = {
     'xrpl-connect': { latest: '0.8.2' },
-    '@xrpl-connect/react': {},
-    '@xrpl-connect/vue': null,
+    '@xrpl-commons/xrpl-connect-react': {},
+    '@xrpl-commons/xrpl-connect-vue': null,
   };
 
   for (const state of [pristine, partial, complete, interrupted]) {
@@ -116,7 +116,7 @@ test('RC registry preflight accepts only fresh, partial, or complete candidate s
     () =>
       assertSafePrepublishRegistryState({
         ...pristine,
-        '@xrpl-connect/react': { latest: CANDIDATE_VERSION },
+        '@xrpl-commons/xrpl-connect-react': { latest: CANDIDATE_VERSION },
       }),
     /unexpected dist-tags/
   );
@@ -131,8 +131,8 @@ function recordPublisherCalls(publishedPackages = new Set()) {
       const name = options.cwd.endsWith('dist-publish')
         ? 'xrpl-connect'
         : options.cwd.endsWith('react')
-          ? '@xrpl-connect/react'
-          : '@xrpl-connect/vue';
+          ? '@xrpl-commons/xrpl-connect-react'
+          : '@xrpl-commons/xrpl-connect-vue';
       return JSON.stringify([{ name, version: CANDIDATE_VERSION, integrity: `integrity:${name}` }]);
     }
     if (command === 'npm' && args[0] === 'view') {
@@ -178,7 +178,7 @@ test('RC publisher preflights, verifies, and publishes only through the fixed re
 
 test('RC publisher resumes by restoring rc tags for exact candidates already on npm', () => {
   const { calls, publishRc } = recordPublisherCalls(
-    new Set(['xrpl-connect', '@xrpl-connect/react'])
+    new Set(['xrpl-connect', '@xrpl-commons/xrpl-connect-react'])
   );
 
   publishRc(['--confirm', CANDIDATE_VERSION]);
@@ -201,7 +201,7 @@ test('RC publisher resumes by restoring rc tags for exact candidates already on 
       [
         'dist-tag',
         'add',
-        `@xrpl-connect/react@${CANDIDATE_VERSION}`,
+        `@xrpl-commons/xrpl-connect-react@${CANDIDATE_VERSION}`,
         'rc',
         '--registry',
         'https://registry.npmjs.org/',

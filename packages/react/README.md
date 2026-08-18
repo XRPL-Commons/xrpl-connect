@@ -1,4 +1,4 @@
-# @xrpl-connect/react
+# @xrpl-commons/xrpl-connect-react
 
 React bindings for [XRPL Connect](https://github.com/XRPL-Commons/xrpl-connect): a
 provider that owns a single `WalletManager`, hooks to use it, and a `<WalletConnector>`
@@ -7,7 +7,7 @@ modal component — so you configure your wallets once and never re-create objec
 ## Install
 
 ```bash
-npm install @xrpl-connect/react@rc xrpl-connect@rc xrpl react react-dom
+npm install @xrpl-commons/xrpl-connect-react@rc xrpl-connect@rc xrpl react react-dom
 ```
 
 > `react` / `react-dom` are peer dependencies. Importing any named export from
@@ -17,7 +17,7 @@ npm install @xrpl-connect/react@rc xrpl-connect@rc xrpl react react-dom
 
 ```tsx
 import { XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
-import { XrplConnectProvider } from '@xrpl-connect/react';
+import { XrplConnectProvider } from '@xrpl-commons/xrpl-connect-react';
 
 const config = {
   adapters: [new XamanAdapter({ apiKey: 'YOUR_KEY' }), new CrossmarkAdapter()],
@@ -34,7 +34,12 @@ createRoot(document.getElementById('root')!).render(
 
 ```tsx
 // App.tsx
-import { useWallet, useSigner, useWalletModal, WalletConnector } from '@xrpl-connect/react';
+import {
+  useWallet,
+  useSigner,
+  useWalletModal,
+  WalletConnector,
+} from '@xrpl-commons/xrpl-connect-react';
 
 export function App() {
   const { connected, account, disconnect, error } = useWallet();
@@ -103,7 +108,7 @@ Router, use them from a client component:
 
 ```tsx
 'use client';
-import { XrplConnectProvider } from '@xrpl-connect/react';
+import { XrplConnectProvider } from '@xrpl-commons/xrpl-connect-react';
 ```
 
 ## License

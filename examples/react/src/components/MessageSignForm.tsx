@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react';
-import { useWallet, useSigner } from '@xrpl-connect/react';
+import { useWallet, useSigner } from '@xrpl-commons/xrpl-connect-react';
 import { useDemo } from '../context/DemoContext';
 
 export function MessageSignForm() {

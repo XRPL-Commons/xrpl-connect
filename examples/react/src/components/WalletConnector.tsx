@@ -1,4 +1,4 @@
-import { WalletConnector as XrplWalletConnector } from '@xrpl-connect/react';
+import { WalletConnector as XrplWalletConnector } from '@xrpl-commons/xrpl-connect-react';
 import { useDemo } from '../context/DemoContext';
 
 export function WalletConnector() {

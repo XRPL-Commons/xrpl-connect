@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import * as reactEsm from '@xrpl-connect/react';
+import * as reactEsm from '@xrpl-commons/xrpl-connect-react';
 
 const require = createRequire(import.meta.url);
-const reactCjs = require('@xrpl-connect/react');
+const reactCjs = require('@xrpl-commons/xrpl-connect-react');
 const publicExports = [
   'XrplConnectProvider',
   'WalletConnector',

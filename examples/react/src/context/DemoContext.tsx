@@ -4,7 +4,7 @@ import type { Event, StatusMessage } from '../types';
 /**
  * Demo-only UI state (activity log + transient status banner). This is NOT part
  * of the wallet layer — connection/account state now comes from
- * `@xrpl-connect/react`'s `useWallet()`. Kept here purely to power the example's
+ * `@xrpl-commons/xrpl-connect-react`'s `useWallet()`. Kept here purely to power the example's
  * event log and status messages.
  */
 interface DemoContextType {

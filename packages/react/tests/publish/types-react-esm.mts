@@ -7,7 +7,7 @@ import {
   useWallet,
   useWalletModal,
   type WalletConnectorProps,
-} from '@xrpl-connect/react';
+} from '@xrpl-commons/xrpl-connect-react';
 import type {
   ManagedSignedMessage,
   ManagedSignedTransaction,

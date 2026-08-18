@@ -466,7 +466,7 @@ The umbrella also exposes the shared core types, error primitives, capability gu
 
 ## React API
 
-Install `@xrpl-connect/react` alongside `xrpl-connect` when using React.
+Install `@xrpl-commons/xrpl-connect-react` alongside `xrpl-connect` when using React.
 
 ### XrplConnectProvider
 
@@ -492,7 +492,7 @@ and `onError`. See the [React guide](/guide/frameworks/react) for a complete set
 
 ## Vue API
 
-Install `@xrpl-connect/vue` alongside `xrpl-connect` for Vue 3 and Nuxt applications.
+Install `@xrpl-commons/xrpl-connect-vue` alongside `xrpl-connect` for Vue 3 and Nuxt applications.
 
 ### createXrplConnect
 

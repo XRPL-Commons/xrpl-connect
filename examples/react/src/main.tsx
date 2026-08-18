@@ -9,7 +9,7 @@ import {
   OtsuAdapter,
   MetaMaskSnapAdapter,
 } from 'xrpl-connect';
-import { XrplConnectProvider, type XrplConnectConfig } from '@xrpl-connect/react';
+import { XrplConnectProvider, type XrplConnectConfig } from '@xrpl-commons/xrpl-connect-react';
 import App from './App';
 import { DemoProvider } from './context/DemoContext';
 import './index.css';

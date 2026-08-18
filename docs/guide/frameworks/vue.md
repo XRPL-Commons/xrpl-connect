@@ -4,14 +4,14 @@ description: Integrate XRPL-Connect into your Vue 3 application with first-party
 
 # Vue 3
 
-`@xrpl-connect/vue` provides a Vue plugin, reactive composables, and a typed wrapper for the
+`@xrpl-commons/xrpl-connect-vue` provides a Vue plugin, reactive composables, and a typed wrapper for the
 wallet connector modal. Configure the wallet manager once and consume the same state anywhere
 in the application.
 
 ## Installation
 
 ```bash
-npm install @xrpl-connect/vue@rc xrpl-connect@rc xrpl vue
+npm install @xrpl-commons/xrpl-connect-vue@rc xrpl-connect@rc xrpl vue
 ```
 
 ## Configure the plugin
@@ -24,7 +24,7 @@ the application:
 // main.ts
 import { createApp } from 'vue';
 import { CrossmarkAdapter, XamanAdapter } from 'xrpl-connect';
-import { createXrplConnect } from '@xrpl-connect/vue';
+import { createXrplConnect } from '@xrpl-commons/xrpl-connect-vue';
 import App from './App.vue';
 
 const app = createApp(App);
@@ -63,7 +63,7 @@ reactive listeners are ready.
 
 ```vue
 <script setup lang="ts">
-import { WalletConnector, useWallet, useWalletModal } from '@xrpl-connect/vue';
+import { WalletConnector, useWallet, useWalletModal } from '@xrpl-commons/xrpl-connect-vue';
 
 const { connected, account, connecting, error, disconnect } = useWallet();
 const { open } = useWalletModal();
@@ -96,7 +96,12 @@ Signing actions are bound to the injected manager and reject with typed `WalletE
 ```vue
 <script setup lang="ts">
 import { ref } from 'vue';
-import { isWalletError, useSigner, useWallet, WalletErrorCode } from '@xrpl-connect/vue';
+import {
+  isWalletError,
+  useSigner,
+  useWallet,
+  WalletErrorCode,
+} from '@xrpl-commons/xrpl-connect-vue';
 
 const { account, connected } = useWallet();
 const { signAndSubmit } = useSigner();

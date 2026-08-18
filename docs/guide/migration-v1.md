@@ -19,20 +19,20 @@ Do not install both framework bindings. Upgrade the umbrella package and only th
 pnpm add xrpl-connect@rc xrpl
 
 # React
-pnpm add xrpl-connect@rc @xrpl-connect/react@rc xrpl react react-dom
+pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-react@rc xrpl react react-dom
 
 # Vue 3 or Nuxt
-pnpm add xrpl-connect@rc @xrpl-connect/vue@rc xrpl vue
+pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-vue@rc xrpl vue
 ```
 
 The coordinated release candidate contains these three artifacts:
 
-| Package                     | 0.8.2 line    | Current 1.0 candidate           |
-| --------------------------- | ------------- | ------------------------------- |
-| `xrpl-connect`              | `0.8.2`       | `1.0.0-rc.0`                    |
-| `@xrpl-connect/react`       | Not available | `1.0.0-rc.0` (new)              |
-| `@xrpl-connect/vue`         | Not available | `1.0.0-rc.0` (new)              |
-| Standalone core/UI/adapters | `0.8.2` line  | Not part of this coordinated RC |
+| Package                            | 0.8.2 line    | Current 1.0 candidate           |
+| ---------------------------------- | ------------- | ------------------------------- |
+| `xrpl-connect`                     | `0.8.2`       | `1.0.0-rc.0`                    |
+| `@xrpl-commons/xrpl-connect-react` | Not available | `1.0.0-rc.0` (new)              |
+| `@xrpl-commons/xrpl-connect-vue`   | Not available | `1.0.0-rc.0` (new)              |
+| Standalone core/UI/adapters        | `0.8.2` line  | Not part of this coordinated RC |
 
 If an application imports `@xrpl-connect/core`, `@xrpl-connect/ui`, or individual adapter packages directly, it can remain on the compatible 0.8.2 modular line. To adopt the complete 1.0 candidate, move those imports to the umbrella package:
 

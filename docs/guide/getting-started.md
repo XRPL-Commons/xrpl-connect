@@ -18,10 +18,10 @@ Add the official bindings for your framework:
 
 ```bash
 # React
-npm install @xrpl-connect/react@rc react react-dom
+npm install @xrpl-commons/xrpl-connect-react@rc react react-dom
 
 # Vue 3 or Nuxt
-npm install @xrpl-connect/vue@rc vue
+npm install @xrpl-commons/xrpl-connect-vue@rc vue
 ```
 
 ### Using pnpm

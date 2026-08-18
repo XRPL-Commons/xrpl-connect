@@ -76,7 +76,7 @@ importers:
 
   examples/react:
     dependencies:
-      '@xrpl-connect/react':
+      '@xrpl-commons/xrpl-connect-react':
         specifier: workspace:*
         version: link:../../packages/react
       react:

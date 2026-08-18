@@ -1,4 +1,4 @@
-# @xrpl-connect/vue
+# @xrpl-commons/xrpl-connect-vue
 
 Vue 3 bindings for XRPL Connect: an app plugin that owns a `WalletManager`, reactive
 composables, and a typed `<WalletConnector>` modal component.
@@ -6,7 +6,7 @@ composables, and a typed `<WalletConnector>` modal component.
 ## Install
 
 ```bash
-npm install @xrpl-connect/vue@rc xrpl-connect@rc xrpl vue
+npm install @xrpl-commons/xrpl-connect-vue@rc xrpl-connect@rc xrpl vue
 ```
 
 ## Usage
@@ -15,7 +15,7 @@ npm install @xrpl-connect/vue@rc xrpl-connect@rc xrpl vue
 // main.ts
 import { createApp } from 'vue';
 import { XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
-import { createXrplConnect } from '@xrpl-connect/vue';
+import { createXrplConnect } from '@xrpl-commons/xrpl-connect-vue';
 import App from './App.vue';
 
 const app = createApp(App);
@@ -31,7 +31,12 @@ app.mount('#app');
 
 ```vue
 <script setup lang="ts">
-import { WalletConnector, useSigner, useWallet, useWalletModal } from '@xrpl-connect/vue';
+import {
+  WalletConnector,
+  useSigner,
+  useWallet,
+  useWalletModal,
+} from '@xrpl-commons/xrpl-connect-vue';
 
 const { connected, account, error, disconnect } = useWallet();
 const { signAndSubmit } = useSigner();
@@ -57,7 +62,7 @@ const { open } = useWalletModal();
   `connecting`, `connect`, and typed `error` events.
 
 The named `xrpl-connect` import also registers the wallet connector custom element, so a separate
-side-effect import is not needed. Importing `@xrpl-connect/vue` is SSR-safe, but plugin
+side-effect import is not needed. Importing `@xrpl-commons/xrpl-connect-vue` is SSR-safe, but plugin
 installation, injected composable calls, and wallet UI rendering must stay on the client. In
 Nuxt, put composable consumers in `.client.vue` components or wholly below a client-only child
 boundary; wrapping only the template does not stop universal setup from running during SSR.
