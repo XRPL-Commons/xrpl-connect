@@ -6,9 +6,32 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootPkgPath = path.join(__dirname, '../package.json');
 const distPkgPath = path.join(__dirname, '../dist-publish/package.json');
 const licensePath = path.join(__dirname, '../../../LICENSE');
+const thirdPartyNoticesPath = path.join(__dirname, '../THIRD_PARTY_NOTICES.md');
+const walletConnectLicensePath = path.join(
+  __dirname,
+  '../licenses/WALLETCONNECT-COMMUNITY-LICENSE.md'
+);
+const installedWalletConnectLicensePath = path.join(
+  __dirname,
+  '../../adapters/walletconnect/node_modules/@walletconnect/sign-client/LICENSE.md'
+);
+const walletConnectModalLicensePath = path.join(
+  __dirname,
+  '../licenses/WALLETCONNECT-MODAL-APACHE-2.0.txt'
+);
 
 // Read main package.json
 const mainPkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf-8'));
+
+if (
+  fs.readFileSync(walletConnectLicensePath, 'utf-8') !==
+  fs.readFileSync(installedWalletConnectLicensePath, 'utf-8')
+) {
+  throw new Error(
+    'The checked-in WalletConnect Community License does not match @walletconnect/sign-client. ' +
+      'Review the dependency license and update the distributed copy.'
+  );
+}
 
 // These packages remain external in the rolled declarations. The wallet SDKs
 // are intentional namespace exports; the other packages provide public types.
@@ -105,4 +128,15 @@ if (!fs.existsSync(distDir)) {
 // Write the package.json
 fs.writeFileSync(distPkgPath, JSON.stringify(distPkg, null, 2) + '\n');
 fs.copyFileSync(licensePath, path.join(distDir, 'LICENSE'));
+fs.copyFileSync(thirdPartyNoticesPath, path.join(distDir, 'THIRD_PARTY_NOTICES.md'));
+const licensesDir = path.join(distDir, 'licenses');
+fs.mkdirSync(licensesDir, { recursive: true });
+fs.copyFileSync(
+  walletConnectLicensePath,
+  path.join(licensesDir, 'WALLETCONNECT-COMMUNITY-LICENSE.md')
+);
+fs.copyFileSync(
+  walletConnectModalLicensePath,
+  path.join(licensesDir, 'WALLETCONNECT-MODAL-APACHE-2.0.txt')
+);
 console.log('✓ Updated dist-publish/package.json with version', mainPkg.version);

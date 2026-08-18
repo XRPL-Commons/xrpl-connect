@@ -137,3 +137,19 @@ standalone Crossmark module smoke tests, focused publisher and adapter tests, an
 three-tarball strict-peer pack/install/type/runtime/SSR matrix. The production audit reports only
 the accepted, documented low-severity unpatched `elliptic` advisory in Crossmark's declaration-only
 dependency graph.
+
+## WalletConnect distribution licenses
+
+- [x] Add the Reown attribution and identify the bundled WalletConnect packages.
+- [x] Ship the exact WalletConnect Community License and the modal's Apache-2.0 license.
+- [x] Make packed-artifact verification require the notices and both license texts.
+- [x] Run focused and complete release verification.
+- [x] Commit, push, and confirm PR checks.
+
+### Review
+
+The checked-in Community License is byte-for-byte identical to the installed
+`@walletconnect/sign-client@2.23.10` license. The complete package test and packed-candidate matrix
+pass, including strict peer installation, ESM/CommonJS type checks, SSR/runtime loads, and assertions
+that the installed umbrella package contains the Reown notice and both WalletConnect license files.
+Repository formatting and lint checks also pass.

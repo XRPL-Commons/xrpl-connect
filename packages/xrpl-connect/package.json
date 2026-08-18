@@ -48,7 +48,9 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "THIRD_PARTY_NOTICES.md",
+    "licenses"
   ],
   "scripts": {
     "build": "vp pack",

@@ -47,6 +47,9 @@ const candidatePackages = [
       'package.json',
       'README.md',
       'LICENSE',
+      'THIRD_PARTY_NOTICES.md',
+      'licenses/WALLETCONNECT-COMMUNITY-LICENSE.md',
+      'licenses/WALLETCONNECT-MODAL-APACHE-2.0.txt',
       'index.d.ts',
       'xrpl-connect.mjs',
       'xrpl-connect.umd.js',
@@ -265,6 +268,29 @@ try {
     assert.deepEqual(manifest.publishConfig, PUBLISH_CONFIG, `${name} has unsafe publish defaults`);
     assert.equal(manifest.scripts?.prepublishOnly, PUBLISH_GUARD, `${name} has no publish guard`);
   }
+
+  const installedUmbrellaFolder = path.join(consumerFolder, 'node_modules', 'xrpl-connect');
+  const thirdPartyNotices = readFileSync(
+    path.join(installedUmbrellaFolder, 'THIRD_PARTY_NOTICES.md'),
+    'utf-8'
+  );
+  assert.match(thirdPartyNotices, /Portions © 2025 Reown, Inc\. All Rights Reserved/);
+  assert.match(thirdPartyNotices, /@walletconnect\/sign-client@2\.23\.10/);
+  assert.match(thirdPartyNotices, /@walletconnect\/modal@2\.7\.0/);
+
+  const walletConnectLicense = readFileSync(
+    path.join(installedUmbrellaFolder, 'licenses', 'WALLETCONNECT-COMMUNITY-LICENSE.md'),
+    'utf-8'
+  );
+  assert.match(walletConnectLicense, /WALLETCONNECT COMMUNITY LICENSE AGREEMENT/);
+  assert.match(walletConnectLicense, /2\\\. REDISTRIBUTION AND USE/);
+
+  const walletConnectModalLicense = readFileSync(
+    path.join(installedUmbrellaFolder, 'licenses', 'WALLETCONNECT-MODAL-APACHE-2.0.txt'),
+    'utf-8'
+  );
+  assert.match(walletConnectModalLicense, /Apache License/);
+  assert.match(walletConnectModalLicense, /Version 2\.0, January 2004/);
 
   const unresolvedXyraImport =
     /import\s*\(\s*(?:\/\*[\s\S]*?\*\/\s*)?[`'"]@xyrawallet\/sdk[`'"]\s*\)/;
