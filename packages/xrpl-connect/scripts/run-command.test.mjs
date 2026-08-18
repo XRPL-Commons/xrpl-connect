@@ -71,6 +71,13 @@ test('publish guard accepts normalized npmjs registry URLs only', () => {
   assert.equal(runGuard('https://registry.example/').status, 1);
 });
 
+test('publish build uses a cross-platform quoted workspace filter', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
+
+  assert.match(manifest.scripts['publish:build'], /vp run -F "\{\.\}\^\.\.\."/);
+  assert.doesNotMatch(manifest.scripts['publish:build'], /vp run -F '\{\.\}\^\.\.\.'/);
+});
+
 test('RC publisher requires exact confirmation before running commands', () => {
   const publishRc = createRcPublisher(() => assert.fail('must not run a command'));
 

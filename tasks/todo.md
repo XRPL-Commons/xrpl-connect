@@ -113,6 +113,24 @@ repaired. The UI peer remains intentionally at `@xrpl-connect/core@^0.8.3`: UI c
 shared `isMobile` API introduced after core 0.8.2, so widening it to 0.8.2 would advertise an
 incompatible standalone pairing; the v1 candidate bundles the workspace source and is unaffected.
 
+## Fresh review fixes
+
+- [x] Make Xyra lazy loading browser-resolvable and cover the built consumer path.
+- [x] Normalize the standalone Crossmark ESM SDK facade and strengthen runtime smoke coverage.
+- [x] Make the recursive release-build filter portable across POSIX and Windows shells.
+- [x] Run focused adapter, command, packed-artifact, formatting, and diff verification.
+- [x] Review the final patch, commit it, push the PR branch, and confirm remote checks.
+
+### Review-fix result
+
+Xyra's SDK now remains lazy while resolving to a package-owned ESM chunk and an inlined lazy UMD
+module; packed verification rejects both plain and Vite-ignored bare imports. Crossmark uses one
+normalized SDK facade for the adapter and public export, with ESM/CommonJS shape assertions. The
+release dependency filter now uses portable double quotes and is covered by the command tests.
+Crossmark tests pass 19/19, Xyra tests 11/11, publisher tests 12/12, the complete three-package
+publish build/dry-run/install/runtime/type suite passes, and repository formatting, lint, and diff
+checks are clean. Two independent final reviews found no remaining actionable defects.
+
 Verification passed the full recursive build/test suite, repository format/lint checks, docs and
 React example production builds, the exact frozen docs install, public npm registry preflight,
 standalone Crossmark module smoke tests, focused publisher and adapter tests, and the complete

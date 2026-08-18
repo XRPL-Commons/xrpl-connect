@@ -395,7 +395,7 @@ export class XyraAdapter implements WalletAdapter {
 
     if (this.sdkPromise) return this.sdkPromise;
 
-    const sdkPromise = import(/* @vite-ignore */ '@xyrawallet/sdk')
+    const sdkPromise = import('@xyrawallet/sdk')
       .then(({ XyraSDK: XyraSDKConstructor }) => {
         const sdk = new XyraSDKConstructor(this.sdkConfig);
         if (this.sdkPromise !== sdkPromise) {

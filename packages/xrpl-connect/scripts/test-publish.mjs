@@ -266,6 +266,17 @@ try {
     assert.equal(manifest.scripts?.prepublishOnly, PUBLISH_GUARD, `${name} has no publish guard`);
   }
 
+  const unresolvedXyraImport =
+    /import\s*\(\s*(?:\/\*[\s\S]*?\*\/\s*)?[`'"]@xyrawallet\/sdk[`'"]\s*\)/;
+  for (const entry of ['xrpl-connect.mjs', 'xrpl-connect.umd.js']) {
+    const contents = readFileSync(path.join(candidatePackages[0].folder, entry), 'utf-8');
+    assert.doesNotMatch(
+      contents,
+      unresolvedXyraImport,
+      `${entry} leaves the Xyra SDK as a browser-unresolvable bare import`
+    );
+  }
+
   assert.throws(
     () =>
       run(

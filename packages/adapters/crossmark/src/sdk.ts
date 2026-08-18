@@ -236,4 +236,6 @@ export interface CrossmarkSDKNamespace {
  * consumers; the upstream package's declarations reference private subpaths
  * that TypeScript cannot resolve through its `exports` map.
  */
-export const CrossmarkSDK = crossmarkSDK as unknown as CrossmarkSDKNamespace;
+export const CrossmarkSDK = ('typings' in crossmarkSDK
+  ? crossmarkSDK
+  : crossmarkSDK.default) as unknown as CrossmarkSDKNamespace;
