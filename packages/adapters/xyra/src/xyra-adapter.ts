@@ -9,8 +9,14 @@
  * validation, and cross-window messaging via postMessage.
  */
 
-import { XyraSDK } from '@xyrawallet/sdk';
-import type { ConnectResponse, SignResponse, SignMessageResponse, Network } from '@xyrawallet/sdk';
+import type {
+  ConnectResponse,
+  SignResponse,
+  SignMessageResponse,
+  Network,
+  XyraSDK,
+  XyraSDKConfig,
+} from '@xyrawallet/sdk';
 import type {
   WalletAdapter,
   AccountInfo,
@@ -65,7 +71,9 @@ export class XyraAdapter implements WalletAdapter {
 
   // ==================== Private State ====================
 
-  private sdk: XyraSDK;
+  private sdk: XyraSDK | null = null;
+  private sdkPromise: Promise<XyraSDK> | null = null;
+  private readonly sdkConfig: XyraSDKConfig;
   private currentAccount: AccountInfo | null = null;
   private currentXyraNetwork: Network | null = null;
   private listeners: Map<WalletAdapterEvent, Set<(data?: unknown) => void>> = new Map();
@@ -73,13 +81,13 @@ export class XyraAdapter implements WalletAdapter {
   // ==================== Constructor ====================
 
   constructor(options: XyraAdapterOptions = {}) {
-    this.sdk = new XyraSDK({
+    this.sdkConfig = {
       walletUrl: options.walletUrl,
       timeout: options.timeout,
       popupWidth: options.popupWidth,
       popupHeight: options.popupHeight,
       signPopupHeight: options.signPopupHeight,
-    });
+    };
 
     logger.debug('Xyra adapter initialized', {
       walletUrl: options.walletUrl || 'default',
@@ -125,7 +133,8 @@ export class XyraAdapter implements WalletAdapter {
       logger.debug('Connecting to Xyra', { network: xyraNetwork });
 
       // Call the Xyra SDK connect flow (opens popup)
-      const response: ConnectResponse = await this.sdk.connect({
+      const sdk = await this.getSdk();
+      const response: ConnectResponse = await sdk.connect({
         network: xyraNetwork,
       });
 
@@ -223,7 +232,8 @@ export class XyraAdapter implements WalletAdapter {
         network,
       });
 
-      const response: SignResponse = await this.sdk.sign({
+      const sdk = await this.getSdk();
+      const response: SignResponse = await sdk.sign({
         transaction: transaction as Record<string, unknown>,
         network,
       });
@@ -268,7 +278,8 @@ export class XyraAdapter implements WalletAdapter {
         network,
       });
 
-      const response: SignResponse = await this.sdk.signAndSubmit({
+      const sdk = await this.getSdk();
+      const response: SignResponse = await sdk.signAndSubmit({
         transaction: transaction as Record<string, unknown>,
         network,
       });
@@ -317,7 +328,8 @@ export class XyraAdapter implements WalletAdapter {
         length: messageStr.length,
       });
 
-      const response: SignMessageResponse = await this.sdk.signMessage({
+      const sdk = await this.getSdk();
+      const response: SignMessageResponse = await sdk.signMessage({
         message: messageStr,
       });
 
@@ -367,7 +379,9 @@ export class XyraAdapter implements WalletAdapter {
    * Destroy the adapter and clean up SDK resources.
    */
   destroy(): void {
-    this.sdk.destroy();
+    this.sdk?.destroy();
+    this.sdk = null;
+    this.sdkPromise = null;
     this.currentAccount = null;
     this.currentXyraNetwork = null;
     this.listeners.clear();
@@ -375,6 +389,30 @@ export class XyraAdapter implements WalletAdapter {
   }
 
   // ==================== Private Helpers ====================
+
+  private getSdk(): Promise<XyraSDK> {
+    if (this.sdk) return Promise.resolve(this.sdk);
+
+    if (this.sdkPromise) return this.sdkPromise;
+
+    const sdkPromise = import('@xyrawallet/sdk')
+      .then(({ XyraSDK: XyraSDKConstructor }) => {
+        const sdk = new XyraSDKConstructor(this.sdkConfig);
+        if (this.sdkPromise !== sdkPromise) {
+          sdk.destroy();
+          throw new Error('Xyra adapter was destroyed while the SDK was initializing');
+        }
+        this.sdk = sdk;
+        return sdk;
+      })
+      .catch((error: unknown) => {
+        if (this.sdkPromise === sdkPromise) this.sdkPromise = null;
+        throw error;
+      });
+    this.sdkPromise = sdkPromise;
+
+    return sdkPromise;
+  }
 
   /**
    * Emit an event to registered listeners.

@@ -1,8 +1,8 @@
-# @xrpl-connect/adapters - Code Documentation
+# XRPL Connect adapter packages
 
 ## Overview
 
-`@xrpl-connect/adapters` is a collection of wallet adapter implementations that enable the core `WalletManager` to interact with different XRPL wallet providers. Each adapter bridges the communication gap between the standardized WalletManager interface and wallet-specific implementations.
+The packages under `@xrpl-connect/adapter-*` enable the core `WalletManager` to interact with different XRPL wallet providers. There is no combined `@xrpl-connect/adapters` package; applications can import an individual adapter package or use the exports from `xrpl-connect`.
 
 **Key Responsibility**: Provide adapters that implement a unified interface for wallet operations while handling wallet-specific nuances (OAuth flows, browser extensions, QR codes, etc.).
 
@@ -507,7 +507,33 @@ if (available) {
 
 ---
 
-### 7. MetaMask Snap Adapter
+### 7. Ledger Adapter
+
+**Package**: `@xrpl-connect/adapter-ledger`
+
+**Export**: `LedgerAdapter`
+
+#### Overview
+
+Connects Ledger hardware wallets through WebHID or WebUSB. The adapter supports configurable BIP44 account paths, device-state reporting, single-signature transactions, and multisigning.
+
+```typescript
+import { LedgerAdapter, LedgerDeviceState } from '@xrpl-connect/adapter-ledger';
+// or: import { LedgerAdapter, LedgerDeviceState } from 'xrpl-connect';
+
+const ledger = new LedgerAdapter({ accountIndex: 0, preferWebHID: true });
+const state = await ledger.getDeviceState();
+
+if (state === LedgerDeviceState.READY) {
+  await walletManager.connect('ledger');
+}
+```
+
+Ledger access requires HTTPS (localhost is allowed), a compatible Chromium browser, a user gesture, and the XRP app open on an unlocked device. `LedgerAdapterOptions`, `LedgerConnectOptions`, `LedgerDeviceState`, and `LEDGER_STATE_MESSAGES` are public exports.
+
+---
+
+### 8. MetaMask Snap Adapter
 
 **Package**: `@xrpl-connect/adapter-metamask-snap`
 
@@ -547,7 +573,7 @@ const metaMaskSnapAdapter = new MetaMaskSnapAdapter();
 
 #### Implementation Details
 
-- **isAvailable()**: Returns `true` only when `window.ethereum?.isMetaMask` is set and `wallet_getSnaps` succeeds.
+- **isAvailable()**: Discovers MetaMask through EIP-6963 first, falls back to `window.ethereum`, and returns `true` only when the provider identifies as MetaMask and `wallet_getSnaps` succeeds.
 - **connect()**: Installs/connects the snap (`wallet_requestSnaps`), switches network, then reads the account via `xrpl_getAccount`.
 - **sign() / signAndSubmit() / signMessage()**: Invoke the snap's `xrpl_sign`, `xrpl_signAndSubmit`, `xrpl_signMessage` methods.
 
@@ -863,20 +889,23 @@ export class YourWalletAdapter implements WalletAdapter, SupportsFetchAccount {
 }
 ```
 
-#### 4. Add Adapter to Exports
+#### 4. Export the adapter package
 
-Update `packages/adapters/index.ts` to export your adapter:
+Export the implementation and its public option types from the adapter package's own `src/index.ts`:
 
 ```typescript
-export { YourWalletAdapter } from './your-wallet/src/index.js';
+export { YourWalletAdapter } from './your-wallet-adapter';
+export type { YourWalletAdapterOptions } from './types';
 ```
+
+If the adapter belongs in this repository's umbrella package, also add its workspace dependency and re-export to `packages/xrpl-connect/package.json` and `packages/xrpl-connect/src/index.ts`. Add the constructor to the `Adapters` object there when it should have a convenience name.
 
 #### 5. Register in WalletManager
 
 Users can now use your adapter:
 
 ```typescript
-import { YourWalletAdapter } from '@xrpl-connect/adapters';
+import { YourWalletAdapter } from '@your-scope/xrpl-adapter-your-wallet';
 import { WalletManager } from '@xrpl-connect/core';
 
 const walletManager = new WalletManager({
@@ -980,49 +1009,17 @@ describe('YourWalletAdapter', () => {
 
 ```
 packages/adapters/
-├── xaman/                    # Xaman OAuth adapter
-│   ├── src/
-│   │   ├── index.ts
-│   │   └── types.ts
-│   ├── package.json
-│   └── tsconfig.json
 ├── crossmark/                # Crossmark extension adapter
-│   ├── src/
-│   │   ├── index.ts
-│   │   └── types.ts
-│   ├── package.json
-│   └── tsconfig.json
 ├── gemwallet/                # GemWallet extension adapter
-│   ├── src/
-│   │   ├── index.ts
-│   │   └── types.ts
-│   ├── package.json
-│   └── tsconfig.json
-├── walletconnect/            # WalletConnect multi-wallet adapter
-│   ├── src/
-│   │   ├── index.ts
-│   │   └── types.ts
-│   ├── package.json
-│   └── tsconfig.json
-├── xyra/                     # Xyra browser adapter
-│   ├── src/
-│   │   ├── index.ts
-│   │   ├── types.ts
-|   |   └── xyra-adapter.ts
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── vite.config.ts
+├── ledger/                   # Ledger hardware adapter
+├── metamask-snap/            # MetaMask Snap adapter
 ├── otsu/                     # Otsu extension adapter
-│   ├── src/
-│   │   ├── index.ts
-│   │   ├── types.ts
-|   |   └── otsu-adapter.ts
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── vite.config.ts
-├── index.ts                  # Central export point
-└── CODE_DOC.md              # This file
+├── walletconnect/            # WalletConnect adapter
+├── xaman/                    # Xaman adapter
+└── xyra/                     # Xyra web-wallet adapter
 ```
+
+Each directory is an independent package with its own `src/index.ts`. The umbrella export point is `packages/xrpl-connect/src/index.ts`.
 
 ---
 
@@ -1110,6 +1107,7 @@ When creating a new adapter:
 - [ ] Write unit tests
 - [ ] Create package.json with proper exports
 - [ ] Document adapter-specific behavior in README
-- [ ] Add to main exports in `packages/adapters/index.ts`
+- [ ] Export the package API from its own `src/index.ts`
+- [ ] If bundled, add the package dependency, named exports, and `Adapters` entry to `packages/xrpl-connect`
 - [ ] Test integration with `WalletManager`
-- [ ] Test with UI component in `@packages/ui`
+- [ ] Test with the UI component in `@xrpl-connect/ui`

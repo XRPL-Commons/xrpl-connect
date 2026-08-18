@@ -8,6 +8,10 @@ on:
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20.19', '22.18', '24.11']
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -15,11 +19,11 @@ jobs:
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
         with:
-          node-version: '24'
+          node-version: ${{ matrix.node-version }}
           cache: true
 
       - name: Install dependencies
-        run: vp install
+        run: vp install --frozen-lockfile
 
       - name: Build
         run: vp run -r build
@@ -38,6 +42,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
@@ -46,7 +52,10 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: vp install --filter docs
+        run: vp install --frozen-lockfile --filter docs
+
+      - name: Check versioned docs snapshot
+        run: node docs/scripts/prepare-versioned-docs.mjs --check
 
       - name: Build docs
         run: vp run docs:build

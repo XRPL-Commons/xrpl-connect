@@ -1,6 +1,5 @@
-import React from 'react';
+import { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
-import 'xrpl-connect'; // Register the <xrpl-wallet-connector> web component
 import {
   XamanAdapter,
   WalletConnectAdapter,
@@ -36,11 +35,11 @@ const config: XrplConnectConfig = {
 };
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
+  <StrictMode>
     <XrplConnectProvider config={config}>
       <DemoProvider>
         <App />
       </DemoProvider>
     </XrplConnectProvider>
-  </React.StrictMode>
+  </StrictMode>
 );

@@ -54,7 +54,7 @@ await walletManager.disconnect();
 
 - `connect(walletId, options?)` - Connect to a wallet by id after a one-second availability preflight
 - `reconnect()` - Reconnect to the previously connected wallet from storage
-- `sign(transaction)` - Sign a transaction and return the signed blob
+- `sign(transaction)` - Sign a transaction and return the wallet's available `tx_blob`, `tx_json`, and/or `signature` artifact
 - `signAndSubmit(transaction)` - Sign and submit transaction to ledger
 - `signMessage(message)` - Sign a message (string or `Uint8Array`)
 - `supports(capability)` - Check whether the connected wallet supports a signing operation

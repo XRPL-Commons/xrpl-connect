@@ -2,7 +2,6 @@
  * Crossmark Adapter for XRPL
  */
 
-import sdk, { typings } from '@crossmarkio/sdk';
 import type {
   WalletAdapter,
   SupportsFetchAccount,
@@ -14,9 +13,12 @@ import type {
   SignedMessage,
   SubmittedTransaction,
 } from '@xrpl-connect/core';
+
 import { createWalletError, isWalletError, resolveNetwork } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
+import { CrossmarkSDK } from './sdk';
 
+const { default: sdk, typings } = CrossmarkSDK;
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
 
 function isUserRejection(error: unknown): error is Error {

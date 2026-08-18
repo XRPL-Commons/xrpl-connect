@@ -5,9 +5,35 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootPkgPath = path.join(__dirname, '../package.json');
 const distPkgPath = path.join(__dirname, '../dist-publish/package.json');
+const licensePath = path.join(__dirname, '../../../LICENSE');
+const thirdPartyNoticesPath = path.join(__dirname, '../THIRD_PARTY_NOTICES.md');
+const walletConnectLicensePath = path.join(
+  __dirname,
+  '../licenses/WALLETCONNECT-COMMUNITY-LICENSE.md'
+);
+const installedWalletConnectLicensePath = path.join(
+  __dirname,
+  '../../adapters/walletconnect/node_modules/@walletconnect/sign-client/LICENSE.md'
+);
+const walletConnectModalLicensePath = path.join(
+  __dirname,
+  '../licenses/WALLETCONNECT-MODAL-APACHE-2.0.txt'
+);
+const publishGuard =
+  "node -e \"const { npm_config_tag: tag, npm_config_access: access, npm_config_registry: registry } = process.env; let registryUrl = ''; try { registryUrl = new URL(registry).href; } catch {} if (tag !== 'rc' || access !== 'public' || registryUrl !== 'https://registry.npmjs.org/') { console.error('Publish requires --tag rc --access public --registry https://registry.npmjs.org/'); process.exit(1); }\"";
 
 // Read main package.json
 const mainPkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf-8'));
+
+if (
+  fs.readFileSync(walletConnectLicensePath, 'utf-8') !==
+  fs.readFileSync(installedWalletConnectLicensePath, 'utf-8')
+) {
+  throw new Error(
+    'The checked-in WalletConnect Community License does not match @walletconnect/sign-client. ' +
+      'Review the dependency license and update the distributed copy.'
+  );
+}
 
 // These packages remain external in the rolled declarations. The wallet SDKs
 // are intentional namespace exports; the other packages provide public types.
@@ -61,6 +87,7 @@ const distPkg = {
   description: mainPkg.description,
   author: mainPkg.author,
   license: mainPkg.license,
+  engines: mainPkg.engines,
   // Intentionally NO `"type": "module"`: the ESM entry is already `.mjs`, while
   // the `require` entry below is the UMD `.js` which must be parsed as CommonJS.
   // Setting `type: module` would make Node/TypeScript treat the UMD file as ESM
@@ -87,6 +114,8 @@ const distPkg = {
   // bundle) to resolve. Without this, npm gives no peer hint and a type-only
   // consumer who hasn't installed `xrpl` gets an unresolved import.
   peerDependencies: mainPkg.peerDependencies,
+  publishConfig: mainPkg.publishConfig,
+  scripts: { prepublishOnly: publishGuard },
   keywords: mainPkg.keywords,
   repository: mainPkg.repository,
   bugs: mainPkg.bugs,
@@ -101,4 +130,16 @@ if (!fs.existsSync(distDir)) {
 
 // Write the package.json
 fs.writeFileSync(distPkgPath, JSON.stringify(distPkg, null, 2) + '\n');
+fs.copyFileSync(licensePath, path.join(distDir, 'LICENSE'));
+fs.copyFileSync(thirdPartyNoticesPath, path.join(distDir, 'THIRD_PARTY_NOTICES.md'));
+const licensesDir = path.join(distDir, 'licenses');
+fs.mkdirSync(licensesDir, { recursive: true });
+fs.copyFileSync(
+  walletConnectLicensePath,
+  path.join(licensesDir, 'WALLETCONNECT-COMMUNITY-LICENSE.md')
+);
+fs.copyFileSync(
+  walletConnectModalLicensePath,
+  path.join(licensesDir, 'WALLETCONNECT-MODAL-APACHE-2.0.txt')
+);
 console.log('✓ Updated dist-publish/package.json with version', mainPkg.version);

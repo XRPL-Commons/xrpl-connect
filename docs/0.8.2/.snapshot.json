@@ -1,0 +1,20 @@
+{
+  "version": "0.8.2",
+  "sourceTag": "v0.8.2",
+  "sourceCommit": "01ce8a669bd81ec76b4d10750e406b601f6e2f51",
+  "pages": [
+    "concepts.md",
+    "customization-builder.md",
+    "guide/adapter-integration.md",
+    "guide/api-reference.md",
+    "guide/customization.md",
+    "guide/examples.md",
+    "guide/frameworks/nuxt.md",
+    "guide/frameworks/react.md",
+    "guide/frameworks/vanilla-js.md",
+    "guide/frameworks/vue.md",
+    "guide/getting-started.md",
+    "index.md",
+    "try-it-out.md"
+  ]
+}

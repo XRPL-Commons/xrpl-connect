@@ -32,7 +32,9 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
       - name: Install dependencies
-        run: vp install --filter docs
+        run: vp install --frozen-lockfile --filter docs
+      - name: Check versioned docs snapshot
+        run: node docs/scripts/prepare-versioned-docs.mjs --check
       - name: Build with VitePress
         run: vp run docs:build
       - name: Upload artifact

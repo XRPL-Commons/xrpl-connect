@@ -337,4 +337,4 @@ console.log('Device state:', state);
 
 ## License
 
-MIT License - see the [LICENSE](./LICENSE) file for details
+MIT License - see the [repository LICENSE](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/LICENSE) for details

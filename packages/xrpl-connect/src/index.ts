@@ -4,15 +4,17 @@
  * This package bundles everything you need for XRPL wallet connections:
  * - Core wallet management
  * - Pre-built UI web component
- * - All wallet adapters (Xaman, Crossmark, GemWallet, WalletConnect)
+ * - All eight wallet adapters (Xaman, Crossmark, GemWallet, WalletConnect,
+ *   Ledger, Xyra, Otsu, and MetaMask Snap)
  *
  * @example
  * ```typescript
  * import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
- * import 'xrpl-connect/ui';
- *
  * const walletManager = new WalletManager({
- *   adapters: [new XamanAdapter(), new CrossmarkAdapter()],
+ *   adapters: [
+ *     new XamanAdapter({ apiKey: 'YOUR_XAMAN_API_KEY' }),
+ *     new CrossmarkAdapter(),
+ *   ],
  *   network: 'testnet',
  * });
  * ```
@@ -54,7 +56,7 @@ import { MetaMaskSnapAdapter } from '@xrpl-connect/adapter-metamask-snap';
  *
  * const walletManager = new WalletManager({
  *   adapters: [
- *     new Adapters.Xaman(),
+ *     new Adapters.Xaman({ apiKey: 'YOUR_XAMAN_API_KEY' }),
  *     new Adapters.Crossmark(),
  *   ],
  * });

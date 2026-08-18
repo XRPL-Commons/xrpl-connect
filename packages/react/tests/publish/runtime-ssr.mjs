@@ -29,7 +29,6 @@ for (const api of [reactEsm, reactCjs]) {
   assert.match(html, /XRPL Connect SSR/);
 }
 
-require('./runtime-env.cjs');
 const umbrella = await import('xrpl-connect');
 const error = new umbrella.WalletError(
   umbrella.WalletErrorCode.SIGN_REJECTED,

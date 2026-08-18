@@ -430,6 +430,40 @@ MetaMask. The adapter does not require an application API key.
 
 Use a custom `snapId` only when developing or auditing a different Snap.
 
+## Umbrella package exports
+
+`xrpl-connect` re-exports the public core, UI, and adapter APIs. Adapter constructors are available both as named exports and through the `Adapters` convenience object:
+
+```typescript
+import { Adapters, LedgerAdapter, WalletManager } from 'xrpl-connect';
+
+const manager = new WalletManager({
+  adapters: [
+    new Adapters.Xaman({ apiKey: 'YOUR_XAMAN_API_KEY' }),
+    new LedgerAdapter(),
+    new Adapters.MetaMaskSnap(),
+  ],
+  network: 'testnet',
+});
+```
+
+`Adapters` contains `Xaman`, `Crossmark`, `GemWallet`, `WalletConnect`, `Ledger`, `Xyra`, `Otsu`, and `MetaMaskSnap`.
+
+The corresponding adapter-specific exports are also available from the umbrella package:
+
+| Adapter       | Additional public exports                                                                                  |
+| ------------- | ---------------------------------------------------------------------------------------------------------- |
+| Xaman         | `XamanAdapterOptions`, `XamanConnectOptions`, `XamanReturnUrl`, `XamanSDK`, `XamanOAuth2`                  |
+| Crossmark     | `CrossmarkAdapterOptions`, `CrossmarkSDK`, and the typed Crossmark SDK facade                              |
+| GemWallet     | `GemWalletAdapterOptions`, `GemWalletAPI`                                                                  |
+| WalletConnect | `WalletConnectAdapterOptions`, `WalletConnectConnectOptions`, `XRPLMethod`                                 |
+| Ledger        | `LedgerAdapterOptions`, `LedgerConnectOptions`, `LedgerDeviceState`, `LEDGER_STATE_MESSAGES`               |
+| Xyra          | `XyraAdapterOptions`, `XyraConnectOptions`, `XRPL_CONNECT_TO_XYRA_NETWORK`, `XYRA_TO_XRPL_CONNECT_NETWORK` |
+| Otsu          | `OtsuProvider`, `OTSU_NETWORK_MAP`                                                                         |
+| MetaMask Snap | `MetaMaskSnapAdapterOptions`                                                                               |
+
+The umbrella also exposes the shared core types, error primitives, capability guards, standard network definitions, storage implementations, logging utilities, `resolveNetwork`, `isMobile`, `withTimeout`, and the web component registration API. Import an individual `@xrpl-connect/adapter-*` package only when deliberately using the modular distribution.
+
 ## React API
 
 Install `@xrpl-connect/react` alongside `xrpl-connect` when using React.

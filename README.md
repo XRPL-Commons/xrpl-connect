@@ -9,7 +9,7 @@
 ## ✨ Features
 
 - **Framework Agnostic** - Works with Vanilla JS, React, Vue, and any other framework
-- **Multiple Wallets** - Support for Xaman, Crossmark, GemWallet, and WalletConnect
+- **Multiple Wallets** - Support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap
 - **Modular Architecture** - Install only what you need
 - **Type Safe** - Full TypeScript support with comprehensive type definitions
 - **Event Driven** - Reactive architecture for connection state changes
@@ -22,7 +22,7 @@ The `xrpl-connect` package includes everything you need:
 
 - **Core**: Wallet management, event system, and state persistence
 - **UI**: Beautiful pre-built web component with QR codes and wallet selection
-- **Adapters**: All XRPL wallet adapters (Xaman, Crossmark, GemWallet, WalletConnect)
+- **Adapters**: All eight XRPL wallet adapters (Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap)
 
 ## Documentation
 
@@ -33,7 +33,7 @@ Please read the documentation here [DOCS](https://xrpl-commons.github.io/xrpl-co
 ### Installation
 
 ```bash
-npm install xrpl-connect xrpl
+npm install xrpl-connect@rc xrpl
 ```
 
 That's it! Everything you need in one package.
@@ -54,12 +54,15 @@ The easiest way to use XRPL Connect is with the plug-and-play web component:
 
 **JavaScript:**
 
+Create a Xaman application at [apps.xumm.dev](https://apps.xumm.dev/) and replace the placeholder
+below with its API key.
+
 ```javascript
 import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
 
 // Initialize wallet manager
 const walletManager = new WalletManager({
-  adapters: [new XamanAdapter(), new CrossmarkAdapter()],
+  adapters: [new XamanAdapter({ apiKey: 'YOUR_XAMAN_API_KEY' }), new CrossmarkAdapter()],
   network: 'testnet',
   // When true, the WalletManager attempts to restore the previous session
   // from localStorage on page load (the user is not prompted again). Set to
@@ -92,7 +95,7 @@ walletManager.on('error', (error) => {
 });
 
 // Sign transactions after connection. Always wrap in try/catch — the promise
-// rejects when the user cancels the request in their wallet (SIGN_FAILED).
+// rejects when the user cancels the request in their wallet (SIGN_REJECTED).
 try {
   const signed = await walletManager.sign({
     TransactionType: 'Payment',
@@ -101,7 +104,7 @@ try {
     Amount: '1000000',
   });
 } catch (error) {
-  if (error.code === 'SIGN_FAILED') {
+  if (error.code === 'SIGN_REJECTED') {
     console.log('User rejected the transaction');
   } else {
     console.error('Sign failed:', error);
@@ -129,10 +132,10 @@ const address = await GemWalletAPI.getAddress();
 
 ## 📚 Documentation
 
-- **[Getting Started Guide](./docs/GETTING_STARTED.md)** - Complete introduction to XRPL Connect
-- **[Vanilla JS Integration](./docs/VANILLA_JS.md)** - Using XRPL Connect with vanilla JavaScript
-- **[React Integration](./docs/REACT.md)** - React integration patterns and best practices
-- **[Vue Integration](./docs/VUE.md)** - Vue 3 integration guide
+- **[Getting Started Guide](./docs/guide/getting-started.md)** - Complete introduction to XRPL Connect
+- **[Vanilla JS Integration](./docs/guide/frameworks/vanilla-js.md)** - Using XRPL Connect with vanilla JavaScript
+- **[React Integration](./docs/guide/frameworks/react.md)** - React integration patterns and best practices
+- **[Vue Integration](./docs/guide/frameworks/vue.md)** - Vue 3 integration guide
 
 ## 🏗️ Architecture
 

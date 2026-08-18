@@ -7,17 +7,15 @@ modal component — so you configure your wallets once and never re-create objec
 ## Install
 
 ```bash
-npm install @xrpl-connect/react xrpl-connect xrpl
+npm install @xrpl-connect/react@rc xrpl-connect@rc xrpl react react-dom
 ```
 
-> `react` / `react-dom` are peer dependencies. The web component is registered by
-> importing `xrpl-connect` once (see below).
+> `react` / `react-dom` are peer dependencies. Importing any named export from
+> `xrpl-connect` also registers the web component.
 
 ## Usage
 
 ```tsx
-// main.tsx — import once to register the <xrpl-wallet-connector> web component
-import 'xrpl-connect';
 import { XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
 import { XrplConnectProvider } from '@xrpl-connect/react';
 

@@ -36,7 +36,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "vp pack && node scripts/prepare-types.mjs",
+    "build": "vp pack && node scripts/prepare-types.mjs && node tests/runtime-smoke.mjs",
     "dev": "vp pack --watch",
     "test": "tsc --project tsconfig.test.json && vp test run",
     "test:watch": "vp test",
