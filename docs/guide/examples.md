@@ -11,7 +11,7 @@ Real-world examples and pre-built theme configurations.
 The React example application demonstrates the recommended v1 integration, including:
 
 - Multiple wallet adapters
-- The official provider and hooks from `@xrpl-connect/react`
+- The official provider and hooks from `@xrpl-commons/xrpl-connect-react`
 - Capability-aware transaction and message signing
 - Dynamic theme customization
 - Real-time event logging

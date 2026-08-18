@@ -1,4 +1,4 @@
-import { useWallet } from '@xrpl-connect/react';
+import { useWallet } from '@xrpl-commons/xrpl-connect-react';
 
 export function AccountInfo() {
   const { connected, account, network, manager } = useWallet();

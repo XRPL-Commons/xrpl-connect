@@ -9,7 +9,7 @@ Use the official React bindings instead of building a custom context around the 
 ## Install
 
 ```bash
-pnpm add xrpl-connect@rc @xrpl-connect/react@rc xrpl react react-dom
+pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-react@rc xrpl react react-dom
 ```
 
 ## Configure the provider
@@ -17,7 +17,7 @@ pnpm add xrpl-connect@rc @xrpl-connect/react@rc xrpl react react-dom
 Create the adapter configuration once, outside component render. The provider snapshots its initial configuration and owns one manager; changing the object does not rebuild it. Give the provider a new React `key` only when you intentionally want to replace that manager. This Vite example uses client-visible `VITE_*` variables:
 
 ```tsx
-import { XrplConnectProvider, WalletConnector } from '@xrpl-connect/react';
+import { XrplConnectProvider, WalletConnector } from '@xrpl-commons/xrpl-connect-react';
 import {
   CrossmarkAdapter,
   MetaMaskSnapAdapter,
@@ -57,7 +57,7 @@ export function App() {
 `useWallet()` provides the stable manager, reactive state, and direct connect/disconnect actions.
 
 ```tsx
-import { useWallet, useWalletModal } from '@xrpl-connect/react';
+import { useWallet, useWalletModal } from '@xrpl-commons/xrpl-connect-react';
 
 function Header() {
   const { connected, connecting, account, network, error, disconnect } = useWallet();
@@ -88,7 +88,7 @@ The hook returns `manager`, `connected`, `account`, `network`, `connecting`, `er
 
 ```tsx
 import { WalletErrorCode, isWalletError } from 'xrpl-connect';
-import { useSigner, useWallet } from '@xrpl-connect/react';
+import { useSigner, useWallet } from '@xrpl-commons/xrpl-connect-react';
 
 function PaymentButton({ destination }: { destination: string }) {
   const { account } = useWallet();
@@ -137,7 +137,7 @@ The package is safe to import during server rendering. Provider and wallet UI us
 ```tsx
 'use client';
 
-import { XrplConnectProvider, WalletConnector } from '@xrpl-connect/react';
+import { XrplConnectProvider, WalletConnector } from '@xrpl-commons/xrpl-connect-react';
 import type { ReactNode } from 'react';
 import { WalletConnectAdapter, XamanAdapter } from 'xrpl-connect';
 

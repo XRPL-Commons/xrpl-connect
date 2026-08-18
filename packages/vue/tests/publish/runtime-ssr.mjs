@@ -8,8 +8,8 @@ delete globalThis.document;
 delete globalThis.customElements;
 
 const require = createRequire(import.meta.url);
-const esm = await import('@xrpl-connect/vue');
-const cjs = require('@xrpl-connect/vue');
+const esm = await import('@xrpl-commons/xrpl-connect-vue');
+const cjs = require('@xrpl-commons/xrpl-connect-vue');
 
 for (const api of [esm, cjs]) {
   assert.equal(typeof api.createXrplConnect, 'function');

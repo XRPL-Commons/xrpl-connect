@@ -15,7 +15,7 @@ function App() {
       <header>
         <div className="header-content">
           <h1>🔗 XRPL Connect Demo - React</h1>
-          <p>Powered by @xrpl-connect/react — provider, hooks &amp; modal component</p>
+          <p>Powered by @xrpl-commons/xrpl-connect-react — provider, hooks &amp; modal component</p>
         </div>
       </header>
 

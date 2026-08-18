@@ -14,7 +14,7 @@ connector belong in client code.
 ```tsx
 'use client';
 
-import { XrplConnectProvider, WalletConnector } from '@xrpl-connect/react';
+import { XrplConnectProvider, WalletConnector } from '@xrpl-commons/xrpl-connect-react';
 ```
 
 For Nuxt, install `createXrplConnect()` from a `.client.ts` plugin. Components that call

@@ -6,7 +6,7 @@ import {
   useSigner,
   useWallet,
   useWalletModal,
-} from '@xrpl-connect/vue';
+} from '@xrpl-commons/xrpl-connect-vue';
 import type {
   ManagedSignedMessage,
   ManagedSignedTransaction,

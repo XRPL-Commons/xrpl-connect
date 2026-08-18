@@ -63,7 +63,7 @@
     "publish:build": "vp run -F \"{.}^...\" --no-cache build && vp pack && vp build -c vite.config.ts && node scripts/build-types.mjs && node scripts/prepare-publish.mjs",
     "publish:rc": "node scripts/publish-rc.mjs",
     "test": "node scripts/run-command.test.mjs",
-    "test:publish": "pnpm publish:build && vp run -F @xrpl-connect/react -F @xrpl-connect/vue --no-cache build && node scripts/test-publish.mjs",
+    "test:publish": "pnpm publish:build && vp run -F @xrpl-commons/xrpl-connect-react -F @xrpl-commons/xrpl-connect-vue --no-cache build && node scripts/test-publish.mjs",
     "verify:rc:access": "node scripts/test-publish.mjs --check-access",
     "verify:rc:preflight": "node scripts/test-publish.mjs --check-access --check-prepublish",
     "verify:rc:registry": "node scripts/test-publish.mjs --check-registry",
