@@ -47,6 +47,7 @@ export default defineConfig({
     ],
   },
   fmt: {
+    ignorePatterns: ['docs/0.8.2/**'],
     semi: true,
     trailingComma: 'es5',
     singleQuote: true,

@@ -42,6 +42,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
@@ -51,6 +53,9 @@ jobs:
 
       - name: Install dependencies
         run: vp install --frozen-lockfile --filter docs
+
+      - name: Check versioned docs snapshot
+        run: pnpm run docs:snapshot:check
 
       - name: Build docs
         run: vp run docs:build

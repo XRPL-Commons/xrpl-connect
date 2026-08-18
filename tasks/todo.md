@@ -174,3 +174,30 @@ prepared artifact retains its registry/tag/access guard. The focused 12-test sui
 production builds, the docs build, repository formatting/lint, and the complete three-tarball
 strict-peer/type/runtime/SSR suite pass. No browser backend was exposed for an interactive local
 smoke test; real extension, mobile, and hardware approvals are now an explicit pre-stable matrix.
+
+## Versioned documentation
+
+- [x] Audit v1 documentation and the existing 0.8.2-to-1.0 migration guide.
+- [x] Generate an immutable 0.8.2 documentation snapshot from the `v0.8.2` tag.
+- [x] Add a visible 0.8.2 / 1.0.0 documentation switch without breaking current URLs.
+- [x] Expand migration guidance for package, framework, adapter, signing, and error changes.
+- [x] Verify generated links, both versions, production builds, and repository checks.
+- [x] Commit, push, and confirm PR checks.
+
+### Review
+
+The site now keeps the 1.0.0 documentation at every existing URL and serves a generated 0.8.2
+archive under `/0.8.2/`. The archive is pinned to tag `v0.8.2` and commit
+`01ce8a669bd81ec76b4d10750e406b601f6e2f51`; CI and Pages deployment reject snapshot drift.
+Archived interactive pages explicitly defer to the current live demos instead of silently loading
+1.0 code. The migration guide now covers the actual RC package matrix, modular imports, signing
+artifacts, capabilities, live account refresh, compatible persistence, connector behavior,
+framework lifecycle, SSR boundaries, and wallet-specific changes. The audit also repaired the
+published rejection-code example, React lifecycle wording, adapter-maintainer guide, MetaMask
+discovery description, and umbrella export reference.
+
+Verification passed the deterministic 13-page snapshot check, repository formatting/lint, the
+production VitePress build, both locale-specific navigation/search indexes, 32 rendered pages with
+no missing internal links, and served 200 responses for both version roots plus representative
+nested and migration routes. The in-app browser backend was unavailable, so rendered HTML and the
+local preview server were used for route/navigation verification.

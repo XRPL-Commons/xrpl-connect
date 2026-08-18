@@ -14,7 +14,7 @@ pnpm add xrpl-connect@rc @xrpl-connect/react@rc xrpl react react-dom
 
 ## Configure the provider
 
-Create the adapter configuration once, outside component render. Recreating it on every render can replace connection ownership and restart automatic reconnection. This Vite example uses client-visible `VITE_*` variables:
+Create the adapter configuration once, outside component render. The provider snapshots its initial configuration and owns one manager; changing the object does not rebuild it. Give the provider a new React `key` only when you intentionally want to replace that manager. This Vite example uses client-visible `VITE_*` variables:
 
 ```tsx
 import { XrplConnectProvider, WalletConnector } from '@xrpl-connect/react';

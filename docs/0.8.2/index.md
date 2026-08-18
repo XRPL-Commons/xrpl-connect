@@ -2,15 +2,17 @@
 description: A framework-agnostic wallet connection toolkit for the XRP Ledger with support for multiple wallet adapters and comprehensive documentation.
 ---
 
-# XRPL Connect 1.0.0
+<!-- Generated from v0.8.2; do not edit. -->
 
-<DownloadLLMsFullDoc />
-
-::: info Current release channel
-This documentation tracks the 1.0.0 API. The currently installable candidate is `1.0.0-rc.0` under the npm `rc` tag; `latest` remains on `0.8.2` until stable promotion.
+::: warning Archived documentation
+You are reading the XRPL Connect 0.8.2 documentation. [Switch to 1.0.0](/) or follow
+the [0.8.2 → 1.0.0 migration guide](/guide/migration-v1).
 :::
 
-XRPL Connect is a typed wallet layer for XRP Ledger applications. The v1.0 release candidate combines a framework-agnostic manager, eight wallet adapters, a customizable web component, and official React and Vue bindings.
+
+# XRPL Connect 0.8.2
+
+XRPL-Connect is a comprehensive, framework-agnostic wallet connection toolkit for the XRP Ledger. It provides developers with everything needed to add secure wallet connectivity to their applications through a modern, modular architecture.
 
 ## What is XRPL-Connect?
 
@@ -18,8 +20,7 @@ XRPL-Connect is a complete solution for integrating wallet functionality into we
 
 - **Web Component UI** - Beautiful, customizable `<xrpl-wallet-connector>` component for wallet selection and account management
 - **Wallet Manager** - Central event-driven system for managing wallet connections and transactions
-- **Multiple Wallet Support** - Built-in adapters for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap
-- **Official framework bindings** - Providers, composables, hooks, and connector components for React and Vue
+- **Multiple Wallet Support** - Built-in adapters for Xaman, Crossmark, GemWallet, WalletConnect, Ledger hardware wallets, Xyra, and Otsu
 - **Framework Agnostic** - Works seamlessly with Vanilla JS, React, Vue, Next.js, Nuxt, and any modern web framework
 - **TypeScript Ready** - Full type definitions for a great developer experience
 - **Production Ready** - Used in production applications across the XRPL ecosystem
@@ -43,7 +44,7 @@ Customize colors, fonts, and styling using CSS variables without touching HTML o
 
 ### 🔌 Multiple Wallets
 
-Support Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap through the same manager API.
+Support for all major XRP Ledger wallets including Xaman, Crossmark, GemWallet, WalletConnect, Ledger hardware wallets, Xyra, and Otsu. Give users choice without increasing complexity.
 
 ### ⚡ Framework Agnostic
 
@@ -70,16 +71,25 @@ Enhanced mobile experience with optimized support for Xaman wallet connections. 
 
 XRPL-Connect uses a modular, adapter-based architecture that separates concerns and makes it easy to extend:
 
-```text
-Application UI / framework bindings
-                ↓
-          WalletManager
-   (state, events, persistence)
-                ↓
-         WalletAdapter API
-                ↓
-Xaman · Crossmark · GemWallet · WalletConnect
-Ledger · Xyra · Otsu · MetaMask Snap
+```
+Your Application
+       ↓
+┌─────────────────────────────┐
+│   xrpl-connect/core        │
+│   ┌───────────────────────┐ │
+│   │  WalletManager        │ │
+│   │  - Event system       │ │
+│   │  - State management   │ │
+│   │  - Storage layer      │ │
+│   └───────────────────────┘ │
+└──────────────┬──────────────┘
+               ↓
+    ┌──────────┬──────────┬─────────┬─────────────┬────────┬────────┬────────┐
+    ↓          ↓          ↓         ↓             ↓        ↓        ↓
+┌────────┐ ┌──────────┐ ┌────────┐ ┌─────────┐ ┌────────┐ ┌──────┐ ┌──────┐
+│ Xaman  │ │Crossmark │ │GemWal  │ │WalletCon│ │Ledger  │ │Xyra  │ │Otsu  │
+│ Adapter│ │Adapter   │ │Adapter │ │Adapter  │ │Adapter │ │Adptr │ │Adptr │
+└────────┘ └──────────┘ └────────┘ └─────────┘ └────────┘ └──────┘ └──────┘
 ```
 
 ## How It Works
@@ -105,7 +115,6 @@ The XRPL-Connect package includes:
 - **Core Library** - WalletManager, event system, and state management
 - **Web Component** - Beautiful UI component for wallet connection
 - **Adapters** - Pre-built integrations for major wallets
-- **Framework bindings** - Official React and Vue integrations with shared lifecycle management
 - **TypeScript Definitions** - Full type safety and IDE support
 - **Documentation** - Complete guides and API reference
 
@@ -113,17 +122,16 @@ The XRPL-Connect package includes:
 
 Ready to get started? Here's the recommended learning path:
 
-1. **[Concepts](/concepts)** - Understand the key concepts (WalletManager, adapters, web components)
-2. **[Try It Out](/try-it-out)** - See XRPL-Connect in action with the interactive demo
-3. **[Getting Started](/guide/getting-started)** - Install and get your API keys
+1. **[Concepts](/0.8.2/concepts)** - Understand the key concepts (WalletManager, adapters, web components)
+2. **[Try It Out](/0.8.2/try-it-out)** - See XRPL-Connect in action with the interactive demo
+3. **[Getting Started](/0.8.2/guide/getting-started)** - Install and get your API keys
 4. **Framework Guides** - Follow the guide for your specific framework:
-   - [Vanilla JS](/guide/frameworks/vanilla-js)
-   - [React](/guide/frameworks/react)
-   - [Vue](/guide/frameworks/vue)
-   - [Nuxt](/guide/frameworks/nuxt)
-5. **[Customization](/guide/customization)** - Style the component to match your design
-6. **[API Reference](/guide/api-reference)** - Deep dive into the complete API
-7. **[Migrating to v1.0](/guide/migration-v1)** - Upgrade pre-1.0 applications safely
+   - [Vanilla JS](/0.8.2/guide/frameworks/vanilla-js)
+   - [React](/0.8.2/guide/frameworks/react)
+   - [Vue](/0.8.2/guide/frameworks/vue)
+   - [Nuxt](/0.8.2/guide/frameworks/nuxt)
+5. **[Customization](/0.8.2/guide/customization)** - Style the component to match your design
+6. **[API Reference](/0.8.2/guide/api-reference)** - Deep dive into the complete API
 
 ## Community & Support
 

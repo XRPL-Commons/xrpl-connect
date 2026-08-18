@@ -2,6 +2,14 @@
 description: Learn the key concepts behind XRPL-Connect including WalletManager, adapters, events, and web components.
 ---
 
+<!-- Generated from v0.8.2; do not edit. -->
+
+::: warning Archived documentation
+You are reading the XRPL Connect 0.8.2 documentation. [Switch to 1.0.0](/) or follow
+the [0.8.2 → 1.0.0 migration guide](/guide/migration-v1).
+:::
+
+
 # Core Concepts
 
 XRPL-Connect is built on a few key concepts that work together to provide a seamless wallet integration experience. Understanding these concepts will help you use XRPL-Connect effectively.
@@ -52,28 +60,15 @@ await walletManager.disconnect();
 
 ### Key Methods
 
-- `connect(walletId, options?)` - Connect to a wallet by id after a one-second availability preflight
+- `connect(walletId, options?)` - Connect to a wallet by id
 - `reconnect()` - Reconnect to the previously connected wallet from storage
-- `sign(transaction)` - Sign a transaction and return the wallet's available `tx_blob`, `tx_json`, and/or `signature` artifact
+- `sign(transaction)` - Sign a transaction and return the signed blob
 - `signAndSubmit(transaction)` - Sign and submit transaction to ledger
 - `signMessage(message)` - Sign a message (string or `Uint8Array`)
-- `supports(capability)` - Check whether the connected wallet supports a signing operation
-- `fetchAccount()` - Refresh account and network data on adapters that support a live wallet query
-- `getAvailableWallets()` - List adapters whose `isAvailable()` resolves true within one second
+- `getAvailableWallets()` - List adapters whose `isAvailable()` resolves true
 - `disconnect()` - Disconnect current wallet
 - `on(event, listener)` - Listen to events
 - `off(event, listener)` - Remove event listener
-
-The `account` property is cached. `fetchAccount()` is its explicit live
-counterpart and is available for Crossmark, GemWallet, Ledger, Otsu, and Xaman.
-WalletConnect and Xyra reject live refresh with `UNSUPPORTED_METHOD`; use
-`supportsFetchAccount()` after checking that `walletManager.wallet` is non-null
-before offering refresh UI.
-
-Signing capabilities are separately declared through `WalletCapabilities`.
-`WalletManager.supports()` lets applications hide unsupported actions, and the
-manager rejects explicitly unsupported signing calls before invoking the
-adapter.
 
 ## Adapters
 
@@ -109,7 +104,7 @@ const adapter = new XamanAdapter({
 });
 ```
 
-**Features:** Transaction signing, live account refresh, QR codes, and push notifications. Arbitrary message signing is not supported.
+**Features:** Transaction signing, message signing, QR codes, push notifications
 
 #### Crossmark Adapter
 
@@ -122,21 +117,6 @@ const adapter = new CrossmarkAdapter();
 ```
 
 **Features:** Transaction signing, message signing, no API keys required
-
-#### MetaMask Snap Adapter
-
-Connect to XRPL through MetaMask and the XRPL Snap.
-
-```javascript
-import { MetaMaskSnapAdapter } from 'xrpl-connect';
-
-const adapter = new MetaMaskSnapAdapter({
-  // Optional: override this when developing a custom Snap.
-  snapId: 'npm:xrpl-snap',
-});
-```
-
-**Features:** Transaction signing and message signing through MetaMask. No application API key is required.
 
 #### GemWallet Adapter
 
@@ -214,7 +194,6 @@ const walletManager = new WalletManager({
     new CrossmarkAdapter(),
     new GemWalletAdapter(),
     new WalletConnectAdapter({ projectId: 'YOUR_PROJECT_ID' }),
-    new MetaMaskSnapAdapter(),
   ],
   network: 'testnet',
 });

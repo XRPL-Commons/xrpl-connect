@@ -95,7 +95,7 @@ walletManager.on('error', (error) => {
 });
 
 // Sign transactions after connection. Always wrap in try/catch — the promise
-// rejects when the user cancels the request in their wallet (SIGN_FAILED).
+// rejects when the user cancels the request in their wallet (SIGN_REJECTED).
 try {
   const signed = await walletManager.sign({
     TransactionType: 'Payment',
@@ -104,7 +104,7 @@ try {
     Amount: '1000000',
   });
 } catch (error) {
-  if (error.code === 'SIGN_FAILED') {
+  if (error.code === 'SIGN_REJECTED') {
     console.log('User rejected the transaction');
   } else {
     console.error('Sign failed:', error);
