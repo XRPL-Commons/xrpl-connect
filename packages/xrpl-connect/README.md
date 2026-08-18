@@ -53,7 +53,10 @@ export { XamanAdapter } from '@xrpl-connect/adapter-xaman';
 export { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 export { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 export { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
+export { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
 export { XyraAdapter } from '@xrpl-connect/adapter-xyra';
+export { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
+export { MetaMaskSnapAdapter } from '@xrpl-connect/adapter-metamask-snap';
 
 // Convenience object
 export const Adapters = {
@@ -61,7 +64,10 @@ export const Adapters = {
   Crossmark: CrossmarkAdapter,
   GemWallet: GemWalletAdapter,
   WalletConnect: WalletConnectAdapter,
+  Ledger: LedgerAdapter,
   Xyra: XyraAdapter,
+  Otsu: OtsuAdapter,
+  MetaMaskSnap: MetaMaskSnapAdapter,
 };
 ```
 

@@ -1,11 +1,11 @@
 # XRPL Connect - React Example
 
-This is a demo application showcasing the XRPL Connect wallet toolkit with a React frontend, using the web component for wallet connectivity.
+This demo application uses the official XRPL Connect React provider, hooks, and modal component.
 
 ## Features
 
-- Connect to multiple XRPL wallets, including Xaman, WalletConnect, Crossmark, GemWallet, and MetaMask Snap
-- React integration with XRPL Connect web component
+- Connect to Xaman, WalletConnect, Crossmark, GemWallet, Xyra, Otsu, and MetaMask Snap
+- Typed React provider, hooks, and wallet modal integration
 - Sign XRPL transactions
 - Sign arbitrary messages
 - Dynamic theme customization
@@ -32,7 +32,7 @@ Before running the example, you need to obtain API keys:
 
 ### 2. Configure API Keys
 
-Open `src/App.tsx` and add your API keys:
+Open `src/main.tsx` and add your API keys:
 
 ```typescript
 // Configuration - ADD YOUR API KEYS HERE
@@ -71,83 +71,57 @@ pnpm --filter react-example dev
 
 The application will be available at [http://localhost:5173](http://localhost:5173)
 
-## React Integration with Web Component
+## React Integration
 
-This example demonstrates how to integrate the XRPL Connect web component in a React application. Key integration points:
+This example uses the official React provider, hooks, and modal component. No custom JSX
+declarations, element refs, or manual event listeners are required.
 
-### 1. Import adapters from xrpl-connect
+### 1. Configure the provider once
 
-Import the adapters you use from `xrpl-connect` in your entry point (`main.tsx`):
-
-```typescript
-import { XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
-```
-
-Loading any named export also registers the `<xrpl-wallet-connector>` custom element before React renders.
-
-### 2. TypeScript Declarations
-
-The `vite-env.d.ts` file contains TypeScript declarations for the web component:
-
-```typescript
-declare namespace JSX {
-  interface IntrinsicElements {
-    'xrpl-wallet-connector': React.DetailedHTMLProps<
-      React.HTMLAttributes<HTMLElement> & {
-        'primary-wallet'?: string;
-        ref?: React.Ref<any>;
-      },
-      HTMLElement
-    >;
-  }
-}
-```
-
-### 3. Using the Web Component
-
-The web component is used in the JSX like a regular React component:
+Create the adapter configuration outside React rendering and pass it to the provider in `main.tsx`:
 
 ```tsx
-<xrpl-wallet-connector
-  ref={walletConnectorRef}
-  id="wallet-connector"
-  style={{/* CSS variables */}}
-  primary-wallet="xaman"
+const config: XrplConnectConfig = {
+  adapters: [
+    new XamanAdapter({ apiKey: XAMAN_API_KEY }),
+    new WalletConnectAdapter({ projectId: WALLETCONNECT_PROJECT_ID }),
+    new CrossmarkAdapter(),
+  ],
+  network: 'testnet',
+  autoConnect: true,
+};
+
+createRoot(document.getElementById('root')!).render(
+  <XrplConnectProvider config={config}>
+    <App />
+  </XrplConnectProvider>
+);
+```
+
+### 2. Render the React modal component
+
+Use the typed `WalletConnector` wrapper and its callbacks:
+
+```tsx
+<WalletConnector
+  primaryWallet="xaman"
+  theme="dark"
+  onConnect={(account) => console.log('Connected', account.address)}
+  onError={(error) => console.error(error.code, error.message)}
 />
 ```
 
-### 4. Accessing the Component
+### 3. Consume wallet state and signing actions
 
-Use a ref to access the web component instance and call its methods. **Important**: Wait for the custom element to be fully defined before calling methods:
-
-```tsx
-const walletConnectorRef = useRef<WalletConnectorElement | null>(null);
-
-// Set up the web component after it's fully initialized
-useEffect(() => {
-  const setupConnector = async () => {
-    // Wait for custom element to be defined
-    await customElements.whenDefined('xrpl-wallet-connector');
-
-    // Now it's safe to call methods
-    if (walletConnectorRef.current) {
-      walletConnectorRef.current.setWalletManager(walletManager);
-    }
-  };
-
-  setupConnector();
-}, []);
-```
-
-### 5. Event Handling
-
-Listen to custom events from the web component:
+Components below the provider share the same manager through `useWallet()` and `useSigner()`:
 
 ```tsx
-walletConnector.addEventListener('connected', (e: any) => {
-  console.log('Connected!', e.detail);
-});
+const { connected, account, disconnect } = useWallet();
+const { signAndSubmit, signMessage } = useSigner();
 ```
+
+See `src/main.tsx` for provider configuration and `src/components/` for complete state, modal,
+transaction, message-signing, and error-handling examples.
 
 ## Usage
 
@@ -186,15 +160,15 @@ All wallet events (connect, disconnect, errors, signatures) are logged in the Ev
 
 ## Network Configuration
 
-The example is configured to use the **testnet** by default. You can change this in `src/App.tsx`:
+The example is configured to use the **testnet** by default. You can change this in `src/main.tsx`:
 
 ```typescript
-const walletManager = new WalletManager({
+const config: XrplConnectConfig = {
   adapters: [/* ... */],
   network: 'testnet', // Change to 'mainnet', 'devnet', or provide custom config
   autoConnect: true,
   logger: { level: 'info' },
-});
+};
 ```
 
 ## Build for Production
@@ -209,11 +183,11 @@ The built files will be in the `dist/` directory.
 
 ### "WalletConnect project ID is required"
 
-Make sure you've added your WalletConnect Project ID in `src/App.tsx`.
+Make sure you've added your WalletConnect Project ID in `src/main.tsx`.
 
 ### "Xaman API key is required"
 
-Make sure you've added your Xaman API key in `src/App.tsx`.
+Make sure you've added your Xaman API key in `src/main.tsx`.
 
 ### Popup Blocked
 
@@ -223,9 +197,11 @@ If the Xaman authorization popup is blocked, enable popups for this site in your
 
 Ensure your WalletConnect Project ID is valid and your internet connection is stable.
 
-### TypeScript Errors with Web Component
+### TypeScript errors
 
-Make sure the `vite-env.d.ts` file is included in your TypeScript configuration.
+Install both `@xrpl-connect/react@rc` and `xrpl-connect@rc`, and import the provider, hooks, and
+component from `@xrpl-connect/react`. The package supplies its own declarations; no custom JSX
+declaration is required.
 
 ## Technologies Used
 

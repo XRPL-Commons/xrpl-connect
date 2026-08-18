@@ -153,3 +153,24 @@ The checked-in Community License is byte-for-byte identical to the installed
 pass, including strict peer installation, ESM/CommonJS type checks, SSR/runtime loads, and assertions
 that the installed umbrella package contains the Reown notice and both WalletConnect license files.
 Repository formatting and lint checks also pass.
+
+## Release DevEx cleanup
+
+- [x] Make the published quick start copy-paste safe and list all eight adapters.
+- [x] Correct the React example configuration paths and standalone example instructions.
+- [x] Declare the supported Node.js range on all three release candidates.
+- [x] Prevent publishing the umbrella package from its source workspace directory.
+- [x] Document the live-wallet release validation matrix.
+- [x] Run focused tests, packed-candidate verification, example and docs builds, and repository checks.
+- [x] Commit, push, and confirm PR checks.
+
+### Review
+
+The npm quick start now supplies Xaman's required application identifier, all public discovery text
+lists the complete adapter set, and the React example documents its actual provider/hooks/component
+architecture and `main.tsx` configuration. All three candidates declare the CI-tested Node.js range.
+Direct publication from the source umbrella package fails with an actionable command, while the
+prepared artifact retains its registry/tag/access guard. The focused 12-test suite, both example
+production builds, the docs build, repository formatting/lint, and the complete three-tarball
+strict-peer/type/runtime/SSR suite pass. No browser backend was exposed for an interactive local
+smoke test; real extension, mobile, and hardware approvals are now an explicit pre-stable matrix.

@@ -202,6 +202,28 @@ command; do not bypass it with a manual publish. Before running it, move the cha
 a dated `[1.0.0-rc.0]` section, reset `[Unreleased]`, and commit those release changes. After the
 registry verification succeeds, tag that same clean commit as `v1.0.0-rc.0` and push the tag.
 
+### Live wallet validation
+
+Automated package tests validate exports, types, SSR loading, and mocked adapter behavior; they do
+not replace approvals in real wallets. Before promoting an RC to a stable release, test the exact
+packed candidate in a fresh browser application and record the result for every adapter:
+
+| Adapter       | Required environment                                              |
+| ------------- | ----------------------------------------------------------------- |
+| Xaman         | Desktop QR and mobile deep link with a registered application     |
+| Crossmark     | Supported browser with the Crossmark extension installed          |
+| GemWallet     | Supported browser with the approved GemWallet extension/API usage |
+| WalletConnect | Desktop QR and mobile deep link with a Reown project ID           |
+| Ledger        | Supported browser, connected device, and the XRP app open         |
+| Xyra          | Supported browser with the Xyra wallet installed                  |
+| Otsu          | Supported browser with the Otsu wallet installed                  |
+| MetaMask Snap | Supported browser with MetaMask and the XRPL Snap installed       |
+
+For each wallet, verify availability, connect, account/network reporting, every declared signing
+capability, rejection or cancellation, disconnect, and session restoration. Also verify switching
+between two adapters in one session. Record the browser, wallet version, network, account, candidate
+tarball integrity, and result so the stable-release decision is reproducible.
+
 ## Reporting Security Issues
 
 Please **do not** open public issues for security vulnerabilities. Email the maintainers via the contact details in the [`xrpl-connect` GitHub organization page](https://github.com/XRPL-Commons) instead.

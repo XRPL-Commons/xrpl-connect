@@ -52,23 +52,15 @@ test('run reports non-zero exits with captured output', () => {
   );
 });
 
-test('publish guard accepts normalized npmjs registry URLs only', () => {
+test('source package rejects direct publishing', () => {
   const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
   const prefix = 'node -e "';
   const guard = manifest.scripts.prepublishOnly.slice(prefix.length, -1);
-  const runGuard = (registry) =>
-    spawnSync(process.execPath, ['-e', guard], {
-      env: {
-        ...process.env,
-        npm_config_access: 'public',
-        npm_config_registry: registry,
-        npm_config_tag: 'rc',
-      },
-    });
+  const result = spawnSync(process.execPath, ['-e', guard], { encoding: 'utf-8' });
 
-  assert.equal(runGuard('https://registry.npmjs.org').status, 0);
-  assert.equal(runGuard('https://registry.npmjs.org/').status, 0);
-  assert.equal(runGuard('https://registry.example/').status, 1);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Do not publish xrpl-connect from the source package/);
+  assert.match(result.stderr, /publish:rc/);
 });
 
 test('publish build uses a cross-platform quoted workspace filter', () => {

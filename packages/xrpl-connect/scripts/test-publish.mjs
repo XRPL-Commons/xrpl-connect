@@ -12,6 +12,7 @@ import { run } from './run-command.mjs';
 
 const FRAMEWORK_PEER_RANGE = '^1.0.0-rc.0';
 const NPM_ORGANIZATION = 'xrpl-connect';
+const SUPPORTED_NODE_RANGE = '^20.19.0 || ^22.18.0 || >=24.11.0';
 const PUBLISH_CONFIG = {
   access: 'public',
   registry: NPM_REGISTRY,
@@ -267,6 +268,11 @@ try {
     assert.equal(manifest.version, CANDIDATE_VERSION, `${name} has the wrong packed version`);
     assert.deepEqual(manifest.publishConfig, PUBLISH_CONFIG, `${name} has unsafe publish defaults`);
     assert.equal(manifest.scripts?.prepublishOnly, PUBLISH_GUARD, `${name} has no publish guard`);
+    assert.deepEqual(
+      manifest.engines,
+      { node: SUPPORTED_NODE_RANGE },
+      `${name} has the wrong Node.js support range`
+    );
   }
 
   const installedUmbrellaFolder = path.join(consumerFolder, 'node_modules', 'xrpl-connect');

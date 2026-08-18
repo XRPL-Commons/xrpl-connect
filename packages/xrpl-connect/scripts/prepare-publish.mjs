@@ -19,6 +19,8 @@ const walletConnectModalLicensePath = path.join(
   __dirname,
   '../licenses/WALLETCONNECT-MODAL-APACHE-2.0.txt'
 );
+const publishGuard =
+  "node -e \"const { npm_config_tag: tag, npm_config_access: access, npm_config_registry: registry } = process.env; let registryUrl = ''; try { registryUrl = new URL(registry).href; } catch {} if (tag !== 'rc' || access !== 'public' || registryUrl !== 'https://registry.npmjs.org/') { console.error('Publish requires --tag rc --access public --registry https://registry.npmjs.org/'); process.exit(1); }\"";
 
 // Read main package.json
 const mainPkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf-8'));
@@ -85,6 +87,7 @@ const distPkg = {
   description: mainPkg.description,
   author: mainPkg.author,
   license: mainPkg.license,
+  engines: mainPkg.engines,
   // Intentionally NO `"type": "module"`: the ESM entry is already `.mjs`, while
   // the `require` entry below is the UMD `.js` which must be parsed as CommonJS.
   // Setting `type: module` would make Node/TypeScript treat the UMD file as ESM
@@ -112,7 +115,7 @@ const distPkg = {
   // consumer who hasn't installed `xrpl` gets an unresolved import.
   peerDependencies: mainPkg.peerDependencies,
   publishConfig: mainPkg.publishConfig,
-  scripts: { prepublishOnly: mainPkg.scripts.prepublishOnly },
+  scripts: { prepublishOnly: publishGuard },
   keywords: mainPkg.keywords,
   repository: mainPkg.repository,
   bugs: mainPkg.bugs,

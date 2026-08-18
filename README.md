@@ -9,7 +9,7 @@
 ## ✨ Features
 
 - **Framework Agnostic** - Works with Vanilla JS, React, Vue, and any other framework
-- **Multiple Wallets** - Support for Xaman, Crossmark, GemWallet, and WalletConnect
+- **Multiple Wallets** - Support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap
 - **Modular Architecture** - Install only what you need
 - **Type Safe** - Full TypeScript support with comprehensive type definitions
 - **Event Driven** - Reactive architecture for connection state changes
@@ -22,7 +22,7 @@ The `xrpl-connect` package includes everything you need:
 
 - **Core**: Wallet management, event system, and state persistence
 - **UI**: Beautiful pre-built web component with QR codes and wallet selection
-- **Adapters**: All XRPL wallet adapters (Xaman, Crossmark, GemWallet, WalletConnect)
+- **Adapters**: All eight XRPL wallet adapters (Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap)
 
 ## Documentation
 
@@ -54,12 +54,15 @@ The easiest way to use XRPL Connect is with the plug-and-play web component:
 
 **JavaScript:**
 
+Create a Xaman application at [apps.xumm.dev](https://apps.xumm.dev/) and replace the placeholder
+below with its API key.
+
 ```javascript
 import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
 
 // Initialize wallet manager
 const walletManager = new WalletManager({
-  adapters: [new XamanAdapter(), new CrossmarkAdapter()],
+  adapters: [new XamanAdapter({ apiKey: 'YOUR_XAMAN_API_KEY' }), new CrossmarkAdapter()],
   network: 'testnet',
   // When true, the WalletManager attempts to restore the previous session
   // from localStorage on page load (the user is not prompted again). Set to
