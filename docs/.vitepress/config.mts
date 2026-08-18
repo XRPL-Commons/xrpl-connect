@@ -23,6 +23,10 @@ const currentNav = [
       { text: 'XRPL Commons', link: 'https://www.xrpl-commons.org' },
     ],
   },
+  {
+    text: 'v1.0.0',
+    items: [{ text: 'v0.8.2', link: '/0.8.2/' }],
+  },
 ];
 
 const currentSidebar = [
@@ -91,6 +95,10 @@ const archivedNav = [
       { text: 'GitHub', link: repository },
       { text: '0.8.2 release', link: `${repository}/releases/tag/v0.8.2` },
     ],
+  },
+  {
+    text: 'v0.8.2',
+    items: [{ text: 'v1.0.0', link: '/' }],
   },
 ];
 
@@ -174,7 +182,6 @@ export default defineConfig({
   themeConfig: {
     logo: '/commons_ligth_logo.png',
     i18nRouting: false,
-    langMenuLabel: 'Change documentation version',
     socialLinks: [{ icon: 'github', link: repository }],
     footer: {
       message: 'Released under the MIT License.',

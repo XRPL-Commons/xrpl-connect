@@ -67,6 +67,13 @@ td {
     sans-serif;
 }
 
+/* Version switching is exposed through the visible version nav item. */
+.VPNavBarTranslations,
+.VPNavBarExtra .translations,
+.VPNavScreenTranslations {
+  display: none !important;
+}
+
 /* Button text */
 button,
 .button {
