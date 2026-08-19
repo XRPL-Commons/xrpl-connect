@@ -358,10 +358,7 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
     if (typeof window !== 'undefined' && window.crypto) {
       window.crypto.getRandomValues(array);
     } else {
-      // Fallback for environments without crypto
-      for (let i = 0; i < array.length; i++) {
-        array[i] = Math.floor(Math.random() * 256);
-      }
+      throw new Error('crypto.getRandomValues is required but not available in this environment');
     }
     return Array.from(array, (byte) => byte.toString(16).padStart(2, '0')).join('');
   }
