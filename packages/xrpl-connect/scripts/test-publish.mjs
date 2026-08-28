@@ -257,6 +257,8 @@ try {
       'jsdom@^22.1.0',
       'react@^18.3.1',
       'react-dom@^18.3.1',
+      'rollup@^4.62.2',
+      'vite@^7.1.11',
       'vue@^3.5.22',
       '@vue/server-renderer@^3.5.22',
     ],
@@ -309,12 +311,24 @@ try {
 
   const unresolvedXyraImport =
     /import\s*\(\s*(?:\/\*[\s\S]*?\*\/\s*)?[`'"]@xyrawallet\/sdk[`'"]\s*\)/;
+  const optionalChainConstructor = /new\s*\(\s*globalThis\?\.MockedWebSocket\s*\)/;
+  const directMockedWebSocketConstructor = /new\s+globalThis\.MockedWebSocket\s*\(/;
   for (const entry of ['xrpl-connect.mjs', 'xrpl-connect.umd.js']) {
-    const contents = readFileSync(path.join(candidatePackages[0].folder, entry), 'utf-8');
+    const contents = readFileSync(path.join(installedUmbrellaFolder, entry), 'utf-8');
     assert.doesNotMatch(
       contents,
       unresolvedXyraImport,
       `${entry} leaves the Xyra SDK as a browser-unresolvable bare import`
+    );
+    assert.doesNotMatch(
+      contents,
+      optionalChainConstructor,
+      `${entry} contains an optional-chain constructor that consumer builds cannot parse`
+    );
+    assert.match(
+      contents,
+      directMockedWebSocketConstructor,
+      `${entry} does not contain the guarded direct MockedWebSocket constructor`
     );
   }
 
@@ -424,6 +438,8 @@ try {
     'types-cjs.cts',
     'tsconfig.esm.json',
     'tsconfig.cjs.json',
+    'vite-entry.mjs',
+    'vite.config.mjs',
   ];
   for (const fixture of fixtures) {
     copyFileSync(path.join(fixturesFolder, fixture), path.join(consumerFolder, fixture));
@@ -477,8 +493,16 @@ try {
   run(process.execPath, ['runtime-ssr.mjs'], { ...runOptions, cwd: consumerFolder });
   console.log('→ Loading packed Vue ESM and CommonJS entries in SSR');
   run(process.execPath, ['vue-runtime-ssr.mjs'], { ...runOptions, cwd: consumerFolder });
+  console.log('→ Building packed umbrella ESM with Vite and Rollup');
+  run(
+    process.execPath,
+    [path.join(consumerFolder, 'node_modules', 'vite', 'bin', 'vite.js'), 'build'],
+    { ...runOptions, cwd: consumerFolder }
+  );
 
-  console.log('✓ Packed candidates passed manifest, publish, peer, runtime, and type checks');
+  console.log(
+    '✓ Packed candidates passed manifest, publish, peer, runtime, type, and consumer-build checks'
+  );
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true });
 }

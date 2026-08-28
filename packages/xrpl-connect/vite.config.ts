@@ -48,6 +48,21 @@ export default defineConfig({
     },
   },
   plugins: [
+    {
+      name: 'normalize-xumm-mocked-websocket-constructor',
+      generateBundle(_options, bundle) {
+        // Rolldown rewrites xumm-sdk's guarded constructor to `new
+        // (globalThis?.MockedWebSocket)`, which Nuxt's production parser rejects.
+        // The preceding type guard guarantees the property exists here.
+        for (const output of Object.values(bundle)) {
+          if (output.type !== 'chunk') continue;
+          output.code = output.code.replace(
+            /new\s*\(\s*globalThis\?\.MockedWebSocket\s*\)/g,
+            'new globalThis.MockedWebSocket'
+          );
+        }
+      },
+    },
     // Match the per-adapter pack config (`loader: { '.svg': 'text' }`). Without
     // this, Vite's default asset handler resolves `.svg` imports to a
     // `data:image/svg+xml,...` URL, and each adapter's
