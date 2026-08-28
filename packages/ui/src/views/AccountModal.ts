@@ -11,9 +11,15 @@ export function renderAccountModal(
 
   return `
       <div id="account-modal-overlay" class="account-modal-overlay">
-        <div class="account-modal">
+        <div
+          class="account-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="account-dialog-title"
+          tabindex="-1"
+        >
           <div class="account-modal-header">
-            <h2 class="account-modal-title">Connected</h2>
+            <h2 class="account-modal-title" id="account-dialog-title">Connected</h2>
             <button class="account-modal-close" id="account-modal-close" aria-label="Close">×</button>
           </div>
 

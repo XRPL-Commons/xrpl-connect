@@ -42,6 +42,13 @@ export class EventHandler {
     const overlayRoot = this.component.getOverlayRoot();
     const accountRoot = this.component.getAccountModalRoot();
 
+    this.add(overlayRoot?.querySelector('[role="dialog"]'), 'keydown', (event: Event) => {
+      this.component.handleDialogKeyDown('wallet', event as KeyboardEvent);
+    });
+    this.add(accountRoot?.querySelector('[role="dialog"]'), 'keydown', (event: Event) => {
+      this.component.handleDialogKeyDown('account', event as KeyboardEvent);
+    });
+
     // Connect wallet button (in component shadow root)
     this.add(shadow.querySelector('#connect-wallet-button'), 'click', async () => {
       const isConnected = this.component.walletManager?.connected ?? false;

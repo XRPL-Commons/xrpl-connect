@@ -17,7 +17,7 @@ export function renderWalletListView(
 ): string {
   return `
       <div class="header">
-        <h2 class="title">Connect Wallet</h2>
+        <h2 class="title" id="wallet-dialog-title">Connect Wallet</h2>
         <button class="close-button" part="close-button" aria-label="Close">×</button>
       </div>
 

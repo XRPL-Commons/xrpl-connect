@@ -91,3 +91,90 @@ test('supports touch scrolling to the final wallet', async ({ page, context }) =
 
   await expectScrolledToEnd(content);
 });
+
+test('provides wallet dialog semantics, traps focus, and restores every close path', async ({
+  page,
+}) => {
+  await page.goto(fixturePath);
+  const opener = page.getByRole('button', { name: 'Open wallet dialog' });
+
+  await opener.click();
+  const dialog = page.getByRole('dialog', { name: 'Connect Wallet' });
+  const closeButton = dialog.getByRole('button', { name: 'Close' });
+  const lastWallet = dialog.getByRole('button', { name: 'Install Wallet 12' });
+  await expect(dialog).toHaveAttribute('aria-modal', 'true');
+  await expect(closeButton).toBeFocused();
+
+  await lastWallet.focus();
+  await page.keyboard.press('Tab');
+  await expect(closeButton).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(lastWallet).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+
+  await opener.click();
+  await page
+    .getByRole('dialog', { name: 'Connect Wallet' })
+    .getByRole('button', {
+      name: 'Close',
+    })
+    .click();
+  await expect(opener).toBeFocused();
+
+  await opener.click();
+  await page.locator('[data-xrpl-overlay-portal] .overlay').dispatchEvent('click');
+  await expect(opener).toBeFocused();
+
+  await opener.click();
+  await page
+    .getByRole('dialog', { name: 'Connect Wallet' })
+    .getByRole('button', {
+      name: 'Wallet 1',
+      exact: true,
+    })
+    .click();
+  await expect(page.getByRole('dialog', { name: 'Connect Wallet' })).toBeHidden();
+  await expect(opener).toBeFocused();
+});
+
+test('provides account dialog semantics, traps focus, and restores its internal opener', async ({
+  page,
+}) => {
+  await page.goto(fixturePath);
+  const opener = page.locator('#account-connector').locator('#connect-wallet-button');
+
+  await opener.click();
+  const dialog = page.getByRole('dialog', { name: 'Connected' });
+  const closeButton = dialog.getByRole('button', { name: 'Close' });
+  const disconnectButton = dialog.getByRole('button', { name: 'Disconnect' });
+  await expect(dialog).toHaveAttribute('aria-modal', 'true');
+  await expect(closeButton).toBeFocused();
+
+  await disconnectButton.focus();
+  await page.keyboard.press('Tab');
+  await expect(closeButton).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(disconnectButton).toBeFocused();
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+
+  await opener.click();
+  await page
+    .locator('[data-xrpl-account-modal-portal] .account-modal-overlay')
+    .dispatchEvent('click');
+  await expect(opener).toBeFocused();
+
+  await opener.click();
+  await page
+    .getByRole('dialog', { name: 'Connected' })
+    .getByRole('button', {
+      name: 'Close',
+    })
+    .click();
+  await expect(opener).toBeFocused();
+});
