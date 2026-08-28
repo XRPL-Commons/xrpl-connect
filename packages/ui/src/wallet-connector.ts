@@ -417,10 +417,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     /**
      * Check which wallets are available
      * Filters wallets based on 'wallets' attribute and checks isAvailable() on each
+     * When retryWalletIds is provided, previously available wallets remain cached.
      */
-    private async checkWalletAvailability(): Promise<boolean> {
+    private async checkWalletAvailability(retryWalletIds?: ReadonlySet<string>): Promise<boolean> {
       const manager = this.walletManager;
       const generation = ++this.walletAvailabilityGeneration;
+      const cachedAvailableWalletIds = new Set(this.availableWallets.map((wallet) => wallet.id));
 
       if (!manager || !manager.wallets.length) {
         logger.warn('No wallet manager or wallets registered');
@@ -439,8 +441,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
         logger.debug('Checking availability for wallets:', specifiedWalletIds);
 
-        // Get adapters for specified wallet IDs
-        const walletsToCheck = manager.wallets.filter((w) => specifiedWalletIds.includes(w.id));
+        const walletsById = new Map(manager.wallets.map((wallet) => [wallet.id, wallet]));
+        const walletsToCheck = manager.wallets.filter(
+          (wallet) =>
+            specifiedWalletIds.includes(wallet.id) &&
+            (!retryWalletIds || retryWalletIds.has(wallet.id))
+        );
 
         // Check availability for each wallet in parallel. Each check is capped
         // with a timeout so one slow or hung wallet (e.g. a network probe on a
@@ -479,9 +485,22 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
         this.walletAvailabilityTimedOut = availabilityChecks.some((check) => check.timedOut);
 
-        // Split into available / unavailable, preserving the specified order.
+        // Merge retried results with cached available wallets while preserving
+        // the configured order.
+        const availabilityByWalletId = new Map(
+          availabilityChecks.map((check) => [check.wallet.id, check])
+        );
         const ordered = specifiedWalletIds
-          .map((id) => availabilityChecks.find((check) => check.wallet.id === id))
+          .map((id) => {
+            const wallet = walletsById.get(id);
+            if (!wallet) return undefined;
+            return (
+              availabilityByWalletId.get(id) ??
+              (retryWalletIds && cachedAvailableWalletIds.has(id)
+                ? { wallet, available: true, timedOut: false }
+                : undefined)
+            );
+          })
           .filter(
             (check): check is { wallet: WalletAdapter; available: boolean; timedOut: boolean } =>
               !!check
@@ -500,6 +519,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           return false;
         }
         logger.error('Error checking wallet availability:', error);
+        if (retryWalletIds) {
+          this.walletAvailabilityTimedOut = true;
+          return true;
+        }
         this.availableWallets = [];
         this.unavailableWallets = [];
         this.walletAvailabilityTimedOut = true;
@@ -573,12 +596,16 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       // Retry bounded checks for wallets that may have timed out or been injected
       // by a browser extension since the previous open.
+      const retryWalletIds =
+        this.walletAvailabilityChecked && this.unavailableWallets.length > 0
+          ? new Set(this.unavailableWallets.map((wallet) => wallet.id))
+          : undefined;
       if (
         !this.walletAvailabilityChecked ||
         this.walletAvailabilityTimedOut ||
-        this.unavailableWallets.length > 0
+        retryWalletIds !== undefined
       ) {
-        const availabilityApplied = await this.checkWalletAvailability();
+        const availabilityApplied = await this.checkWalletAvailability(retryWalletIds);
         if (openGeneration !== this.openGeneration || !this.isOpen) {
           return;
         }

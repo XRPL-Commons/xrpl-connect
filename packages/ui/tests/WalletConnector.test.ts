@@ -144,6 +144,29 @@ describe('WalletConnector wallet availability', () => {
     ).not.toBeNull();
   });
 
+  it('preserves available wallets while retrying only unavailable wallets', async () => {
+    const availableProbe = vi
+      .fn<WalletAdapter['isAvailable']>()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValue(false);
+    const recoveringProbe = vi
+      .fn<WalletAdapter['isAvailable']>()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
+    const available = createAdapter('available', 'Available Wallet', availableProbe);
+    const recovering = createAdapter('recovering', 'Recovering Wallet', recoveringProbe);
+    element = createElement(new WalletManager({ adapters: [available, recovering] }));
+
+    await element.open();
+    element.close();
+    await element.open();
+
+    expect(availableProbe).toHaveBeenCalledTimes(1);
+    expect(recoveringProbe).toHaveBeenCalledTimes(2);
+    expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="available"]')).not.toBeNull();
+    expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="recovering"]')).not.toBeNull();
+  });
+
   it('retries timed-out wallets on a later open and renders them when they recover', async () => {
     let resolveFirst!: (available: boolean) => void;
     const firstProbe = new Promise<boolean>((resolve) => {
