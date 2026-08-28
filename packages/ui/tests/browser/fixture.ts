@@ -49,3 +49,15 @@ const accountConnector = document.querySelector('#account-connector') as HTMLEle
   setWalletManager(manager: WalletManager): void;
 };
 accountConnector.setWalletManager(accountManager);
+
+declare global {
+  interface Window {
+    disconnectAccountWallet(): Promise<void>;
+    reconnectAccountWallet(): Promise<void>;
+  }
+}
+
+window.disconnectAccountWallet = () => accountManager.disconnect();
+window.reconnectAccountWallet = async () => {
+  await accountManager.connect(accountWallet.id);
+};

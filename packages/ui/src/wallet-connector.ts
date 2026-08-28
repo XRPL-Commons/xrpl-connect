@@ -360,7 +360,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           this.close();
         },
         disconnect: () => {
-          if (manager === this.walletManager) this.render();
+          if (manager !== this.walletManager) return;
+          if (this.accountModalOpen) this.closeAccountModal();
+          else this.render();
         },
         accountChanged: () => {
           if (manager === this.walletManager) this.render();
@@ -746,7 +748,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     public async disconnectFromAccountModal() {
       try {
         await this.walletManager?.disconnect();
-        this.closeAccountModal();
+        if (this.accountModalOpen) this.closeAccountModal();
       } catch (error) {
         logger.error('Failed to disconnect:', error);
       }

@@ -177,4 +177,29 @@ test('provides account dialog semantics, traps focus, and restores its internal 
     })
     .click();
   await expect(opener).toBeFocused();
+
+  await opener.click();
+  await page
+    .getByRole('dialog', { name: 'Connected' })
+    .getByRole('button', {
+      name: 'Disconnect',
+    })
+    .click();
+  await expect(page.getByRole('dialog', { name: 'Connected' })).toBeHidden();
+  await expect(opener).toBeFocused();
+});
+
+test('cleans up the account dialog after an external wallet disconnect', async ({ page }) => {
+  await page.goto(fixturePath);
+  const opener = page.locator('#account-connector').locator('#connect-wallet-button');
+
+  await opener.click();
+  await expect(page.getByRole('dialog', { name: 'Connected' })).toBeVisible();
+
+  await page.evaluate(() => window.disconnectAccountWallet());
+  await expect(page.getByRole('dialog', { name: 'Connected' })).toBeHidden();
+  await expect(opener).toBeFocused();
+
+  await page.evaluate(() => window.reconnectAccountWallet());
+  await expect(page.getByRole('dialog', { name: 'Connected' })).toBeHidden();
 });
