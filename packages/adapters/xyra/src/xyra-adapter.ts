@@ -28,7 +28,12 @@ import type {
   SubmittedTransaction,
   WalletAdapterEvent,
 } from '@xrpl-connect/core';
-import { createWalletError, STANDARD_NETWORKS, createLogger } from '@xrpl-connect/core';
+import {
+  createWalletError,
+  isStandardNetworkId,
+  STANDARD_NETWORKS,
+  createLogger,
+} from '@xrpl-connect/core';
 import type { XyraAdapterOptions, XyraConnectOptions } from './types';
 import { XRPL_CONNECT_TO_XYRA_NETWORK, XYRA_TO_XRPL_CONNECT_NETWORK } from './types';
 import iconSvg from './assets/icon.svg';
@@ -487,7 +492,7 @@ export class XyraAdapter implements WalletAdapter {
     const connectNetworkId = XYRA_TO_XRPL_CONNECT_NETWORK[xyraNetwork];
 
     // Check standard networks first
-    if (connectNetworkId && STANDARD_NETWORKS[connectNetworkId]) {
+    if (connectNetworkId && isStandardNetworkId(connectNetworkId)) {
       return STANDARD_NETWORKS[connectNetworkId];
     }
 

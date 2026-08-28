@@ -18,6 +18,7 @@ import type {
 } from '@xrpl-connect/core';
 import {
   createWalletError,
+  isStandardNetworkId,
   isWalletError,
   STANDARD_NETWORKS,
   resolveNetwork,
@@ -360,7 +361,7 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
       nodeUrl: string;
     };
     const networkId = CHAIN_ID_TO_NETWORK[snapNetwork.chainId];
-    if (networkId && STANDARD_NETWORKS[networkId]) {
+    if (networkId && isStandardNetworkId(networkId)) {
       return STANDARD_NETWORKS[networkId];
     }
     return {
