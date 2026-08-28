@@ -213,6 +213,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         const value = computedStyle.getPropertyValue(varName).trim();
         if (value) portalHost.style.setProperty(varName, value);
       }
+      for (const varName of Object.values(DERIVED_HOVER_VARIABLES)) {
+        const value = this.style.getPropertyValue(varName).trim();
+        if (value) portalHost.style.setProperty(varName, value);
+      }
     }
 
     private ensureOverlayPortal(): ShadowRoot {

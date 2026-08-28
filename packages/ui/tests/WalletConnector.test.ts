@@ -17,6 +17,16 @@ const DERIVED_HOVER_VARIABLES = {
   account: '--derived-account-address-button-hover-color',
 } as const;
 
+function derivedHoverColors(primaryColor: string, backgroundColor: string) {
+  const primaryHover = adjustColorBrightness(primaryColor, COLOR_ADJUSTMENT.HOVER_BRIGHTNESS);
+  const backgroundHover = adjustColorBrightness(backgroundColor, COLOR_ADJUSTMENT.HOVER_BRIGHTNESS);
+  return {
+    [DERIVED_HOVER_VARIABLES.primary]: primaryHover,
+    [DERIVED_HOVER_VARIABLES.connect]: backgroundHover,
+    [DERIVED_HOVER_VARIABLES.account]: primaryHover,
+  };
+}
+
 function createAdapter(
   id: string,
   name: string,
@@ -463,18 +473,23 @@ describe('WalletConnector wallet availability', () => {
     document.body.appendChild(element);
 
     await vi.advanceTimersByTimeAsync(20);
-    expect(element.style.getPropertyValue(DERIVED_HOVER_VARIABLES.primary)).toBe(
-      adjustColorBrightness(primaryColor, COLOR_ADJUSTMENT.HOVER_BRIGHTNESS)
-    );
-    expect(element.style.getPropertyValue(DERIVED_HOVER_VARIABLES.account)).toBe(
-      adjustColorBrightness(primaryColor, COLOR_ADJUSTMENT.HOVER_BRIGHTNESS)
-    );
-    expect(element.style.getPropertyValue(DERIVED_HOVER_VARIABLES.connect)).toBe(
-      adjustColorBrightness(backgroundColor, COLOR_ADJUSTMENT.HOVER_BRIGHTNESS)
-    );
-    for (const variable of Object.keys(EXPLICIT_HOVER_COLORS)) {
-      expect(element.style.getPropertyValue(variable)).toBe('');
-    }
+    await element.open();
+    element.openAccountModal();
+
+    const expectOmittedHover = (colors: ReturnType<typeof derivedHoverColors>) => {
+      const overlayHost = element!.getOverlayRoot()?.host as HTMLElement;
+      const accountModalHost = element!.getAccountModalRoot()?.host as HTMLElement;
+      for (const [variable, value] of Object.entries(colors)) {
+        expect(element!.style.getPropertyValue(variable)).toBe(value);
+        expect(overlayHost.style.getPropertyValue(variable)).toBe(value);
+        expect(accountModalHost.style.getPropertyValue(variable)).toBe(value);
+      }
+      for (const variable of Object.keys(EXPLICIT_HOVER_COLORS)) {
+        expect(element!.style.getPropertyValue(variable)).toBe('');
+      }
+    };
+
+    expectOmittedHover(derivedHoverColors(primaryColor, backgroundColor));
 
     const nextPrimaryColor = '#345678';
     const nextBackgroundColor = '#456789';
@@ -482,14 +497,6 @@ describe('WalletConnector wallet availability', () => {
     element.style.setProperty('--xc-background-color', nextBackgroundColor);
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(element.style.getPropertyValue(DERIVED_HOVER_VARIABLES.primary)).toBe(
-      adjustColorBrightness(nextPrimaryColor, COLOR_ADJUSTMENT.HOVER_BRIGHTNESS)
-    );
-    expect(element.style.getPropertyValue(DERIVED_HOVER_VARIABLES.account)).toBe(
-      adjustColorBrightness(nextPrimaryColor, COLOR_ADJUSTMENT.HOVER_BRIGHTNESS)
-    );
-    expect(element.style.getPropertyValue(DERIVED_HOVER_VARIABLES.connect)).toBe(
-      adjustColorBrightness(nextBackgroundColor, COLOR_ADJUSTMENT.HOVER_BRIGHTNESS)
-    );
+    expectOmittedHover(derivedHoverColors(nextPrimaryColor, nextBackgroundColor));
   });
 });
