@@ -108,6 +108,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     '--xc-warning-color',
   ] as const;
 
+  const DERIVED_HOVER_VARIABLES = {
+    connectButtonBackground: '--derived-connect-button-hover-background',
+    primaryButtonBackground: '--derived-primary-button-hover-background',
+    accountAddressColor: '--derived-account-address-button-hover-color',
+  } as const;
+
   class WalletConnectorElementImpl
     extends HTMLElement
     implements WalletConnectorContext, WalletConnectorElementInstance
@@ -260,10 +266,21 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         COLOR_ADJUSTMENT.HOVER_BRIGHTNESS
       );
 
-      // Apply hover colors
-      this.style.setProperty('--xc-primary-button-hover-background', primaryHoverColor);
-      this.style.setProperty('--xc-connect-button-hover-background', backgroundHoverColor);
-      this.style.setProperty('--xc-account-address-button-hover-color', primaryHoverColor);
+      const derivedColors = [
+        [DERIVED_HOVER_VARIABLES.primaryButtonBackground, primaryHoverColor],
+        [DERIVED_HOVER_VARIABLES.connectButtonBackground, backgroundHoverColor],
+        [DERIVED_HOVER_VARIABLES.accountAddressColor, primaryHoverColor],
+      ] as const;
+      let changed = false;
+
+      for (const [variable, value] of derivedColors) {
+        if (this.style.getPropertyValue(variable).trim() === value) continue;
+        this.style.setProperty(variable, value);
+        changed = true;
+      }
+
+      // Ignore style mutations caused by these internal fallback updates.
+      if (changed) this.styleObserver?.takeRecords();
 
       // Forward updated variables to portals
       if (this.overlayPortal) this.forwardCSSVariables(this.overlayPortal);

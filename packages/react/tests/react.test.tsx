@@ -448,6 +448,24 @@ describe('<WalletConnector>', () => {
     await waitFor(() => expect(onConnect).toHaveBeenCalledWith(ACCOUNT));
   });
 
+  it('forwards explicit hover cssVars to the custom element', () => {
+    const cssVars = {
+      '--xc-primary-button-hover-background': '#112233',
+      '--xc-connect-button-hover-background': '#223344',
+      '--xc-account-address-button-hover-color': '#334455',
+    } as const;
+    render(
+      <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+        <WalletConnector cssVars={cssVars} />
+      </XrplConnectProvider>
+    );
+
+    const element = document.querySelector('xrpl-wallet-connector') as HTMLElement;
+    for (const [variable, value] of Object.entries(cssVars)) {
+      expect(element.style.getPropertyValue(variable)).toBe(value);
+    }
+  });
+
   it('observes a connection started before custom-element binding settles', async () => {
     const onConnect = vi.fn();
     let mgr: WalletManager | null = null;
