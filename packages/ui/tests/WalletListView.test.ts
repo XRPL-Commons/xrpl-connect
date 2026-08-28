@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vite-plus/test';
 import type { WalletAdapter } from '@xrpl-connect/core';
+import { mainStyles } from '../src/styles/main';
 import { renderWalletListView } from '../src/views/WalletListView';
 
 const wallet = (id: string, url?: string): WalletAdapter =>
@@ -11,6 +12,37 @@ describe('renderWalletListView', () => {
     expect(html).toContain('data-wallet-id="xaman"');
     expect(html).toContain('data-wallet-id="crossmark"');
     expect(html).not.toContain('data-install-url');
+  });
+
+  it('inherits the configured primary and secondary button colors into wallet labels', () => {
+    const textColor = 'rgb(10, 20, 30)';
+    const primaryColor = 'rgb(240, 241, 242)';
+    const secondaryColor = 'rgb(120, 121, 122)';
+    const style = document.createElement('style');
+    style.textContent = mainStyles
+      .replace(':host', '.wallet-connector-host')
+      .replaceAll('var(--text-color)', textColor)
+      .replaceAll('var(--xc-primary-button-color)', primaryColor)
+      .replaceAll('var(--xc-secondary-button-color)', secondaryColor);
+    document.head.appendChild(style);
+
+    const host = document.createElement('div');
+    host.className = 'wallet-connector-host';
+    host.innerHTML = renderWalletListView(wallet('primary'), [wallet('secondary')]);
+    document.body.appendChild(host);
+
+    try {
+      const primaryLabel = host.querySelector('.primary-button > span');
+      const secondaryLabel = host.querySelector('.wallet-button > span');
+
+      expect(primaryLabel).not.toBeNull();
+      expect(secondaryLabel).not.toBeNull();
+      expect(getComputedStyle(primaryLabel!).color).toBe(primaryColor);
+      expect(getComputedStyle(secondaryLabel!).color).toBe(secondaryColor);
+    } finally {
+      host.remove();
+      style.remove();
+    }
   });
 
   it('renders no install rows by default (unavailable omitted)', () => {
