@@ -119,8 +119,11 @@ describe('WalletConnector wallet availability', () => {
     expect(manager.wallet).toBeNull();
   });
 
-  it('renders an empty state instead of falling back to unavailable wallets', async () => {
-    const isAvailable = vi.fn(async () => false);
+  it('retries unavailable wallets on a later open and renders them when they appear', async () => {
+    const isAvailable = vi
+      .fn<WalletAdapter['isAvailable']>()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
     const adapter = createAdapter('unavailable', 'Unavailable Wallet', isAvailable);
     element = createElement(new WalletManager({ adapters: [adapter] }));
 
@@ -134,7 +137,11 @@ describe('WalletConnector wallet availability', () => {
 
     element.close();
     await element.open();
-    expect(isAvailable).toHaveBeenCalledTimes(1);
+
+    expect(isAvailable).toHaveBeenCalledTimes(2);
+    expect(
+      element.getOverlayRoot()?.querySelector('[data-wallet-id="unavailable"]')
+    ).not.toBeNull();
   });
 
   it('retries timed-out wallets on a later open and renders them when they recover', async () => {

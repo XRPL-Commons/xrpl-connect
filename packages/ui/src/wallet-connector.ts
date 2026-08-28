@@ -571,8 +571,13 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       // Prevent body scroll when modal is open
       document.body.style.overflow = 'hidden';
 
-      // Retry a bounded check on later opens when an adapter previously timed out.
-      if (!this.walletAvailabilityChecked || this.walletAvailabilityTimedOut) {
+      // Retry bounded checks for wallets that may have timed out or been injected
+      // by a browser extension since the previous open.
+      if (
+        !this.walletAvailabilityChecked ||
+        this.walletAvailabilityTimedOut ||
+        this.unavailableWallets.length > 0
+      ) {
         const availabilityApplied = await this.checkWalletAvailability();
         if (openGeneration !== this.openGeneration || !this.isOpen) {
           return;

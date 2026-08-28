@@ -498,7 +498,9 @@ if (available) {
 
 #### Implementation Details
 
-- **isAvailable()**: Checks if `window.xrpl?.isOtsu` exists (injected by extension)
+- **isAvailable()**: Returns `true` only when the extension has injected
+  `window.xrpl?.isOtsu === true`. The adapter does not cache this check, so a
+  provider injected later is detected by the next call.
 - **connect()**: Requests connection with full permission scopes; opens extension notification popup for user approval
 - **sign()**: Uses extension's `signTransaction` method with transaction simulation
 - **signAndSubmit()**: Uses extension's `signAndSubmit` method

@@ -77,4 +77,11 @@ The web component hides unavailable wallets by default. Use its `wallets` attrib
 ></xrpl-wallet-connector>
 ```
 
+Otsu is available only when its extension has injected a provider with
+`window.xrpl?.isOtsu === true`. The adapter checks the current provider on every
+`isAvailable()` call, so applications using `WalletManager` directly can call
+`getAvailableWallets()` again after a late extension injection. The wallet
+connector retries wallets that were unavailable or timed out whenever the modal
+is opened again, so closing and reopening it refreshes late-injected providers.
+
 See the [API reference](/guide/api-reference) for constructor and connect-option types.

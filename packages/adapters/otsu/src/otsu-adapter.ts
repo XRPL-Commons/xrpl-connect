@@ -72,13 +72,11 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
    * Check if the Otsu Wallet extension is installed.
    *
    * The extension injects a provider object at window.xrpl with
-   * isOtsu=true. Returns false in non-browser environments.
+   * isOtsu=true. The provider is checked on every call so an extension
+   * injected after adapter construction can be detected.
    */
   async isAvailable(): Promise<boolean> {
-    if (typeof window === 'undefined') {
-      return false;
-    }
-    return true;
+    return typeof window !== 'undefined' && window.xrpl?.isOtsu === true;
   }
 
   // ==================== Connection Lifecycle ====================

@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Otsu/UI: report Otsu as available only when its injected provider is present,
+  and retry unavailable wallets when the connector is reopened so late provider
+  injection is discovered (#140).
 - Dependencies: refresh WalletConnect and constrain vulnerable transitive ranges used by WalletConnect, Crossmark declarations, and documentation tooling so production installs no longer report high-severity advisories; document the remaining declarations-only low-severity finding (#116).
 - Xyra/meta-bundle: lazy-load the browser-only Xyra SDK so both ESM and CommonJS umbrella imports are safe during SSR; verify no-DOM imports in fresh packed consumers.
 - Crossmark: normalize the upstream CommonJS SDK namespace so the standalone adapter loads through both Node ESM and CommonJS, with a build-time runtime smoke test.
