@@ -39,11 +39,11 @@ jobs:
 
       - name: Install browser
         if: matrix.node-version == '24.11'
-        run: pnpm exec playwright install --with-deps chromium
+        run: vp exec playwright install --with-deps chromium
 
       - name: Browser tests
         if: matrix.node-version == '24.11'
-        run: pnpm test:browser
+        run: vp exec playwright test
 
   docs-build:
     runs-on: ubuntu-latest

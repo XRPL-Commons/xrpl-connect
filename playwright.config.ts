@@ -18,7 +18,7 @@ export default defineConfig({
   ],
   webServer: {
     command:
-      'pnpm exec vp dev --config packages/ui/tests/browser/vite.config.ts --host 127.0.0.1 --port 4173 --strictPort',
+      'vp dev --config packages/ui/tests/browser/vite.config.ts --host 127.0.0.1 --port 4173 --strictPort',
     url: 'http://127.0.0.1:4173/packages/ui/tests/browser/',
     reuseExistingServer: !process.env.CI,
   },
