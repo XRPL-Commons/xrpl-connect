@@ -255,10 +255,11 @@ try {
       '@types/react-dom@^18.3.0',
       'xrpl@^4.0.0',
       'jsdom@^22.1.0',
+      'nuxt@4.1.3',
       'react@^18.3.1',
       'react-dom@^18.3.1',
-      'rollup@^4.62.2',
-      'vite@^7.1.11',
+      'rollup@4.62.2',
+      'vite@7.1.11',
       'vue@^3.5.22',
       '@vue/server-renderer@^3.5.22',
     ],
@@ -438,12 +439,14 @@ try {
     'types-cjs.cts',
     'tsconfig.esm.json',
     'tsconfig.cjs.json',
-    'vite-entry.mjs',
-    'vite.config.mjs',
+    'nuxt.config.mjs',
   ];
   for (const fixture of fixtures) {
     copyFileSync(path.join(fixturesFolder, fixture), path.join(consumerFolder, fixture));
   }
+  const nuxtAppFolder = path.join(consumerFolder, 'app');
+  mkdirSync(nuxtAppFolder);
+  copyFileSync(path.join(fixturesFolder, 'nuxt-app.vue'), path.join(nuxtAppFolder, 'app.vue'));
   for (const fixture of [
     'runtime-ssr.mjs',
     'types-react-esm.mts',
@@ -493,11 +496,15 @@ try {
   run(process.execPath, ['runtime-ssr.mjs'], { ...runOptions, cwd: consumerFolder });
   console.log('→ Loading packed Vue ESM and CommonJS entries in SSR');
   run(process.execPath, ['vue-runtime-ssr.mjs'], { ...runOptions, cwd: consumerFolder });
-  console.log('→ Building packed umbrella ESM with Vite and Rollup');
+  console.log('→ Building packed umbrella ESM with Nuxt and Vite');
   run(
     process.execPath,
-    [path.join(consumerFolder, 'node_modules', 'vite', 'bin', 'vite.js'), 'build'],
-    { ...runOptions, cwd: consumerFolder }
+    [path.join(consumerFolder, 'node_modules', 'nuxt', 'bin', 'nuxt.mjs'), 'build'],
+    {
+      ...runOptions,
+      env: { ...runOptions.env, NUXT_TELEMETRY_DISABLED: '1' },
+      cwd: consumerFolder,
+    }
   );
 
   console.log(
