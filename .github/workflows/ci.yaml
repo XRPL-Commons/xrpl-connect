@@ -37,6 +37,14 @@ jobs:
       - name: Test
         run: vp run -F './packages/**' --ignore-depends-on --concurrency-limit 2 test -- --passWithNoTests
 
+      - name: Install browser
+        if: matrix.node-version == '24.11'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Browser tests
+        if: matrix.node-version == '24.11'
+        run: pnpm test:browser
+
   docs-build:
     runs-on: ubuntu-latest
     steps:

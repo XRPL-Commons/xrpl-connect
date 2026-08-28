@@ -21,7 +21,7 @@ export function renderWalletListView(
         <button class="close-button" part="close-button" aria-label="Close">×</button>
       </div>
 
-      <div class="content">
+      <div class="content" role="region" aria-label="Wallet options" tabindex="0">
         ${
           primaryWallet
             ? `

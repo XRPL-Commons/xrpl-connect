@@ -149,6 +149,7 @@ export const mainStyles = `
 
   .header {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: space-between;
     padding: ${SIZES.HEADER_PADDING}px 20px 16px;
@@ -211,7 +212,9 @@ export const mainStyles = `
 
   .content {
     flex: 1;
-    overflow-y: hidden;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 0 24px 24px;
     transition: opacity 0.3s ease;
     -ms-overflow-style: none;
