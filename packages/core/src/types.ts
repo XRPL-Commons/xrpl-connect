@@ -49,7 +49,6 @@ export const STANDARD_NETWORKS: Record<StandardNetworkId, NetworkInfo> = {
  */
 export type NetworkConfig = StandardNetworkId | NetworkInfo;
 
-/** Check whether an external string identifies a built-in XRPL network. */
 export function isStandardNetworkId(networkId: string): networkId is StandardNetworkId {
   return Object.prototype.hasOwnProperty.call(STANDARD_NETWORKS, networkId);
 }
