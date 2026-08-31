@@ -66,6 +66,26 @@ describe('WalletConnectorElement availability rendering', () => {
     expect(modal).not.toContain('Unavailable Wallet');
   });
 
+  it('omits unconfigured wallets instead of presenting them as installable', async () => {
+    const unconfiguredWallet = {
+      id: 'unconfigured',
+      name: 'Unconfigured Wallet',
+      url: 'https://example.com/install',
+      getMissingConfiguration: vi.fn(() => ['credential']),
+      isAvailable: vi.fn(async () => true),
+    } as unknown as WalletAdapter;
+    const connector = mount([unconfiguredWallet]);
+    connector.setAttribute('show-unavailable', '');
+
+    await connector.open();
+
+    const modal = connector.getOverlayRoot()?.innerHTML ?? '';
+    expect(unconfiguredWallet.getMissingConfiguration).toHaveBeenCalledWith(undefined);
+    expect(unconfiguredWallet.isAvailable).not.toHaveBeenCalled();
+    expect(modal).not.toContain('data-wallet-id="unconfigured"');
+    expect(modal).not.toContain('Unconfigured Wallet');
+  });
+
   it('preserves unavailable slots while applying MRU order to available wallets', async () => {
     const connector = mount([
       createWallet('unavailable-first', false, 'https://example.com/first'),

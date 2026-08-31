@@ -31,6 +31,12 @@ modal.ready.value = true;
 const modalOpen: Promise<void> = modal.open();
 const modalAccount: Promise<AccountInfo> = modal.openAndWait();
 const signer = null as unknown as ReturnType<typeof useSigner>;
+const wallet = null as unknown as ReturnType<typeof useWallet>;
+void wallet.connect('xaman', { apiKey: 'api-key' });
+void wallet.connect('walletconnect', { projectId: 'project-id' });
+// @ts-expect-error Xaman deferred options do not accept a WalletConnect project ID.
+void wallet.connect('xaman', { projectId: 'project-id' });
+void wallet.connect('custom-wallet', { customCredential: 'credential' });
 const signedTransaction: Promise<ManagedSignedTransaction> = signer.sign({} as Transaction);
 const signedMessage: Promise<ManagedSignedMessage> = signer.signMessage('message');
 const errorGuard: (error: unknown) => error is WalletError = isWalletError;

@@ -5,6 +5,9 @@ import {
   createAdapters,
   GemWalletAPI,
   MetaMaskSnapAdapter,
+  WalletConnectAdapter,
+  WalletManager,
+  XamanAdapter,
   WalletConnectorElement,
   XamanOAuth2,
   XamanSDK,
@@ -25,6 +28,16 @@ import {
   type XyraConnectOptions,
 } from 'xrpl-connect';
 
+interface TypedCustomWalletOptions {
+  credential: string;
+}
+
+declare module 'xrpl-connect' {
+  interface WalletConnectionOptionsById {
+    'typed-custom-wallet': TypedCustomWalletOptions;
+  }
+}
+
 const standardNetworkId: StandardNetworkId = 'mainnet';
 const standardWalletId: WalletId = STANDARD_WALLET_IDS[0];
 const customWalletId: WalletIdentifier = 'custom-wallet';
@@ -36,6 +49,25 @@ const packagedAdapters = createAdapters({
   walletconnect: { projectId: 'project-id' },
   ledger: { accountIndex: 1 },
 });
+const manager = new WalletManager({ adapters: packagedAdapters });
+const configuredXaman = new XamanAdapter({ apiKey: 'api-key' });
+const deferredXaman = new XamanAdapter();
+const configuredWalletConnect = new WalletConnectAdapter({ projectId: 'project-id' });
+const deferredWalletConnect = new WalletConnectAdapter();
+// @ts-expect-error Xaman constructor options do not accept a WalletConnect project ID.
+new XamanAdapter({ projectId: 'project-id' });
+// @ts-expect-error WalletConnect constructor options do not accept a Xaman API key.
+new WalletConnectAdapter({ apiKey: 'api-key' });
+void manager.connect('xaman', { apiKey: 'api-key' });
+void manager.connect('walletconnect', { projectId: 'project-id' });
+// @ts-expect-error Xaman deferred options do not accept a WalletConnect project ID.
+void manager.connect('xaman', { projectId: 'project-id' });
+// @ts-expect-error WalletConnect deferred options do not accept a Xaman API key.
+void manager.connect('walletconnect', { apiKey: 'api-key' });
+void manager.connect('custom-wallet', { customCredential: 'credential' });
+void manager.connect('typed-custom-wallet', { credential: 'credential' });
+// @ts-expect-error Interface-shaped custom mappings reject unrelated options.
+void manager.connect('typed-custom-wallet', { otherCredential: 'credential' });
 // @ts-expect-error Xaman constructor options do not accept a WalletConnect project ID.
 createAdapters({ xaman: { projectId: 'project-id' } });
 const standardNetworkConfig: NetworkConfig = standardNetworkId;
@@ -110,6 +142,11 @@ void [
   invalidStandardWalletId,
   descriptorWalletId,
   packagedAdapters,
+  manager,
+  configuredXaman,
+  deferredXaman,
+  configuredWalletConnect,
+  deferredWalletConnect,
   standardNetworkConfig,
   customNetworkConfig,
   invalidNetworkConfig,

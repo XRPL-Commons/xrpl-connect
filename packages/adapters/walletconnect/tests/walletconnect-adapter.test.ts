@@ -62,6 +62,28 @@ describe('WalletConnectAdapter.isAvailable', () => {
   });
 });
 
+describe('WalletConnectAdapter configuration', () => {
+  it('accepts constructor or deferred project IDs', () => {
+    expect(
+      new WalletConnectAdapter({ projectId: 'constructor-project' }).getMissingConfiguration()
+    ).toEqual([]);
+    expect(
+      new WalletConnectAdapter().getMissingConfiguration({ projectId: 'deferred-project' })
+    ).toEqual([]);
+  });
+
+  it('identifies a missing project ID before connection work begins', async () => {
+    const adapter = new WalletConnectAdapter();
+
+    expect(adapter.getMissingConfiguration()).toEqual(['projectId']);
+    await expect(adapter.connect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONFIGURATION_REQUIRED,
+      message: 'WalletConnect requires configuration before connecting: projectId.',
+    });
+    expect(SignClientMock.init).not.toHaveBeenCalled();
+  });
+});
+
 describe('WalletConnectAdapter.connect', () => {
   it('returns account info after a successful session approval', async () => {
     mockClient.connect.mockResolvedValue({
@@ -714,10 +736,10 @@ describe('WalletConnectAdapter.connect', () => {
     expect(mockClient.disconnect).toHaveBeenCalledOnce();
   });
 
-  it('throws a wrapped error when no project ID is provided', async () => {
+  it('throws a configuration error when no project ID is provided', async () => {
     const adapter = new WalletConnectAdapter();
     await expect(adapter.connect()).rejects.toMatchObject({
-      code: WalletErrorCode.CONNECTION_FAILED,
+      code: WalletErrorCode.CONFIGURATION_REQUIRED,
     });
   });
 

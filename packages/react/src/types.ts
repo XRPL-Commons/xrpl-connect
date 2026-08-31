@@ -4,7 +4,7 @@ import type {
   AccountInfo,
   NetworkInfo,
   WalletError,
-  ConnectOptions,
+  ConnectOptionsFor,
   WalletIdentifier,
 } from '@xrpl-connect/core';
 import type { CSSProperties, ReactNode } from 'react';
@@ -29,7 +29,10 @@ export interface XrplConnectContextValue {
   connecting: boolean;
   /** The most recent connection/adapter error, as a typed `WalletError`. */
   error: WalletError | null;
-  connect: (walletId: WalletIdentifier, options?: ConnectOptions) => Promise<AccountInfo>;
+  connect: <const Wallet extends WalletIdentifier>(
+    walletId: Wallet,
+    options?: ConnectOptionsFor<Wallet>
+  ) => Promise<AccountInfo>;
   disconnect: () => Promise<void>;
   /** @internal — used by `<WalletConnector>` to register its element. */
   registerConnector: (el: WalletConnectorElement) => void;

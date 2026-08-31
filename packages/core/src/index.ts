@@ -23,6 +23,8 @@ export type {
   ManagedSignedMessage,
   SubmittedTransaction,
   ConnectOptions,
+  ConnectOptionsFor,
+  WalletConnectionOptionsById,
   ReconnectOptions,
   WalletEvent,
   WalletAdapterEvent,
@@ -50,6 +52,8 @@ export {
   adapterSupports,
   CAPABILITY_DEFAULTS,
   supportsReconnectOptions,
+  getMissingAdapterConfiguration,
+  isAdapterConfigured,
 } from './types';
 
 // Errors

@@ -4,7 +4,13 @@
  */
 
 import type { AccountInfo, WalletAdapter, WalletManager } from '@xrpl-connect/core';
-import { createLogger, supportsPreInitialize, withTimeout, TIME } from '@xrpl-connect/core';
+import {
+  createLogger,
+  isAdapterConfigured,
+  supportsPreInitialize,
+  withTimeout,
+  TIME,
+} from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
 import { mainStyles } from './styles/main';
 import {
@@ -473,8 +479,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
         logger.debug('Checking availability for wallets:', specifiedWalletIds);
 
-        const walletsById = new Map(manager.wallets.map((wallet) => [wallet.id, wallet]));
-        const walletsToCheck = manager.wallets.filter(
+        const configuredWallets = manager.wallets.filter((wallet) => isAdapterConfigured(wallet));
+        const walletsById = new Map(configuredWallets.map((wallet) => [wallet.id, wallet]));
+        const walletsToCheck = configuredWallets.filter(
           (wallet) =>
             specifiedWalletIds.includes(wallet.id) &&
             (!retryWalletIds || retryWalletIds.has(wallet.id))
@@ -779,7 +786,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       // Find WalletConnect adapter
       const walletConnectAdapter = this.walletManager.wallets.find((w) => w.id === 'walletconnect');
 
-      if (!walletConnectAdapter || !supportsPreInitialize(walletConnectAdapter)) return;
+      if (
+        !walletConnectAdapter ||
+        !isAdapterConfigured(walletConnectAdapter) ||
+        !supportsPreInitialize(walletConnectAdapter)
+      )
+        return;
 
       try {
         logger.debug('Pre-initializing WalletConnect...');

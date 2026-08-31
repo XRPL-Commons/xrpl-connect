@@ -672,6 +672,13 @@ const walletChoices: Array<{ id: WalletId; name: string }> = ADAPTER_DESCRIPTORS
 );
 ```
 
+Xaman and WalletConnect need constructor credentials to appear in wallet
+discovery. Direct flows may defer a credential with typed wallet-specific
+options, for example `walletManager.connect('xaman', { apiKey })` or
+`walletManager.connect('walletconnect', { projectId })`. Deferred credentials
+apply only to that call and are not persisted, so configure constructors when
+using automatic reconnection.
+
 ### Conditional Adapter Loading
 
 ```typescript

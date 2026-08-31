@@ -14,6 +14,7 @@ import type {
   SubmittedTransaction,
   WalletEvent,
   ConnectOptions,
+  ConnectOptionsFor,
   NetworkConfig,
   NetworkInfo,
   StoredState,
@@ -25,6 +26,7 @@ import {
   adapterSupports,
   supportsFetchAccount,
   supportsReconnectOptions,
+  getMissingAdapterConfiguration,
   WalletErrorCode,
 } from './types';
 import { createWalletError, isWalletError } from './errors';
@@ -108,7 +110,10 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   /**
    * Connect to a wallet
    */
-  async connect(walletId: WalletIdentifier, options?: ConnectOptions): Promise<AccountInfo> {
+  async connect<const Wallet extends WalletIdentifier>(
+    walletId: Wallet,
+    options?: ConnectOptionsFor<Wallet>
+  ): Promise<AccountInfo> {
     return this.connectInternal(walletId, options);
   }
 
@@ -132,6 +137,12 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     if (activeAdapter) {
       throw createWalletError.alreadyConnected(activeAdapter.name);
     }
+
+    const missingConfiguration = getMissingAdapterConfiguration(adapter, options);
+    if (missingConfiguration.length > 0) {
+      throw createWalletError.configurationRequired(adapter.name, missingConfiguration);
+    }
+
     this.connectingAdapter = adapter;
     const connectionAttempt = ++this.connectionAttemptGeneration;
 
@@ -466,6 +477,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     // single slow or hung `isAvailable()` can't stall the whole list.
     const results = await Promise.all(
       adapters.map(async (adapter) => {
+        if (getMissingAdapterConfiguration(adapter).length > 0) {
+          return false;
+        }
         const result = await withTimeout<boolean | typeof AVAILABILITY_TIMED_OUT>(
           async () => {
             try {

@@ -8,7 +8,13 @@ import {
   useState,
 } from 'react';
 import { WalletErrorCode, WalletManager, isWalletError } from '@xrpl-connect/core';
-import type { AccountInfo, NetworkInfo, WalletError, ConnectOptions } from '@xrpl-connect/core';
+import type {
+  AccountInfo,
+  NetworkInfo,
+  WalletError,
+  ConnectOptionsFor,
+  WalletIdentifier,
+} from '@xrpl-connect/core';
 import type {
   XrplConnectContextValue,
   XrplConnectProviderProps,
@@ -154,7 +160,10 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
   ]);
 
   const connect = useCallback(
-    async (walletId: string, options?: ConnectOptions) => {
+    async <const Wallet extends WalletIdentifier>(
+      walletId: Wallet,
+      options?: ConnectOptionsFor<Wallet>
+    ) => {
       const attempt = beginConnectionAttempt();
       let failure: unknown;
       try {
