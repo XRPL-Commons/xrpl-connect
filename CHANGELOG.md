@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Vue: make `useWalletModal()` awaitable with connector readiness, `openAndWait()`, explicit missing-connector failures, and deterministic ownership when multiple connectors are mounted (#145).
+- Vue: expose the native unavailable-wallet display behavior through the typed `showUnavailable` component prop (#146).
+
 ### Fixed
 
 - xrpl-connect (meta-bundle): emit the Xaman mock-WebSocket constructor without an optional chain so Nuxt 4 and Vite/Rollup production builds can consume the published ESM artifact. Consumers can remove `patch-package` or transpilation workarounds for `xrpl-connect.mjs` (#141).

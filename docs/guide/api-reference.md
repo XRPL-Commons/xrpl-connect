@@ -504,18 +504,24 @@ composables and `<WalletConnector>` must run beneath that installation.
 
 - `useWallet()` returns the manager, readonly `connected`, `account`, `network`, `connecting`, and `error` refs, plus `connect` and `disconnect`.
 - `useSigner()` returns `sign`, `signAndSubmit`, and `signMessage`.
-- `useWalletModal()` returns `open` and `close` for the most recently mounted connector.
+- `useWalletModal()` returns readonly `ready`, `open(): Promise<void>`,
+  `openAndWait(): Promise<AccountInfo>`, and `close(): void` for the most recently registered
+  connector. Awaitable calls reject with a namespaced setup error until a connector registers.
 
 Call `connect(walletId, options?)` for a headless connection flow, or mount at least one
-connector before using the modal composable. Gate optional signing operations with
-`manager.supports(...)`.
+connector before using the modal composable. When several connectors are mounted, modal
+ownership follows registration order and falls back when the active connector unmounts. Gate
+optional signing operations with `manager.supports(...)`.
 
 ### WalletConnector
 
-`<WalletConnector />` accepts `primaryWallet`, `wallets`, `theme`, and `cssVars`, and emits
-`connecting`, `connect`, and typed `error` events. Public types include `XrplConnectConfig`,
-`XrplConnectContextValue`, `WalletConnectorElement`, and `WalletConnectorTheme`. The package
-also re-exports the core wallet error classes, enums, and `isWalletError` guard. See the
+`<WalletConnector />` accepts `primaryWallet`, `wallets`, `showUnavailable`, `theme`, and
+`cssVars`, and emits `connecting`, `connect`, and typed `error` events. The camelCase
+`showUnavailable` Vue prop maps to the native `show-unavailable` boolean attribute: unavailable
+wallets are hidden by default, while `true` shows an Install action when a download URL exists or
+a disabled Unavailable row otherwise. Public types include `XrplConnectConfig`,
+`XrplConnectContextValue`, `WalletConnectorElement`, and `WalletConnectorTheme`. The package also
+re-exports the core wallet error classes, enums, and `isWalletError` guard. See the
 [Vue guide](/guide/frameworks/vue) and [Nuxt guide](/guide/frameworks/nuxt).
 
 ## Direct Wallet SDK Access

@@ -1,4 +1,13 @@
-import { Comment, createApp, createSSRApp, defineComponent, h, nextTick } from 'vue';
+import {
+  Comment,
+  createApp,
+  createSSRApp,
+  defineComponent,
+  h,
+  KeepAlive,
+  nextTick,
+  ref,
+} from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import type { AccountInfo, WalletAdapter } from '@xrpl-connect/core';
 import { createWalletError, MemoryStorageAdapter, WalletErrorCode } from '@xrpl-connect/core';
@@ -23,6 +32,13 @@ function deferred<T>() {
     resolve = resolvePromise;
   });
   return { promise, resolve };
+}
+
+interface TestWalletConnectorElement extends HTMLElement {
+  manager: unknown;
+  opened: boolean;
+  openError: Error | null;
+  resolveConnection(account: AccountInfo): void;
 }
 
 function makeAdapter(overrides: Partial<WalletAdapter> = {}): WalletAdapter {
@@ -60,6 +76,29 @@ function mountWithPlugin<T>(setup: () => T, adapters = [makeAdapter()]) {
     root,
     get exposed() {
       return exposed as T;
+    },
+  };
+}
+
+function mountModal(renderConnector: () => ReturnType<typeof h>) {
+  let modal: ReturnType<typeof useWalletModal> | undefined;
+  const root = document.createElement('div');
+  document.body.append(root);
+  const app = createApp(
+    defineComponent({
+      setup() {
+        modal = useWalletModal();
+        return renderConnector;
+      },
+    })
+  );
+  app.use(createXrplConnect({ adapters: [makeAdapter()], storage: new MemoryStorageAdapter() }));
+  app.mount(root);
+  return {
+    app,
+    root,
+    get modal() {
+      return modal!;
     },
   };
 }
@@ -303,6 +342,11 @@ describe('<WalletConnector>', () => {
       () => Promise<AccountInfo>
     >();
     expectTypeOf<WalletConnectorElement['toggle']>().toEqualTypeOf<() => void>();
+    type WalletModal = ReturnType<typeof useWalletModal>;
+    expectTypeOf<WalletModal['ready']['value']>().toEqualTypeOf<boolean>();
+    expectTypeOf<WalletModal['open']>().toEqualTypeOf<() => Promise<void>>();
+    expectTypeOf<WalletModal['openAndWait']>().toEqualTypeOf<() => Promise<AccountInfo>>();
+    expectTypeOf<WalletModal['close']>().toEqualTypeOf<() => void>();
   });
 
   beforeAll(() => {
@@ -312,17 +356,218 @@ describe('<WalletConnector>', () => {
       class extends HTMLElement {
         manager: unknown = null;
         opened = false;
+        openError: Error | null = null;
+        private waiters = new Set<{
+          resolve: (account: AccountInfo) => void;
+          reject: (error: Error) => void;
+        }>();
         setWalletManager(manager: unknown) {
           this.manager = manager;
         }
-        open() {
+        open(): Promise<void> {
+          if (this.openError) return Promise.reject(this.openError);
           this.opened = true;
+          return Promise.resolve();
+        }
+        openAndWait(): Promise<AccountInfo> {
+          const opening = this.open();
+          return new Promise<AccountInfo>((resolve, reject) => {
+            const waiter = { resolve, reject };
+            this.waiters.add(waiter);
+            void opening.catch((error: unknown) => {
+              if (!this.waiters.delete(waiter)) return;
+              reject(error instanceof Error ? error : new Error(String(error)));
+            });
+          });
         }
         close() {
           this.opened = false;
+          this.rejectWaiters(new Error('Modal closed before a wallet was connected.'));
+        }
+        resolveConnection(account: AccountInfo) {
+          for (const waiter of this.waiters) waiter.resolve(account);
+          this.waiters.clear();
+        }
+        disconnectedCallback() {
+          this.rejectWaiters(new Error('Wallet connector disconnected.'));
+        }
+        private rejectWaiters(error: Error) {
+          for (const waiter of this.waiters) waiter.reject(error);
+          this.waiters.clear();
         }
       }
     );
+  });
+
+  it('rejects modal calls until a connector is registered', async () => {
+    const mounted = mountWithPlugin(() => useWalletModal());
+
+    expect(mounted.exposed.ready.value).toBe(false);
+    await expect(mounted.exposed.open()).rejects.toThrow(/no <WalletConnector> is registered/);
+    await expect(mounted.exposed.openAndWait()).rejects.toThrow(
+      /no <WalletConnector> is registered/
+    );
+    expect(() => mounted.exposed.close()).not.toThrow();
+    mounted.app.unmount();
+  });
+
+  it('tracks asynchronous connector registration and unmount', async () => {
+    const registration = deferred<CustomElementConstructor>();
+    const whenDefined = vi
+      .spyOn(customElements, 'whenDefined')
+      .mockReturnValueOnce(registration.promise);
+    const mounted = mountModal(() => h(WalletConnector));
+
+    expect(mounted.modal.ready.value).toBe(false);
+    await expect(mounted.modal.open()).rejects.toThrow(/no <WalletConnector> is registered/);
+
+    registration.resolve(customElements.get('xrpl-wallet-connector')!);
+    await vi.waitFor(() => expect(mounted.modal.ready.value).toBe(true));
+
+    mounted.app.unmount();
+    expect(mounted.modal.ready.value).toBe(false);
+    whenDefined.mockRestore();
+  });
+
+  it('tracks connector deactivation and reactivation through KeepAlive', async () => {
+    const showConnector = ref(true);
+    const Placeholder = defineComponent(() => () => null);
+    const mounted = mountModal(() =>
+      h(KeepAlive, null, {
+        default: () => (showConnector.value ? h(WalletConnector) : h(Placeholder)),
+      })
+    );
+    await vi.waitFor(() => expect(mounted.modal.ready.value).toBe(true));
+    const element = mounted.root.querySelector(
+      'xrpl-wallet-connector'
+    ) as TestWalletConnectorElement;
+
+    showConnector.value = false;
+    await nextTick();
+    expect(element.isConnected).toBe(false);
+    expect(mounted.modal.ready.value).toBe(false);
+    await expect(mounted.modal.openAndWait()).rejects.toThrow(/no <WalletConnector> is registered/);
+
+    showConnector.value = true;
+    await nextTick();
+    await vi.waitFor(() => expect(mounted.modal.ready.value).toBe(true));
+    expect(mounted.root.querySelector('xrpl-wallet-connector')).toBe(element);
+    await mounted.modal.open();
+    expect(element.opened).toBe(true);
+
+    mounted.app.unmount();
+    expect(mounted.modal.ready.value).toBe(false);
+  });
+
+  it('forwards open failures from the active connector', async () => {
+    const mounted = mountModal(() => h(WalletConnector));
+    await vi.waitFor(() => expect(mounted.modal.ready.value).toBe(true));
+    const element = mounted.root.querySelector(
+      'xrpl-wallet-connector'
+    ) as TestWalletConnectorElement;
+    const failure = new Error('availability check failed');
+    element.openError = failure;
+
+    await expect(mounted.modal.open()).rejects.toBe(failure);
+    mounted.app.unmount();
+  });
+
+  it('forwards openAndWait success and close-before-connect rejection', async () => {
+    const mounted = mountModal(() => h(WalletConnector));
+    await vi.waitFor(() => expect(mounted.modal.ready.value).toBe(true));
+    const element = mounted.root.querySelector(
+      'xrpl-wallet-connector'
+    ) as TestWalletConnectorElement;
+
+    const failure = new Error('availability check failed');
+    element.openError = failure;
+    await expect(mounted.modal.openAndWait()).rejects.toBe(failure);
+    element.openError = null;
+
+    const closed = mounted.modal.openAndWait();
+    mounted.modal.close();
+    await expect(closed).rejects.toThrow(/closed/i);
+
+    const connected = mounted.modal.openAndWait();
+    await vi.waitFor(() => expect(element.opened).toBe(true));
+    element.resolveConnection(ACCOUNT);
+    await expect(connected).resolves.toEqual(ACCOUNT);
+    mounted.app.unmount();
+  });
+
+  it('uses the newest connector and falls back while it is deactivated', async () => {
+    const showSecond = ref(true);
+    const Placeholder = defineComponent(() => () => null);
+    const mounted = mountModal(() =>
+      h('div', [
+        h(WalletConnector, { key: 'first' }),
+        h(KeepAlive, null, {
+          default: () =>
+            showSecond.value
+              ? h(WalletConnector, { key: 'second' })
+              : h(Placeholder, { key: 'placeholder' }),
+        }),
+      ])
+    );
+    await vi.waitFor(() =>
+      expect(mounted.root.querySelectorAll('xrpl-wallet-connector')).toHaveLength(2)
+    );
+    await vi.waitFor(() => expect(mounted.modal.ready.value).toBe(true));
+    const [first, second] = [
+      ...mounted.root.querySelectorAll<TestWalletConnectorElement>('xrpl-wallet-connector'),
+    ];
+
+    await mounted.modal.open();
+    expect(first.opened).toBe(false);
+    expect(second.opened).toBe(true);
+
+    showSecond.value = false;
+    await nextTick();
+    expect(second.isConnected).toBe(false);
+    expect(mounted.modal.ready.value).toBe(true);
+    first.opened = false;
+    await mounted.modal.open();
+    expect(first.opened).toBe(true);
+
+    showSecond.value = true;
+    await nextTick();
+    await Promise.resolve();
+    first.opened = false;
+    second.opened = false;
+    await mounted.modal.open();
+    expect(first.opened).toBe(false);
+    expect(second.opened).toBe(true);
+
+    mounted.app.unmount();
+    expect(mounted.modal.ready.value).toBe(false);
+  });
+
+  it('maps showUnavailable to native boolean-attribute presence', async () => {
+    const passShowUnavailable = ref(false);
+    const showUnavailable = ref<boolean>();
+    const mounted = mountModal(() =>
+      h(
+        WalletConnector,
+        passShowUnavailable.value ? { showUnavailable: showUnavailable.value } : {}
+      )
+    );
+    await vi.waitFor(() => expect(mounted.modal.ready.value).toBe(true));
+    const element = mounted.root.querySelector('xrpl-wallet-connector')!;
+
+    expect(element.hasAttribute('show-unavailable')).toBe(false);
+    passShowUnavailable.value = true;
+    showUnavailable.value = true;
+    await nextTick();
+    expect(element.getAttribute('show-unavailable')).toBe('');
+
+    showUnavailable.value = false;
+    await nextTick();
+    expect(element.hasAttribute('show-unavailable')).toBe(false);
+
+    showUnavailable.value = undefined;
+    await nextTick();
+    expect(element.hasAttribute('show-unavailable')).toBe(false);
+    mounted.app.unmount();
   });
 
   it('binds the manager, forwards attributes/events, and supports modal control', async () => {
@@ -383,7 +628,7 @@ describe('<WalletConnector>', () => {
 
     await wallet!.connect('fake');
     expect(onConnect).toHaveBeenCalledWith(ACCOUNT);
-    modal!.open();
+    await modal!.open();
     expect(element.opened).toBe(true);
     modal!.close();
     expect(element.opened).toBe(false);

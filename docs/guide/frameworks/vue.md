@@ -46,10 +46,17 @@ from other Vue applications on the same page and are released when the app unmou
 ## Wallet state and modal
 
 `useWallet()` returns readonly Vue refs, so use them directly in templates and through `.value`
-in scripts. `useWalletModal()` controls the most recently mounted connector.
+in scripts. `useWalletModal()` returns a readonly `ready` ref, `open(): Promise<void>`,
+`openAndWait(): Promise<AccountInfo>`, and `close(): void` for the active connector. Await
+`open()` to observe availability-check failures, or await `openAndWait()` when the caller needs
+the connected account; `openAndWait()` rejects if opening fails or the modal closes first.
 
-All composables must run below an application that installed `createXrplConnect()`. Keep one
-mounted `<WalletConnector>` for predictable modal ownership.
+All composables must run below an application that installed `createXrplConnect()`. `ready`
+becomes `true` after a connector registers and returns to `false` after the last connector
+unmounts. Calling `open()` or `openAndWait()` while it is `false` rejects with a namespaced setup
+error. If several connectors are mounted, the most recently registered connector owns modal
+calls; unmounting it falls back to the previous connector. Keep one mounted `<WalletConnector>`
+when that ownership rule is unnecessary.
 
 For a headless flow, connect directly by adapter ID:
 
@@ -66,11 +73,11 @@ reactive listeners are ready.
 import { WalletConnector, useWallet, useWalletModal } from '@xrpl-commons/xrpl-connect-vue';
 
 const { connected, account, connecting, error, disconnect } = useWallet();
-const { open } = useWalletModal();
+const { ready, open } = useWalletModal();
 </script>
 
 <template>
-  <button v-if="!connected" :disabled="connecting" @click="open">
+  <button v-if="!connected" :disabled="!ready || connecting" @click="open">
     {{ connecting ? 'Connecting…' : 'Connect wallet' }}
   </button>
   <button v-else @click="disconnect">Disconnect {{ account?.address }}</button>
@@ -80,6 +87,7 @@ const { open } = useWalletModal();
   <WalletConnector
     primary-wallet="xaman"
     :wallets="['xaman', 'crossmark']"
+    showUnavailable
     theme="dark"
     :css-vars="{ '--xc-primary-color': '#a78bfa' }"
     @connecting="(walletId) => console.log('Connecting', walletId)"
@@ -141,12 +149,15 @@ async function sendPayment() {
 - `useWallet()` returns `manager`, `connected`, `account`, `network`, `connecting`, `error`,
   `connect`, and `disconnect`.
 - `useSigner()` returns `sign`, `signAndSubmit`, and `signMessage`.
-- `useWalletModal()` returns `open` and `close`.
+- `useWalletModal()` returns readonly `ready`, awaitable `open` and `openAndWait`, and `close`.
 - `<WalletConnector>` wraps the browser custom element with typed Vue props and events.
 
-`WalletConnector` accepts `primaryWallet`, `wallets`, `theme`, and `cssVars`, and emits
-`connecting`, `connect`, and typed `error` events. Use `manager.supports('signMessage')` before
-showing optional signing actions.
+`WalletConnector` accepts `primaryWallet`, `wallets`, `showUnavailable`, `theme`, and `cssVars`,
+and emits `connecting`, `connect`, and typed `error` events. Unavailable wallets are hidden by
+default. Set the camelCase Vue prop `showUnavailable` to show an Install action when an adapter
+provides a download URL, or a disabled Unavailable row when it does not. Removing the prop or
+setting it to `false` removes the native `show-unavailable` attribute. Use
+`manager.supports('signMessage')` before showing optional signing actions.
 
 ## SSR and Nuxt
 
