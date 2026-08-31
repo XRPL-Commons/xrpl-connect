@@ -458,9 +458,8 @@ export class XyraAdapter implements WalletAdapter {
     }
 
     // Map from xrpl-connect network ID to Xyra network
-    const mapped = XRPL_CONNECT_TO_XYRA_NETWORK[networkId];
-    if (mapped) {
-      return mapped;
+    if (isStandardNetworkId(networkId)) {
+      return XRPL_CONNECT_TO_XYRA_NETWORK[networkId];
     }
 
     // Try to infer from the network ID string
@@ -492,7 +491,7 @@ export class XyraAdapter implements WalletAdapter {
     const connectNetworkId = XYRA_TO_XRPL_CONNECT_NETWORK[xyraNetwork];
 
     // Check standard networks first
-    if (connectNetworkId && isStandardNetworkId(connectNetworkId)) {
+    if (connectNetworkId) {
       return STANDARD_NETWORKS[connectNetworkId];
     }
 

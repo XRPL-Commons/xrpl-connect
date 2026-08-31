@@ -3,6 +3,7 @@
  */
 
 import type { Network } from '@xyrawallet/sdk';
+import type { StandardNetworkId } from '@xrpl-connect/core';
 
 /**
  * Xyra adapter constructor options
@@ -57,7 +58,7 @@ export type XyraConnectOptions = {
  * Xyra SDK uses: 'xrpl-mainnet', 'xrpl-testnet'
  *
  */
-export const XRPL_CONNECT_TO_XYRA_NETWORK: Record<string, Network> = {
+export const XRPL_CONNECT_TO_XYRA_NETWORK: Record<StandardNetworkId, Network> = {
   mainnet: 'xrpl-mainnet',
   testnet: 'xrpl-testnet',
   devnet: 'xrpl-testnet', // Xyra doesn't have devnet, fall back to testnet
@@ -66,7 +67,7 @@ export const XRPL_CONNECT_TO_XYRA_NETWORK: Record<string, Network> = {
 /**
  * Reverse mapping: Xyra SDK network → xrpl-connect network ID
  */
-export const XYRA_TO_XRPL_CONNECT_NETWORK: Partial<Record<Network, string>> = {
+export const XYRA_TO_XRPL_CONNECT_NETWORK: Partial<Record<Network, StandardNetworkId>> = {
   'xrpl-mainnet': 'mainnet',
   'xrpl-testnet': 'testnet',
 };
