@@ -8,7 +8,7 @@ export const mainStyles = `
     margin: 0;
     padding: 0;
     font-family: var(--font-family);
-    color: var(--text-color);
+    color: inherit;
   }
 
   html, body {
