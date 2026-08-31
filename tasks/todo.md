@@ -44,7 +44,7 @@
 - [x] Add focused runtime, type-level, documentation, portal-host, and part-name drift regressions.
 - [x] Run formatting, linting, focused tests, builds/type checks, publish checks, and repository-level verification appropriate to the change.
 - [x] Review the final diff against every acceptance criterion and record results below.
-- [ ] Commit only intentional files, push the branch, open the PR, and verify the remote PR metadata/checks.
+- [x] Commit only intentional files, push the branch, open the PR, and verify the remote PR metadata/checks.
 
 ## Review
 
@@ -54,3 +54,4 @@
 - Runtime/type/documentation drift tests cover the stylesheet list, all-variable forwarding, typo filtering/rejection, direct-body portal placement, close/unmount lifecycle, exact host-to-part mappings, and packed ESM/CJS framework declarations.
 - `pnpm exec vp check`, UI/React/Vue focused checks, `pnpm build`, `pnpm docs:snapshot:check`, `pnpm --filter xrpl-connect test:publish`, `pnpm test`, and `git diff --check` pass.
 - Independent final review found three documentation/lifecycle/source-of-truth gaps; all were fixed and the exact final tree passed the focused UI suite and full monorepo pipeline.
+- Signed commit `58fd901` was pushed and opened as PR #167 targeting `develop`; the remote head, signature, issue linkage, and checks were verified after delivery.
