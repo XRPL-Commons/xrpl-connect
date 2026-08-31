@@ -365,9 +365,14 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       // disconnect() invalidates reconnect work before cancelling or replacing
       // its adapter. A stale failure must not clear a newer session's storage.
       if (reconnectGeneration !== this.reconnectGeneration) return null;
-      // A connection may have started after the ownership check above. Do not
-      // erase its persisted state by treating that overlap as a failed restore.
-      if (isWalletError(error) && error.code === WalletErrorCode.ALREADY_CONNECTED) {
+      // Recoverable caller-action errors must remain visible and must not erase
+      // the persisted session. A later retry can succeed after the caller
+      // supplies the missing adapter configuration or resolves the overlap.
+      if (
+        isWalletError(error) &&
+        (error.code === WalletErrorCode.ALREADY_CONNECTED ||
+          error.code === WalletErrorCode.CONFIGURATION_REQUIRED)
+      ) {
         throw error;
       }
       this.logger.warn('Reconnection failed:', error);

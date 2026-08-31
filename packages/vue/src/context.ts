@@ -11,12 +11,11 @@ import {
 import { WalletErrorCode, WalletManager, isWalletError } from '@xrpl-connect/core';
 import type {
   AccountInfo,
-  ConnectOptionsFor,
   NetworkInfo,
   WalletError,
   WalletManagerOptions,
-  WalletIdentifier,
 } from '@xrpl-connect/core';
+import type { ConnectOptionsFor, WalletIdentifier } from 'xrpl-connect';
 
 export interface WalletConnectorElement extends HTMLElement {
   setWalletManager(manager: WalletManager): void;

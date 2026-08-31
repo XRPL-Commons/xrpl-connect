@@ -4,9 +4,8 @@ import type {
   AccountInfo,
   NetworkInfo,
   WalletError,
-  ConnectOptionsFor,
-  WalletIdentifier,
 } from '@xrpl-connect/core';
+import type { ConnectOptionsFor, WalletIdentifier } from 'xrpl-connect';
 import type { CSSProperties, ReactNode } from 'react';
 
 /**

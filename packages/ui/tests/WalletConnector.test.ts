@@ -83,6 +83,24 @@ describe('WalletConnector wallet availability', () => {
     vi.useRealTimers();
   });
 
+  it('does not probe Xaman session state without constructor configuration', async () => {
+    const xaman = {
+      ...createAdapter(
+        'xaman',
+        'Xaman',
+        vi.fn(async () => true)
+      ),
+      getMissingConfiguration: vi.fn(() => ['apiKey']),
+      checkXamanState: vi.fn(async () => null),
+    };
+
+    element = createElement(new WalletManager({ adapters: [xaman] }));
+    await Promise.resolve();
+
+    expect(xaman.getMissingConfiguration).toHaveBeenCalledWith(undefined);
+    expect(xaman.checkXamanState).not.toHaveBeenCalled();
+  });
+
   it('cancels a pending wallet selection before returning to the wallet list', async () => {
     const walletConnect = createAdapter(
       'walletconnect',

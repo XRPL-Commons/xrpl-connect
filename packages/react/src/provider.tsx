@@ -8,13 +8,8 @@ import {
   useState,
 } from 'react';
 import { WalletErrorCode, WalletManager, isWalletError } from '@xrpl-connect/core';
-import type {
-  AccountInfo,
-  NetworkInfo,
-  WalletError,
-  ConnectOptionsFor,
-  WalletIdentifier,
-} from '@xrpl-connect/core';
+import type { AccountInfo, NetworkInfo, WalletError } from '@xrpl-connect/core';
+import type { ConnectOptionsFor, WalletIdentifier } from 'xrpl-connect';
 import type {
   XrplConnectContextValue,
   XrplConnectProviderProps,

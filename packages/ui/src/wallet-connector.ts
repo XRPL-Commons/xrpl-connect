@@ -406,7 +406,11 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private async checkXamanStateOnInit() {
       try {
         const xamanAdapter = this.walletManager?.adapters?.get('xaman');
-        if (!xamanAdapter || !isXamanStateAdapter(xamanAdapter)) {
+        if (
+          !xamanAdapter ||
+          !isXamanStateAdapter(xamanAdapter) ||
+          !isAdapterConfigured(xamanAdapter)
+        ) {
           return;
         }
 

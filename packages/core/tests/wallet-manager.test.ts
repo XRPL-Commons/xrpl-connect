@@ -858,6 +858,32 @@ describe('WalletManager.reconnect()', () => {
     expect(replayed?.derivationPath).toBeUndefined();
   });
 
+  it('preserves stored state and reports missing configuration during reconnect', async () => {
+    const storage = new MemoryStorageAdapter();
+    const storedState = {
+      walletId: 'deferred-wallet',
+      account: ACCOUNT,
+      network: NETWORK,
+      timestamp: Date.now(),
+    };
+    await new Storage(storage).saveState(storedState);
+    const adapter = {
+      ...createFakeAdapter(),
+      id: 'deferred-wallet',
+      getMissingConfiguration: vi.fn(() => ['credential']),
+    };
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    await expect(manager.reconnect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONFIGURATION_REQUIRED,
+      message: 'Fake Wallet requires configuration before connecting: credential.',
+    });
+
+    expect(adapter.isAvailable).not.toHaveBeenCalled();
+    expect(adapter.connect).not.toHaveBeenCalled();
+    expect(await new Storage(storage).loadState()).toEqual(storedState);
+  });
+
   it('does not persist arbitrary options for adapters that do not opt in', async () => {
     const storage = new MemoryStorageAdapter();
     const adapter = createRecordingAdapter([]);
