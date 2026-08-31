@@ -2,8 +2,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import { MemoryStorageAdapter, TIME, WalletManager } from '@xrpl-connect/core';
 import type { NetworkInfo, WalletAdapter } from '@xrpl-connect/core';
 import '../src/wallet-connector';
+import { COLOR_ADJUSTMENT } from '../src/constants';
+import { adjustColorBrightness } from '../src/utils';
 
 const NETWORK: NetworkInfo = { id: 'testnet', name: 'Testnet', wss: 'wss://example' };
+const EXPLICIT_HOVER_COLORS = {
+  '--xc-primary-button-hover-background': '#112233',
+  '--xc-connect-button-hover-background': '#223344',
+  '--xc-account-address-button-hover-color': '#334455',
+} as const;
+const DERIVED_HOVER_VARIABLES = {
+  primary: '--derived-primary-button-hover-background',
+  connect: '--derived-connect-button-hover-background',
+  account: '--derived-account-address-button-hover-color',
+} as const;
+
+function derivedHoverColors(primaryColor: string, backgroundColor: string) {
+  const primaryHover = adjustColorBrightness(primaryColor, COLOR_ADJUSTMENT.HOVER_BRIGHTNESS);
+  const backgroundHover = adjustColorBrightness(backgroundColor, COLOR_ADJUSTMENT.HOVER_BRIGHTNESS);
+  return {
+    [DERIVED_HOVER_VARIABLES.primary]: primaryHover,
+    [DERIVED_HOVER_VARIABLES.connect]: backgroundHover,
+    [DERIVED_HOVER_VARIABLES.account]: primaryHover,
+  };
+}
 
 function createAdapter(
   id: string,
@@ -40,6 +62,7 @@ function createElement(manager: WalletManager) {
     openAccountModal(): void;
     disconnectedCallback(): void;
     getOverlayRoot(): ShadowRoot | null;
+    getAccountModalRoot(): ShadowRoot | null;
     showWalletList(): void;
   };
   element.setWalletManager(manager);
@@ -369,5 +392,111 @@ describe('WalletConnector wallet availability', () => {
 
     expect(isAvailable).toHaveBeenCalledTimes(3);
     expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="wallet"]')).not.toBeNull();
+  });
+
+  it('preserves explicit inline hover colors across base-color changes and portals', async () => {
+    element = createElement(new WalletManager({ adapters: [] }));
+    element.style.setProperty('--xc-primary-color', '#445566');
+    element.style.setProperty('--xc-background-color', '#556677');
+    for (const [variable, value] of Object.entries(EXPLICIT_HOVER_COLORS)) {
+      element.style.setProperty(variable, value);
+    }
+    document.body.appendChild(element);
+
+    await vi.advanceTimersByTimeAsync(20);
+    await element.open();
+    element.openAccountModal();
+
+    const overlayHost = element.getOverlayRoot()?.host as HTMLElement;
+    const accountModalHost = element.getAccountModalRoot()?.host as HTMLElement;
+    for (const [variable, value] of Object.entries(EXPLICIT_HOVER_COLORS)) {
+      expect(element.style.getPropertyValue(variable)).toBe(value);
+      expect(overlayHost.style.getPropertyValue(variable)).toBe(value);
+      expect(accountModalHost.style.getPropertyValue(variable)).toBe(value);
+    }
+
+    element.style.setProperty('--xc-primary-color', '#667788');
+    element.style.setProperty('--xc-background-color', '#778899');
+    await vi.advanceTimersByTimeAsync(0);
+
+    for (const [variable, value] of Object.entries(EXPLICIT_HOVER_COLORS)) {
+      expect(element.style.getPropertyValue(variable)).toBe(value);
+      expect(overlayHost.style.getPropertyValue(variable)).toBe(value);
+      expect(accountModalHost.style.getPropertyValue(variable)).toBe(value);
+    }
+  });
+
+  it('preserves stylesheet hover colors when inline base colors change', async () => {
+    const style = document.createElement('style');
+    style.textContent = `
+      xrpl-wallet-connector.stylesheet-hover-colors {
+        --xc-primary-button-hover-background: ${EXPLICIT_HOVER_COLORS['--xc-primary-button-hover-background']};
+        --xc-connect-button-hover-background: ${EXPLICIT_HOVER_COLORS['--xc-connect-button-hover-background']};
+        --xc-account-address-button-hover-color: ${EXPLICIT_HOVER_COLORS['--xc-account-address-button-hover-color']};
+      }
+    `;
+    document.head.appendChild(style);
+    element = createElement(new WalletManager({ adapters: [] }));
+    element.className = 'stylesheet-hover-colors';
+    element.style.setProperty('--xc-primary-color', '#445566');
+    element.style.setProperty('--xc-background-color', '#556677');
+    document.body.appendChild(element);
+
+    try {
+      await vi.advanceTimersByTimeAsync(20);
+      await element.open();
+      element.openAccountModal();
+      element.style.setProperty('--xc-primary-color', '#667788');
+      element.style.setProperty('--xc-background-color', '#778899');
+      await vi.advanceTimersByTimeAsync(0);
+
+      const computedStyle = getComputedStyle(element);
+      const overlayHost = element.getOverlayRoot()?.host as HTMLElement;
+      const accountModalHost = element.getAccountModalRoot()?.host as HTMLElement;
+      for (const [variable, value] of Object.entries(EXPLICIT_HOVER_COLORS)) {
+        expect(element.style.getPropertyValue(variable)).toBe('');
+        expect(computedStyle.getPropertyValue(variable).trim()).toBe(value);
+        expect(overlayHost.style.getPropertyValue(variable)).toBe(value);
+        expect(accountModalHost.style.getPropertyValue(variable)).toBe(value);
+      }
+    } finally {
+      style.remove();
+    }
+  });
+
+  it('updates private hover fallbacks when their base colors change', async () => {
+    const primaryColor = '#123456';
+    const backgroundColor = '#234567';
+    element = createElement(new WalletManager({ adapters: [] }));
+    element.style.setProperty('--xc-primary-color', primaryColor);
+    element.style.setProperty('--xc-background-color', backgroundColor);
+    document.body.appendChild(element);
+
+    await vi.advanceTimersByTimeAsync(20);
+    await element.open();
+    element.openAccountModal();
+
+    const expectOmittedHover = (colors: ReturnType<typeof derivedHoverColors>) => {
+      const overlayHost = element!.getOverlayRoot()?.host as HTMLElement;
+      const accountModalHost = element!.getAccountModalRoot()?.host as HTMLElement;
+      for (const [variable, value] of Object.entries(colors)) {
+        expect(element!.style.getPropertyValue(variable)).toBe(value);
+        expect(overlayHost.style.getPropertyValue(variable)).toBe(value);
+        expect(accountModalHost.style.getPropertyValue(variable)).toBe(value);
+      }
+      for (const variable of Object.keys(EXPLICIT_HOVER_COLORS)) {
+        expect(element!.style.getPropertyValue(variable)).toBe('');
+      }
+    };
+
+    expectOmittedHover(derivedHoverColors(primaryColor, backgroundColor));
+
+    const nextPrimaryColor = '#345678';
+    const nextBackgroundColor = '#456789';
+    element.style.setProperty('--xc-primary-color', nextPrimaryColor);
+    element.style.setProperty('--xc-background-color', nextBackgroundColor);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expectOmittedHover(derivedHoverColors(nextPrimaryColor, nextBackgroundColor));
   });
 });

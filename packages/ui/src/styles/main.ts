@@ -38,7 +38,7 @@ export const mainStyles = `
     --xc-connect-button-color: var(--xc-text-color);
     --xc-connect-button-background: var(--xc-background-color);
     --xc-connect-button-border: 1px solid rgba(255, 255, 255, 0.1);
-    --xc-connect-button-hover-background: var(--xc-background-color);
+    --xc-connect-button-hover-background: var(--derived-connect-button-hover-background);
     --xc-connect-button-font-weight: 600;
 
     /* Primary Button */
@@ -46,7 +46,7 @@ export const mainStyles = `
     --xc-primary-button-background: var(--xc-primary-color);
     --xc-primary-button-border-radius: 8px;
     --xc-primary-button-font-weight: 600;
-    --xc-primary-button-hover-background: var(--xc-primary-color);
+    --xc-primary-button-hover-background: var(--derived-primary-button-hover-background);
 
     /* Secondary Button */
     --xc-secondary-button-color: var(--xc-text-color);
@@ -56,7 +56,7 @@ export const mainStyles = `
     --xc-secondary-button-hover-background: var(--xc-background-tertiary);
 
     /* Account Address Button */
-    --xc-account-address-button-hover-color: var(--xc-primary-color);
+    --xc-account-address-button-hover-color: var(--derived-account-address-button-hover-color);
 
     /* Modal */
     --xc-modal-background: var(--xc-background-color);
@@ -77,6 +77,9 @@ export const mainStyles = `
     --font-family: var(--xc-font-family);
     --wallet-btn-bg: var(--xc-background-secondary);
     --wallet-btn-hover: var(--xc-background-tertiary);
+    --derived-connect-button-hover-background: var(--xc-background-color);
+    --derived-primary-button-hover-background: var(--xc-primary-color);
+    --derived-account-address-button-hover-color: var(--xc-primary-color);
   }
 
   /* WalletConnect Modal Overrides */

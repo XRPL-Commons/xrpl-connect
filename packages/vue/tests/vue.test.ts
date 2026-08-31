@@ -342,6 +342,11 @@ describe('<WalletConnector>', () => {
               primaryWallet: 'fake',
               wallets: ['fake'],
               theme: 'purple',
+              cssVars: {
+                '--xc-primary-button-hover-background': '#112233',
+                '--xc-connect-button-hover-background': '#223344',
+                '--xc-account-address-button-hover-color': '#334455',
+              },
               class: 'connector',
               onConnecting,
               onConnect,
@@ -361,6 +366,11 @@ describe('<WalletConnector>', () => {
     expect(element.getAttribute('wallets')).toBe('fake');
     expect(element.className).toBe('connector');
     expect(element.style.getPropertyValue('--xc-primary-color')).toBe('#a78bfa');
+    expect(element.style.getPropertyValue('--xc-primary-button-hover-background')).toBe('#112233');
+    expect(element.style.getPropertyValue('--xc-connect-button-hover-background')).toBe('#223344');
+    expect(element.style.getPropertyValue('--xc-account-address-button-hover-color')).toBe(
+      '#334455'
+    );
 
     element.dispatchEvent(new CustomEvent('connecting', { detail: { walletId: 'fake' } }));
     expect(wallet!.connecting.value).toBe(true);
