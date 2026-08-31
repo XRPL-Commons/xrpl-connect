@@ -647,22 +647,29 @@ function createAdapter(type: 'xaman' | 'crossmark', opts: any) {
 ### Initialize with All Adapters
 
 ```typescript
-import { WalletManager, Adapters, STANDARD_NETWORKS } from 'xrpl-connect';
+import {
+  ADAPTER_DESCRIPTORS,
+  STANDARD_NETWORKS,
+  WalletManager,
+  createAdapters,
+  type WalletId,
+} from 'xrpl-connect';
 
-const allAdapters = Object.values(Adapters).map((AdapterClass) => {
-  if (AdapterClass === Adapters.Xaman) {
-    return new AdapterClass({ apiKey: process.env.XUMM_API_KEY });
-  }
-  if (AdapterClass === Adapters.WalletConnect) {
-    return new AdapterClass({ projectId: process.env.WALLETCONNECT_ID });
-  }
-  return new AdapterClass();
+const allAdapters = createAdapters({
+  xaman: { apiKey: process.env.XUMM_API_KEY },
+  walletconnect: { projectId: process.env.WALLETCONNECT_ID },
 });
 
 const walletManager = new WalletManager({
   adapters: allAdapters,
   network: STANDARD_NETWORKS.mainnet,
 });
+
+// Canonical display order, IDs, constructors, and setup requirements are
+// available without maintaining a parallel application registry.
+const walletChoices: Array<{ id: WalletId; name: string }> = ADAPTER_DESCRIPTORS.map(
+  ({ id, name }) => ({ id, name })
+);
 ```
 
 ### Conditional Adapter Loading

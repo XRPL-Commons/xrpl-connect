@@ -4,6 +4,24 @@
 
 import type { SubmittableTransaction as XRPLTransaction } from 'xrpl';
 
+/** Canonical runtime IDs for the adapters packaged by `xrpl-connect`. */
+export const STANDARD_WALLET_IDS = [
+  'xaman',
+  'crossmark',
+  'gemwallet',
+  'walletconnect',
+  'ledger',
+  'xyra',
+  'otsu',
+  'metamask-snap',
+] as const;
+
+/** Runtime ID of an adapter packaged by `xrpl-connect`. */
+export type WalletId = (typeof STANDARD_WALLET_IDS)[number];
+
+/** A packaged wallet ID or an application-defined custom adapter ID. */
+export type WalletIdentifier = WalletId | (string & Record<never, never>);
+
 /**
  * Network information
  */
@@ -184,7 +202,7 @@ export function adapterSupports(
  */
 export interface WalletAdapter {
   // Metadata
-  readonly id: string; // 'xaman', 'crossmark', 'walletconnect', 'gemwallet'
+  readonly id: WalletIdentifier; // packaged or application-defined adapter ID
   readonly name: string; // 'Xaman Wallet', 'Crossmark', etc.
   readonly icon?: string; // URL or base64 icon
   readonly url?: string; // Wallet website/download URL
@@ -310,7 +328,7 @@ export interface StorageAdapter {
  * Stored connection state
  */
 export interface StoredState {
-  walletId: string;
+  walletId: WalletIdentifier;
   account: AccountInfo;
   network: NetworkInfo;
   timestamp: number;

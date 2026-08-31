@@ -9,6 +9,8 @@ export { WalletManager } from './wallet-manager';
 // Types
 export type {
   WalletAdapter,
+  WalletId,
+  WalletIdentifier,
   WalletManagerOptions,
   AccountInfo,
   NetworkInfo,
@@ -37,6 +39,7 @@ export type {
 } from './types';
 
 export {
+  STANDARD_WALLET_IDS,
   STANDARD_NETWORKS,
   isStandardNetworkId,
   WalletErrorCode,

@@ -15,6 +15,7 @@ import type {
   NetworkInfo,
   WalletError,
   WalletManagerOptions,
+  WalletIdentifier,
 } from '@xrpl-connect/core';
 
 export interface WalletConnectorElement extends HTMLElement {
@@ -32,7 +33,7 @@ export interface XrplConnectContextValue {
   network: Readonly<Ref<NetworkInfo | null>>;
   connecting: Readonly<Ref<boolean>>;
   error: Readonly<Ref<WalletError | null>>;
-  connect(walletId: string, options?: ConnectOptions): Promise<AccountInfo>;
+  connect(walletId: WalletIdentifier, options?: ConnectOptions): Promise<AccountInfo>;
   disconnect(): Promise<void>;
 }
 

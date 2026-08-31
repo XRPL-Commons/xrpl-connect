@@ -1,5 +1,8 @@
 import {
   CrossmarkSDK,
+  ADAPTER_DESCRIPTORS,
+  STANDARD_WALLET_IDS,
+  createAdapters,
   GemWalletAPI,
   MetaMaskSnapAdapter,
   WalletConnectorElement,
@@ -10,12 +13,26 @@ import {
   type CrossmarkClient,
   type LedgerConnectOptions,
   type MetaMaskSnapAdapterOptions,
+  type WalletId,
+  type WalletIdentifier,
   type WalletConnectConnectOptions,
   type WalletConnectorElementInstance,
   type XamanConnectOptions,
   type XamanReturnUrl,
   type XyraConnectOptions,
 } from 'xrpl-connect';
+
+const standardWalletId: WalletId = STANDARD_WALLET_IDS[0];
+const customWalletId: WalletIdentifier = 'custom-wallet';
+// @ts-expect-error WalletId is the literal union of packaged adapter IDs.
+const invalidStandardWalletId: WalletId = 'custom-wallet';
+const descriptorWalletId: WalletId = ADAPTER_DESCRIPTORS[0].id;
+const packagedAdapters = createAdapters({
+  xaman: { apiKey: 'api-key' },
+  walletconnect: { projectId: 'project-id' },
+});
+// @ts-expect-error WalletConnect constructor options do not accept a Xaman API key.
+createAdapters({ walletconnect: { apiKey: 'api-key' } });
 
 const connectOptions: [
   ConnectOptions<LedgerConnectOptions>,
@@ -74,6 +91,11 @@ const metamaskAdapter = new MetaMaskSnapAdapter(metamaskOptions);
 
 void [
   connectOptions,
+  standardWalletId,
+  customWalletId,
+  invalidStandardWalletId,
+  descriptorWalletId,
+  packagedAdapters,
   xamanConstructor,
   xamanReturnUrl,
   oauthConstructor,

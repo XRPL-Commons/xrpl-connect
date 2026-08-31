@@ -1,5 +1,8 @@
 import {
   CrossmarkSDK,
+  ADAPTER_DESCRIPTORS,
+  STANDARD_WALLET_IDS,
+  createAdapters,
   GemWalletAPI,
   MetaMaskSnapAdapter,
   WalletConnectorElement,
@@ -13,6 +16,8 @@ import {
   type NetworkConfig,
   type NetworkInfo,
   type StandardNetworkId,
+  type WalletId,
+  type WalletIdentifier,
   type WalletConnectConnectOptions,
   type WalletConnectorElementInstance,
   type XamanConnectOptions,
@@ -21,6 +26,18 @@ import {
 } from 'xrpl-connect';
 
 const standardNetworkId: StandardNetworkId = 'mainnet';
+const standardWalletId: WalletId = STANDARD_WALLET_IDS[0];
+const customWalletId: WalletIdentifier = 'custom-wallet';
+// @ts-expect-error WalletId is the literal union of packaged adapter IDs.
+const invalidStandardWalletId: WalletId = 'custom-wallet';
+const descriptorWalletId: WalletId = ADAPTER_DESCRIPTORS[0].id;
+const packagedAdapters = createAdapters({
+  xaman: { apiKey: 'api-key' },
+  walletconnect: { projectId: 'project-id' },
+  ledger: { accountIndex: 1 },
+});
+// @ts-expect-error Xaman constructor options do not accept a WalletConnect project ID.
+createAdapters({ xaman: { projectId: 'project-id' } });
 const standardNetworkConfig: NetworkConfig = standardNetworkId;
 const customNetwork: NetworkInfo = {
   id: 'sidechain',
@@ -88,6 +105,11 @@ const metamaskAdapter = new MetaMaskSnapAdapter(metamaskOptions);
 
 void [
   connectOptions,
+  standardWalletId,
+  customWalletId,
+  invalidStandardWalletId,
+  descriptorWalletId,
+  packagedAdapters,
   standardNetworkConfig,
   customNetworkConfig,
   invalidNetworkConfig,

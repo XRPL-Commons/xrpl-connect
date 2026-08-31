@@ -19,6 +19,7 @@ import type {
   StoredState,
   WalletCapabilities,
   ReconnectOptions,
+  WalletIdentifier,
 } from './types';
 import {
   adapterSupports,
@@ -107,12 +108,12 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   /**
    * Connect to a wallet
    */
-  async connect(walletId: string, options?: ConnectOptions): Promise<AccountInfo> {
+  async connect(walletId: WalletIdentifier, options?: ConnectOptions): Promise<AccountInfo> {
     return this.connectInternal(walletId, options);
   }
 
   private async connectInternal(
-    walletId: string,
+    walletId: WalletIdentifier,
     options?: ConnectOptions,
     expectedState?: StoredState
   ): Promise<AccountInfo> {
