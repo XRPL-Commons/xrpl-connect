@@ -47,7 +47,7 @@ const { ready, open } = useWalletModal();
   <button v-if="!connected" :disabled="!ready" @click="open">Connect wallet</button>
   <button v-else @click="disconnect">Disconnect {{ account?.address }}</button>
   <p v-if="error">Error [{{ error.code }}]: {{ error.message }}</p>
-  <WalletConnector theme="dark" />
+  <WalletConnector theme="dark" showUnavailable />
 </template>
 ```
 
@@ -60,8 +60,10 @@ const { ready, open } = useWalletModal();
 - `useWalletModal()` exposes a readonly `ready` ref, awaitable `open()` and `openAndWait()`
   methods, and `close()` for the active connector. `openAndWait()` resolves with the connected
   account and rejects if opening fails or the modal closes first.
-- `<WalletConnector>` accepts `primaryWallet`, `wallets`, `theme`, and `cssVars`, and emits
-  `connecting`, `connect`, and typed `error` events.
+- `<WalletConnector>` accepts `primaryWallet`, `wallets`, `showUnavailable`, `theme`, and
+  `cssVars`, and emits `connecting`, `connect`, and typed `error` events. Unavailable wallets are
+  hidden by default; set the camelCase Vue prop `showUnavailable` to show an Install action when
+  the adapter provides a download URL, or a disabled Unavailable row otherwise.
 
 The named `xrpl-connect` import also registers the wallet connector custom element, so a separate
 side-effect import is not needed. Importing `@xrpl-commons/xrpl-connect-vue` is SSR-safe, but plugin

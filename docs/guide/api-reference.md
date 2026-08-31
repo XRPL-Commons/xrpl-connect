@@ -515,10 +515,13 @@ optional signing operations with `manager.supports(...)`.
 
 ### WalletConnector
 
-`<WalletConnector />` accepts `primaryWallet`, `wallets`, `theme`, and `cssVars`, and emits
-`connecting`, `connect`, and typed `error` events. Public types include `XrplConnectConfig`,
-`XrplConnectContextValue`, `WalletConnectorElement`, and `WalletConnectorTheme`. The package
-also re-exports the core wallet error classes, enums, and `isWalletError` guard. See the
+`<WalletConnector />` accepts `primaryWallet`, `wallets`, `showUnavailable`, `theme`, and
+`cssVars`, and emits `connecting`, `connect`, and typed `error` events. The camelCase
+`showUnavailable` Vue prop maps to the native `show-unavailable` boolean attribute: unavailable
+wallets are hidden by default, while `true` shows an Install action when a download URL exists or
+a disabled Unavailable row otherwise. Public types include `XrplConnectConfig`,
+`XrplConnectContextValue`, `WalletConnectorElement`, and `WalletConnectorTheme`. The package also
+re-exports the core wallet error classes, enums, and `isWalletError` guard. See the
 [Vue guide](/guide/frameworks/vue) and [Nuxt guide](/guide/frameworks/nuxt).
 
 ## Direct Wallet SDK Access

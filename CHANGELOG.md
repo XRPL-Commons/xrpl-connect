@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Vue: make `useWalletModal()` awaitable with connector readiness, `openAndWait()`, explicit missing-connector failures, and deterministic ownership when multiple connectors are mounted (#145).
+- Vue: expose the native unavailable-wallet display behavior through the typed `showUnavailable` component prop (#146).
 
 ### Fixed
 

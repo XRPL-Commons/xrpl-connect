@@ -46,6 +46,7 @@ export const WalletConnector = defineComponent({
   props: {
     primaryWallet: String,
     wallets: Array as PropType<string[]>,
+    showUnavailable: Boolean,
     theme: String as PropType<WalletConnectorTheme>,
     cssVars: Object as PropType<Record<`--xc-${string}`, string>>,
   },
@@ -134,6 +135,7 @@ export const WalletConnector = defineComponent({
         ref: element,
         'primary-wallet': props.primaryWallet,
         wallets: props.wallets?.join(','),
+        'show-unavailable': props.showUnavailable ? '' : undefined,
         style: [props.theme ? THEMES[props.theme] : undefined, props.cssVars, attrs.style],
       });
   },

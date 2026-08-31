@@ -87,6 +87,7 @@ const { ready, open } = useWalletModal();
   <WalletConnector
     primary-wallet="xaman"
     :wallets="['xaman', 'crossmark']"
+    showUnavailable
     theme="dark"
     :css-vars="{ '--xc-primary-color': '#a78bfa' }"
     @connecting="(walletId) => console.log('Connecting', walletId)"
@@ -151,9 +152,12 @@ async function sendPayment() {
 - `useWalletModal()` returns readonly `ready`, awaitable `open` and `openAndWait`, and `close`.
 - `<WalletConnector>` wraps the browser custom element with typed Vue props and events.
 
-`WalletConnector` accepts `primaryWallet`, `wallets`, `theme`, and `cssVars`, and emits
-`connecting`, `connect`, and typed `error` events. Use `manager.supports('signMessage')` before
-showing optional signing actions.
+`WalletConnector` accepts `primaryWallet`, `wallets`, `showUnavailable`, `theme`, and `cssVars`,
+and emits `connecting`, `connect`, and typed `error` events. Unavailable wallets are hidden by
+default. Set the camelCase Vue prop `showUnavailable` to show an Install action when an adapter
+provides a download URL, or a disabled Unavailable row when it does not. Removing the prop or
+setting it to `false` removes the native `show-unavailable` attribute. Use
+`manager.supports('signMessage')` before showing optional signing actions.
 
 ## SSR and Nuxt
 

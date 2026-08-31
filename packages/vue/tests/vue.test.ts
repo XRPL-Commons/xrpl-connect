@@ -542,6 +542,34 @@ describe('<WalletConnector>', () => {
     expect(mounted.modal.ready.value).toBe(false);
   });
 
+  it('maps showUnavailable to native boolean-attribute presence', async () => {
+    const passShowUnavailable = ref(false);
+    const showUnavailable = ref<boolean>();
+    const mounted = mountModal(() =>
+      h(
+        WalletConnector,
+        passShowUnavailable.value ? { showUnavailable: showUnavailable.value } : {}
+      )
+    );
+    await vi.waitFor(() => expect(mounted.modal.ready.value).toBe(true));
+    const element = mounted.root.querySelector('xrpl-wallet-connector')!;
+
+    expect(element.hasAttribute('show-unavailable')).toBe(false);
+    passShowUnavailable.value = true;
+    showUnavailable.value = true;
+    await nextTick();
+    expect(element.getAttribute('show-unavailable')).toBe('');
+
+    showUnavailable.value = false;
+    await nextTick();
+    expect(element.hasAttribute('show-unavailable')).toBe(false);
+
+    showUnavailable.value = undefined;
+    await nextTick();
+    expect(element.hasAttribute('show-unavailable')).toBe(false);
+    mounted.app.unmount();
+  });
+
   it('binds the manager, forwards attributes/events, and supports modal control', async () => {
     const onConnecting = vi.fn();
     const onConnect = vi.fn();
