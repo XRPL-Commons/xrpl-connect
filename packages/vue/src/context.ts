@@ -11,11 +11,11 @@ import {
 import { WalletErrorCode, WalletManager, isWalletError } from '@xrpl-connect/core';
 import type {
   AccountInfo,
-  ConnectOptions,
   NetworkInfo,
   WalletError,
   WalletManagerOptions,
 } from '@xrpl-connect/core';
+import type { ConnectOptionsFor, WalletIdentifier } from 'xrpl-connect';
 
 export interface WalletConnectorElement extends HTMLElement {
   setWalletManager(manager: WalletManager): void;
@@ -32,7 +32,10 @@ export interface XrplConnectContextValue {
   network: Readonly<Ref<NetworkInfo | null>>;
   connecting: Readonly<Ref<boolean>>;
   error: Readonly<Ref<WalletError | null>>;
-  connect(walletId: string, options?: ConnectOptions): Promise<AccountInfo>;
+  connect<const Wallet extends WalletIdentifier>(
+    walletId: Wallet,
+    options?: ConnectOptionsFor<Wallet>
+  ): Promise<AccountInfo>;
   disconnect(): Promise<void>;
 }
 
@@ -140,7 +143,10 @@ export function createXrplConnect(config: XrplConnectConfig): Plugin {
         connecting: readonly(connecting),
         error: readonly(error),
         ready: readonly(ready),
-        async connect(walletId, options) {
+        async connect<const Wallet extends WalletIdentifier>(
+          walletId: Wallet,
+          options?: ConnectOptionsFor<Wallet>
+        ) {
           const attempt = beginConnectionAttempt();
           let failure: unknown;
           try {

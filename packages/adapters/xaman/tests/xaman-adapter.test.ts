@@ -208,6 +208,23 @@ describe('XamanAdapter.isAvailable', () => {
   });
 });
 
+describe('XamanAdapter configuration', () => {
+  it('accepts constructor or deferred API keys', () => {
+    expect(new XamanAdapter({ apiKey: 'constructor-key' }).getMissingConfiguration()).toEqual([]);
+    expect(new XamanAdapter().getMissingConfiguration({ apiKey: 'deferred-key' })).toEqual([]);
+  });
+
+  it('identifies a missing API key before connection work begins', async () => {
+    const adapter = new XamanAdapter();
+
+    expect(adapter.getMissingConfiguration()).toEqual(['apiKey']);
+    await expect(adapter.connect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONFIGURATION_REQUIRED,
+      message: 'Xaman requires configuration before connecting: apiKey.',
+    });
+  });
+});
+
 describe('XamanAdapter.checkXamanState', () => {
   it.each([
     [0, 'mainnet', 'MAINNET'],
@@ -408,10 +425,10 @@ describe('XamanAdapter.connect', () => {
     expect(account.network.id).toBe('mainnet');
   });
 
-  it('throws a wrapped connection error when no API key is given', async () => {
+  it('throws a configuration error when no API key is given', async () => {
     const adapter = new XamanAdapter();
     await expect(adapter.connect()).rejects.toMatchObject({
-      code: WalletErrorCode.CONNECTION_FAILED,
+      code: WalletErrorCode.CONFIGURATION_REQUIRED,
     });
     expect(mockXummInstance.authorize).not.toHaveBeenCalled();
   });

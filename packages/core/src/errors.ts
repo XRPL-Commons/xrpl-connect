@@ -21,6 +21,7 @@ const CODE_TO_CATEGORY: Record<WalletErrorCode, WalletErrorCategory> = {
 
   [WalletErrorCode.CONNECTION_FAILED]: WalletErrorCategory.NETWORK,
 
+  [WalletErrorCode.CONFIGURATION_REQUIRED]: WalletErrorCategory.INVALID_INPUT,
   [WalletErrorCode.NOT_CONNECTED]: WalletErrorCategory.INVALID_INPUT,
   [WalletErrorCode.ALREADY_CONNECTED]: WalletErrorCategory.INVALID_INPUT,
   [WalletErrorCode.UNSUPPORTED_METHOD]: WalletErrorCategory.INVALID_INPUT,
@@ -110,6 +111,12 @@ export const createWalletError = {
     new WalletError(
       WalletErrorCode.WALLET_NOT_AVAILABLE,
       `${walletName} is not currently available.`
+    ),
+
+  configurationRequired: (walletName: string, missingFields: readonly string[]): WalletError =>
+    new WalletError(
+      WalletErrorCode.CONFIGURATION_REQUIRED,
+      `${walletName} requires configuration before connecting: ${missingFields.join(', ')}.`
     ),
 
   connectionFailed: (walletName: string, originalError?: Error): WalletError =>

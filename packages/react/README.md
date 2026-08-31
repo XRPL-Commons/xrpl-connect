@@ -90,6 +90,19 @@ subtree. The manager is created once on mount; pass a React `key` to rebuild it.
   `WalletError` (`error.code`, `error.category`), e.g. `SIGN_REJECTED` on user cancel.
 - `useWalletModal()` → `{ open, close }` — drive the `<WalletConnector>` modal.
 
+`connect` narrows deferred options from the wallet ID:
+
+```tsx
+const { connect } = useWallet();
+await connect('xaman', { apiKey: 'YOUR_KEY' });
+await connect('walletconnect', { projectId: 'YOUR_PROJECT_ID' });
+```
+
+For modal discovery and `autoConnect`, configure these credentials on the
+adapter constructor as shown above. Deferred credentials apply only to that
+direct call and are not persisted for reconnection. Missing configuration is a
+typed `CONFIGURATION_REQUIRED` error.
+
 ### `<WalletConnector />`
 
 React wrapper around the web component. Props: `primaryWallet`, `wallets`, `theme`

@@ -422,8 +422,9 @@ try {
     const installedFrameworkFolder = path.join(consumerFolder, 'node_modules', name);
     for (const declaration of ['dist/index.d.ts', 'dist/index.d.mts']) {
       const contents = readFileSync(path.join(installedFrameworkFolder, declaration), 'utf-8');
+      const declarationCode = contents.replace(/\/\*[\s\S]*?\*\//g, '');
       assert(
-        !contents.includes('@xrpl-connect/core'),
+        !declarationCode.includes('@xrpl-connect/core'),
         `${name}/${declaration} leaks the development-only @xrpl-connect/core package`
       );
     }

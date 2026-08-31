@@ -36,39 +36,4 @@ export * from '@xrpl-connect/adapter-ledger';
 export * from '@xrpl-connect/adapter-xyra';
 export * from '@xrpl-connect/adapter-otsu';
 export * from '@xrpl-connect/adapter-metamask-snap';
-
-// Convenient grouped exports for better DX
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
-import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
-import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
-import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
-import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
-import { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
-import { MetaMaskSnapAdapter } from '@xrpl-connect/adapter-metamask-snap';
-
-/**
- * Convenient object containing all wallet adapters
- *
- * @example
- * ```typescript
- * import { WalletManager, Adapters } from 'xrpl-connect';
- *
- * const walletManager = new WalletManager({
- *   adapters: [
- *     new Adapters.Xaman({ apiKey: 'YOUR_XAMAN_API_KEY' }),
- *     new Adapters.Crossmark(),
- *   ],
- * });
- * ```
- */
-export const Adapters = {
-  Xaman: XamanAdapter,
-  Crossmark: CrossmarkAdapter,
-  GemWallet: GemWalletAdapter,
-  WalletConnect: WalletConnectAdapter,
-  Ledger: LedgerAdapter,
-  Xyra: XyraAdapter,
-  Otsu: OtsuAdapter,
-  MetaMaskSnap: MetaMaskSnapAdapter,
-};
+export * from './adapters';

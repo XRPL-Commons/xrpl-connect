@@ -14,6 +14,7 @@ import {
   isWalletError,
   type AccountInfo,
   type WalletError,
+  type WalletIdentifier,
 } from '@xrpl-connect/core';
 import { useXrplConnectContext, type WalletConnectorElement } from './context';
 
@@ -44,14 +45,14 @@ export const WalletConnector = defineComponent({
   name: 'WalletConnector',
   inheritAttrs: false,
   props: {
-    primaryWallet: String,
-    wallets: Array as PropType<string[]>,
+    primaryWallet: String as PropType<WalletIdentifier>,
+    wallets: Array as PropType<WalletIdentifier[]>,
     showUnavailable: Boolean,
     theme: String as PropType<WalletConnectorTheme>,
     cssVars: Object as PropType<Record<`--xc-${string}`, string>>,
   },
   emits: {
-    connecting: (walletId: string) => typeof walletId === 'string',
+    connecting: (walletId: WalletIdentifier) => typeof walletId === 'string',
     connect: (account: AccountInfo) => Boolean(account),
     error: (error: WalletError) => isWalletError(error),
   },

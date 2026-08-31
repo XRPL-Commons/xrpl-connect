@@ -547,6 +547,20 @@ describe('WalletManager.fetchAccount()', () => {
 });
 
 describe('WalletManager.getAvailableWallets()', () => {
+  it('excludes unconfigured wallets without probing their runtime availability', async () => {
+    const configured = createFakeAdapter();
+    const unconfigured = {
+      ...createFakeAdapter(),
+      id: 'unconfigured',
+      getMissingConfiguration: vi.fn(() => ['credential']),
+    };
+    const manager = new WalletManager({ adapters: [configured, unconfigured] });
+
+    await expect(manager.getAvailableWallets()).resolves.toEqual([configured]);
+    expect(unconfigured.getMissingConfiguration).toHaveBeenCalledWith(undefined);
+    expect(unconfigured.isAvailable).not.toHaveBeenCalled();
+  });
+
   it('returns responsive wallets without waiting indefinitely for a hung adapter', async () => {
     vi.useFakeTimers();
     const available = {
@@ -580,6 +594,38 @@ describe('WalletManager.getAvailableWallets()', () => {
 });
 
 describe('WalletManager.connect()', () => {
+  it('reports missing adapter configuration before checking availability', async () => {
+    const adapter = {
+      ...createFakeAdapter(),
+      getMissingConfiguration: vi.fn(() => ['credential']),
+    };
+    const manager = new WalletManager({ adapters: [adapter] });
+
+    await expect(manager.connect('fake')).rejects.toMatchObject({
+      code: WalletErrorCode.CONFIGURATION_REQUIRED,
+      message: 'Fake Wallet requires configuration before connecting: credential.',
+    });
+    expect(adapter.isAvailable).not.toHaveBeenCalled();
+    expect(adapter.connect).not.toHaveBeenCalled();
+  });
+
+  it('accepts credentials supplied for a deferred connection', async () => {
+    const adapter = {
+      ...createFakeAdapter(),
+      getMissingConfiguration: vi.fn((options?: ConnectOptions<Record<string, unknown>>) =>
+        options?.credential ? [] : ['credential']
+      ),
+    };
+    const manager = new WalletManager({ adapters: [adapter] });
+
+    await expect(manager.connect('fake', { credential: 'secret' })).resolves.toEqual(ACCOUNT);
+    expect(adapter.getMissingConfiguration).toHaveBeenCalledWith({ credential: 'secret' });
+    expect(adapter.connect).toHaveBeenCalledWith({
+      credential: 'secret',
+      network: undefined,
+    });
+  });
+
   it('rejects a repeated connection without disturbing the active session', async () => {
     const storage = new MemoryStorageAdapter();
     const adapter = createFakeAdapter();
@@ -810,6 +856,32 @@ describe('WalletManager.reconnect()', () => {
       | (ConnectOptions & { derivationPath?: string })
       | undefined;
     expect(replayed?.derivationPath).toBeUndefined();
+  });
+
+  it('preserves stored state and reports missing configuration during reconnect', async () => {
+    const storage = new MemoryStorageAdapter();
+    const storedState = {
+      walletId: 'deferred-wallet',
+      account: ACCOUNT,
+      network: NETWORK,
+      timestamp: Date.now(),
+    };
+    await new Storage(storage).saveState(storedState);
+    const adapter = {
+      ...createFakeAdapter(),
+      id: 'deferred-wallet',
+      getMissingConfiguration: vi.fn(() => ['credential']),
+    };
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    await expect(manager.reconnect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONFIGURATION_REQUIRED,
+      message: 'Fake Wallet requires configuration before connecting: credential.',
+    });
+
+    expect(adapter.isAvailable).not.toHaveBeenCalled();
+    expect(adapter.connect).not.toHaveBeenCalled();
+    expect(await new Storage(storage).loadState()).toEqual(storedState);
   });
 
   it('does not persist arbitrary options for adapters that do not opt in', async () => {

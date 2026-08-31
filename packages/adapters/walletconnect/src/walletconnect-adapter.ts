@@ -20,6 +20,7 @@ import type {
   SupportsDeepLink,
   SupportsPreInitialize,
   WalletCapabilities,
+  WalletConnectionOptionsById,
 } from '@xrpl-connect/core';
 import {
   createWalletError,
@@ -175,10 +176,7 @@ export interface WalletConnectAdapterOptions {
   themeMode?: 'dark' | 'light'; // Modal theme (default: 'dark')
 }
 
-export type WalletConnectConnectOptions = {
-  projectId?: string;
-  onQRCode?: (uri: string) => void;
-};
+export type WalletConnectConnectOptions = WalletConnectionOptionsById['walletconnect'];
 
 /**
  * WalletConnect adapter implementation using Sign Client v2
@@ -212,6 +210,12 @@ export class WalletConnectAdapter
 
   constructor(options: WalletConnectAdapterOptions = {}) {
     this.options = options;
+  }
+
+  getMissingConfiguration(
+    options?: ConnectOptions<WalletConnectConnectOptions>
+  ): readonly string[] {
+    return options?.projectId || this.options.projectId ? [] : ['projectId'];
   }
 
   private async getOrInitializeClient(projectId: string): Promise<SignClient> {
@@ -482,12 +486,7 @@ export class WalletConnectAdapter
     const projectId = options?.projectId || this.options.projectId;
 
     if (!projectId) {
-      throw createWalletError.connectionFailed(
-        this.name,
-        new Error(
-          'WalletConnect project ID is required. Get one from https://cloud.walletconnect.com or https://dashboard.reown.com'
-        )
-      );
+      throw createWalletError.configurationRequired(this.name, ['projectId']);
     }
 
     if (this.client && this.clientProjectId !== projectId) {

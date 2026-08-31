@@ -19,6 +19,14 @@ describe('isWalletError', () => {
 });
 
 describe('createWalletError failure factories', () => {
+  it('identifies missing adapter configuration as invalid input', () => {
+    expect(createWalletError.configurationRequired('Test Wallet', ['apiKey'])).toMatchObject({
+      code: WalletErrorCode.CONFIGURATION_REQUIRED,
+      category: WalletErrorCategory.INVALID_INPUT,
+      message: 'Test Wallet requires configuration before connecting: apiKey.',
+    });
+  });
+
   it('preserves existing typed errors instead of changing their code or category', () => {
     const typedError = createWalletError.notConnected();
 

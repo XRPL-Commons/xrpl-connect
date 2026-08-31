@@ -65,6 +65,19 @@ const { ready, open } = useWalletModal();
   hidden by default; set the camelCase Vue prop `showUnavailable` to show an Install action when
   the adapter provides a download URL, or a disabled Unavailable row otherwise.
 
+`useWallet().connect` narrows deferred options from the wallet ID:
+
+```ts
+const { connect } = useWallet();
+await connect('xaman', { apiKey: 'YOUR_KEY' });
+await connect('walletconnect', { projectId: 'YOUR_PROJECT_ID' });
+```
+
+For modal discovery and `autoConnect`, configure these credentials on the
+adapter constructor as shown above. Deferred credentials apply only to that
+direct call and are not persisted for reconnection. Missing configuration is a
+typed `CONFIGURATION_REQUIRED` error.
+
 The named `xrpl-connect` import also registers the wallet connector custom element, so a separate
 side-effect import is not needed. Importing `@xrpl-commons/xrpl-connect-vue` is SSR-safe, but plugin
 installation, injected composable calls, and wallet UI rendering must stay on the client. In
