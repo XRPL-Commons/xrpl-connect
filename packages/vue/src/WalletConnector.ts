@@ -1,4 +1,13 @@
-import { defineComponent, h, onBeforeUnmount, onMounted, ref, type PropType } from 'vue';
+import {
+  defineComponent,
+  h,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  onMounted,
+  ref,
+  type PropType,
+} from 'vue';
 import {
   createWalletError,
   getErrorMessage,
@@ -80,32 +89,43 @@ export const WalletConnector = defineComponent({
       emit('error', error);
     };
 
-    onMounted(() => {
+    const activateConnector = () => {
+      if (active) return;
       active = true;
-      context.manager.on('connect', onManagerConnect);
-      context.manager.on('disconnect', onManagerDisconnect);
-      if (context.manager.connected && context.manager.account)
-        onManagerConnect(context.manager.account);
-
       void customElements.whenDefined('xrpl-wallet-connector').then(() => {
-        if (!active || !element.value) return;
+        if (!active || registered || !element.value) return;
         element.value.setWalletManager(context.manager);
         element.value.addEventListener('connecting', onConnecting);
         element.value.addEventListener('error', onError);
         context.registerConnector(element.value);
         registered = element.value;
       });
-    });
+    };
 
-    onBeforeUnmount(() => {
+    const deactivateConnector = () => {
       active = false;
-      context.manager.off('connect', onManagerConnect);
-      context.manager.off('disconnect', onManagerDisconnect);
       if (!registered) return;
       registered.removeEventListener('connecting', onConnecting);
       registered.removeEventListener('error', onError);
       context.unregisterConnector(registered);
       registered = null;
+    };
+
+    onMounted(() => {
+      context.manager.on('connect', onManagerConnect);
+      context.manager.on('disconnect', onManagerDisconnect);
+      if (context.manager.connected && context.manager.account)
+        onManagerConnect(context.manager.account);
+      activateConnector();
+    });
+
+    onActivated(activateConnector);
+    onDeactivated(deactivateConnector);
+
+    onBeforeUnmount(() => {
+      context.manager.off('connect', onManagerConnect);
+      context.manager.off('disconnect', onManagerDisconnect);
+      deactivateConnector();
     });
 
     return () =>

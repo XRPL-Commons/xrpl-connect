@@ -1,4 +1,13 @@
-import { Comment, createApp, createSSRApp, defineComponent, h, nextTick, ref } from 'vue';
+import {
+  Comment,
+  createApp,
+  createSSRApp,
+  defineComponent,
+  h,
+  KeepAlive,
+  nextTick,
+  ref,
+} from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import type { AccountInfo, WalletAdapter } from '@xrpl-connect/core';
 import { createWalletError, MemoryStorageAdapter, WalletErrorCode } from '@xrpl-connect/core';
@@ -420,6 +429,36 @@ describe('<WalletConnector>', () => {
     whenDefined.mockRestore();
   });
 
+  it('tracks connector deactivation and reactivation through KeepAlive', async () => {
+    const showConnector = ref(true);
+    const Placeholder = defineComponent(() => () => null);
+    const mounted = mountModal(() =>
+      h(KeepAlive, null, {
+        default: () => (showConnector.value ? h(WalletConnector) : h(Placeholder)),
+      })
+    );
+    await vi.waitFor(() => expect(mounted.modal.ready.value).toBe(true));
+    const element = mounted.root.querySelector(
+      'xrpl-wallet-connector'
+    ) as TestWalletConnectorElement;
+
+    showConnector.value = false;
+    await nextTick();
+    expect(element.isConnected).toBe(false);
+    expect(mounted.modal.ready.value).toBe(false);
+    await expect(mounted.modal.openAndWait()).rejects.toThrow(/no <WalletConnector> is registered/);
+
+    showConnector.value = true;
+    await nextTick();
+    await vi.waitFor(() => expect(mounted.modal.ready.value).toBe(true));
+    expect(mounted.root.querySelector('xrpl-wallet-connector')).toBe(element);
+    await mounted.modal.open();
+    expect(element.opened).toBe(true);
+
+    mounted.app.unmount();
+    expect(mounted.modal.ready.value).toBe(false);
+  });
+
   it('forwards open failures from the active connector', async () => {
     const mounted = mountModal(() => h(WalletConnector));
     await vi.waitFor(() => expect(mounted.modal.ready.value).toBe(true));
@@ -456,12 +495,18 @@ describe('<WalletConnector>', () => {
     mounted.app.unmount();
   });
 
-  it('uses the newest connector and falls back when it unmounts', async () => {
+  it('uses the newest connector and falls back while it is deactivated', async () => {
     const showSecond = ref(true);
+    const Placeholder = defineComponent(() => () => null);
     const mounted = mountModal(() =>
       h('div', [
         h(WalletConnector, { key: 'first' }),
-        showSecond.value ? h(WalletConnector, { key: 'second' }) : null,
+        h(KeepAlive, null, {
+          default: () =>
+            showSecond.value
+              ? h(WalletConnector, { key: 'second' })
+              : h(Placeholder, { key: 'placeholder' }),
+        }),
       ])
     );
     await vi.waitFor(() =>
@@ -478,10 +523,20 @@ describe('<WalletConnector>', () => {
 
     showSecond.value = false;
     await nextTick();
+    expect(second.isConnected).toBe(false);
     expect(mounted.modal.ready.value).toBe(true);
     first.opened = false;
     await mounted.modal.open();
     expect(first.opened).toBe(true);
+
+    showSecond.value = true;
+    await nextTick();
+    await Promise.resolve();
+    first.opened = false;
+    second.opened = false;
+    await mounted.modal.open();
+    expect(first.opened).toBe(false);
+    expect(second.opened).toBe(true);
 
     mounted.app.unmount();
     expect(mounted.modal.ready.value).toBe(false);
