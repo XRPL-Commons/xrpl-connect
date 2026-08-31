@@ -105,6 +105,7 @@ export const WalletConnector = defineComponent({
       registered.removeEventListener('connecting', onConnecting);
       registered.removeEventListener('error', onError);
       context.unregisterConnector(registered);
+      registered = null;
     });
 
     return () =>

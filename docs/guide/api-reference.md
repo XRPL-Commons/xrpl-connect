@@ -504,11 +504,14 @@ composables and `<WalletConnector>` must run beneath that installation.
 
 - `useWallet()` returns the manager, readonly `connected`, `account`, `network`, `connecting`, and `error` refs, plus `connect` and `disconnect`.
 - `useSigner()` returns `sign`, `signAndSubmit`, and `signMessage`.
-- `useWalletModal()` returns `open` and `close` for the most recently mounted connector.
+- `useWalletModal()` returns readonly `ready`, `open(): Promise<void>`,
+  `openAndWait(): Promise<AccountInfo>`, and `close(): void` for the most recently registered
+  connector. Awaitable calls reject with a namespaced setup error until a connector registers.
 
 Call `connect(walletId, options?)` for a headless connection flow, or mount at least one
-connector before using the modal composable. Gate optional signing operations with
-`manager.supports(...)`.
+connector before using the modal composable. When several connectors are mounted, modal
+ownership follows registration order and falls back when the active connector unmounts. Gate
+optional signing operations with `manager.supports(...)`.
 
 ### WalletConnector
 

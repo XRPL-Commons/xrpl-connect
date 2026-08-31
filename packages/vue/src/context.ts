@@ -39,11 +39,13 @@ export interface XrplConnectContextValue {
 export type XrplConnectConfig = WalletManagerOptions;
 
 interface InternalContext extends XrplConnectContextValue {
+  ready: Readonly<Ref<boolean>>;
   registerConnector(element: WalletConnectorElement): void;
   unregisterConnector(element: WalletConnectorElement): void;
   reportModalConnecting(): void;
   reportModalError(error: WalletError): void;
-  openModal(): void;
+  openModal(): Promise<void>;
+  openAndWaitModal(): Promise<AccountInfo>;
   closeModal(): void;
 }
 
@@ -58,6 +60,7 @@ export function createXrplConnect(config: XrplConnectConfig): Plugin {
       const network = shallowRef(manager.account?.network ?? null);
       const connecting = shallowRef(false);
       const error = shallowRef<WalletError | null>(null);
+      const ready = shallowRef(false);
       const connectors = new Set<WalletConnectorElement>();
       const connectionAttempts = new Set<symbol>();
       let modalConnecting = false;
@@ -90,6 +93,23 @@ export function createXrplConnect(config: XrplConnectConfig): Plugin {
         account.value = manager.account;
         network.value = manager.account?.network ?? null;
       };
+      const getActiveConnector = (): WalletConnectorElement => {
+        const mountedConnectors = [...connectors];
+        const connector = mountedConnectors[mountedConnectors.length - 1];
+        if (connector) return connector;
+        throw new Error(
+          'xrpl-connect/vue: no <WalletConnector> is registered. Mount <WalletConnector> before calling useWalletModal().'
+        );
+      };
+      const runWithActiveConnector = <T>(
+        operation: (connector: WalletConnectorElement) => Promise<T>
+      ): Promise<T> => {
+        try {
+          return Promise.resolve(operation(getActiveConnector()));
+        } catch (value) {
+          return Promise.reject(value);
+        }
+      };
       const onConnect = () => {
         error.value = null;
         modalConnecting = false;
@@ -119,6 +139,7 @@ export function createXrplConnect(config: XrplConnectConfig): Plugin {
         network: readonly(network),
         connecting: readonly(connecting),
         error: readonly(error),
+        ready: readonly(ready),
         async connect(walletId, options) {
           const attempt = beginConnectionAttempt();
           let failure: unknown;
@@ -137,8 +158,14 @@ export function createXrplConnect(config: XrplConnectConfig): Plugin {
           cancelConnectionState();
           await manager.disconnect();
         },
-        registerConnector: (element) => connectors.add(element),
-        unregisterConnector: (element) => connectors.delete(element),
+        registerConnector(element) {
+          connectors.add(element);
+          ready.value = true;
+        },
+        unregisterConnector(element) {
+          connectors.delete(element);
+          ready.value = connectors.size > 0;
+        },
         reportModalConnecting() {
           modalConnecting = true;
           error.value = null;
@@ -150,8 +177,10 @@ export function createXrplConnect(config: XrplConnectConfig): Plugin {
           syncConnecting();
         },
         openModal() {
-          const mountedConnectors = [...connectors];
-          mountedConnectors[mountedConnectors.length - 1]?.open();
+          return runWithActiveConnector((connector) => connector.open());
+        },
+        openAndWaitModal() {
+          return runWithActiveConnector((connector) => connector.openAndWait());
         },
         closeModal() {
           const mountedConnectors = [...connectors];
@@ -193,6 +222,7 @@ export function createXrplConnect(config: XrplConnectConfig): Plugin {
         manager.off('networkChanged', onNetworkChanged);
         manager.off('error', onError);
         connectors.clear();
+        ready.value = false;
         void manager.disconnect().catch(() => undefined);
       });
     },
