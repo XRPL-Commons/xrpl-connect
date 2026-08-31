@@ -3,7 +3,7 @@ export function renderQRView(walletName: string): string {
     <div class="header">
       <div class="header-with-back">
         <button class="back-button" id="back-button" aria-label="Back">←</button>
-        <h2 class="title">${walletName}</h2>
+        <h2 class="title" id="wallet-dialog-title">${walletName}</h2>
       </div>
       <button class="close-button" part="close-button" aria-label="Close">×</button>
     </div>

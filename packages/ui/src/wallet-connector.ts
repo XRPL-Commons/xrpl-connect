@@ -62,6 +62,12 @@ interface ConnectionWaiter {
   reject(error: Error): void;
 }
 
+interface FocusReturnTarget {
+  element: HTMLElement;
+  root: Document | ShadowRoot;
+  id: string | null;
+}
+
 // Only define the component in browser (guard against SSR)
 let WalletConnectorElement: {
   new (): WalletConnectorElementInstance;
@@ -144,6 +150,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private overlayPortal: HTMLDivElement | null = null;
     private accountModalPortal: HTMLDivElement | null = null;
     private styleObserver: MutationObserver | null = null;
+    private walletDialogOpener: FocusReturnTarget | null = null;
+    private accountDialogOpener: FocusReturnTarget | null = null;
     private readonly connectionWaiters = new Set<ConnectionWaiter>();
     private walletManagerHandlers: {
       connect: (account: AccountInfo) => void;
@@ -199,6 +207,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       this.styleObserver?.disconnect();
       this.styleObserver = null;
+      this.walletDialogOpener = null;
+      this.accountDialogOpener = null;
 
       this.overlayPortal?.remove();
       this.overlayPortal = null;
@@ -348,10 +358,11 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           const connectedId = manager.wallet?.id;
           if (connectedId) this.recordMruId(connectedId);
           this.close();
-          this.render();
         },
         disconnect: () => {
-          if (manager === this.walletManager) this.render();
+          if (manager !== this.walletManager) return;
+          if (this.accountModalOpen) this.closeAccountModal();
+          else this.render();
         },
         accountChanged: () => {
           if (manager === this.walletManager) this.render();
@@ -608,6 +619,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Open the modal
      */
     async open() {
+      if (!this.isOpen) {
+        this.walletDialogOpener = this.captureFocusReturnTarget();
+      }
       const openGeneration = ++this.openGeneration;
       this.isOpen = true;
       this.isFirstOpen = true;
@@ -670,6 +684,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Close the modal
      */
     close() {
+      const wasOpen = this.isOpen;
       this.cancelPendingConnection();
       this.openGeneration += 1;
       this.isOpen = false;
@@ -685,6 +700,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.errorData = null;
       this.accountSelectionData = null;
       this.render();
+      if (wasOpen) {
+        this.restoreFocus(this.walletDialogOpener);
+        this.walletDialogOpener = null;
+      }
       this.dispatchEvent(new CustomEvent('close'));
     }
 
@@ -703,6 +722,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Open the account details modal
      */
     public openAccountModal() {
+      if (!this.accountModalOpen) {
+        this.accountDialogOpener = this.captureFocusReturnTarget();
+      }
       this.accountModalOpen = true;
       this.render();
     }
@@ -711,8 +733,13 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Close the account details modal
      */
     public closeAccountModal() {
+      const wasOpen = this.accountModalOpen;
       this.accountModalOpen = false;
       this.render();
+      if (wasOpen) {
+        this.restoreFocus(this.accountDialogOpener);
+        this.accountDialogOpener = null;
+      }
     }
 
     /**
@@ -721,8 +748,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     public async disconnectFromAccountModal() {
       try {
         await this.walletManager?.disconnect();
-        this.closeAccountModal();
-        this.render();
+        if (this.accountModalOpen) this.closeAccountModal();
       } catch (error) {
         logger.error('Failed to disconnect:', error);
       }
@@ -1125,7 +1151,14 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         overlayRoot.innerHTML = `
     <style>${mainStyles}</style>
     <div class="${overlayClass}" part="overlay">
-      <div class="${modalClass}" part="modal">
+      <div
+        class="${modalClass}"
+        part="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="wallet-dialog-title"
+        tabindex="-1"
+      >
         ${contentHTML}
       </div>
     </div>
@@ -1151,6 +1184,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       this.eventHandler?.attachEventListeners();
+      if (this.isOpen) this.ensureDialogFocus('wallet');
+      if (this.accountModalOpen) this.ensureDialogFocus('account');
 
       // Update modal height smoothly after render
       requestAnimationFrame(() => {
@@ -1187,6 +1222,97 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       // Store current height for next transition
       this.previousModalHeight = newHeight;
+    }
+
+    private captureFocusReturnTarget(): FocusReturnTarget | null {
+      let root: Document | ShadowRoot = document;
+      let activeElement = root.activeElement;
+
+      while (activeElement instanceof HTMLElement && activeElement.shadowRoot?.activeElement) {
+        root = activeElement.shadowRoot;
+        activeElement = root.activeElement;
+      }
+
+      if (
+        !(activeElement instanceof HTMLElement) ||
+        activeElement === document.body ||
+        activeElement === document.documentElement
+      ) {
+        return null;
+      }
+
+      return {
+        element: activeElement,
+        root,
+        id: activeElement.id || null,
+      };
+    }
+
+    private restoreFocus(target: FocusReturnTarget | null): void {
+      if (!target) return;
+
+      const replacement = target.id ? target.root.getElementById(target.id) : null;
+      const element = target.element.isConnected ? target.element : replacement;
+      if (element?.isConnected) element.focus();
+    }
+
+    private getDialog(dialog: 'wallet' | 'account'): HTMLElement | null {
+      const root = dialog === 'wallet' ? this.getOverlayRoot() : this.getAccountModalRoot();
+      return root?.querySelector<HTMLElement>('[role="dialog"]') ?? null;
+    }
+
+    private getDialogFocusables(dialog: HTMLElement): HTMLElement[] {
+      return Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      );
+    }
+
+    private ensureDialogFocus(dialogType: 'wallet' | 'account'): void {
+      const dialog = this.getDialog(dialogType);
+      if (!dialog) return;
+
+      const root = dialog.getRootNode() as ShadowRoot;
+      if (root.activeElement && dialog.contains(root.activeElement)) return;
+
+      (this.getDialogFocusables(dialog)[0] ?? dialog).focus();
+    }
+
+    public handleDialogKeyDown(dialogType: 'wallet' | 'account', event: KeyboardEvent): void {
+      const dialog = this.getDialog(dialogType);
+      if (!dialog) return;
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        if (dialogType === 'wallet') this.close();
+        else this.closeAccountModal();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = this.getDialogFocusables(dialog);
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const root = dialog.getRootNode() as ShadowRoot;
+      const activeElement = root.activeElement;
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const shouldWrapBackward = event.shiftKey && activeElement === firstElement;
+      const shouldWrapForward = !event.shiftKey && activeElement === lastElement;
+      const focusIsOutsideDialog = !activeElement || !dialog.contains(activeElement);
+
+      if (shouldWrapBackward || shouldWrapForward || focusIsOutsideDialog) {
+        event.preventDefault();
+        if (event.shiftKey) lastElement.focus();
+        else firstElement.focus();
+      }
     }
   }
 
