@@ -1,8 +1,10 @@
+import { WALLET_CONNECTOR_PARTS } from '../customization';
+
 export function renderErrorView(walletName: string, error: Error): string {
   return `
       <div class="header">
         <h2 class="title" id="wallet-dialog-title">Connection Failed</h2>
-        <button class="close-button" part="close-button" aria-label="Close">×</button>
+        <button class="close-button" part="${WALLET_CONNECTOR_PARTS.walletModal.closeButton}" aria-label="Close">×</button>
       </div>
 
       <div class="content">

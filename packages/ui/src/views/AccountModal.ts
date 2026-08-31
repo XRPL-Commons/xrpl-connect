@@ -1,3 +1,5 @@
+import { WALLET_CONNECTOR_PARTS } from '../customization';
+
 export function renderAccountModal(
   account: { address: string } | null,
   accountBalance: string | null,
@@ -10,9 +12,14 @@ export function renderAccountModal(
   const { color1, color2 } = generateGradientFromAddress(account.address);
 
   return `
-      <div id="account-modal-overlay" class="account-modal-overlay">
+      <div
+        id="account-modal-overlay"
+        class="account-modal-overlay"
+        part="${WALLET_CONNECTOR_PARTS.accountModal.overlay}"
+      >
         <div
           class="account-modal"
+          part="${WALLET_CONNECTOR_PARTS.accountModal.modal}"
           role="dialog"
           aria-modal="true"
           aria-labelledby="account-dialog-title"
@@ -20,7 +27,12 @@ export function renderAccountModal(
         >
           <div class="account-modal-header">
             <h2 class="account-modal-title" id="account-dialog-title">Connected</h2>
-            <button class="account-modal-close" id="account-modal-close" aria-label="Close">×</button>
+            <button
+              class="account-modal-close"
+              id="account-modal-close"
+              part="${WALLET_CONNECTOR_PARTS.accountModal.closeButton}"
+              aria-label="Close"
+            >×</button>
           </div>
 
           <div class="account-modal-content">
@@ -28,7 +40,12 @@ export function renderAccountModal(
             </div>
 
             <div class="account-info-section">
-              <button class="account-address-button" id="copy-account-address" title="Click to copy full address">
+              <button
+                class="account-address-button"
+                id="copy-account-address"
+                part="${WALLET_CONNECTOR_PARTS.accountModal.addressButton}"
+                title="Click to copy full address"
+              >
                 <span>${truncatedAddress}</span>
                 <svg
                   aria-hidden="true"
@@ -56,7 +73,11 @@ export function renderAccountModal(
               }
             </div>
 
-            <button class="account-disconnect-button" id="account-modal-disconnect">
+            <button
+              class="account-disconnect-button"
+              id="account-modal-disconnect"
+              part="${WALLET_CONNECTOR_PARTS.accountModal.disconnectButton}"
+            >
               <svg
                 aria-hidden="true"
                 width="15"

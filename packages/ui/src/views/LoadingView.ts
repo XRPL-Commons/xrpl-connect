@@ -1,3 +1,5 @@
+import { WALLET_CONNECTOR_PARTS } from '../customization';
+
 export function renderLoadingView(walletName: string, walletIcon?: string): string {
   return `
       <div class="header">
@@ -5,7 +7,7 @@ export function renderLoadingView(walletName: string, walletIcon?: string): stri
           <button class="back-button" id="loading-back-button" aria-label="Back">←</button>
           <h2 class="title" id="wallet-dialog-title">Connect Wallet</h2>
         </div>
-        <button class="close-button" part="close-button" aria-label="Close">×</button>
+        <button class="close-button" part="${WALLET_CONNECTOR_PARTS.walletModal.closeButton}" aria-label="Close">×</button>
       </div>
 
       <div class="content loading-content">

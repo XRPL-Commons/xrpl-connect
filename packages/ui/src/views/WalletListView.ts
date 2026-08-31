@@ -1,4 +1,5 @@
 import type { WalletAdapter } from '@xrpl-connect/core';
+import { WALLET_CONNECTOR_PARTS } from '../customization';
 import { getSafeExternalUrl } from '../utils';
 
 function escapeHtmlAttribute(value: string): string {
@@ -18,7 +19,7 @@ export function renderWalletListView(
   return `
       <div class="header">
         <h2 class="title" id="wallet-dialog-title">Connect Wallet</h2>
-        <button class="close-button" part="close-button" aria-label="Close">×</button>
+        <button class="close-button" part="${WALLET_CONNECTOR_PARTS.walletModal.closeButton}" aria-label="Close">×</button>
       </div>
 
       <div class="content" role="region" aria-label="Wallet options" tabindex="0">

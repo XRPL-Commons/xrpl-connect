@@ -2,6 +2,7 @@ import {
   CrossmarkSDK,
   ADAPTER_DESCRIPTORS,
   STANDARD_WALLET_IDS,
+  WALLET_CONNECTOR_CSS_VARIABLES,
   createAdapters,
   GemWalletAPI,
   MetaMaskSnapAdapter,
@@ -19,6 +20,8 @@ import {
   type WalletId,
   type WalletIdentifier,
   type WalletConnectConnectOptions,
+  type WalletConnectorCssVariable,
+  type WalletConnectorCssVars,
   type WalletConnectorElementInstance,
   type XamanConnectOptions,
   type XamanReturnUrl,
@@ -37,6 +40,12 @@ declare module 'xrpl-connect' {
 
 const standardWalletId: WalletId = STANDARD_WALLET_IDS[0];
 const customWalletId: WalletIdentifier = 'custom-wallet';
+const cssVariable: WalletConnectorCssVariable = WALLET_CONNECTOR_CSS_VARIABLES[0];
+const cssVars: WalletConnectorCssVars = { '--xc-primary-color': '#7c3aed' };
+const invalidCssVars: WalletConnectorCssVars = {
+  // @ts-expect-error Published customization types reject unsupported variables.
+  '--xc-primary-colro': '#7c3aed',
+};
 // @ts-expect-error WalletId is the literal union of packaged adapter IDs.
 const invalidStandardWalletId: WalletId = 'custom-wallet';
 const descriptorWalletId: WalletId = ADAPTER_DESCRIPTORS[0].id;
@@ -125,6 +134,9 @@ void [
   connectOptions,
   standardWalletId,
   customWalletId,
+  cssVariable,
+  cssVars,
+  invalidCssVars,
   invalidStandardWalletId,
   descriptorWalletId,
   packagedAdapters,

@@ -12,6 +12,11 @@ import {
   TIME,
 } from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
+import {
+  WALLET_CONNECTOR_CSS_VARIABLES,
+  WALLET_CONNECTOR_PARTS,
+  WALLET_CONNECTOR_PORTAL_ATTRIBUTES,
+} from './customization';
 import { mainStyles } from './styles/main';
 import {
   SIZES,
@@ -81,45 +86,6 @@ let WalletConnectorElement: {
 } | null = null;
 
 if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
-  const XC_CSS_VARIABLES = [
-    '--xc-font-family',
-    '--xc-border-radius',
-    '--xc-overlay-background',
-    '--xc-overlay-backdrop-filter',
-    '--xc-primary-color',
-    '--xc-background-color',
-    '--xc-text-color',
-    '--xc-text-muted-color',
-    '--xc-background-secondary',
-    '--xc-background-tertiary',
-    '--xc-loading-border-color',
-    '--xc-connect-button-font-size',
-    '--xc-connect-button-border-radius',
-    '--xc-connect-button-color',
-    '--xc-connect-button-background',
-    '--xc-connect-button-border',
-    '--xc-connect-button-hover-background',
-    '--xc-connect-button-font-weight',
-    '--xc-primary-button-color',
-    '--xc-primary-button-background',
-    '--xc-primary-button-border-radius',
-    '--xc-primary-button-font-weight',
-    '--xc-primary-button-hover-background',
-    '--xc-secondary-button-color',
-    '--xc-secondary-button-background',
-    '--xc-secondary-button-border-radius',
-    '--xc-secondary-button-font-weight',
-    '--xc-secondary-button-hover-background',
-    '--xc-account-address-button-hover-color',
-    '--xc-modal-background',
-    '--xc-modal-border-radius',
-    '--xc-modal-box-shadow',
-    '--xc-focus-color',
-    '--xc-danger-color',
-    '--xc-success-color',
-    '--xc-warning-color',
-  ] as const;
-
   const DERIVED_HOVER_VARIABLES = {
     connectButtonBackground: '--derived-connect-button-hover-background',
     primaryButtonBackground: '--derived-primary-button-hover-background',
@@ -225,7 +191,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     private forwardCSSVariables(portalHost: HTMLElement): void {
       const computedStyle = window.getComputedStyle(this);
-      for (const varName of XC_CSS_VARIABLES) {
+      for (const varName of WALLET_CONNECTOR_CSS_VARIABLES) {
         const value = computedStyle.getPropertyValue(varName).trim();
         if (value) portalHost.style.setProperty(varName, value);
       }
@@ -238,7 +204,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private ensureOverlayPortal(): ShadowRoot {
       if (!this.overlayPortal) {
         this.overlayPortal = document.createElement('div');
-        this.overlayPortal.setAttribute('data-xrpl-overlay-portal', '');
+        this.overlayPortal.setAttribute(WALLET_CONNECTOR_PORTAL_ATTRIBUTES.wallet, '');
         this.overlayPortal.attachShadow({ mode: 'open' });
         document.body.appendChild(this.overlayPortal);
       }
@@ -249,7 +215,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private ensureAccountModalPortal(): ShadowRoot {
       if (!this.accountModalPortal) {
         this.accountModalPortal = document.createElement('div');
-        this.accountModalPortal.setAttribute('data-xrpl-account-modal-portal', '');
+        this.accountModalPortal.setAttribute(WALLET_CONNECTOR_PORTAL_ATTRIBUTES.account, '');
         this.accountModalPortal.attachShadow({ mode: 'open' });
         document.body.appendChild(this.accountModalPortal);
       }
@@ -1157,7 +1123,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     <style>
       ${mainStyles}
     </style>
-    <button class="connect-button" id="connect-wallet-button" part="connect-button">${buttonText}</button>
+    <button class="connect-button" id="connect-wallet-button" part="${WALLET_CONNECTOR_PARTS.connector.connectButton}">${buttonText}</button>
   `;
 
       // Wallet connection overlay — rendered in a portal on document.body to guarantee
@@ -1166,10 +1132,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         const overlayRoot = this.ensureOverlayPortal();
         overlayRoot.innerHTML = `
     <style>${mainStyles}</style>
-    <div class="${overlayClass}" part="overlay">
+    <div class="${overlayClass}" part="${WALLET_CONNECTOR_PARTS.walletModal.overlay}">
       <div
         class="${modalClass}"
-        part="modal"
+        part="${WALLET_CONNECTOR_PARTS.walletModal.modal}"
         role="dialog"
         aria-modal="true"
         aria-labelledby="wallet-dialog-title"
