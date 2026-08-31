@@ -12,6 +12,7 @@ export type {
   WalletManagerOptions,
   AccountInfo,
   NetworkInfo,
+  StandardNetworkId,
   NetworkConfig,
   Transaction,
   SignedTransaction,
@@ -37,6 +38,7 @@ export type {
 
 export {
   STANDARD_NETWORKS,
+  isStandardNetworkId,
   WalletErrorCode,
   WalletErrorCategory,
   supportsPreInitialize,

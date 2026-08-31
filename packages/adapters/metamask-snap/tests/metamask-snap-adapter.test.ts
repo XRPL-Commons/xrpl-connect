@@ -275,6 +275,25 @@ describe('MetaMaskSnapAdapter signing', () => {
 });
 
 describe('MetaMaskSnapAdapter network switching', () => {
+  it('rejects custom ids that collide with object prototype keys', async () => {
+    const changeNetwork = vi.fn();
+    setProvider(
+      mockProvider({
+        snapHandlers: {
+          xrpl_getActiveNetwork: () => ({ chainId: 0, name: 'Mainnet', nodeUrl: '' }),
+          xrpl_changeNetwork: changeNetwork,
+        },
+      })
+    );
+
+    await expect(
+      new MetaMaskSnapAdapter().connect({
+        network: { id: 'toString', name: 'Custom', wss: 'wss://custom.example.com' },
+      })
+    ).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_NOT_SUPPORTED });
+    expect(changeNetwork).not.toHaveBeenCalled();
+  });
+
   it('switches and verifies the active Snap network', async () => {
     let chainId = 0;
     setProvider(

@@ -18,7 +18,9 @@ export interface NetworkInfo {
 /**
  * Standard XRPL networks
  */
-export const STANDARD_NETWORKS: Record<string, NetworkInfo> = {
+export type StandardNetworkId = 'mainnet' | 'testnet' | 'devnet';
+
+export const STANDARD_NETWORKS: Record<StandardNetworkId, NetworkInfo> = {
   mainnet: {
     id: 'mainnet',
     name: 'Mainnet',
@@ -45,7 +47,11 @@ export const STANDARD_NETWORKS: Record<string, NetworkInfo> = {
 /**
  * Network configuration type - can be a standard network key or custom NetworkInfo
  */
-export type NetworkConfig = keyof typeof STANDARD_NETWORKS | NetworkInfo;
+export type NetworkConfig = StandardNetworkId | NetworkInfo;
+
+export function isStandardNetworkId(networkId: string): networkId is StandardNetworkId {
+  return Object.prototype.hasOwnProperty.call(STANDARD_NETWORKS, networkId);
+}
 
 /**
  * Account information returned after connection

@@ -10,12 +10,26 @@ import {
   type CrossmarkClient,
   type LedgerConnectOptions,
   type MetaMaskSnapAdapterOptions,
+  type NetworkConfig,
+  type NetworkInfo,
+  type StandardNetworkId,
   type WalletConnectConnectOptions,
   type WalletConnectorElementInstance,
   type XamanConnectOptions,
   type XamanReturnUrl,
   type XyraConnectOptions,
 } from 'xrpl-connect';
+
+const standardNetworkId: StandardNetworkId = 'mainnet';
+const standardNetworkConfig: NetworkConfig = standardNetworkId;
+const customNetwork: NetworkInfo = {
+  id: 'sidechain',
+  name: 'Sidechain',
+  wss: 'wss://sidechain.example.com',
+};
+const customNetworkConfig: NetworkConfig = customNetwork;
+// @ts-expect-error Arbitrary string IDs must not survive the published declaration rollup.
+const invalidNetworkConfig: NetworkConfig = 'sidechain';
 
 const connectOptions: [
   ConnectOptions<LedgerConnectOptions>,
@@ -74,6 +88,9 @@ const metamaskAdapter = new MetaMaskSnapAdapter(metamaskOptions);
 
 void [
   connectOptions,
+  standardNetworkConfig,
+  customNetworkConfig,
+  invalidNetworkConfig,
   xamanConstructor,
   xamanReturnUrl,
   oauthConstructor,

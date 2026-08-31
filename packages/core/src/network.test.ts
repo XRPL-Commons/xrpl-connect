@@ -26,13 +26,17 @@ describe('resolveNetwork', () => {
   });
 
   it('throws a WalletError when given an unknown network id', () => {
-    expect(() => resolveNetwork('not-a-network')).toThrow(WalletError);
-    try {
-      resolveNetwork('not-a-network');
-    } catch (err) {
-      expect(err).toBeInstanceOf(WalletError);
-      expect((err as WalletError).code).toBe(WalletErrorCode.UNKNOWN_ERROR);
-      expect((err as WalletError).message).toContain('not-a-network');
+    for (const invalidNetworkId of ['not-a-network', 'toString']) {
+      const invalidNetwork = invalidNetworkId as unknown as Parameters<typeof resolveNetwork>[0];
+
+      expect(() => resolveNetwork(invalidNetwork)).toThrow(WalletError);
+      try {
+        resolveNetwork(invalidNetwork);
+      } catch (err) {
+        expect(err).toBeInstanceOf(WalletError);
+        expect((err as WalletError).code).toBe(WalletErrorCode.UNKNOWN_ERROR);
+        expect((err as WalletError).message).toContain(invalidNetworkId);
+      }
     }
   });
 });

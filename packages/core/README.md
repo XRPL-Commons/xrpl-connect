@@ -42,7 +42,7 @@ const walletManager = new WalletManager({
 ```typescript
 interface WalletManagerOptions {
   adapters: WalletAdapter[]; // Array of wallet adapters to register
-  network?: NetworkConfig | string; // Default network ('mainnet', 'testnet', 'devnet')
+  network?: NetworkConfig; // Default network ('mainnet', 'testnet', 'devnet', or custom NetworkInfo)
   autoConnect?: boolean; // Attempt to reconnect from stored state
   storage?: StorageAdapter; // Custom storage implementation (defaults to LocalStorageAdapter)
   logger?: LoggerOptions | LoggerInstance; // Logging configuration — pass options or a custom logger
