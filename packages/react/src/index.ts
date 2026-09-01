@@ -4,8 +4,7 @@
  * hooks to use it, and a `<WalletConnector>` modal component. (#33)
  *
  * `src/jsx.d.ts` provides the ambient `<xrpl-wallet-connector>` JSX typing used
- * internally by `<WalletConnector>`; it is compiled via tsconfig `include` and
- * intentionally not imported at runtime.
+ * internally by `<WalletConnector>` and by direct custom-element consumers.
  */
 export { XrplConnectProvider } from './provider';
 export { useWallet, useSigner, useWalletModal } from './hooks';
@@ -19,6 +18,7 @@ export type {
   WalletConnectorTheme,
   WalletConnectorElement,
 } from './types';
+export type { WalletConnectorIntrinsicProps } from './jsx';
 
 // Re-export the error primitives so consumers can branch on codes without a
 // second import from `xrpl-connect`.

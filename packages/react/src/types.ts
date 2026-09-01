@@ -85,6 +85,8 @@ export interface WalletConnectorProps
   primaryWallet?: WalletIdentifier;
   /** Restrict/order the wallet list (maps to the `wallets` attribute). */
   wallets?: WalletIdentifier[];
+  /** Show unavailable wallets (maps to the `show-unavailable` boolean attribute). */
+  showUnavailable?: boolean;
   /** Built-in theme preset. Overridden per-token by `cssVars`. */
   theme?: WalletConnectorTheme;
   /** Supported `--xc-*` custom properties to override modal styling. */

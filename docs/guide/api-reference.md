@@ -492,8 +492,9 @@ when the active connector unmounts. `ready` remains `true` while any connector i
 ### WalletConnector
 
 `<WalletConnector />` wraps the web component. It accepts `primaryWallet`,
-`wallets`, `theme`, `cssVars`, `style`, `className`, `onConnecting`, `onConnect`,
+`wallets`, `showUnavailable`, `theme`, `cssVars`, `style`, `className`, `onConnecting`, `onConnect`,
 and `onError`, plus standard host attributes such as `id`, `title`, `data-*`, and `aria-*`.
+`showUnavailable` maps to the native `show-unavailable` boolean attribute.
 Its forwarded `WalletConnectorElement` ref exposes `open()`, `openAndWait()`, `close()`, and
 `toggle()`. Explicit connector props take precedence over overlapping raw host attributes; inline
 `style` overrides `cssVars`, which overrides `theme`. See the

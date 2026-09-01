@@ -44,6 +44,7 @@ export function App() {
       <Header />
       <WalletConnector
         wallets={['xaman', 'crossmark', 'walletconnect', 'metamask-snap']}
+        showUnavailable
         theme="dark"
         onError={(error) => console.error(error.code, error.message)}
       />
@@ -136,6 +137,7 @@ back to the previous connector. `close()` is a safe no-op when none is registere
 `WalletConnector` accepts:
 
 - `primaryWallet` and ordered `wallets`
+- `showUnavailable` to include Install or disabled Unavailable wallet rows
 - `theme`: `dark`, `light`, or `purple`
 - typed `--xc-*` values through `cssVars`
 - `className`, `style`, `onConnecting`, `onConnect`, and `onError`
@@ -163,6 +165,9 @@ function WalletModal() {
 Explicit `primaryWallet`, `wallets`, and `className` values take precedence over overlapping raw
 host attributes. For each CSS property, `style` takes precedence over `cssVars`, which takes
 precedence over the selected `theme`.
+
+Unavailable wallets are hidden by default. The camelCase `showUnavailable` prop maps to the native
+`show-unavailable` boolean attribute; setting the prop to `false` removes the attribute again.
 
 ## Next.js App Router
 

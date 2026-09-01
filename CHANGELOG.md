@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - React: forward typed `WalletConnectorElement` refs and safe host attributes through `<WalletConnector>`, with explicit managed-prop precedence (#172).
 - React: make `useWalletModal()` awaitable with connector readiness, `openAndWait()`, explicit missing-connector failures, and deterministic ownership when multiple connectors are mounted (#171).
+- React: expose unavailable-wallet rows through the typed `showUnavailable` wrapper prop and align direct custom-element JSX attributes (#168).
 - Vue: make `useWalletModal()` awaitable with connector readiness, `openAndWait()`, explicit missing-connector failures, and deterministic ownership when multiple connectors are mounted (#145).
 - Vue: expose the native unavailable-wallet display behavior through the typed `showUnavailable` component prop (#146).
 - UI: export the exact wallet-connector CSS-variable contract and stable modal portal/part metadata, with typed React and Vue overrides and connected-account modal styling hooks (#151).

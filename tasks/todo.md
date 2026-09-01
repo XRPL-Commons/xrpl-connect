@@ -45,3 +45,4 @@
 - The new React 18 regression failed against the original PR code with `Unexpected return value from a callback ref` and passes with the function guard.
 - The rebuilt packed artifact passes the original React 19.2.8 unmount reproduction for both native and wrapped refs.
 - Focused and full React checks, dependency-inclusive build, repository formatting/lint, documentation snapshot verification, full monorepo tests, packed publish/consumer verification, and `git diff --check` pass.
+- Merged the latest `origin/develop`, resolved the overlapping React API, documentation, and publish fixtures with `showUnavailable` intact, and repeated the full monorepo and packed-consumer verification on the combined tree.

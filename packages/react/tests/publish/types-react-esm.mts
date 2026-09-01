@@ -3,6 +3,7 @@ import {
   type ComponentProps,
   type ComponentPropsWithRef,
   type ComponentType,
+  type JSX as ReactJSX,
 } from 'react';
 import {
   WalletConnector,
@@ -55,6 +56,19 @@ const connectorProps: ComponentPropsWithRef<typeof WalletConnector> = {
 };
 const connectorElement: WalletConnectorElement | null = connectorRef.current;
 const cssVarsProps: WalletConnectorProps = { cssVars: { '--xc-primary-color': '#7c3aed' } };
+const unavailableProps: WalletConnectorProps = { showUnavailable: true };
+const intrinsicProps: ReactJSX.IntrinsicElements['xrpl-wallet-connector'] = {
+  'show-unavailable': true,
+};
+const globalIntrinsicProps: JSX.IntrinsicElements['xrpl-wallet-connector'] = intrinsicProps;
+const invalidIntrinsicProps: ReactJSX.IntrinsicElements['xrpl-wallet-connector'] = {
+  // @ts-expect-error Published JSX types reject unsupported legacy attributes.
+  'background-color': '#000637',
+};
+const unsafeFalseIntrinsicProps: ReactJSX.IntrinsicElements['xrpl-wallet-connector'] = {
+  // @ts-expect-error React 18 would serialize false as a present boolean attribute.
+  'show-unavailable': false,
+};
 const invalidCssVarsProps: WalletConnectorProps = {
   cssVars: {
     // @ts-expect-error Published React props reject unsupported CSS variables.
@@ -85,6 +99,11 @@ void [
   connectorProps,
   connectorElement,
   cssVarsProps,
+  unavailableProps,
+  intrinsicProps,
+  globalIntrinsicProps,
+  invalidIntrinsicProps,
+  unsafeFalseIntrinsicProps,
   invalidCssVarsProps,
   signedTransaction,
   signedMessage,

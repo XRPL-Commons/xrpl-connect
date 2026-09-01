@@ -569,6 +569,13 @@ describe('<WalletConnector>', () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
+  it('exposes showUnavailable through the wrapper and direct custom-element JSX', () => {
+    const wrapperElement = <WalletConnector showUnavailable />;
+    const customElement = <xrpl-wallet-connector show-unavailable />;
+
+    expectTypeOf(wrapperElement).toEqualTypeOf(customElement);
+  });
+
   it('rejects modal calls until a connector is registered', async () => {
     const { result } = renderHook(() => useWalletModal(), {
       wrapper: wrapper([makeAdapter()]),
@@ -1032,5 +1039,26 @@ describe('<WalletConnector>', () => {
     expect(el.getAttribute('wallets')).toBe('third');
     rerender(<View />);
     expect(el.hasAttribute('wallets')).toBe(false);
+  });
+
+  it('enables and disables unavailable-wallet rendering on rerender', async () => {
+    function View({ showUnavailable }: { showUnavailable?: boolean }) {
+      return (
+        <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+          <WalletConnector showUnavailable={showUnavailable} />
+        </XrplConnectProvider>
+      );
+    }
+    const { rerender } = render(<View />);
+    const el = document.querySelector('xrpl-wallet-connector') as HTMLElement & {
+      manager: unknown;
+    };
+    await waitFor(() => expect(el.manager).not.toBeNull());
+    expect(el.hasAttribute('show-unavailable')).toBe(false);
+
+    rerender(<View showUnavailable />);
+    expect(el.getAttribute('show-unavailable')).toBe('');
+    rerender(<View showUnavailable={false} />);
+    expect(el.hasAttribute('show-unavailable')).toBe(false);
   });
 });
