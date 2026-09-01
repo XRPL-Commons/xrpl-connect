@@ -13,6 +13,19 @@ import { run } from './run-command.mjs';
 const FRAMEWORK_PEER_RANGE = '^1.0.0-rc.0';
 const NPM_ORGANIZATION = 'xrpl-commons';
 const SUPPORTED_NODE_RANGE = '^20.19.0 || ^22.18.0 || >=24.11.0';
+const DOCUMENTED_XRPL_SPEC = 'xrpl@^4';
+const DOCUMENTED_INSTALL_PATHS = [
+  'README.md',
+  'packages/react/README.md',
+  'packages/vue/README.md',
+  'examples/react/README.md',
+  'examples/vanilla-js/README.md',
+  'docs/guide/getting-started.md',
+  'docs/guide/frameworks/react.md',
+  'docs/guide/frameworks/vue.md',
+  'docs/guide/frameworks/nuxt.md',
+  'docs/guide/migration-v1.md',
+];
 const PUBLISH_CONFIG = {
   access: 'public',
   registry: NPM_REGISTRY,
@@ -96,6 +109,56 @@ function parseJson(command, args, options) {
   return JSON.parse(run(command, args, { ...options, capture: true }));
 }
 
+function readInstallCommands(markdownPath) {
+  return readFileSync(markdownPath, 'utf-8')
+    .split(/\r?\n/)
+    .map((line) => line.trim().match(/^(?:npm install|pnpm add|yarn add)\s+(.+)$/)?.[1])
+    .filter(Boolean)
+    .map((dependencies) => dependencies.split(/\s+/));
+}
+
+function findInstallCommand(markdownPath, packageName) {
+  const command = readInstallCommands(markdownPath).find((dependencies) =>
+    dependencies.some(
+      (dependency) => dependency === packageName || dependency.startsWith(`${packageName}@`)
+    )
+  );
+  assert(command, `${path.relative(repositoryRoot, markdownPath)} has no ${packageName} install`);
+  return command;
+}
+
+function verifyDocumentedXrplSpecs() {
+  for (const relativePath of DOCUMENTED_INSTALL_PATHS) {
+    const markdownPath = path.join(repositoryRoot, relativePath);
+    const xrplSpecs = readInstallCommands(markdownPath)
+      .flat()
+      .filter((dependency) => /^xrpl(?:@.+)?$/.test(dependency));
+    assert(xrplSpecs.length > 0, `${relativePath} has no documented xrpl dependency`);
+    for (const spec of xrplSpecs) {
+      assert.equal(
+        spec,
+        DOCUMENTED_XRPL_SPEC,
+        `${relativePath} does not pin documented xrpl to v4`
+      );
+    }
+  }
+
+  console.log('✓ Current install documentation consistently pins xrpl to v4');
+  return findInstallCommand(
+    path.join(repositoryRoot, 'packages', 'react', 'README.md'),
+    '@xrpl-commons/xrpl-connect-react'
+  );
+}
+
+function resolveCandidateSpecs(dependencies, tarballsByName) {
+  return dependencies.map((dependency) => {
+    const candidate = candidatePackages.find(
+      ({ name }) => dependency === name || dependency.startsWith(`${name}@`)
+    );
+    return candidate ? tarballsByName.get(candidate.name) : dependency;
+  });
+}
+
 function verifyNpmAccess() {
   const username = run('npm', ['whoami', '--registry', NPM_REGISTRY], {
     ...registryRunOptions,
@@ -177,6 +240,7 @@ if (modes.has('--check-prepublish')) verifyPrepublishRegistryState();
 if (modes.has('--check-registry')) verifyRegistryTags();
 if (modes.size > 0) process.exit(0);
 
+const documentedReactInstall = verifyDocumentedXrplSpecs();
 const temporaryRoot = mkdtempSync(path.join(os.tmpdir(), 'xrpl-connect-publish-'));
 const runOptions = {
   env: { npm_config_cache: path.join(temporaryRoot, '.npm-cache') },
@@ -193,7 +257,7 @@ const publishRunOptions = (tag, registry) => ({
 });
 
 try {
-  const tarballs = [];
+  const tarballsByName = new Map();
   for (const candidate of candidatePackages) {
     const [packMetadata] = parseJson(
       'npm',
@@ -208,7 +272,7 @@ try {
       assert(packedFiles.has(requiredFile), `${candidate.name} is missing ${requiredFile}`);
     }
 
-    tarballs.push(path.join(temporaryRoot, packMetadata.filename));
+    tarballsByName.set(candidate.name, path.join(temporaryRoot, packMetadata.filename));
     console.log(`→ Dry-running ${candidate.name}@${CANDIDATE_VERSION}`);
     run(
       'npm',
@@ -250,14 +314,12 @@ try {
       '--no-audit',
       '--no-fund',
       '--package-lock=false',
-      ...tarballs,
+      ...resolveCandidateSpecs(documentedReactInstall, tarballsByName),
+      tarballsByName.get('@xrpl-commons/xrpl-connect-vue'),
       '@types/react@^18.3.0',
       '@types/react-dom@^18.3.0',
-      'xrpl@^4.0.0',
       'jsdom@^22.1.0',
       'nuxt@4.1.3',
-      'react@^18.3.1',
-      'react-dom@^18.3.1',
       'rollup@4.62.2',
       'vite@7.1.11',
       'vue@^3.5.22',
@@ -274,6 +336,15 @@ try {
         readFileSync(path.join(consumerFolder, 'node_modules', name, 'package.json'), 'utf-8')
       ),
     ])
+  );
+  const packedReactInstall = findInstallCommand(
+    path.join(consumerFolder, 'node_modules', '@xrpl-commons', 'xrpl-connect-react', 'README.md'),
+    '@xrpl-commons/xrpl-connect-react'
+  );
+  assert.deepEqual(
+    packedReactInstall,
+    documentedReactInstall,
+    'Packed React README changed the verified install command'
   );
 
   for (const [name, manifest] of Object.entries(installedManifests)) {

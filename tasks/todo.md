@@ -70,3 +70,33 @@
 - The package README renders the connector and both body-level portal hosts as siblings, with a drift test tied to the exported portal attributes.
 - Static consumption coverage fails for declared-but-unused tokens, and Chromium verifies radius, focus, and danger overrides against rendered wallet/account portal UI.
 - UI type/runtime tests, all nine Chromium tests, repository formatting/lint, the full monorepo build/test pipeline, documentation snapshot verification, and packed ESM/CJS/SSR/Nuxt consumer verification pass.
+
+---
+
+# Issue #169 PR
+
+## Issue summary
+
+- The documented React install command leaves `xrpl` unpinned even though the React and umbrella packages support only `xrpl` v3/v4 peers.
+- A clean install can therefore request or resolve registry-latest `xrpl` v5, producing peer failures or warnings depending on the package manager.
+- The implementation must either prove and advertise v5 support or consistently document v4, then exercise the literal documented dependency specifications in packed-consumer verification.
+- React, umbrella, examples, and canonical documentation must remain aligned.
+
+## Plan
+
+- [x] Validate GitHub access, refresh `origin/develop`, inspect issue state/comments/linked PRs, and create a clean isolated worktree.
+- [x] Inventory all `xrpl` peer ranges, React/framework install commands, examples, and packed-consumer dependency construction.
+- [x] Determine the supported `xrpl` major range from source compatibility, existing policy, and verification coverage.
+- [x] Implement the smallest consistent documentation/package/test change and add a literal-spec clean-install regression.
+- [x] Prove the regression against the pre-fix behavior, then run focused formatting, linting, build, test, publish, and documentation checks.
+- [x] Review the final diff against every acceptance criterion and record results below.
+- [ ] Commit only intentional files, push the branch, open the PR, and verify remote PR metadata/checks.
+
+## Review
+
+- Supported direction: retain the packages' `xrpl@^3 || ^4` peer policy and recommend v4 to new consumers; v5 changes wallet seed/signing semantics and is not covered by the current compatibility suite.
+- Documentation: every current root, framework, package, example, getting-started, and migration install command now uses `xrpl@^4`; immutable 0.8.2 snapshots remain unchanged, and the adapter authoring template matches the actual v3/v4 peer range.
+- Regression coverage: publish verification scans all ten current install surfaces, parses the literal React README dependencies, replaces only local candidate packages with their tarballs, installs under strict peer checks, and confirms the packed README preserves the verified command.
+- Fail-before proof: the new guard rejected the original tree at `README.md` with `xrpl !== xrpl@^4` before packing or network installation.
+- Verification: `pnpm exec vp check`, `pnpm --filter xrpl-connect test:publish`, `pnpm docs:snapshot:check`, `pnpm docs:build`, `pnpm test`, `node --check packages/xrpl-connect/scripts/test-publish.mjs`, and `git diff --check` pass.
+- Independent acceptance and test-logic reviews found no implementation defects; the parser's intentional scope is the one-line npm, pnpm, and Yarn command forms used by current release documentation.
