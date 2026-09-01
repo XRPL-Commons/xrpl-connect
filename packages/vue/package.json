@@ -1,6 +1,6 @@
 {
   "name": "@xrpl-commons/xrpl-connect-vue",
-  "version": "1.0.0-rc.0",
+  "version": "1.0.0-rc.1",
   "description": "Vue 3 bindings (plugin, composables, modal component) for XRPL Connect",
   "author": "XRPL Connect Contributors",
   "license": "MIT",
@@ -49,7 +49,7 @@
   "scripts": {
     "build": "vp pack",
     "dev": "vp pack --watch",
-    "prepublishOnly": "node -e \"const { npm_config_tag: tag, npm_config_access: access, npm_config_registry: registry } = process.env; let registryUrl = ''; try { registryUrl = new URL(registry).href; } catch {} if (tag !== 'rc' || access !== 'public' || registryUrl !== 'https://registry.npmjs.org/') { console.error('Publish requires --tag rc --access public --registry https://registry.npmjs.org/'); process.exit(1); }\"",
+    "prepublishOnly": "node -e \"const { npm_config_tag: tag, npm_config_access: access, npm_config_registry: registry, npm_package_version: version } = process.env; const expectedTag = /^\\d+\\.\\d+\\.\\d+-rc\\.\\d+$/.test(version) ? 'rc' : /^\\d+\\.\\d+\\.\\d+$/.test(version) ? 'release' : ''; let registryUrl = ''; try { registryUrl = new URL(registry).href; } catch {} if (!expectedTag || tag !== expectedTag || access !== 'public' || registryUrl !== 'https://registry.npmjs.org/') { console.error('Publish requires the version-matched rc/release tag, --access public, and --registry https://registry.npmjs.org/'); process.exit(1); }\"",
     "lint": "vp lint src",
     "type-check": "tsc --noEmit",
     "test": "node tests/ssr-smoke.mjs && vp test run",
@@ -59,7 +59,7 @@
   "peerDependencies": {
     "vue": "^3.5.0",
     "xrpl": "^3.0.0 || ^4.0.0",
-    "xrpl-connect": "^1.0.0-rc.0"
+    "xrpl-connect": "^1.0.0-rc.1"
   },
   "devDependencies": {
     "@xrpl-connect/core": "workspace:*",

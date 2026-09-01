@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] - 2026-09-01
+
 ### Added
 
 - React: forward typed `WalletConnectorElement` refs and safe host attributes through `<WalletConnector>`, with explicit managed-prop precedence (#172).
@@ -16,13 +18,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vue: expose the native unavailable-wallet display behavior through the typed `showUnavailable` component prop (#146).
 - UI: export the exact wallet-connector CSS-variable contract and stable modal portal/part metadata, with typed React and Vue overrides and connected-account modal styling hooks (#151).
 
+### Changed
+
+- Release: parameterize coordinated RC and stable publication, preserve every `latest` tag during RC publication, stage and verify all stable artifacts before promotion, and publish through protected npm trusted publishing with provenance (#182).
+- Documentation: deploy current documentation from verified GitHub Releases so the documented npm channel and deployed API stay aligned.
+
 ### Fixed
 
 - React: ship the custom-element JSX and typed-ref declaration in the packed package, and verify the advertised React 18 and 19 runtime/type compatibility in isolated consumers (#170).
 - Documentation: pin current install commands to `xrpl@^4` so registry-latest v5 cannot drift outside the supported v3/v4 peer range; packed-consumer verification now executes the literal React dependency specifications and rejects stale install examples (#169).
 - xrpl-connect (meta-bundle): emit the Xaman mock-WebSocket constructor without an optional chain so Nuxt 4 and Vite/Rollup production builds can consume the published ESM artifact. Consumers can remove `patch-package` or transpilation workarounds for `xrpl-connect.mjs` (#141).
 
-## [1.0.0-rc.0] - 2026-08-17
+## [1.0.0-rc.0] - 2026-08-18
 
 ### Added
 
@@ -186,7 +193,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Switch the build to Vite for the meta package.
 - Crossmark adapter: use `signAndSubmitAndWait` and improve `isAvailable`.
 
-[Unreleased]: https://github.com/XRPL-Commons/xrpl-connect/compare/v1.0.0-rc.0...HEAD
+[Unreleased]: https://github.com/XRPL-Commons/xrpl-connect/compare/v1.0.0-rc.1...HEAD
+[1.0.0-rc.1]: https://github.com/XRPL-Commons/xrpl-connect/compare/v1.0.0-rc.0...v1.0.0-rc.1
 [1.0.0-rc.0]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.8.2...v1.0.0-rc.0
 [0.8.2]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.8.0...v0.8.1

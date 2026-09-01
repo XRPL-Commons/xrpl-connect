@@ -46,6 +46,41 @@
 
 ---
 
+# Issue #182
+
+## Issue summary
+
+- The guarded publisher hard-codes `1.0.0-rc.0` and assumes framework `latest` points at the candidate, so immutable RC0 artifacts block current `develop` and RC1 cannot preserve every existing `latest` tag.
+- Stable v1 needs a coordinated policy that uploads all three `1.0.0` artifacts without moving `latest`, verifies every immutable artifact, and only then promotes the complete set.
+- Release metadata is split across package manifests, peer ranges, docs, changelog links, npm tags, git tags, and GitHub Releases; RC0 has no matching source tag or release.
+- The solution must retain clean-tree, registry, access/ownership, integrity, resumability, partial-publication, and packed-consumer safeguards while adding a trusted GitHub Actions publication path with npm provenance.
+
+## Plan
+
+- [x] Validate GitHub access, refresh `origin/develop`, confirm issue state/comments/linked PRs, inspect npm tags, and create a clean isolated worktree.
+- [x] Define one release configuration contract for version, channel, allowed registry tags, previous `latest` values, and RC/stable promotion phases.
+- [x] Refactor the publisher and registry verifier around that contract while preserving access, ownership, clean-tree, integrity, retry, and resumability guarantees.
+- [x] Add focused policy/publisher tests for fresh and subsequent RCs, stable staging/promotion, partial interruptions, identical and mismatched artifacts, and forbidden channel/tag/registry states.
+- [x] Prepare coordinated `1.0.0-rc.1` umbrella/React/Vue manifests and framework peer ranges, including generated packed-manifest guard expectations.
+- [x] Add a protected manual GitHub Actions release workflow using npm trusted publishing/OIDC and provenance, with post-verification source tag and GitHub Release creation.
+- [x] Cut the RC1 changelog and update maintainer, migration, install, release-channel, trusted-publisher, and docs-deployment guidance so documented tags match npm availability.
+- [x] Run focused fail-before/proof tests, formatting/linting, builds, packed publish verification, docs checks, repository tests, and workflow/static validation.
+- [x] Review the final diff against every acceptance criterion, record results below, and correct any design or coverage gaps.
+- [ ] Commit only intentional files, push the branch, open the PR, and verify the remote PR metadata and checks.
+
+## Review
+
+- `release-policy.mjs` is the single version/channel/tag contract. RC publication preserves the exact preflight `latest` snapshot; stable publication uses the temporary `release` tag, verifies every immutable artifact, promotes all `latest` tags, removes staging tags, and preserves `rc`.
+- The publisher validates all local/remote integrities before its first mutation and rechecks the exact tag snapshot after the build, preventing both partial publication before a late mismatch and an RC downgrade race. Existing identical artifacts, uploads, tag promotion, staging cleanup, and registry propagation are resumable.
+- Access/ownership uses a read-only token, artifact uploads are tokenless OIDC with provenance, and only `dist-tag` subprocesses receive the granular package-write token; builds, tests, packs, registry reads, and git checks receive no npm secrets.
+- The coordinated umbrella, React, Vue, and docs versions are `1.0.0-rc.1`; framework peers are `^1.0.0-rc.1`, while the standalone modular packages remain unchanged.
+- The protected `Publish Release` workflow accepts exact RC/stable inputs, publishes only from the default branch, creates the immutable source tag and GitHub Release after registry verification, and lets only published releases deploy the matching documentation tag.
+- All three immutable npm RC0 artifacts record git head `6cddda6`; the missing annotated `v1.0.0-rc.0` tag and prerelease now exist at that exact commit, repairing the changelog source links.
+- Verification passes: 18 focused release tests; live npm RC1 preflight; YAML parsing; `pnpm exec vp check`; `pnpm docs:snapshot:check`; `pnpm --filter xrpl-connect test:publish` including React 18/19, Vue, ESM/CJS/SSR, strict peers, and Nuxt 4; two exact-tree `pnpm test` runs; and `git diff --check`.
+- Independent review found a tag rollback race, job-wide credential exposure, unrestricted manual docs deployment, and the missing RC0 metadata. The race, credential scoping, and deployment trigger were corrected; RC0 metadata was created. A proposed stable-cleanup issue was disproved by the existing partial-cleanup regression, which re-adds missing staging tags before verification and promotion.
+
+---
+
 # Issue #172
 
 ## Issue summary
