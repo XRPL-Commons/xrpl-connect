@@ -5,6 +5,7 @@ import { WalletManager } from '@xrpl-connect/core';
 import {
   WALLET_CONNECTOR_CSS_VARIABLES,
   WALLET_CONNECTOR_PARTS,
+  WALLET_CONNECTOR_PORTAL_ATTRIBUTES,
   WALLET_CONNECTOR_PORTAL_SELECTORS,
 } from '../src/customization';
 import { mainStyles } from '../src/styles/main';
@@ -22,12 +23,19 @@ function escapeRegExp(value: string): string {
 }
 
 describe('wallet connector customization contract', () => {
-  it('keeps the public variable list aligned with the stylesheet defaults', () => {
+  it('keeps the public variable list aligned with stylesheet defaults and consumers', () => {
     const declaredVariables = [...mainStyles.matchAll(/^\s+(--xc-[\w-]+):/gm)].map(
       ([, variable]) => variable
     );
 
     expect(declaredVariables).toEqual(WALLET_CONNECTOR_CSS_VARIABLES);
+    for (const variable of WALLET_CONNECTOR_CSS_VARIABLES) {
+      const occurrences = mainStyles.match(new RegExp(escapeRegExp(variable), 'g'))?.length ?? 0;
+      expect(
+        occurrences,
+        `${variable} must be consumed outside its default declaration`
+      ).toBeGreaterThan(1);
+    }
   });
 
   it('forwards every supported variable, but not unknown variables, to both portals', async () => {
@@ -143,6 +151,28 @@ describe('wallet connector customization contract', () => {
       for (const part of Object.values(parts)) {
         expect(documentation).toMatch(documentedPart(portal, part));
       }
+    }
+  });
+
+  it('documents both portal hosts as direct body-level siblings', () => {
+    const readme = readFileSync(resolve(process.cwd(), 'README.md'), 'utf8');
+    const shadowTree = readme.split('### Shadow DOM Structure')[1]?.split('### Styling')[0] ?? '';
+    const connectorClose = shadowTree.indexOf('</xrpl-wallet-connector>');
+    const portalLines = shadowTree
+      .split('\n')
+      .filter((line) =>
+        Object.values(WALLET_CONNECTOR_PORTAL_ATTRIBUTES).some((attribute) =>
+          line.includes(attribute)
+        )
+      );
+    const expectedPortalLines = Object.values(WALLET_CONNECTOR_PORTAL_ATTRIBUTES).map(
+      (attribute) => `<div ${attribute}>`
+    );
+
+    expect(connectorClose).toBeGreaterThanOrEqual(0);
+    expect(portalLines).toEqual(expectedPortalLines);
+    for (const portalLine of portalLines) {
+      expect(shadowTree.indexOf(portalLine)).toBeGreaterThan(connectorClose);
     }
   });
 });

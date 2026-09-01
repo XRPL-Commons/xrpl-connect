@@ -60,14 +60,12 @@ export const mainStyles = `
 
     /* Modal */
     --xc-modal-background: var(--xc-background-color);
-    --xc-modal-border-radius: 12px;
+    --xc-modal-border-radius: var(--xc-border-radius);
     --xc-modal-box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
 
     /* Miscellaneous */
     --xc-focus-color: var(--xc-primary-color);
     --xc-danger-color: #ef4444;
-    --xc-success-color: #10b981;
-    --xc-warning-color: #f59e0b;
 
     /* Internal aliases */
     --bg-color: var(--xc-background-color);
@@ -526,11 +524,12 @@ export const mainStyles = `
     height: ${SIZES.ICON_LARGE}px;
     border-radius: 50%;
     background: rgba(239, 68, 68, 0.1);
+    background: color-mix(in srgb, var(--xc-danger-color) 10%, transparent);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 48px;
-    color: #ef4444;
+    color: var(--xc-danger-color);
   }
 
   .error-text {
@@ -913,6 +912,13 @@ export const mainStyles = `
   }
 
   .account-disconnect-button:hover .disconnect-icon path {
-    fill: #ef4444;
+    fill: var(--xc-danger-color);
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  .custom-path-input:focus-visible {
+    outline: 2px solid var(--xc-focus-color);
+    outline-offset: 2px;
   }
 `;

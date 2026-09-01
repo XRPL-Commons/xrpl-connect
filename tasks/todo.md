@@ -55,3 +55,18 @@
 - `pnpm exec vp check`, UI/React/Vue focused checks, `pnpm build`, `pnpm docs:snapshot:check`, `pnpm --filter xrpl-connect test:publish`, `pnpm test`, and `git diff --check` pass.
 - Independent final review found three documentation/lifecycle/source-of-truth gaps; all were fixed and the exact final tree passed the focused UI suite and full monorepo pipeline.
 - Signed commit `58fd901` was pushed and opened as PR #167 targeting `develop`; the remote head, signature, issue linkage, and checks were verified after delivery.
+
+## Fix PR #167 review findings
+
+- [x] Verify the dedicated worktree is clean and matches the exact remote PR head.
+- [x] Make every exported customization token affect runtime styling or remove it from the contract.
+- [x] Correct the UI README portal topology and add drift coverage for direct-body sibling hosts.
+- [x] Run focused UI checks plus repository-level build, test, publish, and documentation verification.
+- [x] Review the final diff, commit, push, and verify the updated PR head and CI.
+
+### Fix review
+
+- The contract now contains 34 runtime-effective tokens: base radius feeds the modal fallback, focus colors keyboard outlines, danger colors error/destructive UI, and unsupported success/warning tokens are no longer advertised.
+- The package README renders the connector and both body-level portal hosts as siblings, with a drift test tied to the exported portal attributes.
+- Static consumption coverage fails for declared-but-unused tokens, and Chromium verifies radius, focus, and danger overrides against rendered wallet/account portal UI.
+- UI type/runtime tests, all nine Chromium tests, repository formatting/lint, the full monorepo build/test pipeline, documentation snapshot verification, and packed ESM/CJS/SSR/Nuxt consumer verification pass.

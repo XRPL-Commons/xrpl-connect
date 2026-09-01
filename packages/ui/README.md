@@ -649,21 +649,21 @@ host so fixed positioning is not constrained by transformed ancestors:
 <xrpl-wallet-connector>
   #shadow-root (open)
   <button part="connect-button">Connect Wallet</button>
+</xrpl-wallet-connector>
 
-  <div data-xrpl-overlay-portal>
-    #shadow-root (open)
-    <div part="overlay">
-      <div part="modal">...</div>
+<div data-xrpl-overlay-portal>
+  #shadow-root (open)
+  <div part="overlay">
+    <div part="modal">...</div>
+  </div>
+</div>
 
-      <div data-xrpl-account-modal-portal>
-        #shadow-root (open)
-        <div part="overlay">
-          <div part="modal">...</div>
-        </div>
-      </div>
-    </div>
-  </div></xrpl-wallet-connector
->
+<div data-xrpl-account-modal-portal>
+  #shadow-root (open)
+  <div part="overlay">
+    <div part="modal">...</div>
+  </div>
+</div>
 ```
 
 ### Styling

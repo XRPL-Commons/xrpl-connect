@@ -87,12 +87,10 @@ In your CSS file or global styles:
 
 #### Status Colors
 
-| Variable             | Default                   | Purpose                  |
-| -------------------- | ------------------------- | ------------------------ |
-| `--xc-success-color` | `#10b981`                 | Success state (green)    |
-| `--xc-warning-color` | `#f59e0b`                 | Warning state (yellow)   |
-| `--xc-danger-color`  | `#ef4444`                 | Error/danger state (red) |
-| `--xc-focus-color`   | `var(--xc-primary-color)` | Focus/active state       |
+| Variable            | Default                   | Purpose                          |
+| ------------------- | ------------------------- | -------------------------------- |
+| `--xc-danger-color` | `#ef4444`                 | Error and destructive states     |
+| `--xc-focus-color`  | `var(--xc-primary-color)` | Keyboard focus indicator outline |
 
 #### Overlay & Modal
 
@@ -106,10 +104,10 @@ In your CSS file or global styles:
 
 ### Spacing & Typography Variables
 
-| Variable             | Default           | Purpose                                |
-| -------------------- | ----------------- | -------------------------------------- |
-| `--xc-font-family`   | System font stack | Typography for all text                |
-| `--xc-border-radius` | `12px`            | Default roundness for modals and cards |
+| Variable             | Default           | Purpose                 |
+| -------------------- | ----------------- | ----------------------- |
+| `--xc-font-family`   | System font stack | Typography for all text |
+| `--xc-border-radius` | `12px`            | Default modal roundness |
 
 ### Connect Button Variables
 

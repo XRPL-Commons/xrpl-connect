@@ -34,8 +34,6 @@ export const WALLET_CONNECTOR_CSS_VARIABLES = [
   '--xc-modal-box-shadow',
   '--xc-focus-color',
   '--xc-danger-color',
-  '--xc-success-color',
-  '--xc-warning-color',
 ] as const;
 
 /** A CSS custom property supported by {@link WALLET_CONNECTOR_CSS_VARIABLES}. */
