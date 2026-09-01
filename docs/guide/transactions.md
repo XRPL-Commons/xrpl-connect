@@ -41,17 +41,50 @@ A returned hash means the wallet accepted/submitted the transaction according to
 
 ## Sign without submitting
 
-Use `sign()` when your application submits separately or needs the signed artifact. Wallets expose different artifacts, so check `tx_blob` and `tx_json` instead of assuming one representation:
+Use `sign()` when your application submits separately or needs the signed artifact. Wallets expose different artifacts, so check `tx_blob` and `tx_json` instead of assuming one representation. A multisign contribution is not ready for direct submission:
 
 ```ts
 const signed = await manager.sign(transaction);
+const signedBlob = signed.tx_blob ?? (signed.tx_json ? xrpl.encode(signed.tx_json) : undefined);
 
-if (signed.tx_blob) {
-  await xrplClient.submit(signed.tx_blob);
-} else if (signed.tx_json) {
-  await xrplClient.submit(xrpl.encode(signed.tx_json));
+if (!signedBlob) throw new Error('Wallet did not return a signed artifact');
+
+const signedJson = signed.tx_json ?? xrpl.decode(signedBlob);
+if (Array.isArray(signedJson.Signers)) {
+  throw new Error('Combine all multisign contributions before submitting');
 }
+
+await xrplClient.submit(signedBlob);
 ```
+
+### Ledger multisign contributions
+
+Ledger supports parallel multisigning through `sign()`. Prepare the transaction
+once with the total signer count so its fee and all other fields are identical
+for every signer. Each result contains one verified `Signers` entry; combine the
+blobs and submit the final transaction yourself:
+
+```ts
+const prepared = await xrplClient.autofill(
+  {
+    TransactionType: 'Payment',
+    Account: multisignAccount,
+    Destination: destination,
+    Amount: amountInDrops,
+    SigningPubKey: '',
+  },
+  2
+);
+
+const ledgerContribution = await manager.sign(prepared);
+const combinedBlob = xrpl.multisign([ledgerContribution.tx_blob!, otherSignerContributionBlob]);
+
+await xrplClient.submitAndWait(combinedBlob);
+```
+
+Do not pass an existing `TxnSignature` or `Signers` array to Ledger. Its
+`signAndSubmit()` path rejects multisign input because one contribution may not
+satisfy the account's signer quorum.
 
 ## Message signing
 

@@ -68,7 +68,7 @@ async sign(
 ): Promise<ManagedSignedTransaction>
 ```
 
-Sign a transaction without submitting it to the ledger. Depending on the adapter, the result contains the complete signed transaction JSON (`tx_json`), a serialized transaction blob (`tx_blob`), and/or the raw signature. Manager results always contain the address that started the signing request as `signerAddress`, unless the adapter supplies a more specific signer address.
+Sign a transaction without submitting it to the ledger. Depending on the adapter, the result contains signed transaction JSON (`tx_json`), a serialized transaction blob (`tx_blob`), and/or the raw signature. These artifacts can represent either a complete single-sign transaction or one multisign contribution; inspect the adapter contract before submitting them. Manager results always contain the address that started the signing request as `signerAddress`, unless the adapter supplies a more specific signer address.
 
 #### signAndSubmit()
 
@@ -389,8 +389,15 @@ const adapter = new LedgerAdapter({
 ```
 
 **Supported Features:** On-device transaction confirmation, message signing,
-live account refresh, and multiple derivation paths. Requires Chrome / Edge /
-Opera with WebHID or WebUSB.
+live account refresh, multiple derivation paths, and signer-bound parallel
+multisign contributions. Requires Chrome / Edge / Opera with WebHID or WebUSB.
+
+For Ledger multisigning, pass `sign()` one fully prepared transaction with an
+explicit source `Account`, `SigningPubKey: ''`, and no existing signatures. The
+result contains one `Signers` entry and no top-level `TxnSignature`. Give every
+signer the identical prepared transaction, combine the contribution blobs with
+`xrpl.multisign()`, and submit the combined blob separately. Ledger
+`signAndSubmit()` rejects multisign input.
 
 ### Xyra Adapter
 
@@ -660,6 +667,9 @@ type ManagedSignedTransaction = SignedTransaction & { signerAddress: string };
 
 Direct adapter results keep `signerAddress` optional for backward compatibility.
 `WalletManager.sign()` returns `ManagedSignedTransaction`, where it is required.
+The optional artifacts may be one multisign contribution rather than a
+submission-ready transaction; a contribution has `SigningPubKey: ''`, one
+`Signers` entry, and no top-level `TxnSignature`.
 
 ### SubmittedTransaction
 

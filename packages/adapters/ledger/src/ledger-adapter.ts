@@ -5,7 +5,13 @@ import type Transport from '@ledgerhq/hw-transport';
 import TransportWebHID from '@ledgerhq/hw-transport-webhid';
 import TransportWebUSB from '@ledgerhq/hw-transport-webusb';
 import Xrp from '@ledgerhq/hw-app-xrp';
-import { encode, Client } from 'xrpl';
+import {
+  encode,
+  encodeForMultiSigning,
+  encodeForSigning,
+  verifyKeypairSignature,
+  Client,
+} from 'xrpl';
 
 import type {
   WalletAdapter,
@@ -45,6 +51,12 @@ function formattedLedgerError(error: unknown): Error {
  * Users need time to confirm on device
  */
 const DEFAULT_TIMEOUT = 60000;
+
+interface LedgerSignedTransaction {
+  tx_blob: string;
+  tx_json: Transaction;
+  signature: string;
+}
 
 /**
  * Ledger adapter implementation
@@ -260,52 +272,32 @@ export class LedgerAdapter
     return this.currentAccount.network;
   }
 
-  /**
-   * Autofill, encode, and sign a transaction with the Ledger device
-   * Shared logic used by both sign() and signAndSubmit()
-   */
+  /** Autofill, encode, and sign a transaction with the Ledger device. */
   private async prepareAndSign(
-    transaction: Transaction
-  ): Promise<{ tx_blob: string; client: Client }> {
-    if (!this.currentAccount) {
-      throw createWalletError.notConnected();
-    }
-
-    if (!this.xrpApp) {
-      throw createWalletError.unknown('Ledger XRP app not initialized');
-    }
-
-    const client = new Client(this.currentAccount.network.wss);
-    await client.connect();
-
+    transaction: Transaction,
+    client: Client,
+    account: AccountInfo,
+    xrpApp: Xrp,
+    multisigned: boolean
+  ): Promise<LedgerSignedTransaction> {
     const tx = {
       ...transaction,
-      Account: transaction.Account || this.currentAccount.address,
+      Account: transaction.Account || account.address,
     };
 
     const prepared = await client.autofill(tx as Transaction);
-
-    // Prepare transaction for signing - remove fields that shouldn't be in the signing blob
     const txForSigning = { ...prepared };
-    delete txForSigning.TxnSignature;
-    delete txForSigning.Signers;
+    const publicKey = account.publicKey?.toUpperCase();
+    if (!publicKey) throw new Error('Ledger did not provide a public key for signing');
 
-    // Check if this is a multisig transaction
-    const isMultisig = txForSigning.SigningPubKey === '';
+    txForSigning.SigningPubKey = multisigned ? '' : publicKey;
 
-    // Set SigningPubKey appropriately
-    if (isMultisig) {
-      txForSigning.SigningPubKey = '';
-    } else {
-      txForSigning.SigningPubKey = this.currentAccount.publicKey!.toUpperCase();
-    }
-
-    // Encode transaction to binary format for Ledger
+    // Ledger firmware detects an empty SigningPubKey and applies the XRPL
+    // multisigning prefix and device AccountID itself. It must receive the
+    // ordinary unsigned transaction serialization in both signing modes.
     const txBlob = encode(txForSigning).toUpperCase();
-
-    // Sign with Ledger device
     const signature = await this.withTimeout(
-      this.xrpApp.signTransaction(this.derivationPath, txBlob),
+      xrpApp.signTransaction(this.derivationPath, txBlob),
       'Signing timeout. Please confirm the transaction on your Ledger device.'
     );
 
@@ -313,15 +305,70 @@ export class LedgerAdapter
       throw new Error('Failed to sign transaction with Ledger');
     }
 
-    // Build the signed transaction blob with signature
-    const signedTx = {
-      ...txForSigning,
-      TxnSignature: signature.toUpperCase(),
+    const normalizedSignature = signature.toUpperCase();
+    const signingBlob = multisigned
+      ? encodeForMultiSigning(txForSigning, account.address)
+      : encodeForSigning(txForSigning);
+    if (!verifyKeypairSignature(signingBlob, normalizedSignature, publicKey)) {
+      throw new Error('Ledger returned a signature that does not match the connected account');
+    }
+
+    const tx_json = (
+      multisigned
+        ? {
+            ...txForSigning,
+            Signers: [
+              {
+                Signer: {
+                  Account: account.address,
+                  SigningPubKey: publicKey,
+                  TxnSignature: normalizedSignature,
+                },
+              },
+            ],
+          }
+        : {
+            ...txForSigning,
+            TxnSignature: normalizedSignature,
+          }
+    ) as Transaction;
+
+    return {
+      tx_blob: encode(tx_json),
+      tx_json,
+      signature: normalizedSignature,
     };
+  }
 
-    const tx_blob = encode(signedTx as Transaction);
+  private getSigningContext(): { account: AccountInfo; xrpApp: Xrp } {
+    if (!this.currentAccount) throw createWalletError.notConnected();
+    if (!this.xrpApp) throw createWalletError.unknown('Ledger XRP app not initialized');
+    return { account: this.currentAccount, xrpApp: this.xrpApp };
+  }
 
-    return { tx_blob, client };
+  private validateSigningInput(transaction: Transaction): boolean {
+    if (transaction.TxnSignature !== undefined || transaction.Signers !== undefined) {
+      throw new Error('Ledger signing input must not contain TxnSignature or Signers');
+    }
+
+    const multisigned = transaction.SigningPubKey === '';
+    if (multisigned && !transaction.Account) {
+      throw new Error('Ledger multisigning requires the source Account');
+    }
+    return multisigned;
+  }
+
+  private async withClient<T>(
+    network: NetworkInfo,
+    operation: (client: Client) => Promise<T>
+  ): Promise<T> {
+    const client = new Client(network.wss);
+    await client.connect();
+    try {
+      return await operation(client);
+    } finally {
+      await client.disconnect();
+    }
   }
 
   /**
@@ -329,12 +376,18 @@ export class LedgerAdapter
    */
   async sign(transaction: Transaction): Promise<SignedTransaction> {
     try {
-      const { tx_blob, client } = await this.prepareAndSign(transaction);
-      await client.disconnect();
+      const { account, xrpApp } = this.getSigningContext();
+      const multisigned = this.validateSigningInput(transaction);
+      const signed = await this.withClient(account.network, (client) =>
+        this.prepareAndSign(transaction, client, account, xrpApp, multisigned)
+      );
 
       return {
         hash: '',
-        tx_blob,
+        tx_blob: signed.tx_blob,
+        tx_json: signed.tx_json,
+        signature: signed.signature,
+        signerAddress: account.address,
       };
     } catch (error) {
       if (isWalletError(error)) throw error;
@@ -359,21 +412,24 @@ export class LedgerAdapter
    */
   async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
     try {
-      const { tx_blob, client } = await this.prepareAndSign(transaction);
+      const { account, xrpApp } = this.getSigningContext();
+      if (this.validateSigningInput(transaction)) {
+        throw createWalletError.unsupportedMethod(
+          'Ledger multisigning returns one signer contribution; combine and submit contributions separately'
+        );
+      }
 
-      try {
-        const result = await client.submitAndWait(tx_blob);
-        await client.disconnect();
-
+      return await this.withClient(account.network, async (client) => {
+        const signed = await this.prepareAndSign(transaction, client, account, xrpApp, false);
+        const result = await client.submitAndWait(signed.tx_blob);
         return {
           hash: result.result.hash || '',
           id: result.result.hash || '',
-          tx_blob,
+          tx_blob: signed.tx_blob,
+          tx_json: signed.tx_json,
+          signature: signed.signature,
         };
-      } catch (error) {
-        await client.disconnect();
-        throw error;
-      }
+      });
     } catch (error) {
       if (isWalletError(error)) throw error;
 

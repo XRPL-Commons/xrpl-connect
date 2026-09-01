@@ -160,6 +160,11 @@ Signs a transaction without submitting it to the network.
 the account that produced the signature. The result may also contain `tx_blob`,
 `tx_json`, `signature`, and wallet-specific fields.
 
+These artifacts are not always ready for direct submission. A multisign-capable
+adapter can return one signer contribution whose `tx_json`/`tx_blob` contains a
+`Signers` entry. Combine all contributions according to that adapter's contract
+before submitting the final transaction.
+
 **Throws**: `WalletError` with `SIGN_FAILED`, `SIGN_REJECTED`,
 `NOT_CONNECTED`, or `UNSUPPORTED_METHOD` error codes
 
@@ -545,10 +550,10 @@ Result from `sign(transaction)`:
 ```typescript
 interface SignedTransaction {
   hash: string; // Transaction hash
-  tx_blob?: string; // Signed transaction blob
-  signature?: string; // Transaction signature
+  tx_blob?: string; // Signed transaction or multisign-contribution blob
+  signature?: string; // Top-level or signer-contribution signature
   signerAddress?: string; // Optional on direct adapter results
-  tx_json?: Transaction; // Complete signed transaction JSON
+  tx_json?: Transaction; // Signed transaction or multisign contribution
   [key: string]: unknown; // Additional wallet-specific fields
 }
 ```
@@ -556,6 +561,9 @@ interface SignedTransaction {
 The base adapter result keeps `signerAddress` optional for compatibility with
 custom adapters. `WalletManager.sign()` strengthens it to a required `string`,
 using the account that started the signing request when the adapter omits it.
+For multisign results, the serialized artifacts describe a signer contribution
+until the caller combines all required signatures; `hash` may be empty or
+non-final at that stage.
 
 ```typescript
 type ManagedSignedTransaction = SignedTransaction & { signerAddress: string };

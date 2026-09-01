@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 import { createWalletError, WalletErrorCategory, WalletErrorCode } from '@xrpl-connect/core';
+import {
+  decode,
+  encodeForMultiSigning,
+  hashes,
+  multisign,
+  verifyKeypairSignature,
+  Wallet,
+  type Transaction,
+} from 'xrpl';
 
 const mocks = vi.hoisted(() => {
   const transportWebHID = { create: vi.fn() };
@@ -9,10 +18,16 @@ const mocks = vi.hoisted(() => {
     getAddress: vi.fn(),
     signTransaction: vi.fn(),
   };
-  return { transportWebHID, transportWebUSB, mockTransport, xrpAppInstance };
+  const client = {
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    autofill: vi.fn(),
+    submitAndWait: vi.fn(),
+  };
+  return { transportWebHID, transportWebUSB, mockTransport, xrpAppInstance, client };
 });
 
-const { transportWebHID, transportWebUSB, mockTransport, xrpAppInstance } = mocks;
+const { transportWebHID, transportWebUSB, mockTransport, xrpAppInstance, client } = mocks;
 
 vi.mock('@ledgerhq/hw-transport-webhid', () => ({
   default: mocks.transportWebHID,
@@ -28,20 +43,74 @@ vi.mock('@ledgerhq/hw-app-xrp', () => ({
   }),
 }));
 
-vi.mock('xrpl', () => ({
-  encode: vi.fn(() => 'encodedblob'),
+vi.mock('xrpl', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('xrpl')>()),
   Client: vi.fn().mockImplementation(function () {
-    return {
-      connect: vi.fn().mockResolvedValue(undefined),
-      disconnect: vi.fn().mockResolvedValue(undefined),
-      autofill: vi.fn(async (tx) => ({ ...tx, Sequence: 1, Fee: '10' })),
-      submitAndWait: vi.fn().mockResolvedValue({ result: { hash: 'HASH' } }),
-    };
+    return mocks.client;
   }),
 }));
 
 import { LedgerAdapter } from '../src/ledger-adapter';
 import { LedgerDeviceState } from '../src/types';
+
+const SINGLE_SIGNER = new Wallet(
+  '030E58CDD076E798C84755590AAF6237CA8FAE821070A59F648B517A30DC6F589D',
+  '00141BA006D3363D2FB2785E8DF4E44D3A49908780CB4FB51F6D217C08C021429F'
+);
+
+const SINGLE_TRANSACTION = {
+  TransactionType: 'Payment',
+  Account: SINGLE_SIGNER.classicAddress,
+  Destination: 'rQ3PTWGLCbPz8ZCicV5tCX3xuymojTng5r',
+  Amount: '20000000',
+  Sequence: 1,
+  Fee: '12',
+} satisfies Transaction;
+
+const MULTISIGN_TRANSACTION = {
+  Account: 'rEuLyBCvcw4CFmzv8RepSiAoNgF8tTGJQC',
+  Fee: '30000',
+  Flags: 262144,
+  LimitAmount: {
+    currency: 'USD',
+    issuer: 'rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh',
+    value: '100',
+  },
+  Sequence: 2,
+  SigningPubKey: '',
+  TransactionType: 'TrustSet',
+} satisfies Transaction;
+
+const LEDGER_SIGNER = {
+  Account: 'rsA2LpzuawewSBQXkiju3YQTMzW13pAAdW',
+  SigningPubKey: '02B3EC4E5DD96029A647CFA20DA07FE1F85296505552CCAC114087E66B46BD77DF',
+  TxnSignature:
+    '30450221009C195DBBF7967E223D8626CA19CF02073667F2B22E206727BFE848FF42BEAC8A022048C323B0BED19A988BDBEFA974B6DE8AA9DCAE250AA82BBD1221787032A864E5',
+};
+
+const OTHER_SIGNER = {
+  Account: 'rUpy3eEg8rqjqfUoLeBnZkscbKbFsKXC3v',
+  SigningPubKey: '028FFB276505F9AC3F57E8D5242B386A597EF6C40A7999F37F1948636FD484E25B',
+  TxnSignature:
+    '30440220680BBD745004E9CFB6B13A137F505FB92298AD309071D16C7B982825188FD1AE022004200B1F7E4A6A84BB0E4FC09E1E3BA2B66EBD32F0E6D121A34BA3B04AD99BC1',
+};
+
+const MULTISIGN_LEDGER_PAYLOAD =
+  '1200142200040000240000000263D5038D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E868400000000000753073008114A3780F5CB5A44D366520FC44055E8ED44D9A2270';
+const MULTISIGN_PREIMAGE =
+  '534D54001200142200040000240000000263D5038D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E868400000000000753073008114A3780F5CB5A44D366520FC44055E8ED44D9A2270204288D2E47F8EF6C99BCC457966320D12409711';
+const LEDGER_CONTRIBUTION_BLOB =
+  '1200142200040000240000000263D5038D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E868400000000000753073008114A3780F5CB5A44D366520FC44055E8ED44D9A2270F3E010732102B3EC4E5DD96029A647CFA20DA07FE1F85296505552CCAC114087E66B46BD77DF744730450221009C195DBBF7967E223D8626CA19CF02073667F2B22E206727BFE848FF42BEAC8A022048C323B0BED19A988BDBEFA974B6DE8AA9DCAE250AA82BBD1221787032A864E58114204288D2E47F8EF6C99BCC457966320D12409711E1F1';
+const COMBINED_MULTISIGN_BLOB =
+  '1200142200040000240000000263D5038D7EA4C680000000000000000000000000005553440000000000B5F762798A53D543A014CAF8B297CFF8F2F937E868400000000000753073008114A3780F5CB5A44D366520FC44055E8ED44D9A2270F3E010732102B3EC4E5DD96029A647CFA20DA07FE1F85296505552CCAC114087E66B46BD77DF744730450221009C195DBBF7967E223D8626CA19CF02073667F2B22E206727BFE848FF42BEAC8A022048C323B0BED19A988BDBEFA974B6DE8AA9DCAE250AA82BBD1221787032A864E58114204288D2E47F8EF6C99BCC457966320D12409711E1E0107321028FFB276505F9AC3F57E8D5242B386A597EF6C40A7999F37F1948636FD484E25B744630440220680BBD745004E9CFB6B13A137F505FB92298AD309071D16C7B982825188FD1AE022004200B1F7E4A6A84BB0E4FC09E1E3BA2B66EBD32F0E6D121A34BA3B04AD99BC181147908A7F0EDD48EA896C3580A399F0EE78611C8E3E1F1';
+
+function signWithSingleSigner(rawTransaction: string): string {
+  const signed = decode(
+    SINGLE_SIGNER.sign(decode(rawTransaction) as Transaction).tx_blob
+  ) as Transaction;
+  if (!signed.TxnSignature) throw new Error('Missing test signature');
+  return signed.TxnSignature;
+}
 
 function installNavigator(value: Record<string, unknown> | undefined) {
   if (value === undefined) {
@@ -59,6 +128,14 @@ beforeEach(() => {
   mockTransport.close.mockReset().mockResolvedValue(undefined);
   transportWebHID.create.mockResolvedValue(mockTransport);
   transportWebUSB.create.mockResolvedValue(mockTransport);
+  client.connect.mockReset().mockResolvedValue(undefined);
+  client.disconnect.mockReset().mockResolvedValue(undefined);
+  client.autofill.mockReset().mockImplementation(async (tx: Transaction) => ({
+    ...tx,
+    Sequence: tx.Sequence ?? 1,
+    Fee: tx.Fee ?? '10',
+  }));
+  client.submitAndWait.mockReset().mockResolvedValue({ result: { hash: 'HASH' } });
 });
 
 afterEach(() => {
@@ -174,12 +251,12 @@ describe('LedgerAdapter.getDeviceState', () => {
 });
 
 describe('LedgerAdapter.sign', () => {
-  async function connected() {
+  async function connected(
+    address = SINGLE_SIGNER.classicAddress,
+    publicKey = SINGLE_SIGNER.publicKey
+  ) {
     installNavigator({ hid: {} });
-    xrpAppInstance.getAddress.mockResolvedValue({
-      address: 'rLedger',
-      publicKey: 'aabbcc',
-    });
+    xrpAppInstance.getAddress.mockResolvedValue({ address, publicKey });
     const adapter = new LedgerAdapter();
     await adapter.connect();
     return adapter;
@@ -193,14 +270,115 @@ describe('LedgerAdapter.sign', () => {
     });
   });
 
-  it('signs successfully when the device returns a signature', async () => {
+  it('preserves valid single-sign serialization and artifacts', async () => {
     const adapter = await connected();
-    xrpAppInstance.signTransaction.mockResolvedValue('deadbeef');
+    xrpAppInstance.signTransaction.mockImplementation(async (_path, rawTransaction) =>
+      signWithSingleSigner(rawTransaction)
+    );
 
-    const result = await adapter.sign({ TransactionType: 'Payment' } as never);
+    const result = await adapter.sign(SINGLE_TRANSACTION);
+    const expected = SINGLE_SIGNER.sign(SINGLE_TRANSACTION);
+    const decoded = decode(result.tx_blob!) as Transaction;
 
-    expect(typeof result.tx_blob).toBe('string');
-    expect(result.tx_blob!.length).toBeGreaterThan(0);
+    expect(result).toMatchObject({
+      hash: '',
+      tx_blob: expected.tx_blob,
+      tx_json: decoded,
+      signature: decoded.TxnSignature,
+      signerAddress: SINGLE_SIGNER.classicAddress,
+    });
+    expect(decoded.SigningPubKey).toBe(SINGLE_SIGNER.publicKey);
+    expect(decoded.TxnSignature).toBeTypeOf('string');
+    expect(decoded.Signers).toBeUndefined();
+    expect(client.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns an authoritative signer-bound multisign contribution', async () => {
+    const adapter = await connected(LEDGER_SIGNER.Account, LEDGER_SIGNER.SigningPubKey);
+    xrpAppInstance.signTransaction.mockResolvedValue(LEDGER_SIGNER.TxnSignature);
+
+    const result = await adapter.sign(MULTISIGN_TRANSACTION);
+    const decoded = decode(result.tx_blob!) as Transaction;
+
+    expect(xrpAppInstance.signTransaction).toHaveBeenCalledWith(
+      "44'/144'/0'/0/0",
+      MULTISIGN_LEDGER_PAYLOAD
+    );
+    expect(encodeForMultiSigning(MULTISIGN_TRANSACTION, LEDGER_SIGNER.Account)).toBe(
+      MULTISIGN_PREIMAGE
+    );
+    expect(result).toMatchObject({
+      hash: '',
+      tx_blob: LEDGER_CONTRIBUTION_BLOB,
+      tx_json: decoded,
+      signature: LEDGER_SIGNER.TxnSignature,
+      signerAddress: LEDGER_SIGNER.Account,
+    });
+    expect(decoded).toMatchObject({
+      SigningPubKey: '',
+      Signers: [{ Signer: LEDGER_SIGNER }],
+    });
+    expect(decoded.TxnSignature).toBeUndefined();
+    expect(
+      verifyKeypairSignature(
+        MULTISIGN_PREIMAGE,
+        LEDGER_SIGNER.TxnSignature,
+        LEDGER_SIGNER.SigningPubKey
+      )
+    ).toBe(true);
+    expect(
+      verifyKeypairSignature(
+        encodeForMultiSigning(MULTISIGN_TRANSACTION, OTHER_SIGNER.Account),
+        LEDGER_SIGNER.TxnSignature,
+        LEDGER_SIGNER.SigningPubKey
+      )
+    ).toBe(false);
+
+    const otherAdapter = await connected(OTHER_SIGNER.Account, OTHER_SIGNER.SigningPubKey);
+    xrpAppInstance.signTransaction.mockResolvedValue(OTHER_SIGNER.TxnSignature);
+    const otherContribution = await otherAdapter.sign(MULTISIGN_TRANSACTION);
+
+    const combined = multisign([result.tx_blob!, otherContribution.tx_blob!]);
+    expect(combined).toBe(COMBINED_MULTISIGN_BLOB);
+    expect(hashes.hashSignedTx(combined)).toBe(
+      'BD636194C48FD7A100DE4C972336534C8E710FD008C0F3CF7BC5BF34DAF3C3E6'
+    );
+  });
+
+  it('fails when the multisign signature is not bound to the connected address', async () => {
+    const adapter = await connected(OTHER_SIGNER.Account, LEDGER_SIGNER.SigningPubKey);
+    xrpAppInstance.signTransaction.mockResolvedValue(LEDGER_SIGNER.TxnSignature);
+
+    await expect(adapter.sign(MULTISIGN_TRANSACTION)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+      message: expect.stringContaining('does not match the connected account'),
+    });
+    expect(client.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['TxnSignature', { ...MULTISIGN_TRANSACTION, TxnSignature: 'already-signed' }],
+    ['Signers', { ...MULTISIGN_TRANSACTION, Signers: [] }],
+  ])('rejects multisign input that already contains %s', async (_field, transaction) => {
+    const adapter = await connected(LEDGER_SIGNER.Account, LEDGER_SIGNER.SigningPubKey);
+
+    await expect(adapter.sign(transaction as Transaction)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+      message: expect.stringContaining('must not contain TxnSignature or Signers'),
+    });
+    expect(client.connect).not.toHaveBeenCalled();
+    expect(xrpAppInstance.signTransaction).not.toHaveBeenCalled();
+  });
+
+  it('requires an explicit source account for multisigning', async () => {
+    const adapter = await connected(LEDGER_SIGNER.Account, LEDGER_SIGNER.SigningPubKey);
+    const { Account: _account, ...transaction } = MULTISIGN_TRANSACTION;
+
+    await expect(adapter.sign(transaction as Transaction)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+      message: expect.stringContaining('requires the source Account'),
+    });
+    expect(client.connect).not.toHaveBeenCalled();
   });
 
   it('maps a user-rejected device signature to sign-rejected', async () => {
@@ -208,9 +386,10 @@ describe('LedgerAdapter.sign', () => {
     const rejected = Object.assign(new Error('rejected'), { statusCode: 0x6985 });
     xrpAppInstance.signTransaction.mockRejectedValue(rejected);
 
-    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+    await expect(adapter.sign(SINGLE_TRANSACTION)).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_REJECTED,
     });
+    expect(client.disconnect).toHaveBeenCalledTimes(1);
   });
 
   it('maps a user-rejected message signature to sign-rejected', async () => {
@@ -229,10 +408,71 @@ describe('LedgerAdapter.sign', () => {
     const failure = new Error('Transport failed');
     xrpAppInstance.signTransaction.mockRejectedValue(failure);
 
-    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+    await expect(adapter.sign(SINGLE_TRANSACTION)).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_FAILED,
       originalError: expect.objectContaining({ cause: failure }),
     });
+    expect(client.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('disconnects the XRPL client when autofill fails', async () => {
+    const adapter = await connected();
+    client.autofill.mockRejectedValue(new Error('autofill failed'));
+
+    await expect(adapter.sign(SINGLE_TRANSACTION)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    expect(client.disconnect).toHaveBeenCalledTimes(1);
+    expect(xrpAppInstance.signTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('LedgerAdapter.signAndSubmit', () => {
+  async function connected() {
+    installNavigator({ hid: {} });
+    xrpAppInstance.getAddress.mockResolvedValue({
+      address: SINGLE_SIGNER.classicAddress,
+      publicKey: SINGLE_SIGNER.publicKey,
+    });
+    const adapter = new LedgerAdapter();
+    await adapter.connect();
+    return adapter;
+  }
+
+  it('preserves single-sign submission and disconnects afterward', async () => {
+    const adapter = await connected();
+    xrpAppInstance.signTransaction.mockImplementation(async (_path, rawTransaction) =>
+      signWithSingleSigner(rawTransaction)
+    );
+
+    const result = await adapter.signAndSubmit(SINGLE_TRANSACTION);
+
+    expect(client.submitAndWait).toHaveBeenCalledWith(result.tx_blob);
+    expect(result).toMatchObject({ hash: 'HASH', id: 'HASH' });
+    expect(client.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('disconnects when submission fails', async () => {
+    const adapter = await connected();
+    xrpAppInstance.signTransaction.mockImplementation(async (_path, rawTransaction) =>
+      signWithSingleSigner(rawTransaction)
+    );
+    client.submitAndWait.mockRejectedValue(new Error('submission failed'));
+
+    await expect(adapter.signAndSubmit(SINGLE_TRANSACTION)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    expect(client.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed for a partial multisign contribution', async () => {
+    const adapter = await connected();
+
+    await expect(adapter.signAndSubmit(MULTISIGN_TRANSACTION)).rejects.toMatchObject({
+      code: WalletErrorCode.UNSUPPORTED_METHOD,
+    });
+    expect(client.connect).not.toHaveBeenCalled();
+    expect(xrpAppInstance.signTransaction).not.toHaveBeenCalled();
   });
 });
 
