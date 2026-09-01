@@ -492,8 +492,9 @@ when the active connector unmounts. `ready` remains `true` while any connector i
 ### WalletConnector
 
 `<WalletConnector />` wraps the web component. It accepts `primaryWallet`,
-`wallets`, `theme`, `cssVars`, `style`, `className`, `onConnecting`, `onConnect`,
-and `onError`. See the [React guide](/guide/frameworks/react) for a complete setup.
+`wallets`, `showUnavailable`, `theme`, `cssVars`, `style`, `className`, `onConnecting`,
+`onConnect`, and `onError`. `showUnavailable` maps to the native `show-unavailable` boolean
+attribute. See the [React guide](/guide/frameworks/react) for a complete setup.
 
 ## Vue API
 

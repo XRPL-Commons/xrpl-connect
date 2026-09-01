@@ -42,6 +42,7 @@ const THEMES: Record<WalletConnectorTheme, Record<string, string>> = {
 export function WalletConnector({
   primaryWallet,
   wallets,
+  showUnavailable,
   theme,
   cssVars,
   style,
@@ -183,6 +184,7 @@ export function WalletConnector({
       ref={elRef}
       primary-wallet={primaryWallet}
       wallets={wallets?.join(',')}
+      show-unavailable={showUnavailable ? '' : undefined}
       class={className}
       style={mergedStyle}
     />
