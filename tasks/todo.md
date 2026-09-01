@@ -1,30 +1,48 @@
-# Issue #168
+# Issue #172
 
 ## Issue summary
 
-- The React wrapper cannot expose the UI connector's supported `show-unavailable` behavior because `WalletConnectorProps` has no corresponding prop and unknown props are not forwarded.
-- `showUnavailable` must use boolean-attribute presence/removal semantics so unavailable wallet rows can be enabled and disabled after mount.
-- React's direct custom-element JSX declaration is stale: it omits `show-unavailable` and advertises unsupported legacy attributes such as `background-color`.
-- Focused runtime, source and packed public type, and documentation coverage must keep the wrapper and intrinsic-element APIs aligned.
+- The React `WalletConnector` keeps its custom-element ref private, so consumers cannot use the exported `WalletConnectorElement` imperative API through the wrapper.
+- The wrapper destructures a closed SDK-specific prop set and drops ordinary host metadata such as `id`, `title`, `data-*`, and `aria-*` instead of forwarding it to `<xrpl-wallet-connector>`.
+- The fix must preserve provider registration, SDK callbacks, `className`, merged theme/CSS-variable/inline styles, and React 18/19 support while making managed-prop precedence explicit.
+- Runtime and source/packed declaration tests must prove the ref contract, imperative methods, host passthrough, collision precedence, and unsupported CSS-variable rejection.
 
 ## Plan
 
 - [x] Validate GitHub access, refresh `origin/develop`, and confirm issue state, comments, linked PRs, and acceptance criteria.
-- [x] Create a clean isolated worktree from the refreshed default branch and review applicable repository guidance.
-- [x] Trace the React wrapper, UI boolean-attribute behavior, Vue parity implementation, tests, public type checks, and documentation.
-- [x] Implement the minimal production-ready React prop and exact intrinsic custom-element JSX declaration.
-- [x] Add focused runtime regressions for enabling, disabling, and updating unavailable-wallet rendering.
-- [x] Add source and packed public type regressions for the wrapper prop and direct custom-element JSX.
-- [x] Document the React prop and align any generated or mirrored documentation required by the repository.
-- [x] Run formatting, linting, focused tests, builds/type checks, publish checks, and relevant repository-level verification.
+- [x] Create a clean isolated worktree from the refreshed default branch and review applicable repository guidance and lessons.
+- [x] Trace the React wrapper, custom-element contract, Vue passthrough behavior, runtime tests, public declarations, and publish fixtures.
+- [x] Define the narrowest idiomatic React host-prop/ref contract and explicit precedence for managed connector attributes.
+- [x] Implement typed `WalletConnectorElement` ref forwarding and safe host-attribute passthrough without changing existing lifecycle or style semantics.
+- [x] Add focused runtime regressions for ref lifecycle, `open`, `openAndWait`, `close`, `toggle`, host attributes, callback isolation, and managed-attribute precedence.
+- [x] Add source and packed ESM/CJS type regressions for typed refs and host attributes under the supported React contract.
+- [x] Update current React documentation, API reference, and Unreleased changelog to describe the new contract and precedence.
+- [x] Run formatting/linting, focused React tests/type checks/builds, publish verification, and repository-level verification appropriate to the diff.
 - [x] Review the final diff against every acceptance criterion and record results below.
 - [x] Commit only intentional files, push the branch, open the PR, and verify remote PR metadata/checks.
 
 ## Review
 
-- `WalletConnector` now maps the typed `showUnavailable` prop to `show-unavailable=""` when true and omission when false or undefined, matching the native component and Vue parity without React 18's unsafe `"false"` serialization.
-- Direct custom-element JSX types expose only the real `primary-wallet`, `wallets`, `show-unavailable`, and host attributes; the stale `background-color` declaration is gone and `show-unavailable` rejects the unsafe explicit false form.
-- The React declaration rollup restores both `React.JSX` and legacy global `JSX` augmentations after API Extractor, with packed ESM and CommonJS fixtures proving the wrapper prop, supported intrinsic attribute, legacy rejection, and React 18/19 namespace coverage.
-- Runtime coverage verifies omitted, enabled, and disabled attribute states across rerenders; the package README, React framework guide, API reference, and Unreleased changelog document the public behavior.
-- `pnpm exec vp check`, the full React build/type/SSR/runtime suite, strict packed declaration checks, `pnpm docs:snapshot:check`, `pnpm --filter xrpl-connect test:publish`, `pnpm test`, and `git diff --check` pass.
-- Independent final review found one stale API-reference omission, which was fixed; the updated diff has no remaining runtime, declaration, test, documentation, compatibility, or scope findings.
+- `WalletConnector` is now an idiomatic `forwardRef` component that exposes the exact `WalletConnectorElement` instance while retaining its private lifecycle ref; callback-ref cleanup is preserved for React 19 and object/callback refs clear on unmount.
+- Standard React host attributes flow to `<xrpl-wallet-connector>` through a typed HTML-attribute contract, including explicit `data-*` support, while children/HTML injection and the conflicting native `onError` signature remain excluded.
+- SDK callbacks remain internal, `className` still maps to native `class`, and managed `primaryWallet`, `wallets`, class, and merged styles are applied after passthrough. Per-token style precedence remains `theme < cssVars < style`.
+- Runtime tests obtain the exact host through a ref, exercise `open`, `openAndWait`, `close`, and `toggle`, verify ref cleanup, host metadata/event passthrough, and raw collision precedence. Source plus packed ESM/CJS fixtures enforce the ref and host-prop declarations.
+- The package README, current React guide, API reference, and Unreleased changelog document refs, host attributes, and precedence; versioned documentation remains unchanged.
+- Under Node 24.11.0, `pnpm exec vp check`, the dependency-inclusive React build, focused and full React tests, `pnpm test`, `pnpm docs:snapshot:check`, `pnpm --filter xrpl-connect test:publish`, and `git diff --check` pass.
+- Self-review corrected an invalid module-scope hook in the first README example draft; an independent final review found no remaining correctness, lifecycle, type, test, documentation, or scope defects.
+
+## Fix PR #176 review finding
+
+- [x] Reconfirm the dedicated worktree and remote PR head are clean and identical.
+- [x] Guard callback-ref cleanup returns by function type while preserving React 18/19 behavior.
+- [x] Add a regression for concise callback refs that return the assigned element.
+- [x] Run focused React checks and repository-level verification appropriate to the fix.
+- [x] Review the final diff, commit, push, and verify the updated PR head and CI.
+
+### Fix review
+
+- Callback-ref returns are treated as React 19 cleanup callbacks only when they are functions; truthy assignment results are ignored so React can deliver the normal `null` detach callback.
+- The new React 18 regression failed against the original PR code with `Unexpected return value from a callback ref` and passes with the function guard.
+- The rebuilt packed artifact passes the original React 19.2.8 unmount reproduction for both native and wrapped refs.
+- Focused and full React checks, dependency-inclusive build, repository formatting/lint, documentation snapshot verification, full monorepo tests, packed publish/consumer verification, and `git diff --check` pass.
+- Merged the latest `origin/develop`, resolved the overlapping React API, documentation, and publish fixtures with `showUnavailable` intact, and repeated the full monorepo and packed-consumer verification on the combined tree.

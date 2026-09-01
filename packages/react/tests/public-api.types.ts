@@ -1,5 +1,7 @@
 import type { AccountInfo } from '@xrpl-connect/core';
+import { createRef, type ComponentPropsWithRef } from 'react';
 import {
+  WalletConnector,
   useWalletModal,
   type WalletConnectorElement,
   type WalletConnectorProps,
@@ -7,6 +9,16 @@ import {
 
 declare const connector: WalletConnectorElement;
 declare const manager: Parameters<WalletConnectorElement['setWalletManager']>[0];
+
+const connectorRef = createRef<WalletConnectorElement>();
+const wrapperProps: ComponentPropsWithRef<typeof WalletConnector> = {
+  ref: connectorRef,
+  id: 'wallet-modal',
+  title: 'Choose a wallet',
+  'data-testid': 'wallet-connector',
+  'aria-label': 'Wallet connector',
+};
+const wrapperElement: WalletConnectorElement | null = connectorRef.current;
 
 const managerResult: void = connector.setWalletManager(manager);
 const openResult: Promise<void> = connector.open();
@@ -33,6 +45,8 @@ connector.openAccountModal();
 connector.closeAccountModal();
 
 void managerResult;
+void wrapperProps;
+void wrapperElement;
 void openResult;
 void accountResult;
 void closeResult;

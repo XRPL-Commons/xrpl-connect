@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties } from 'react';
+import { forwardRef, useCallback, useEffect, useRef, type CSSProperties } from 'react';
 import {
   createWalletError,
   getErrorMessage,
@@ -39,157 +39,183 @@ const THEMES: Record<WalletConnectorTheme, Record<string, string>> = {
  * The web component registers itself when `xrpl-connect` is imported; ensure your
  * app imports it once (e.g. at the entry point). (#33)
  */
-export function WalletConnector({
-  primaryWallet,
-  wallets,
-  showUnavailable,
-  theme,
-  cssVars,
-  style,
-  className,
-  onConnecting,
-  onConnect,
-  onError,
-}: WalletConnectorProps) {
-  const {
-    manager,
-    registerConnector,
-    unregisterConnector,
-    reportModalConnecting,
-    reportModalError,
-    reportModalClosed,
-  } = useXrplConnectContext();
-  const elRef = useRef<WalletConnectorElement | null>(null);
-
-  // Keep the latest callbacks in a ref so the binding effect can stay stable
-  // (subscribe once) without going stale.
-  const callbacksRef = useRef({ onConnecting, onConnect, onError });
-  callbacksRef.current = { onConnecting, onConnect, onError };
-
-  useEffect(() => {
-    let active = true;
-    let detach: (() => void) | undefined;
-    let registeredElement: WalletConnectorElement | null = null;
-    let notifiedAccountKey: string | null = null;
-    const modalAttempts = new Map<number, symbol>();
-    let legacyModalAttempt: symbol | null = null;
-
-    const cancelModalAttempts = () => {
-      const attempts = [...modalAttempts.values()];
-      if (legacyModalAttempt) attempts.push(legacyModalAttempt);
-      modalAttempts.clear();
-      legacyModalAttempt = null;
-      if (attempts.length > 0) reportModalClosed(attempts);
-    };
-
-    const onMgrConnect = (account: AccountInfo) => {
-      const accountKey = `${account.address}:${account.network.id}`;
-      if (notifiedAccountKey === accountKey) return;
-      notifiedAccountKey = accountKey;
-      callbacksRef.current.onConnect?.(account);
-    };
-    const onMgrDisconnect = () => {
-      notifiedAccountKey = null;
-    };
-    manager.on('connect', onMgrConnect);
-    manager.on('disconnect', onMgrDisconnect);
-
-    // Reconcile a connection that completed before this component's effect.
-    if (manager.connected && manager.account) onMgrConnect(manager.account);
-
-    void customElements.whenDefined('xrpl-wallet-connector').then(() => {
-      const el = elRef.current;
-      if (!active || !el || typeof el.setWalletManager !== 'function') return;
-
-      el.setWalletManager(manager);
-      registerConnector(el);
-      registeredElement = el;
-
-      const onWcConnecting = (e: Event) => {
-        const detail = (e as CustomEvent<{ walletId?: string; connectionAttemptId?: number }>)
-          .detail;
-        const walletId = detail?.walletId;
-        if (walletId) {
-          const attempt = reportModalConnecting();
-          if (detail?.connectionAttemptId === undefined) {
-            if (legacyModalAttempt) reportModalClosed([legacyModalAttempt]);
-            legacyModalAttempt = attempt;
-          } else {
-            const previousAttempt = modalAttempts.get(detail.connectionAttemptId);
-            if (previousAttempt) reportModalClosed([previousAttempt]);
-            modalAttempts.set(detail.connectionAttemptId, attempt);
+export const WalletConnector = forwardRef<WalletConnectorElement, WalletConnectorProps>(
+  function WalletConnector(
+    {
+      primaryWallet,
+      wallets,
+      showUnavailable,
+      theme,
+      cssVars,
+      style,
+      className,
+      onConnecting,
+      onConnect,
+      onError,
+      ...hostAttributes
+    },
+    forwardedRef
+  ) {
+    const {
+      manager,
+      registerConnector,
+      unregisterConnector,
+      reportModalConnecting,
+      reportModalError,
+      reportModalClosed,
+    } = useXrplConnectContext();
+    const elRef = useRef<WalletConnectorElement | null>(null);
+    const setElementRef = useCallback(
+      (element: WalletConnectorElement | null) => {
+        elRef.current = element;
+        if (typeof forwardedRef === 'function') {
+          const cleanup = (
+            forwardedRef as (instance: WalletConnectorElement | null) => void | (() => void)
+          )(element);
+          if (typeof cleanup === 'function') {
+            return () => {
+              elRef.current = null;
+              cleanup();
+            };
           }
-          callbacksRef.current.onConnecting?.(walletId);
+        } else if (forwardedRef) {
+          forwardedRef.current = element;
         }
+      },
+      [forwardedRef]
+    );
+
+    // Keep the latest callbacks in a ref so the binding effect can stay stable
+    // (subscribe once) without going stale.
+    const callbacksRef = useRef({ onConnecting, onConnect, onError });
+    callbacksRef.current = { onConnecting, onConnect, onError };
+
+    useEffect(() => {
+      let active = true;
+      let detach: (() => void) | undefined;
+      let registeredElement: WalletConnectorElement | null = null;
+      let notifiedAccountKey: string | null = null;
+      const modalAttempts = new Map<number, symbol>();
+      let legacyModalAttempt: symbol | null = null;
+
+      const cancelModalAttempts = () => {
+        const attempts = [...modalAttempts.values()];
+        if (legacyModalAttempt) attempts.push(legacyModalAttempt);
+        modalAttempts.clear();
+        legacyModalAttempt = null;
+        if (attempts.length > 0) reportModalClosed(attempts);
       };
-      const onWcError = (e: Event) => {
-        const detail = (
-          e as CustomEvent<{
-            error?: unknown;
-            errorType?: 'rejected' | 'unavailable' | 'failed';
-            walletId?: string;
-            connectionAttemptId?: number;
-          }>
-        ).detail;
-        const error = normalizeModalError(detail?.error, detail?.errorType, detail?.walletId);
-        let attempt: symbol | null;
-        if (detail?.connectionAttemptId === undefined) {
-          attempt = legacyModalAttempt;
-          legacyModalAttempt = null;
-        } else {
-          attempt = modalAttempts.get(detail.connectionAttemptId) ?? null;
-          if (attempt === null) return;
-          modalAttempts.delete(detail.connectionAttemptId);
-        }
-        if (reportModalError(attempt, error)) callbacksRef.current.onError?.(error);
+
+      const onMgrConnect = (account: AccountInfo) => {
+        const accountKey = `${account.address}:${account.network.id}`;
+        if (notifiedAccountKey === accountKey) return;
+        notifiedAccountKey = accountKey;
+        callbacksRef.current.onConnect?.(account);
       };
-      const onWcClose = () => cancelModalAttempts();
-
-      el.addEventListener('connecting', onWcConnecting);
-      el.addEventListener('error', onWcError);
-      el.addEventListener('close', onWcClose);
-
-      detach = () => {
-        el.removeEventListener('connecting', onWcConnecting);
-        el.removeEventListener('error', onWcError);
-        el.removeEventListener('close', onWcClose);
-        cancelModalAttempts();
+      const onMgrDisconnect = () => {
+        notifiedAccountKey = null;
       };
-    });
+      manager.on('connect', onMgrConnect);
+      manager.on('disconnect', onMgrDisconnect);
 
-    return () => {
-      active = false;
-      manager.off('connect', onMgrConnect);
-      manager.off('disconnect', onMgrDisconnect);
-      if (registeredElement) unregisterConnector(registeredElement);
-      detach?.();
-    };
-  }, [
-    manager,
-    registerConnector,
-    unregisterConnector,
-    reportModalConnecting,
-    reportModalError,
-    reportModalClosed,
-  ]);
+      // Reconcile a connection that completed before this component's effect.
+      if (manager.connected && manager.account) onMgrConnect(manager.account);
 
-  const mergedStyle = {
-    ...(theme ? THEMES[theme] : {}),
-    ...(cssVars ?? {}),
-    ...(style ?? {}),
-  } as CSSProperties;
+      void customElements.whenDefined('xrpl-wallet-connector').then(() => {
+        const el = elRef.current;
+        if (!active || !el || typeof el.setWalletManager !== 'function') return;
 
-  return (
-    <xrpl-wallet-connector
-      ref={elRef}
-      primary-wallet={primaryWallet}
-      wallets={wallets?.join(',')}
-      show-unavailable={showUnavailable ? '' : undefined}
-      class={className}
-      style={mergedStyle}
-    />
-  );
-}
+        el.setWalletManager(manager);
+        registerConnector(el);
+        registeredElement = el;
+
+        const onWcConnecting = (e: Event) => {
+          const detail = (e as CustomEvent<{ walletId?: string; connectionAttemptId?: number }>)
+            .detail;
+          const walletId = detail?.walletId;
+          if (walletId) {
+            const attempt = reportModalConnecting();
+            if (detail?.connectionAttemptId === undefined) {
+              if (legacyModalAttempt) reportModalClosed([legacyModalAttempt]);
+              legacyModalAttempt = attempt;
+            } else {
+              const previousAttempt = modalAttempts.get(detail.connectionAttemptId);
+              if (previousAttempt) reportModalClosed([previousAttempt]);
+              modalAttempts.set(detail.connectionAttemptId, attempt);
+            }
+            callbacksRef.current.onConnecting?.(walletId);
+          }
+        };
+        const onWcError = (e: Event) => {
+          const detail = (
+            e as CustomEvent<{
+              error?: unknown;
+              errorType?: 'rejected' | 'unavailable' | 'failed';
+              walletId?: string;
+              connectionAttemptId?: number;
+            }>
+          ).detail;
+          const error = normalizeModalError(detail?.error, detail?.errorType, detail?.walletId);
+          let attempt: symbol | null;
+          if (detail?.connectionAttemptId === undefined) {
+            attempt = legacyModalAttempt;
+            legacyModalAttempt = null;
+          } else {
+            attempt = modalAttempts.get(detail.connectionAttemptId) ?? null;
+            if (attempt === null) return;
+            modalAttempts.delete(detail.connectionAttemptId);
+          }
+          if (reportModalError(attempt, error)) callbacksRef.current.onError?.(error);
+        };
+        const onWcClose = () => cancelModalAttempts();
+
+        el.addEventListener('connecting', onWcConnecting);
+        el.addEventListener('error', onWcError);
+        el.addEventListener('close', onWcClose);
+
+        detach = () => {
+          el.removeEventListener('connecting', onWcConnecting);
+          el.removeEventListener('error', onWcError);
+          el.removeEventListener('close', onWcClose);
+          cancelModalAttempts();
+        };
+      });
+
+      return () => {
+        active = false;
+        manager.off('connect', onMgrConnect);
+        manager.off('disconnect', onMgrDisconnect);
+        if (registeredElement) unregisterConnector(registeredElement);
+        detach?.();
+      };
+    }, [
+      manager,
+      registerConnector,
+      unregisterConnector,
+      reportModalConnecting,
+      reportModalError,
+      reportModalClosed,
+    ]);
+
+    const mergedStyle = {
+      ...(theme ? THEMES[theme] : {}),
+      ...(cssVars ?? {}),
+      ...(style ?? {}),
+    } as CSSProperties;
+
+    return (
+      <xrpl-wallet-connector
+        {...hostAttributes}
+        ref={setElementRef}
+        primary-wallet={primaryWallet}
+        wallets={wallets?.join(',')}
+        show-unavailable={showUnavailable ? '' : undefined}
+        class={className}
+        style={mergedStyle}
+      />
+    );
+  }
+);
 
 function normalizeModalError(
   error: unknown,
