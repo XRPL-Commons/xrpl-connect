@@ -479,10 +479,15 @@ mount; use a React `key` when an intentional configuration change must rebuild i
 
 - `useWallet()` returns `{ manager, connected, account, network, connecting, error, connect, disconnect }`.
 - `useSigner()` returns `{ sign, signAndSubmit, signMessage }`.
-- `useWalletModal()` returns `{ open, close }` for the mounted connector modal.
+- `useWalletModal()` returns reactive `ready`, `open(): Promise<void>`,
+  `openAndWait(): Promise<AccountInfo>`, and `close(): void` for the most recently registered
+  connector. Awaitable calls reject with a namespaced setup error until a connector registers.
 
 All hooks must be used below `XrplConnectProvider`. Signing methods reject with
 the same typed `WalletError` values as the core manager.
+
+When several connectors are mounted, modal ownership follows registration order and falls back
+when the active connector unmounts. `ready` remains `true` while any connector is registered.
 
 ### WalletConnector
 

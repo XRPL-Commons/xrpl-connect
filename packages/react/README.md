@@ -43,7 +43,7 @@ import {
 
 export function App() {
   const { connected, account, disconnect, error } = useWallet();
-  const { open } = useWalletModal();
+  const { ready, open } = useWalletModal();
   const { signAndSubmit } = useSigner();
 
   return (
@@ -54,7 +54,9 @@ export function App() {
           <button onClick={disconnect}>Disconnect</button>
         </>
       ) : (
-        <button onClick={open}>Connect Wallet</button>
+        <button disabled={!ready} onClick={() => void open()}>
+          Connect Wallet
+        </button>
       )}
 
       {error && (
@@ -88,7 +90,14 @@ subtree. The manager is created once on mount; pass a React `key` to rebuild it.
 - `useWallet()` → `{ manager, connected, account, network, connecting, error, connect, disconnect }`
 - `useSigner()` → `{ sign, signAndSubmit, signMessage }` — each rejects with a typed
   `WalletError` (`error.code`, `error.category`), e.g. `SIGN_REJECTED` on user cancel.
-- `useWalletModal()` → `{ open, close }` — drive the `<WalletConnector>` modal.
+- `useWalletModal()` → `{ ready, open, openAndWait, close }` — drive the active
+  `<WalletConnector>` modal. `open()` is awaitable, and `openAndWait()` resolves with the
+  connected account or rejects if opening fails or the modal closes first.
+
+`ready` becomes `true` after a connector registers and returns to `false` after the last
+connector unmounts. Calling `open()` or `openAndWait()` while it is `false` rejects with a
+namespaced setup error. When multiple connectors are mounted, the newest registration owns modal
+calls; unmounting it falls back to the previous connector.
 
 `connect` narrows deferred options from the wallet ID:
 

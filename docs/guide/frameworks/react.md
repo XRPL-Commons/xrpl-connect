@@ -61,11 +61,11 @@ import { useWallet, useWalletModal } from '@xrpl-commons/xrpl-connect-react';
 
 function Header() {
   const { connected, connecting, account, network, error, disconnect } = useWallet();
-  const { open } = useWalletModal();
+  const { ready, open } = useWalletModal();
 
   if (!connected || !account) {
     return (
-      <button onClick={open} disabled={connecting}>
+      <button onClick={() => void open()} disabled={!ready || connecting}>
         Connect wallet
       </button>
     );
@@ -123,7 +123,17 @@ function PaymentButton({ destination }: { destination: string }) {
 
 ## Modal control
 
-`useWalletModal()` returns `open` and `close`. Render one or more `<WalletConnector>` components inside the provider; modal ownership follows the mounted connector. `WalletConnector` accepts:
+`useWalletModal()` returns reactive `ready`, `open(): Promise<void>`,
+`openAndWait(): Promise<AccountInfo>`, and `close(): void`. Await `open()` to observe availability
+failures, or await `openAndWait()` when the caller needs the connected account; `openAndWait()`
+also rejects if the modal closes before a connection completes.
+
+`ready` becomes `true` after a connector registers and returns to `false` after the last connector
+unmounts. Calling `open()` or `openAndWait()` while it is `false` rejects with a namespaced setup
+error. With multiple connectors, the newest registration owns modal calls; unmounting it falls
+back to the previous connector. `close()` is a safe no-op when none is registered.
+
+`WalletConnector` accepts:
 
 - `primaryWallet` and ordered `wallets`
 - `theme`: `dark`, `light`, or `purple`

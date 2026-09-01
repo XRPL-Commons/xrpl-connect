@@ -46,6 +46,7 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
   const [network, setNetwork] = useState<NetworkInfo | null>(manager.account?.network ?? null);
   const [connecting, setConnecting] = useState<boolean>(false);
   const [error, setError] = useState<WalletError | null>(null);
+  const [ready, setReady] = useState(false);
 
   const syncConnecting = useCallback(() => {
     if (mountedRef.current) {
@@ -184,9 +185,11 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
 
   const registerConnector = useCallback((el: WalletConnectorElement) => {
     connectorsRef.current.add(el);
+    if (mountedRef.current) setReady(true);
   }, []);
   const unregisterConnector = useCallback((el: WalletConnectorElement) => {
     connectorsRef.current.delete(el);
+    if (mountedRef.current) setReady(connectorsRef.current.size > 0);
   }, []);
   const reportModalConnecting = useCallback(() => {
     const attempt = Symbol('modalConnectionAttempt');
@@ -216,12 +219,36 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
     [syncConnecting]
   );
 
-  const getActiveConnector = useCallback(() => {
+  const getActiveConnector = useCallback((): WalletConnectorElement => {
     const connectors = [...connectorsRef.current];
-    return connectors.at(-1) ?? null;
+    const connector = connectors.at(-1);
+    if (connector) return connector;
+    throw new Error(
+      'xrpl-connect/react: no <WalletConnector> is registered. Mount <WalletConnector> before calling useWalletModal().'
+    );
   }, []);
-  const openModal = useCallback(() => getActiveConnector()?.open(), [getActiveConnector]);
-  const closeModal = useCallback(() => getActiveConnector()?.close(), [getActiveConnector]);
+  const runWithActiveConnector = useCallback(
+    <T,>(operation: (connector: WalletConnectorElement) => Promise<T>): Promise<T> => {
+      try {
+        return Promise.resolve(operation(getActiveConnector()));
+      } catch (value) {
+        return Promise.reject(value);
+      }
+    },
+    [getActiveConnector]
+  );
+  const openModal = useCallback(
+    () => runWithActiveConnector((connector) => connector.open()),
+    [runWithActiveConnector]
+  );
+  const openAndWaitModal = useCallback(
+    () => runWithActiveConnector((connector) => connector.openAndWait()),
+    [runWithActiveConnector]
+  );
+  const closeModal = useCallback(() => {
+    const connectors = [...connectorsRef.current];
+    connectors.at(-1)?.close();
+  }, []);
 
   const value = useMemo<XrplConnectContextValue>(
     () => ({
@@ -231,6 +258,7 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
       network,
       connecting,
       error,
+      ready,
       connect,
       disconnect,
       registerConnector,
@@ -239,6 +267,7 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
       reportModalError,
       reportModalClosed,
       openModal,
+      openAndWaitModal,
       closeModal,
     }),
     [
@@ -248,6 +277,7 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
       network,
       connecting,
       error,
+      ready,
       connect,
       disconnect,
       registerConnector,
@@ -256,6 +286,7 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
       reportModalError,
       reportModalClosed,
       openModal,
+      openAndWaitModal,
       closeModal,
     ]
   );
