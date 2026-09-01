@@ -30,6 +30,13 @@ const connector: Component = WalletConnector;
 type WalletConnectorProps = InstanceType<typeof WalletConnector>['$props'];
 const omittedShowUnavailableProps: WalletConnectorProps = {};
 const showUnavailableProps: WalletConnectorProps = { showUnavailable: true };
+const cssVarsProps: WalletConnectorProps = { cssVars: { '--xc-primary-color': '#7c3aed' } };
+const invalidCssVarsProps: WalletConnectorProps = {
+  cssVars: {
+    // @ts-expect-error Published Vue props reject unsupported CSS variables.
+    '--xc-primary-colro': '#7c3aed',
+  },
+};
 const invalidShowUnavailableProps: WalletConnectorProps = {
   // @ts-expect-error Misspelled Vue props must not be accepted by the published component type.
   showUnavilable: true,
@@ -59,6 +66,8 @@ void [
   connector,
   omittedShowUnavailableProps,
   showUnavailableProps,
+  cssVarsProps,
+  invalidCssVarsProps,
   invalidShowUnavailableProps,
   modalReady,
   modalOpen,

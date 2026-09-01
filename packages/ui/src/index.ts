@@ -4,6 +4,7 @@
  */
 
 export { WalletConnectorElement, type WalletConnectorElementInstance } from './wallet-connector';
+export * from './customization';
 
 // Export constants and utilities for advanced use cases
 export * from './constants';

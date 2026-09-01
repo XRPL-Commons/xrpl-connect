@@ -92,6 +92,37 @@ test('supports touch scrolling to the final wallet', async ({ page, context }) =
   await expectScrolledToEnd(content);
 });
 
+test('applies the public radius, focus, and danger tokens to rendered UI', async ({ page }) => {
+  await page.goto(fixturePath);
+  const walletConnector = page.locator('#wallet-connector');
+  await walletConnector.evaluate((element) => {
+    const connector = element as HTMLElement;
+    connector.style.setProperty('--xc-border-radius', '23px');
+    connector.style.setProperty('--xc-focus-color', '#123456');
+  });
+
+  const walletOpener = page.getByRole('button', { name: 'Open wallet dialog' });
+  await walletOpener.focus();
+  await page.keyboard.press('Enter');
+  const walletDialog = page.getByRole('dialog', { name: 'Connect Wallet' });
+  const closeButton = walletDialog.getByRole('button', { name: 'Close' });
+  await expect(walletDialog).toHaveCSS('border-radius', '23px');
+  await expect(closeButton).toBeFocused();
+  await expect(closeButton).toHaveCSS('outline-color', 'rgb(18, 52, 86)');
+  await page.keyboard.press('Escape');
+
+  const accountConnector = page.locator('#account-connector');
+  await accountConnector.evaluate((element) => {
+    (element as HTMLElement).style.setProperty('--xc-danger-color', '#00ff00');
+  });
+  await accountConnector.locator('#connect-wallet-button').click();
+  const disconnectButton = page
+    .getByRole('dialog', { name: 'Connected' })
+    .getByRole('button', { name: 'Disconnect' });
+  await disconnectButton.hover();
+  await expect(disconnectButton.locator('path')).toHaveCSS('fill', 'rgb(0, 255, 0)');
+});
+
 test('provides wallet dialog semantics, traps focus, and restores every close path', async ({
   page,
 }) => {

@@ -5,7 +5,7 @@ import type {
   NetworkInfo,
   WalletError,
 } from '@xrpl-connect/core';
-import type { ConnectOptionsFor, WalletIdentifier } from 'xrpl-connect';
+import type { ConnectOptionsFor, WalletConnectorCssVars, WalletIdentifier } from 'xrpl-connect';
 import type { CSSProperties, ReactNode } from 'react';
 
 /**
@@ -74,8 +74,8 @@ export interface WalletConnectorProps {
   wallets?: WalletIdentifier[];
   /** Built-in theme preset. Overridden per-token by `cssVars`. */
   theme?: WalletConnectorTheme;
-  /** Arbitrary `--xc-*` custom properties to override modal styling. */
-  cssVars?: Record<`--xc-${string}`, string>;
+  /** Supported `--xc-*` custom properties to override modal styling. */
+  cssVars?: WalletConnectorCssVars;
   /** Extra inline styles forwarded to the host element. */
   style?: CSSProperties;
   className?: string;

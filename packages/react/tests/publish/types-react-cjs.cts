@@ -27,6 +27,13 @@ declare module 'xrpl-connect' {
 
 const provider: ComponentType<ComponentProps<typeof XrplConnectProvider>> = XrplConnectProvider;
 const connector: ComponentType<WalletConnectorProps> = WalletConnector;
+const cssVarsProps: WalletConnectorProps = { cssVars: { '--xc-primary-color': '#7c3aed' } };
+const invalidCssVarsProps: WalletConnectorProps = {
+  cssVars: {
+    // @ts-expect-error Published React props reject unsupported CSS variables.
+    '--xc-primary-colro': '#7c3aed',
+  },
+};
 const signer = null as unknown as ReturnType<typeof useSigner>;
 const wallet = null as unknown as ReturnType<typeof useWallet>;
 void wallet.connect('xaman', { apiKey: 'api-key' });
@@ -41,4 +48,14 @@ const signedTransaction: Promise<ManagedSignedTransaction> = signer.sign({} as T
 const signedMessage: Promise<ManagedSignedMessage> = signer.signMessage('message');
 const errorGuard: (error: unknown) => error is WalletError = isWalletError;
 
-void [provider, connector, signedTransaction, signedMessage, errorGuard, useWallet, useWalletModal];
+void [
+  provider,
+  connector,
+  cssVarsProps,
+  invalidCssVarsProps,
+  signedTransaction,
+  signedMessage,
+  errorGuard,
+  useWallet,
+  useWalletModal,
+];
