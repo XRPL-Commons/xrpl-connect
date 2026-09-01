@@ -1,4 +1,4 @@
-import type { ComponentProps, ComponentType } from 'react';
+import type { ComponentProps, ComponentType, JSX as ReactJSX } from 'react';
 import {
   WalletConnector,
   XrplConnectProvider,
@@ -29,6 +29,19 @@ declare module 'xrpl-connect' {
 const provider: ComponentType<ComponentProps<typeof XrplConnectProvider>> = XrplConnectProvider;
 const connector: ComponentType<WalletConnectorProps> = WalletConnector;
 const cssVarsProps: WalletConnectorProps = { cssVars: { '--xc-primary-color': '#7c3aed' } };
+const unavailableProps: WalletConnectorProps = { showUnavailable: true };
+const intrinsicProps: ReactJSX.IntrinsicElements['xrpl-wallet-connector'] = {
+  'show-unavailable': true,
+};
+const globalIntrinsicProps: JSX.IntrinsicElements['xrpl-wallet-connector'] = intrinsicProps;
+const invalidIntrinsicProps: ReactJSX.IntrinsicElements['xrpl-wallet-connector'] = {
+  // @ts-expect-error Published JSX types reject unsupported legacy attributes.
+  'background-color': '#000637',
+};
+const unsafeFalseIntrinsicProps: ReactJSX.IntrinsicElements['xrpl-wallet-connector'] = {
+  // @ts-expect-error React 18 would serialize false as a present boolean attribute.
+  'show-unavailable': false,
+};
 const invalidCssVarsProps: WalletConnectorProps = {
   cssVars: {
     // @ts-expect-error Published React props reject unsupported CSS variables.
@@ -58,6 +71,11 @@ void [
   provider,
   connector,
   cssVarsProps,
+  unavailableProps,
+  intrinsicProps,
+  globalIntrinsicProps,
+  invalidIntrinsicProps,
+  unsafeFalseIntrinsicProps,
   invalidCssVarsProps,
   signedTransaction,
   signedMessage,

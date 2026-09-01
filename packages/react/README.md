@@ -67,6 +67,7 @@ export function App() {
 
       {/* The modal itself — themeable, with typed event props */}
       <WalletConnector
+        showUnavailable
         theme="dark"
         cssVars={{ '--xc-primary-color': '#a78bfa' }}
         onConnect={(acct) => console.log('connected', acct.address)}
@@ -114,9 +115,13 @@ typed `CONFIGURATION_REQUIRED` error.
 
 ### `<WalletConnector />`
 
-React wrapper around the web component. Props: `primaryWallet`, `wallets`, `theme`
+React wrapper around the web component. Props: `primaryWallet`, `wallets`, `showUnavailable`, `theme`
 (`'dark' | 'light' | 'purple'`), `cssVars` (`--xc-*` overrides), `style`, `className`,
 and typed callbacks `onConnecting(walletId)`, `onConnect(account)`, `onError(WalletError)`.
+
+Unavailable wallets are hidden by default. Set `showUnavailable` to show an Install action when a
+wallet provides a download URL, or a disabled Unavailable row otherwise. Setting it to `false`
+removes the native `show-unavailable` boolean attribute.
 
 ### Errors
 
