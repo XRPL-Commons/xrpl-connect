@@ -2,6 +2,7 @@ import { WalletService } from './WalletService';
 import { TIMINGS } from '../constants';
 import { createLogger, supportsDeepLink } from '@xrpl-connect/core';
 import type { WalletConnectorContext } from '../types';
+import { getSafeDeepLinkUrl } from '../security';
 import { getSafeExternalUrl, isMobile } from '../utils';
 
 const logger = createLogger('[EventHandler]');
@@ -89,10 +90,12 @@ export class EventHandler {
             '#copy-account-address'
           ) as HTMLButtonElement | null;
           if (!btn) return;
-          const originalHTML = btn.innerHTML;
-          btn.innerHTML = '<span>Copied!</span>';
+          const originalChildren = [...btn.childNodes];
+          const feedback = document.createElement('span');
+          feedback.textContent = 'Copied!';
+          btn.replaceChildren(feedback);
           setTimeout(() => {
-            if (btn) btn.innerHTML = originalHTML;
+            btn.replaceChildren(...originalChildren);
           }, TIMINGS.COPY_FEEDBACK_DURATION);
         } catch (error) {
           logger.error('Failed to copy address:', error);
@@ -171,12 +174,15 @@ export class EventHandler {
           deepLink = adapter.getDeepLinkURI(qrCodeData.uri);
         }
 
+        const safeDeepLink = getSafeDeepLinkUrl(deepLink);
+        if (!safeDeepLink) return;
+
         // Detect mobile and open deep link
         if (isMobile()) {
-          window.location.href = deepLink;
+          window.location.href = safeDeepLink;
         } else {
           // On desktop, still try to open (might open desktop app if installed)
-          window.open(deepLink, '_blank');
+          window.open(safeDeepLink, '_blank', 'noopener,noreferrer');
         }
       }
     });

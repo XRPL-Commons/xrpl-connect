@@ -1,25 +1,20 @@
 import { WALLET_CONNECTOR_PARTS } from '../customization';
+import { createStaticView, getViewElement } from './dom';
 
 export function renderAccountModal(
   account: { address: string } | null,
   accountBalance: string | null,
   truncateAddress: (address: string, chars?: number) => string,
   generateGradientFromAddress: (address: string) => { color1: string; color2: string }
-): string {
-  if (!account) return '';
+): DocumentFragment {
+  if (!account) return document.createDocumentFragment();
 
   const truncatedAddress = truncateAddress(account.address, 6);
   const { color1, color2 } = generateGradientFromAddress(account.address);
-
-  return `
-      <div
-        id="account-modal-overlay"
-        class="account-modal-overlay"
-        part="${WALLET_CONNECTOR_PARTS.accountModal.overlay}"
-      >
+  const view = createStaticView`
+      <div id="account-modal-overlay" class="account-modal-overlay">
         <div
           class="account-modal"
-          part="${WALLET_CONNECTOR_PARTS.accountModal.modal}"
           role="dialog"
           aria-modal="true"
           aria-labelledby="account-dialog-title"
@@ -30,23 +25,20 @@ export function renderAccountModal(
             <button
               class="account-modal-close"
               id="account-modal-close"
-              part="${WALLET_CONNECTOR_PARTS.accountModal.closeButton}"
               aria-label="Close"
             >×</button>
           </div>
 
           <div class="account-modal-content">
-            <div class="account-avatar-container" style="background: linear-gradient(135deg, ${color1}, ${color2});">
-            </div>
+            <div class="account-avatar-container"></div>
 
             <div class="account-info-section">
               <button
                 class="account-address-button"
                 id="copy-account-address"
-                part="${WALLET_CONNECTOR_PARTS.accountModal.addressButton}"
                 title="Click to copy full address"
               >
-                <span>${truncatedAddress}</span>
+                <span class="account-address-text"></span>
                 <svg
                   aria-hidden="true"
                   width="20"
@@ -60,23 +52,11 @@ export function renderAccountModal(
                   <rect x="10" y="10" width="9" height="9" rx="2" stroke="currentColor" stroke-width="2"></rect>
                 </svg>
               </button>
-
-              ${
-                accountBalance
-                  ? `
-                <div class="account-balance-display">
-                  <span class="account-balance-value">${accountBalance}</span>
-                  <span class="account-balance-unit">XRP</span>
-                </div>
-              `
-                  : ''
-              }
             </div>
 
             <button
               class="account-disconnect-button"
               id="account-modal-disconnect"
-              part="${WALLET_CONNECTOR_PARTS.accountModal.disconnectButton}"
             >
               <svg
                 aria-hidden="true"
@@ -101,4 +81,43 @@ export function renderAccountModal(
         </div>
       </div>
     `;
+
+  getViewElement(view, '.account-modal-overlay').setAttribute(
+    'part',
+    WALLET_CONNECTOR_PARTS.accountModal.overlay
+  );
+  getViewElement(view, '.account-modal').setAttribute(
+    'part',
+    WALLET_CONNECTOR_PARTS.accountModal.modal
+  );
+  getViewElement(view, '.account-modal-close').setAttribute(
+    'part',
+    WALLET_CONNECTOR_PARTS.accountModal.closeButton
+  );
+  getViewElement(view, '.account-address-button').setAttribute(
+    'part',
+    WALLET_CONNECTOR_PARTS.accountModal.addressButton
+  );
+  getViewElement(view, '.account-disconnect-button').setAttribute(
+    'part',
+    WALLET_CONNECTOR_PARTS.accountModal.disconnectButton
+  );
+  getViewElement<HTMLElement>(view, '.account-avatar-container').style.background =
+    `linear-gradient(135deg, ${color1}, ${color2})`;
+  getViewElement(view, '.account-address-text').textContent = truncatedAddress;
+
+  if (accountBalance) {
+    const balanceDisplay = document.createElement('div');
+    balanceDisplay.className = 'account-balance-display';
+    const balance = document.createElement('span');
+    balance.className = 'account-balance-value';
+    balance.textContent = accountBalance;
+    const unit = document.createElement('span');
+    unit.className = 'account-balance-unit';
+    unit.textContent = 'XRP';
+    balanceDisplay.append(balance, unit);
+    getViewElement(view, '.account-info-section').append(balanceDisplay);
+  }
+
+  return view;
 }

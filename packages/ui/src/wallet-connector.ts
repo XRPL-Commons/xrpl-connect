@@ -18,6 +18,7 @@ import {
   WALLET_CONNECTOR_PORTAL_ATTRIBUTES,
 } from './customization';
 import { mainStyles } from './styles/main';
+import { getSafeImageUrl } from './security';
 import {
   SIZES,
   TIMINGS,
@@ -52,6 +53,12 @@ import { isXamanQRImage, adjustColorBrightness, orderWalletsByMru } from './util
  */
 const logger = createLogger('[WalletConnector]');
 const AVAILABILITY_TIMED_OUT = Symbol('availability-timed-out');
+
+function createMainStyleElement(): HTMLStyleElement {
+  const style = document.createElement('style');
+  style.textContent = mainStyles;
+  return style;
+}
 
 /** Public API exposed by the `<xrpl-wallet-connector>` custom element. */
 export interface WalletConnectorElementInstance extends HTMLElement {
@@ -794,7 +801,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           height: QR_CONFIG.SIZE,
           type: 'svg',
           data: uri,
-          image: wallet?.icon,
+          image: getSafeImageUrl(wallet?.icon) ?? undefined,
           margin: QR_CONFIG.MARGIN,
           qrOptions: {
             errorCorrectionLevel: QR_CONFIG.ERROR_CORRECTION_LEVEL,
@@ -945,20 +952,21 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         // Check if URI is already a QR code image URL (Xaman provides PNG directly)
         if (isXamanQRImage(uri)) {
           logger.debug('Using direct QR code image from Xaman');
-          container.innerHTML = `
-          <img
-            src="${uri}"
-            alt="QR Code"
-            style="width: ${SIZES.QR_CODE}px; height: ${SIZES.QR_CODE}px; border-radius: ${SIZES.QR_IMAGE_BORDER_RADIUS}px; display: block;"
-          />
-        `;
+          const image = document.createElement('img');
+          image.src = getSafeImageUrl(uri)!;
+          image.alt = 'QR Code';
+          image.style.width = `${SIZES.QR_CODE}px`;
+          image.style.height = `${SIZES.QR_CODE}px`;
+          image.style.borderRadius = `${SIZES.QR_IMAGE_BORDER_RADIUS}px`;
+          image.style.display = 'block';
+          container.replaceChildren(image);
           return;
         }
 
         // Check if we have a pre-generated QR code with matching URI
         if (this.preGeneratedQRCode && this.preGeneratedURI === uri) {
           logger.debug('Using pre-generated QR code - instant render!');
-          container.innerHTML = '';
+          container.replaceChildren();
           this.preGeneratedQRCode.append(container as HTMLElement);
           return;
         }
@@ -972,7 +980,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           height: QR_CONFIG.SIZE,
           type: 'svg',
           data: uri,
-          image: wallet?.icon,
+          image: getSafeImageUrl(wallet?.icon) ?? undefined,
           margin: QR_CONFIG.MARGIN,
           qrOptions: {
             errorCorrectionLevel: QR_CONFIG.ERROR_CORRECTION_LEVEL,
@@ -992,16 +1000,16 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         });
 
         // Clear container and append QR code
-        container.innerHTML = '';
+        container.replaceChildren();
         qrCode.append(container as HTMLElement);
         logger.debug('Modern QR code generated successfully');
       } catch (error) {
         logger.error('Failed to generate QR code:', error);
-        container.innerHTML = `
-        <div class="qr-loading" style="color: ${DEFAULT_THEME.DANGER_COLOR};">
-          Failed to generate QR code
-        </div>
-      `;
+        const message = document.createElement('div');
+        message.className = 'qr-loading';
+        message.style.color = DEFAULT_THEME.DANGER_COLOR;
+        message.textContent = 'Failed to generate QR code';
+        container.replaceChildren(message);
       }
     }
 
@@ -1091,23 +1099,23 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       );
 
       // Render based on view state
-      let contentHTML = '';
+      let content: DocumentFragment;
       if (this.viewState === 'qr' && this.qrCodeData) {
         const wallet = this.walletManager?.wallets.find((w) => w.id === this.qrCodeData?.walletId);
         const walletName = wallet?.name || 'Wallet';
-        contentHTML = renderQRView(walletName);
+        content = renderQRView(walletName);
       } else if (this.viewState === 'loading' && this.loadingData) {
-        contentHTML = renderLoadingView(this.loadingData.walletName, this.loadingData.walletIcon);
+        content = renderLoadingView(this.loadingData.walletName, this.loadingData.walletIcon);
       } else if (this.viewState === 'error' && this.errorData) {
-        contentHTML = renderErrorView(this.errorData.walletName, this.errorData.error);
+        content = renderErrorView(this.errorData.walletName, this.errorData.error);
       } else if (this.viewState === 'account-selection' && this.accountSelectionData) {
-        contentHTML = renderAccountSelectionView(
+        content = renderAccountSelectionView(
           this.accountSelectionData.walletName,
           this.accountSelectionData.walletIcon,
           this.accountSelectionData.accounts
         );
       } else {
-        contentHTML = renderWalletListView(primaryWallet, otherWallets, unavailableWalletIds);
+        content = renderWalletListView(primaryWallet, otherWallets, unavailableWalletIds);
       }
 
       const overlayClass = this.isFirstOpen ? 'overlay fade-in' : 'overlay';
@@ -1119,50 +1127,46 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       // Connect button stays in the component's own shadow root
-      this.shadow.innerHTML = `
-    <style>
-      ${mainStyles}
-    </style>
-    <button class="connect-button" id="connect-wallet-button" part="${WALLET_CONNECTOR_PARTS.connector.connectButton}">${buttonText}</button>
-  `;
+      const connectButton = document.createElement('button');
+      connectButton.className = 'connect-button';
+      connectButton.id = 'connect-wallet-button';
+      connectButton.setAttribute('part', WALLET_CONNECTOR_PARTS.connector.connectButton);
+      connectButton.textContent = buttonText;
+      this.shadow.replaceChildren(createMainStyleElement(), connectButton);
 
       // Wallet connection overlay — rendered in a portal on document.body to guarantee
       // position: fixed is always relative to the viewport (not a transformed ancestor)
       if (this.isOpen) {
         const overlayRoot = this.ensureOverlayPortal();
-        overlayRoot.innerHTML = `
-    <style>${mainStyles}</style>
-    <div class="${overlayClass}" part="${WALLET_CONNECTOR_PARTS.walletModal.overlay}">
-      <div
-        class="${modalClass}"
-        part="${WALLET_CONNECTOR_PARTS.walletModal.modal}"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="wallet-dialog-title"
-        tabindex="-1"
-      >
-        ${contentHTML}
-      </div>
-    </div>
-  `;
+        const overlay = document.createElement('div');
+        overlay.className = overlayClass;
+        overlay.setAttribute('part', WALLET_CONNECTOR_PARTS.walletModal.overlay);
+        const modal = document.createElement('div');
+        modal.className = modalClass;
+        modal.setAttribute('part', WALLET_CONNECTOR_PARTS.walletModal.modal);
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'wallet-dialog-title');
+        modal.tabIndex = -1;
+        modal.append(content);
+        overlay.append(modal);
+        overlayRoot.replaceChildren(createMainStyleElement(), overlay);
       } else if (this.overlayPortal) {
-        this.overlayPortal.shadowRoot!.innerHTML = '';
+        this.overlayPortal.shadowRoot!.replaceChildren();
       }
 
       // Account modal — same portal approach
       if (this.accountModalOpen) {
         const accountRoot = this.ensureAccountModalPortal();
-        accountRoot.innerHTML = `
-    <style>${mainStyles}</style>
-    ${renderAccountModal(
-      this.walletManager?.account ?? null,
-      this.accountBalance,
-      this.truncateAddress.bind(this),
-      this.generateGradientFromAddress.bind(this)
-    )}
-  `;
+        const accountModal = renderAccountModal(
+          this.walletManager?.account ?? null,
+          this.accountBalance,
+          this.truncateAddress.bind(this),
+          this.generateGradientFromAddress.bind(this)
+        );
+        accountRoot.replaceChildren(createMainStyleElement(), accountModal);
       } else if (this.accountModalPortal) {
-        this.accountModalPortal.shadowRoot!.innerHTML = '';
+        this.accountModalPortal.shadowRoot!.replaceChildren();
       }
 
       this.eventHandler?.attachEventListeners();
