@@ -28,7 +28,10 @@ import {
   createLogger,
   getErrorMessage,
   isMobile,
+  isStandardNetworkId,
   isWalletError,
+  STANDARD_NETWORKS,
+  WalletErrorCode,
 } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
 import { DISCONNECT_REASONS, DEFAULT_METADATA, LOGGING, XRPL_NAMESPACE } from './constants';
@@ -114,15 +117,47 @@ function isValidXrplChainId(chainId: string): boolean {
 }
 
 function getXrplChainId(network: NetworkInfo): string {
-  const chainId = network.walletConnectId ?? `xrpl:${network.id}`;
+  const chainId = network.walletConnectId;
+  if (chainId === undefined) {
+    throw createWalletError.networkNotSupported(network.id, 'WalletConnect');
+  }
   if (!isValidXrplChainId(chainId)) {
-    throw new Error(`Invalid WalletConnect XRPL chain ID: ${chainId}`);
+    throw createWalletError.networkNotSupported(chainId, 'WalletConnect');
+  }
+  if (
+    isStandardNetworkId(network.id) &&
+    chainId !== STANDARD_NETWORKS[network.id].walletConnectId
+  ) {
+    throw createWalletError.networkNotSupported(chainId, 'WalletConnect');
   }
   return chainId;
 }
 
-function selectAccountForChain(accounts: string[], requestedChainId: string): string {
+function getApprovedXrplChainIds(session: SessionTypes.Struct): string[] {
+  const chains = session.namespaces[XRPL_NAMESPACE.KEY]?.chains;
+  if (chains === undefined) return [];
+  if (
+    !Array.isArray(chains) ||
+    !chains.every((chain): chain is string => typeof chain === 'string')
+  ) {
+    throw new Error('WalletConnect returned malformed XRPL session chain references');
+  }
+  if (!chains.every(isValidXrplChainId)) {
+    throw new Error('WalletConnect returned invalid XRPL session chain references');
+  }
+  return [...new Set(chains)];
+}
+
+function selectAccountForChain(
+  accounts: string[],
+  requestedChainId: string,
+  approvedChainIds: string[] = []
+): string {
   if (accounts.length === 0) {
+    const approvedChainId = approvedChainIds[0];
+    if (approvedChainId && approvedChainId !== requestedChainId) {
+      throw createWalletError.networkMismatch(requestedChainId, approvedChainId);
+    }
     throw new Error('No accounts returned from WalletConnect session');
   }
 
@@ -153,8 +188,18 @@ function selectAccountForChain(accounts: string[], requestedChainId: string): st
     };
   });
 
+  if (approvedChainIds.length > 0 && !approvedChainIds.includes(requestedChainId)) {
+    throw createWalletError.networkMismatch(requestedChainId, approvedChainIds[0]);
+  }
+
   const matchingAccount = parsedAccounts.find((account) => account.chainId === requestedChainId);
   if (!matchingAccount) {
+    const actualChainId =
+      parsedAccounts.find((account) => account.chainId !== requestedChainId)?.chainId ||
+      approvedChainIds.find((chainId) => chainId !== requestedChainId);
+    if (actualChainId) {
+      throw createWalletError.networkMismatch(requestedChainId, actualChainId);
+    }
     throw new Error(`WalletConnect did not return an account for ${requestedChainId}`);
   }
 
@@ -396,7 +441,7 @@ export class WalletConnectAdapter
     }
 
     try {
-      const networkInfo = resolveNetwork(network);
+      const networkInfo = this.resolveRequestedNetwork(network);
       const requestedChainId = getXrplChainId(networkInfo);
       const existingPending = this.pendingConnection;
 
@@ -504,9 +549,10 @@ export class WalletConnectAdapter
     let network: NetworkInfo;
     let requestedChainId: string;
     try {
-      network = resolveNetwork(options?.network);
+      network = this.resolveRequestedNetwork(options?.network);
       requestedChainId = getXrplChainId(network);
     } catch (error) {
+      if (isWalletError(error)) throw error;
       throw createWalletError.connectionFailed(this.name, error as Error);
     }
 
@@ -693,7 +739,11 @@ export class WalletConnectAdapter
 
       let address: string;
       try {
-        address = selectAccountForChain(session.namespaces.xrpl?.accounts || [], requestedChainId);
+        address = selectAccountForChain(
+          session.namespaces.xrpl?.accounts || [],
+          requestedChainId,
+          getApprovedXrplChainIds(session)
+        );
       } catch (error) {
         await this.closeApprovedSession(client, session, connectionAttempt);
         throw error;
@@ -1006,6 +1056,15 @@ export class WalletConnectAdapter
     this.initializationPromise = null;
     this.initializationProjectId = null;
     this.clientProjectId = null;
+  }
+
+  private resolveRequestedNetwork(network: WalletConnectConnectOptions['network']): NetworkInfo {
+    try {
+      return resolveNetwork(network);
+    } catch (error) {
+      if (isWalletError(error) && error.code !== WalletErrorCode.UNKNOWN_ERROR) throw error;
+      throw createWalletError.networkNotSupported(String(network), this.name);
+    }
   }
 
   /**

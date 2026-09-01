@@ -30,12 +30,12 @@ import type {
 } from '@xrpl-connect/core';
 import {
   createWalletError,
-  isStandardNetworkId,
+  isWalletError,
   STANDARD_NETWORKS,
   createLogger,
 } from '@xrpl-connect/core';
 import type { XyraAdapterOptions, XyraConnectOptions } from './types';
-import { XRPL_CONNECT_TO_XYRA_NETWORK, XYRA_TO_XRPL_CONNECT_NETWORK } from './types';
+import { XRPL_CONNECT_TO_XYRA_NETWORK } from './types';
 import iconSvg from './assets/icon.svg';
 
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
@@ -48,7 +48,7 @@ const logger = createLogger('[Xyra]');
 /**
  * Xyra adapter implementation for XRPL Connect.
  *
- * Xyra is a browser-native wallet for XRPL and Xahau networks.
+ * Xyra is a browser-native wallet for XRPL mainnet and testnet.
  * It uses popup-based signing flows where cryptographic seeds never
  * leave the user's browser. No extensions or app installs are required.
  *
@@ -148,11 +148,15 @@ export class XyraAdapter implements WalletAdapter {
         network: response.network,
       });
 
-      // Store the Xyra network for subsequent signing operations
-      this.currentXyraNetwork = response.network;
-
       // Map the response to xrpl-connect AccountInfo
       const networkInfo = this.xyraNetworkToInfo(response.network);
+      const requestedNetworkInfo = this.xyraNetworkToInfo(xyraNetwork);
+      if (networkInfo.id !== requestedNetworkInfo.id) {
+        throw createWalletError.networkMismatch(requestedNetworkInfo.id, networkInfo.id);
+      }
+
+      // Keep the wallet's validated response as the signing network authority.
+      this.currentXyraNetwork = response.network;
 
       this.currentAccount = {
         address: response.address,
@@ -200,16 +204,11 @@ export class XyraAdapter implements WalletAdapter {
   /**
    * Get the current network information.
    *
-   * Returns the network the user connected with. If not connected,
-   * defaults to XRPL mainnet.
+   * Returns the network the user connected with.
    */
   async getNetwork(): Promise<NetworkInfo> {
-    if (this.currentAccount) {
-      return this.currentAccount.network;
-    }
-
-    // Default to mainnet if not connected
-    return STANDARD_NETWORKS.mainnet;
+    if (!this.currentAccount) throw createWalletError.notConnected();
+    return this.currentAccount.network;
   }
 
   // ==================== Signing Operations ====================
@@ -438,12 +437,12 @@ export class XyraAdapter implements WalletAdapter {
   /**
    * Resolve an xrpl-connect NetworkConfig to a Xyra SDK Network string.
    *
-   * Handles the mapping between xrpl-connect's network identifiers
-   * ('mainnet', 'testnet', 'devnet') and Xyra's network format
-   * ('xrpl-mainnet', 'xrpl-testnet').
+   * Xyra has no devnet or custom-network support. When omitted, this adapter
+   * deliberately asks the SDK for testnet; the SDK response is still checked
+   * below and remains authoritative for all subsequent signing operations.
    */
   private resolveXyraNetwork(networkConfig?: string | NetworkInfo): Network {
-    if (!networkConfig) {
+    if (networkConfig === undefined) {
       // Default to xrpl-testnet if no network specified
       return 'xrpl-testnet';
     }
@@ -451,31 +450,12 @@ export class XyraAdapter implements WalletAdapter {
     // If it's a NetworkInfo object, extract the id
     const networkId = typeof networkConfig === 'string' ? networkConfig : networkConfig.id;
 
-    // Check if it's already a valid Xyra network string
-    const validXyraNetworks: Network[] = ['xrpl-mainnet', 'xrpl-testnet'];
-    if (validXyraNetworks.includes(networkId as Network)) {
-      return networkId as Network;
-    }
-
-    // Map from xrpl-connect network ID to Xyra network
-    if (isStandardNetworkId(networkId)) {
+    // Xyra accepts only the canonical xrpl-connect mainnet and testnet IDs.
+    if (networkId === 'mainnet' || networkId === 'testnet') {
       return XRPL_CONNECT_TO_XYRA_NETWORK[networkId];
     }
 
-    // Try to infer from the network ID string
-    const lower = networkId.toLowerCase();
-
-    if (lower.includes('test') || lower.includes('altnet')) {
-      return 'xrpl-testnet';
-    }
-
-    if (lower.includes('main') || lower === 'livenet') {
-      return 'xrpl-mainnet';
-    }
-
-    // Fallback to testnet for safety
-    logger.warn(`Unknown network "${networkId}", defaulting to xrpl-testnet`);
-    return 'xrpl-testnet';
+    throw createWalletError.networkNotSupported(networkId, this.name);
   }
 
   /**
@@ -488,15 +468,14 @@ export class XyraAdapter implements WalletAdapter {
    * network identifier returned by the wallet itself.
    */
   private xyraNetworkToInfo(xyraNetwork: Network): NetworkInfo {
-    const connectNetworkId = XYRA_TO_XRPL_CONNECT_NETWORK[xyraNetwork];
-
-    // Check standard networks first
-    if (connectNetworkId) {
-      return STANDARD_NETWORKS[connectNetworkId];
+    if (xyraNetwork === 'xrpl-mainnet') {
+      return STANDARD_NETWORKS.mainnet;
+    }
+    if (xyraNetwork === 'xrpl-testnet') {
+      return STANDARD_NETWORKS.testnet;
     }
 
-    // Fallback to XRPL testnet
-    return STANDARD_NETWORKS.testnet;
+    throw createWalletError.networkNotSupported(String(xyraNetwork), this.name);
   }
 
   /**
@@ -506,6 +485,8 @@ export class XyraAdapter implements WalletAdapter {
     error: unknown,
     operation: 'connect' | 'sign'
   ): ReturnType<typeof createWalletError.connectionFailed> {
+    if (isWalletError(error)) return error;
+
     if (!(error instanceof Error)) {
       if (operation === 'connect') {
         return createWalletError.connectionFailed('Xyra', new Error(String(error)));

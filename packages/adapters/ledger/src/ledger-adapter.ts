@@ -26,7 +26,12 @@ import type {
   SupportsReconnectOptions,
   ReconnectOptions,
 } from '@xrpl-connect/core';
-import { createWalletError, isWalletError, resolveNetwork } from '@xrpl-connect/core';
+import {
+  createWalletError,
+  isStandardNetworkId,
+  isWalletError,
+  resolveNetwork,
+} from '@xrpl-connect/core';
 
 import type { LedgerAdapterOptions, LedgerConnectOptions } from './types';
 import { LedgerDeviceState } from './types';
@@ -134,6 +139,9 @@ export class LedgerAdapter
         this.derivationPath = `44'/144'/${options.accountIndex}'/0/0`;
       }
 
+      if (typeof options?.network === 'string' && !isStandardNetworkId(options.network)) {
+        throw createWalletError.networkNotSupported(options.network, this.name);
+      }
       const network = resolveNetwork(options?.network);
       this.transport = await this.createTransport();
       this.xrpApp = new Xrp(this.transport);

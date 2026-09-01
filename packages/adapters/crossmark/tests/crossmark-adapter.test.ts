@@ -35,6 +35,22 @@ const getRandomValues = vi.fn((array: Uint8Array) => {
   return array;
 });
 
+function mockLiveNetwork(overrides: Record<string, string> = {}) {
+  sdk.api.awaitRequest.mockResolvedValue({
+    response: {
+      data: {
+        network: {
+          protocol: 'xrpl',
+          type: 'mainnet',
+          label: 'xrp ledger',
+          wss: 'wss://mainnet.example',
+          ...overrides,
+        },
+      },
+    },
+  });
+}
+
 beforeEach(() => {
   getRandomValues.mockClear();
   vi.stubGlobal('crypto', { getRandomValues });
@@ -56,8 +72,10 @@ describe('CrossmarkAdapter.fetchAccount', () => {
     sdk.methods.signInAndWait.mockResolvedValue({
       response: { data: { address: 'rOriginal', publicKey: 'ORIGINAL_PK' } },
     });
+    mockLiveNetwork();
     const adapter = new CrossmarkAdapter();
     await adapter.connect();
+    sdk.api.awaitRequest.mockClear();
     return adapter;
   }
 
@@ -272,6 +290,7 @@ describe('CrossmarkAdapter.connect', () => {
     sdk.methods.signInAndWait.mockResolvedValue({
       response: { data: { address: 'rUserAddress', publicKey: 'PUBKEY' } },
     });
+    mockLiveNetwork();
 
     const adapter = new CrossmarkAdapter();
     const account = await adapter.connect();
@@ -279,6 +298,124 @@ describe('CrossmarkAdapter.connect', () => {
     expect(account.address).toBe('rUserAddress');
     expect(account.publicKey).toBe('PUBKEY');
     expect(account.network.id).toBe('mainnet');
+  });
+
+  it('does not restore account state when disconnected during sign-in', async () => {
+    let resolveSignIn!: (value: unknown) => void;
+    sdk.sync.isInstalled.mockReturnValue(true);
+    sdk.methods.signInAndWait.mockImplementation(
+      () => new Promise((resolve) => (resolveSignIn = resolve))
+    );
+    const adapter = new CrossmarkAdapter();
+
+    const connecting = adapter.connect();
+    await vi.waitFor(() => expect(sdk.methods.signInAndWait).toHaveBeenCalledOnce());
+    await adapter.disconnect();
+    resolveSignIn({ response: { data: { address: 'rLate', publicKey: 'LATE_PK' } } });
+
+    await expect(connecting).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+    expect(sdk.api.awaitRequest).not.toHaveBeenCalled();
+  });
+
+  it('uses the live testnet when no network is requested', async () => {
+    sdk.sync.isInstalled.mockReturnValue(true);
+    sdk.methods.signInAndWait.mockResolvedValue({
+      response: { data: { address: 'rTestnet', publicKey: 'TESTNET_PK' } },
+    });
+    mockLiveNetwork({ type: 'testnet', wss: 'wss://testnet.example' });
+
+    const account = await new CrossmarkAdapter().connect();
+
+    expect(account.network).toEqual({
+      id: 'testnet',
+      name: 'Testnet',
+      wss: 'wss://testnet.example',
+    });
+  });
+
+  it('maps a live devnet network to the standard devnet ID', async () => {
+    sdk.sync.isInstalled.mockReturnValue(true);
+    sdk.methods.signInAndWait.mockResolvedValue({
+      response: { data: { address: 'rDevnet', publicKey: 'DEVNET_PK' } },
+    });
+    mockLiveNetwork({ type: 'devnet', wss: 'wss://devnet.example' });
+
+    const account = await new CrossmarkAdapter().connect();
+
+    expect(account.network).toEqual({
+      id: 'devnet',
+      name: 'Devnet',
+      wss: 'wss://devnet.example',
+    });
+  });
+
+  it('keeps a custom live network distinct from XRPL standard IDs', async () => {
+    sdk.sync.isInstalled.mockReturnValue(true);
+    sdk.methods.signInAndWait.mockResolvedValue({
+      response: { data: { address: 'rXahau', publicKey: 'XAHAU_PK' } },
+    });
+    mockLiveNetwork({
+      protocol: 'xahau',
+      type: 'mainnet',
+      label: 'xahau',
+      wss: 'wss://xahau.example',
+      rpc: 'https://xahau.example',
+    });
+
+    const account = await new CrossmarkAdapter().connect({
+      network: {
+        id: 'xahau-mainnet',
+        name: 'xahau mainnet',
+        wss: 'wss://xahau.example',
+        rpc: 'https://xahau.example',
+      },
+    });
+
+    expect(account.network).toEqual({
+      id: 'xahau-mainnet',
+      name: 'xahau mainnet',
+      wss: 'wss://xahau.example',
+      rpc: 'https://xahau.example',
+    });
+  });
+
+  it('rejects an explicit network mismatch before caching the account', async () => {
+    sdk.sync.isInstalled.mockReturnValue(true);
+    sdk.methods.signInAndWait.mockResolvedValue({
+      response: { data: { address: 'rTestnet', publicKey: 'TESTNET_PK' } },
+    });
+    mockLiveNetwork({ type: 'testnet', wss: 'wss://testnet.example' });
+
+    const adapter = new CrossmarkAdapter();
+    await expect(adapter.connect({ network: 'mainnet' })).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
+  it('returns a typed connection error when the live network query fails', async () => {
+    sdk.sync.isInstalled.mockReturnValue(true);
+    sdk.methods.signInAndWait.mockResolvedValue({
+      response: { data: { address: 'rUserAddress', publicKey: 'PUBKEY' } },
+    });
+    sdk.api.awaitRequest.mockRejectedValue(new Error('network unavailable'));
+
+    const adapter = new CrossmarkAdapter();
+    await expect(adapter.connect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
+  it('rejects an unsupported runtime network id before opening sign-in', async () => {
+    sdk.sync.isInstalled.mockReturnValue(true);
+
+    await expect(
+      new CrossmarkAdapter().connect({ network: 'sidechain' as never })
+    ).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_NOT_SUPPORTED });
+    expect(sdk.methods.signInAndWait).not.toHaveBeenCalled();
+    expect(sdk.api.awaitRequest).not.toHaveBeenCalled();
   });
 
   it('preserves the typed not-installed error', async () => {
@@ -324,8 +461,10 @@ describe('CrossmarkAdapter.sign', () => {
     sdk.methods.signInAndWait.mockResolvedValue({
       response: { data: { address: 'rUser', publicKey: 'PK' } },
     });
+    mockLiveNetwork();
     const adapter = new CrossmarkAdapter();
     await adapter.connect();
+    sdk.api.awaitRequest.mockClear();
     return adapter;
   }
 
@@ -338,6 +477,20 @@ describe('CrossmarkAdapter.sign', () => {
     const result = await adapter.sign({ TransactionType: 'Payment' } as never);
 
     expect(result.tx_blob).toBe('DEADBEEF');
+  });
+
+  it('does not sign or submit after Crossmark changes networks', async () => {
+    const adapter = await connected();
+    mockLiveNetwork({ type: 'testnet', wss: 'wss://testnet.example' });
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    await expect(
+      adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+    ).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_MISMATCH });
+    expect(sdk.methods.signAndWait).not.toHaveBeenCalled();
+    expect(sdk.methods.signAndSubmitAndWait).not.toHaveBeenCalled();
   });
 
   it('throws notConnected when no account is set', async () => {
@@ -414,6 +567,7 @@ describe('CrossmarkAdapter.disconnect', () => {
     sdk.methods.signInAndWait.mockResolvedValue({
       response: { data: { address: 'rUser', publicKey: 'PK' } },
     });
+    mockLiveNetwork();
     const adapter = new CrossmarkAdapter();
     await adapter.connect();
     expect(await adapter.getAccount()).not.toBeNull();

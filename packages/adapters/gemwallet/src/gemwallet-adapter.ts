@@ -23,6 +23,7 @@ import type {
 } from '@xrpl-connect/core';
 import {
   createWalletError,
+  isStandardNetworkId,
   isWalletError,
   resolveNetwork,
   TIME,
@@ -86,18 +87,23 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
    * Connect to GemWallet
    */
   async connect(options?: ConnectOptions): Promise<AccountInfo> {
+    const generation = ++this.connectionGeneration;
     try {
       // Check if GemWallet is installed
       const available = await this.isAvailable();
+      if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
       if (!available) {
         throw createWalletError.notInstalled(this.name);
       }
 
-      // Determine network
-      const network = resolveNetwork(options?.network);
+      // Resolve an explicit requested network for validation after querying the
+      // wallet. An omitted network must come from GemWallet's live state.
+      const requestedNetwork =
+        options?.network === undefined ? undefined : this.resolveRequestedNetwork(options.network);
 
       // Get public key (which also returns the address)
       const publicKeyResponse = await getPublicKey();
+      if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
 
       if (publicKeyResponse.type === 'reject') {
         throw createWalletError.connectionRejected(this.name);
@@ -107,13 +113,17 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
       }
 
       const { address, publicKey } = publicKeyResponse.result;
+      const network = await this.getLiveNetwork();
+      if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
+      if (requestedNetwork && requestedNetwork.id !== network.id) {
+        throw createWalletError.networkMismatch(requestedNetwork.id, network.id);
+      }
 
       this.currentAccount = {
         address,
         publicKey,
         network,
       };
-      this.connectionGeneration += 1;
 
       return this.currentAccount;
     } catch (error) {
@@ -169,6 +179,22 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
       );
     }
 
+    const network = await this.getLiveNetwork();
+
+    if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
+    if (refreshRevision !== this.accountRefreshRevision) return this.currentAccount;
+    if (!this.currentAccount) return null;
+
+    this.currentAccount = {
+      address: accountResponse.result.address,
+      publicKey: accountResponse.result.publicKey,
+      network,
+    };
+
+    return this.currentAccount;
+  }
+
+  private async getLiveNetwork(): Promise<NetworkInfo> {
     let networkResponse: Awaited<ReturnType<typeof getNetwork>>;
     try {
       networkResponse = await getNetwork();
@@ -176,11 +202,7 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
       throw createWalletError.connectionFailed(this.name, error as Error);
     }
 
-    if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
-    if (refreshRevision !== this.accountRefreshRevision) return this.currentAccount;
-    if (!this.currentAccount) return null;
-
-    const network = networkResponse.result;
+    const network = networkResponse?.result;
     if (!network?.chain || !network.network || !network.websocket) {
       throw createWalletError.connectionFailed(
         this.name,
@@ -188,13 +210,26 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
       );
     }
 
-    this.currentAccount = {
-      address: accountResponse.result.address,
-      publicKey: accountResponse.result.publicKey,
-      network: this.toNetworkInfo(network),
-    };
+    return this.toNetworkInfo(network);
+  }
 
-    return this.currentAccount;
+  private async assertCurrentNetwork(): Promise<void> {
+    if (!this.currentAccount) throw createWalletError.notConnected();
+    const generation = this.connectionGeneration;
+    const liveNetwork = await this.getLiveNetwork();
+    if (generation !== this.connectionGeneration || !this.currentAccount) {
+      throw createWalletError.notConnected();
+    }
+    if (liveNetwork.id !== this.currentAccount.network.id) {
+      throw createWalletError.networkMismatch(this.currentAccount.network.id, liveNetwork.id);
+    }
+  }
+
+  private resolveRequestedNetwork(network: string | NetworkInfo): NetworkInfo {
+    if (typeof network === 'string' && !isStandardNetworkId(network)) {
+      throw createWalletError.networkNotSupported(network, this.name);
+    }
+    return resolveNetwork(network);
   }
 
   /**
@@ -235,6 +270,7 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
     }
 
     try {
+      await this.assertCurrentNetwork();
       const tx = {
         ...transaction,
         Account: transaction.Account || this.currentAccount.address,
@@ -270,6 +306,7 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
     }
 
     try {
+      await this.assertCurrentNetwork();
       const tx = {
         ...transaction,
         Account: transaction.Account || this.currentAccount.address,

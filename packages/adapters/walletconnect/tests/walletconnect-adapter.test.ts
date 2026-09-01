@@ -121,6 +121,64 @@ describe('WalletConnectAdapter.connect', () => {
     expect(mockClient.disconnect).not.toHaveBeenCalled();
   });
 
+  it('uses the approved XRPL session chain and rejects a wrong-chain approval before caching', async () => {
+    mockClient.connect.mockResolvedValue({
+      uri: 'wc:example',
+      approval: vi.fn().mockResolvedValue({
+        topic: 'topic-wrong-chain',
+        namespaces: {
+          xrpl: {
+            chains: ['xrpl:1'],
+            accounts: [`xrpl:1:${TESTNET_ADDRESS}`],
+          },
+        },
+      }),
+    });
+
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+    await expect(adapter.connect({ network: 'mainnet' })).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+
+    expect(mockClient.disconnect).toHaveBeenCalledWith(
+      expect.objectContaining({ topic: 'topic-wrong-chain' })
+    );
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
+  it('keeps a supported custom CAIP chain on the connected account and sign request', async () => {
+    mockClient.connect.mockResolvedValue({
+      uri: 'wc:example',
+      approval: vi.fn().mockResolvedValue({
+        topic: 'topic-custom',
+        namespaces: {
+          xrpl: {
+            chains: ['xrpl:21338'],
+            accounts: [`xrpl:21338:${MAINNET_ADDRESS}`],
+          },
+        },
+      }),
+    });
+    mockClient.request.mockResolvedValue({
+      tx_json: { TransactionType: 'Payment', TxnSignature: 'SIG' },
+    });
+
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+    const network = {
+      id: 'custom',
+      name: 'Custom',
+      wss: 'wss://example.com',
+      walletConnectId: 'xrpl:21338',
+    };
+    const account = await adapter.connect({ network });
+    await adapter.sign({ TransactionType: 'Payment' } as never);
+
+    expect(account).toMatchObject({ address: MAINNET_ADDRESS, network });
+    expect(mockClient.request).toHaveBeenCalledWith(
+      expect.objectContaining({ chainId: 'xrpl:21338' })
+    );
+  });
+
   it.each(['21338', '4294967295'])(
     'matches an account against custom XRPL network ID %s',
     async (networkId) => {
@@ -160,12 +218,38 @@ describe('WalletConnectAdapter.connect', () => {
             walletConnectId,
           },
         })
-      ).rejects.toMatchObject({ code: WalletErrorCode.CONNECTION_FAILED });
+      ).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_NOT_SUPPORTED });
 
       expect(SignClientMock.init).not.toHaveBeenCalled();
       expect(mockClient.connect).not.toHaveBeenCalled();
     }
   );
+
+  it('rejects a standard network id paired with a different CAIP chain', async () => {
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+
+    await expect(
+      adapter.connect({
+        network: {
+          id: 'mainnet',
+          name: 'Contradictory Mainnet',
+          wss: 'wss://example.com',
+          walletConnectId: 'xrpl:1',
+        },
+      })
+    ).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_NOT_SUPPORTED });
+    expect(SignClientMock.init).not.toHaveBeenCalled();
+    expect(mockClient.connect).not.toHaveBeenCalled();
+  });
+
+  it('maps an unknown requested network to NETWORK_NOT_SUPPORTED', async () => {
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+
+    await expect(adapter.connect({ network: 'sidechain' as never })).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_NOT_SUPPORTED,
+    });
+    expect(SignClientMock.init).not.toHaveBeenCalled();
+  });
 
   it('preserves a newer pre-initialized connection when older validation cleanup finishes', async () => {
     let finishDisconnect!: () => void;
@@ -197,7 +281,7 @@ describe('WalletConnectAdapter.connect', () => {
     await adapter.preInitialize('mainnet');
     finishDisconnect();
     await expect(invalidConnection).rejects.toMatchObject({
-      code: WalletErrorCode.CONNECTION_FAILED,
+      code: WalletErrorCode.NETWORK_MISMATCH,
     });
 
     const account = await adapter.connect();
@@ -447,7 +531,7 @@ describe('WalletConnectAdapter.connect', () => {
     await vi.waitFor(() => expect(mockClient.connect).toHaveBeenCalledOnce());
 
     await expect(adapter.connect({ network: 'mainnet' })).rejects.toMatchObject({
-      code: WalletErrorCode.CONNECTION_FAILED,
+      code: WalletErrorCode.NETWORK_MISMATCH,
     });
 
     approveFirst({
@@ -644,7 +728,7 @@ describe('WalletConnectAdapter.connect', () => {
     const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
     await expect(
       adapter.connect({ network: { id: 'custom', name: 'Custom', wss: 'wss://example.com' } })
-    ).rejects.toMatchObject({ code: WalletErrorCode.CONNECTION_FAILED });
+    ).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_NOT_SUPPORTED });
     expect(mockClient.connect).not.toHaveBeenCalled();
   });
 
@@ -694,7 +778,10 @@ describe('WalletConnectAdapter.connect', () => {
     const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
 
     await expect(adapter.connect({ network: 'mainnet' })).rejects.toMatchObject({
-      code: WalletErrorCode.CONNECTION_FAILED,
+      code:
+        accounts.length === 0
+          ? WalletErrorCode.CONNECTION_FAILED
+          : WalletErrorCode.NETWORK_MISMATCH,
     });
     expect(mockClient.disconnect).toHaveBeenCalledWith(
       expect.objectContaining({ topic: 'topic-wrong-chain' })
@@ -715,10 +802,7 @@ describe('WalletConnectAdapter.connect', () => {
     const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
 
     await expect(adapter.connect()).rejects.toMatchObject({
-      code: WalletErrorCode.CONNECTION_FAILED,
-      originalError: {
-        message: 'WalletConnect did not return an account for xrpl:0',
-      },
+      code: WalletErrorCode.NETWORK_MISMATCH,
     });
     expect(await adapter.getAccount()).toBeNull();
 

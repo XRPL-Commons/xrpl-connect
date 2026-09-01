@@ -52,6 +52,7 @@ vi.mock('xrpl', async (importOriginal) => ({
 
 import { LedgerAdapter } from '../src/ledger-adapter';
 import { LedgerDeviceState } from '../src/types';
+import { Client } from 'xrpl';
 
 const SINGLE_SIGNER = new Wallet(
   '030E58CDD076E798C84755590AAF6237CA8FAE821070A59F648B517A30DC6F589D',
@@ -125,6 +126,7 @@ beforeEach(() => {
   transportWebUSB.create.mockReset();
   xrpAppInstance.getAddress.mockReset();
   xrpAppInstance.signTransaction.mockReset();
+  vi.mocked(Client).mockClear();
   mockTransport.close.mockReset().mockResolvedValue(undefined);
   transportWebHID.create.mockResolvedValue(mockTransport);
   transportWebUSB.create.mockResolvedValue(mockTransport);
@@ -171,6 +173,49 @@ describe('LedgerAdapter.connect', () => {
 
     expect(account.address).toBe('rLedger');
     expect(account.network.id).toBe('mainnet');
+  });
+
+  it.each(['testnet', 'devnet'] as const)('uses the configured %s network', async (network) => {
+    installNavigator({ hid: {} });
+    xrpAppInstance.getAddress.mockResolvedValue({
+      address: 'rLedger',
+      publicKey: 'aabbcc',
+    });
+
+    await expect(new LedgerAdapter().connect({ network })).resolves.toMatchObject({
+      network: { id: network },
+    });
+  });
+
+  it('uses a custom application-configured network for signing and submission', async () => {
+    installNavigator({ hid: {} });
+    xrpAppInstance.getAddress.mockResolvedValue({
+      address: 'rLedger',
+      publicKey: 'aabbcc',
+    });
+    xrpAppInstance.signTransaction.mockResolvedValue('deadbeef');
+    const customNetwork = {
+      id: 'private-sidechain',
+      name: 'Private Sidechain',
+      wss: 'wss://sidechain.example',
+    };
+    const adapter = new LedgerAdapter();
+
+    await adapter.connect({ network: customNetwork });
+    await adapter.signAndSubmit({ TransactionType: 'Payment' } as never);
+
+    expect(await adapter.getNetwork()).toEqual(customNetwork);
+    expect(Client).toHaveBeenCalledWith(customNetwork.wss);
+  });
+
+  it('rejects an unsupported runtime network id before opening the device', async () => {
+    installNavigator({ hid: {} });
+
+    await expect(
+      new LedgerAdapter().connect({ network: 'sidechain' as never })
+    ).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_NOT_SUPPORTED });
+    expect(transportWebHID.create).not.toHaveBeenCalled();
+    expect(xrpAppInstance.getAddress).not.toHaveBeenCalled();
   });
 
   it('wraps "no device" errors as not-installed', async () => {

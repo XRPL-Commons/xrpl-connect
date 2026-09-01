@@ -60,6 +60,38 @@
 
 ---
 
+# Issue #179
+
+## Issue summary
+
+- Explicit network requests can currently be silently substituted or incorrectly attached to an account even when a wallet is signing on another ledger.
+- Adapters must reject unsupported explicit networks with `NETWORK_NOT_SUPPORTED` and use a wallet-reported live network whenever their provider exposes one.
+- `WalletManager` must reject requested-versus-returned mismatches before attaching listeners, committing account state, or persisting a session; an omitted request must preserve the adapter's authoritative network.
+- Signing, submission, regression coverage, and the bundled-adapter support documentation must all reflect the authoritative connected network.
+
+## Plan
+
+- [x] Validate GitHub access, refresh `origin/develop`, and confirm issue state, lock state, comments, linked PRs, and acceptance criteria.
+- [x] Create a clean isolated worktree from the refreshed default branch and review applicable repository guidance and lessons.
+- [x] Trace core connection state, typed network errors, and every bundled adapter's requested/reported/signing network behavior.
+- [x] Define the minimal authoritative-network contract for explicit standard/custom requests and omitted network options.
+- [x] Implement manager validation before state/session commit and correct adapters that substitute or mislabel requested networks.
+- [x] Add focused core and adapter regressions for mainnet, testnet, devnet, custom/unknown identifiers, omitted requests, and wallet/request mismatches.
+- [x] Document the supported network set and omitted-network behavior of each bundled adapter.
+- [x] Run formatting, type checks, focused tests, builds, repository verification, and `git diff --check` appropriate to the final diff.
+- [x] Review the final behavior and diff against every acceptance criterion and record results below.
+- [x] Commit only intentional files, push the branch, open the PR, and verify remote PR metadata/checks.
+
+## Review
+
+- `WalletManager` now validates an explicit call-level or configured network before reconnect serialization, listeners, state commit, or persistence. Exact IDs and equivalent CAIP chain IDs are accepted, conflicting IDs are rejected with `NETWORK_MISMATCH`, and omitted requests preserve the adapter-reported live network.
+- Xaman, Crossmark, GemWallet, WalletConnect, Xyra, Otsu, Ledger, and MetaMask Snap now expose explicit supported-network behavior without silent substitution. Wallet-reported adapters fail closed when the live network is missing, unsupported, or different from the request.
+- Transaction signing/submission revalidates authoritative live state where the wallet can change networks independently; Xaman validates the selected rail and returned signed payload, WalletConnect binds requests to the approved CAIP chain, and Ledger uses the configured endpoint as authority for autofill/submission.
+- Regression coverage spans standard and custom networks, omitted requests, request/live mismatches, malformed provider data, contradictory CAIP metadata, network changes before signing, persistence ordering, and stale connection races. Independent review findings in those edge cases were corrected before final verification.
+- The affected core/adapter matrix passes 395 tests. `pnpm lint`, `pnpm format:check`, `pnpm docs:snapshot:check`, the full `pnpm test` build-and-test run, and `git diff --check` pass on the final tree.
+
+---
+
 # Issue #170
 
 ## Issue summary

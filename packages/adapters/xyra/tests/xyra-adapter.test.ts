@@ -70,18 +70,69 @@ describe('XyraAdapter.connect', () => {
     expect(account.network.id).toBe('mainnet');
   });
 
-  it('does not treat prototype keys as standard network ids', async () => {
+  it('maps an explicit testnet request without substitution', async () => {
     mockSdk.connect.mockResolvedValue({
       address: 'rXyraUser',
       publicKey: 'PK',
       network: 'xrpl-testnet',
     });
 
-    await new XyraAdapter().connect({
-      network: { id: 'toString', name: 'Custom', wss: 'wss://custom.example.com' },
+    const account = await new XyraAdapter().connect({ network: 'testnet' });
+
+    expect(account.network.id).toBe('testnet');
+    expect(mockSdk.connect).toHaveBeenCalledWith({ network: 'xrpl-testnet' });
+  });
+
+  it('defaults an omitted network to testnet and verifies the SDK response', async () => {
+    mockSdk.connect.mockResolvedValue({
+      address: 'rXyraUser',
+      publicKey: 'PK',
+      network: 'xrpl-testnet',
     });
 
+    const account = await new XyraAdapter().connect();
+
     expect(mockSdk.connect).toHaveBeenCalledWith({ network: 'xrpl-testnet' });
+    expect(account.network.id).toBe('testnet');
+  });
+
+  it.each([
+    ['devnet', 'devnet'],
+    ['custom', { id: 'custom', name: 'Custom', wss: 'wss://custom.example.com' }],
+    ['prototype key', { id: 'toString', name: 'Custom', wss: 'wss://custom.example.com' }],
+  ])('rejects unsupported explicit network (%s) before opening the SDK', async (_name, network) => {
+    await expect(new XyraAdapter().connect({ network: network as never })).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_NOT_SUPPORTED,
+    });
+    expect(mockSdk.connect).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unknown SDK response network without caching an account', async () => {
+    mockSdk.connect.mockResolvedValue({
+      address: 'rXyraUser',
+      publicKey: 'PK',
+      network: 'xrpl-sidechain',
+    });
+
+    const adapter = new XyraAdapter();
+    await expect(adapter.connect({ network: 'testnet' })).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_NOT_SUPPORTED,
+    });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
+  it('rejects a known SDK response that differs from the selected network', async () => {
+    mockSdk.connect.mockResolvedValue({
+      address: 'rXyraUser',
+      publicKey: 'PK',
+      network: 'xrpl-testnet',
+    });
+
+    const adapter = new XyraAdapter();
+    await expect(adapter.connect({ network: 'mainnet' })).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    await expect(adapter.getAccount()).resolves.toBeNull();
   });
 
   it('maps a closed-popup error to connection-rejected', async () => {
@@ -121,7 +172,7 @@ describe('XyraAdapter.sign', () => {
       network: 'xrpl-mainnet',
     });
     const adapter = new XyraAdapter();
-    await adapter.connect();
+    await adapter.connect({ network: 'mainnet' });
     return adapter;
   }
 
@@ -140,6 +191,7 @@ describe('XyraAdapter.sign', () => {
 
     expect(result.tx_blob).toBe('BLOB');
     expect(result.hash).toBe('HASH');
+    expect(mockSdk.sign).toHaveBeenCalledWith(expect.objectContaining({ network: 'xrpl-mainnet' }));
   });
 
   it('maps a closed-popup error to sign-rejected', async () => {
@@ -160,7 +212,7 @@ describe('XyraAdapter.disconnect', () => {
       network: 'xrpl-mainnet',
     });
     const adapter = new XyraAdapter();
-    await adapter.connect();
+    await adapter.connect({ network: 'mainnet' });
     expect(await adapter.getAccount()).not.toBeNull();
 
     await adapter.disconnect();

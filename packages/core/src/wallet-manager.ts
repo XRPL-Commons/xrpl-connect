@@ -189,7 +189,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       // Merge network options
       const connectOptions: ConnectOptions = {
         ...options,
-        network: options?.network || this.options.network,
+        network: options?.network ?? this.options.network,
       };
 
       // Connect
@@ -202,6 +202,29 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         throw createWalletError.notConnected();
       }
 
+      const requestedNetwork = connectOptions.network;
+      const requestedNetworkId =
+        typeof requestedNetwork === 'string' ? requestedNetwork : requestedNetwork?.id;
+      const requestedWalletConnectId =
+        typeof requestedNetwork === 'object' ? requestedNetwork.walletConnectId : undefined;
+      const hasConflictingWalletConnectId =
+        requestedWalletConnectId !== undefined &&
+        account.network.walletConnectId !== undefined &&
+        requestedWalletConnectId !== account.network.walletConnectId;
+      const hasMatchingWalletConnectId =
+        requestedWalletConnectId !== undefined &&
+        requestedWalletConnectId === account.network.walletConnectId;
+      if (
+        requestedNetworkId !== undefined &&
+        ((account.network.id !== requestedNetworkId && !hasMatchingWalletConnectId) ||
+          hasConflictingWalletConnectId)
+      ) {
+        throw createWalletError.networkMismatch(
+          hasConflictingWalletConnectId ? requestedWalletConnectId! : requestedNetworkId,
+          hasConflictingWalletConnectId ? account.network.walletConnectId! : account.network.id
+        );
+      }
+
       if (expectedState && supportsReconnectOptions(adapter)) {
         if (account.address !== expectedState.account.address) {
           throw createWalletError.connectionFailed(
@@ -210,9 +233,6 @@ export class WalletManager extends EventEmitter<WalletEvent> {
               `Reconnected account mismatch. Expected "${expectedState.account.address}" but wallet returned "${account.address}".`
             )
           );
-        }
-        if (account.network.id !== expectedState.network.id) {
-          throw createWalletError.networkMismatch(expectedState.network.id, account.network.id);
         }
       }
 
