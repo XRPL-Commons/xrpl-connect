@@ -1,5 +1,9 @@
 import type { AccountInfo } from '@xrpl-connect/core';
-import type { WalletConnectorElement, WalletConnectorProps } from '../dist/index';
+import {
+  useWalletModal,
+  type WalletConnectorElement,
+  type WalletConnectorProps,
+} from '../dist/index';
 
 declare const connector: WalletConnectorElement;
 declare const manager: Parameters<WalletConnectorElement['setWalletManager']>[0];
@@ -16,6 +20,11 @@ const invalidCssVarsProps: WalletConnectorProps = {
     '--xc-primary-colro': '#7c3aed',
   },
 };
+const modal = null as unknown as ReturnType<typeof useWalletModal>;
+const modalReady: boolean = modal.ready;
+const modalOpen: Promise<void> = modal.open();
+const modalAccount: Promise<AccountInfo> = modal.openAndWait();
+const modalClose: void = modal.close();
 
 // Implementation details must not leak into the public element contract.
 // @ts-expect-error openAccountModal is internal to the web component implementation.
@@ -30,3 +39,7 @@ void closeResult;
 void toggleResult;
 void cssVarsProps;
 void invalidCssVarsProps;
+void modalReady;
+void modalOpen;
+void modalAccount;
+void modalClose;

@@ -9,6 +9,7 @@ import {
   type WalletConnectorProps,
 } from '@xrpl-commons/xrpl-connect-react';
 import type {
+  AccountInfo,
   ManagedSignedMessage,
   ManagedSignedTransaction,
   Transaction,
@@ -36,6 +37,11 @@ const invalidCssVarsProps: WalletConnectorProps = {
 };
 const signer = null as unknown as ReturnType<typeof useSigner>;
 const wallet = null as unknown as ReturnType<typeof useWallet>;
+const modal = null as unknown as ReturnType<typeof useWalletModal>;
+const modalReady: boolean = modal.ready;
+const modalOpen: Promise<void> = modal.open();
+const modalAccount: Promise<AccountInfo> = modal.openAndWait();
+const modalClose: void = modal.close();
 void wallet.connect('xaman', { apiKey: 'api-key' });
 void wallet.connect('walletconnect', { projectId: 'project-id' });
 // @ts-expect-error Xaman deferred options do not accept a WalletConnect project ID.
@@ -56,6 +62,10 @@ void [
   signedTransaction,
   signedMessage,
   errorGuard,
+  modalReady,
+  modalOpen,
+  modalAccount,
+  modalClose,
   useWallet,
   useWalletModal,
 ];
