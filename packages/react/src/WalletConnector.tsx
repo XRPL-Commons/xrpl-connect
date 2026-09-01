@@ -71,7 +71,7 @@ export const WalletConnector = forwardRef<WalletConnectorElement, WalletConnecto
           const cleanup = (
             forwardedRef as (instance: WalletConnectorElement | null) => void | (() => void)
           )(element);
-          if (cleanup) {
+          if (typeof cleanup === 'function') {
             return () => {
               elRef.current = null;
               cleanup();

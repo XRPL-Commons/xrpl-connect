@@ -30,3 +30,18 @@
 - The package README, current React guide, API reference, and Unreleased changelog document refs, host attributes, and precedence; versioned documentation remains unchanged.
 - Under Node 24.11.0, `pnpm exec vp check`, the dependency-inclusive React build, focused and full React tests, `pnpm test`, `pnpm docs:snapshot:check`, `pnpm --filter xrpl-connect test:publish`, and `git diff --check` pass.
 - Self-review corrected an invalid module-scope hook in the first README example draft; an independent final review found no remaining correctness, lifecycle, type, test, documentation, or scope defects.
+
+## Fix PR #176 review finding
+
+- [x] Reconfirm the dedicated worktree and remote PR head are clean and identical.
+- [x] Guard callback-ref cleanup returns by function type while preserving React 18/19 behavior.
+- [x] Add a regression for concise callback refs that return the assigned element.
+- [x] Run focused React checks and repository-level verification appropriate to the fix.
+- [x] Review the final diff, commit, push, and verify the updated PR head and CI.
+
+### Fix review
+
+- Callback-ref returns are treated as React 19 cleanup callbacks only when they are functions; truthy assignment results are ignored so React can deliver the normal `null` detach callback.
+- The new React 18 regression failed against the original PR code with `Unexpected return value from a callback ref` and passes with the function guard.
+- The rebuilt packed artifact passes the original React 19.2.8 unmount reproduction for both native and wrapped refs.
+- Focused and full React checks, dependency-inclusive build, repository formatting/lint, documentation snapshot verification, full monorepo tests, packed publish/consumer verification, and `git diff --check` pass.

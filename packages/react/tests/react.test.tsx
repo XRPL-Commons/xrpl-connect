@@ -500,6 +500,28 @@ describe('<WalletConnector>', () => {
     expect(connectorRef.current).toBeNull();
   });
 
+  it('does not reinterpret non-function callback ref returns as cleanups', async () => {
+    let connector: WalletConnectorElement | null = null;
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      const { unmount } = render(
+        <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+          <WalletConnector ref={(element) => (connector = element)} />
+        </XrplConnectProvider>
+      );
+
+      await waitFor(() => expect(connector).not.toBeNull());
+      unmount();
+      expect(connector).toBeNull();
+      expect(consoleError.mock.calls.flat().join('\n')).not.toContain(
+        'Unexpected return value from a callback ref'
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it('forwards host attributes while managed connector props retain precedence', async () => {
     const onClick = vi.fn();
     const conflictingHostAttributes = {
