@@ -159,6 +159,64 @@ function resolveCandidateSpecs(dependencies, tarballsByName) {
   });
 }
 
+function resolveReactCandidateSpecs(dependencies, tarballsByName, reactMajor) {
+  return resolveCandidateSpecs(dependencies, tarballsByName).map((dependency) => {
+    for (const packageName of ['react', 'react-dom']) {
+      if (dependency === packageName || dependency.startsWith(`${packageName}@`)) {
+        return `${packageName}@${reactMajor}`;
+      }
+    }
+    return dependency;
+  });
+}
+
+function writeConsumerManifest(consumerFolder, name) {
+  mkdirSync(consumerFolder);
+  writeFileSync(
+    path.join(consumerFolder, 'package.json'),
+    JSON.stringify({ name, private: true, type: 'module' }, null, 2)
+  );
+}
+
+function verifyInstalledReactMajor(consumerFolder, reactMajor) {
+  for (const dependency of ['react', 'react-dom', '@types/react', '@types/react-dom']) {
+    const manifest = JSON.parse(
+      readFileSync(path.join(consumerFolder, 'node_modules', dependency, 'package.json'), 'utf-8')
+    );
+    assert.equal(
+      manifest.version.split('.')[0],
+      String(reactMajor),
+      `${dependency}@${manifest.version} does not match the React ${reactMajor} consumer`
+    );
+  }
+  console.log(`✓ React ${reactMajor} consumer uses matching runtime and type-package majors`);
+}
+
+function copyReactFixtures(consumerFolder) {
+  for (const fixture of [
+    'runtime-dom.mjs',
+    'runtime-ssr.mjs',
+    'types-react-esm.mts',
+    'types-react-cjs.cts',
+    'types-react-jsx.tsx',
+    'tsconfig.react.json',
+  ]) {
+    copyFileSync(path.join(reactFixturesFolder, fixture), path.join(consumerFolder, fixture));
+  }
+}
+
+function verifyPackedReactConsumer(consumerFolder, reactMajor, tscPath, options) {
+  console.log(`→ Type-checking packed React ${reactMajor} ESM, CommonJS, and JSX consumers`);
+  run(process.execPath, [tscPath, '--project', 'tsconfig.react.json'], {
+    ...options,
+    cwd: consumerFolder,
+  });
+  console.log(`→ Loading packed React ${reactMajor} ESM and CommonJS entries in SSR`);
+  run(process.execPath, ['runtime-ssr.mjs'], { ...options, cwd: consumerFolder });
+  console.log(`→ Mounting packed React ${reactMajor} connector and verifying callbacks`);
+  run(process.execPath, ['runtime-dom.mjs'], { ...options, cwd: consumerFolder });
+}
+
 function verifyNpmAccess() {
   const username = run('npm', ['whoami', '--registry', NPM_REGISTRY], {
     ...registryRunOptions,
@@ -294,16 +352,8 @@ try {
     );
   }
 
-  const consumerFolder = path.join(temporaryRoot, 'consumer');
-  mkdirSync(consumerFolder);
-  writeFileSync(
-    path.join(consumerFolder, 'package.json'),
-    JSON.stringify(
-      { name: 'xrpl-connect-publish-consumer', private: true, type: 'module' },
-      null,
-      2
-    )
-  );
+  const consumerFolder = path.join(temporaryRoot, 'consumer-react-18');
+  writeConsumerManifest(consumerFolder, 'xrpl-connect-publish-consumer-react-18');
 
   run(
     'npm',
@@ -314,10 +364,10 @@ try {
       '--no-audit',
       '--no-fund',
       '--package-lock=false',
-      ...resolveCandidateSpecs(documentedReactInstall, tarballsByName),
+      ...resolveReactCandidateSpecs(documentedReactInstall, tarballsByName, 18),
       tarballsByName.get('@xrpl-commons/xrpl-connect-vue'),
-      '@types/react@^18.3.0',
-      '@types/react-dom@^18.3.0',
+      '@types/react@18',
+      '@types/react-dom@18',
       'jsdom@^22.1.0',
       'nuxt@4.1.3',
       'rollup@4.62.2',
@@ -328,6 +378,7 @@ try {
     { ...runOptions, cwd: consumerFolder }
   );
   console.log('✓ Candidate install completed with strict peer dependency checks');
+  verifyInstalledReactMajor(consumerFolder, 18);
 
   const installedManifests = Object.fromEntries(
     candidatePackages.map(({ name }) => [
@@ -519,14 +570,7 @@ try {
   const nuxtAppFolder = path.join(consumerFolder, 'app');
   mkdirSync(nuxtAppFolder);
   copyFileSync(path.join(fixturesFolder, 'nuxt-app.vue'), path.join(nuxtAppFolder, 'app.vue'));
-  for (const fixture of [
-    'runtime-ssr.mjs',
-    'types-react-esm.mts',
-    'types-react-cjs.cts',
-    'tsconfig.react.json',
-  ]) {
-    copyFileSync(path.join(reactFixturesFolder, fixture), path.join(consumerFolder, fixture));
-  }
+  copyReactFixtures(consumerFolder);
   for (const fixture of ['types-vue-esm.mts', 'types-vue-cjs.cts', 'tsconfig.vue.json']) {
     copyFileSync(path.join(vueFixturesFolder, fixture), path.join(consumerFolder, fixture));
   }
@@ -546,11 +590,30 @@ try {
     ...runOptions,
     cwd: consumerFolder,
   });
-  console.log('→ Type-checking packed React ESM and CommonJS consumers');
-  run(process.execPath, [tscPath, '--project', 'tsconfig.react.json'], {
-    ...runOptions,
-    cwd: consumerFolder,
-  });
+  verifyPackedReactConsumer(consumerFolder, 18, tscPath, runOptions);
+
+  const react19ConsumerFolder = path.join(temporaryRoot, 'consumer-react-19');
+  writeConsumerManifest(react19ConsumerFolder, 'xrpl-connect-publish-consumer-react-19');
+  run(
+    'npm',
+    [
+      'install',
+      '--strict-peer-deps',
+      '--ignore-scripts',
+      '--no-audit',
+      '--no-fund',
+      '--package-lock=false',
+      ...resolveReactCandidateSpecs(documentedReactInstall, tarballsByName, 19),
+      '@types/react@19',
+      '@types/react-dom@19',
+      'jsdom@^22.1.0',
+    ],
+    { ...runOptions, cwd: react19ConsumerFolder }
+  );
+  verifyInstalledReactMajor(react19ConsumerFolder, 19);
+  copyReactFixtures(react19ConsumerFolder);
+  verifyPackedReactConsumer(react19ConsumerFolder, 19, tscPath, runOptions);
+
   console.log('→ Type-checking packed Vue ESM and CommonJS consumers');
   run(process.execPath, [tscPath, '--project', 'tsconfig.vue.json'], {
     ...runOptions,
@@ -564,8 +627,6 @@ try {
   run(process.execPath, ['runtime-esm.mjs'], { ...runOptions, cwd: consumerFolder });
   console.log('→ Loading packed CommonJS runtime');
   run(process.execPath, ['runtime-cjs.cjs'], { ...runOptions, cwd: consumerFolder });
-  console.log('→ Loading packed React ESM and CommonJS entries in SSR');
-  run(process.execPath, ['runtime-ssr.mjs'], { ...runOptions, cwd: consumerFolder });
   console.log('→ Loading packed Vue ESM and CommonJS entries in SSR');
   run(process.execPath, ['vue-runtime-ssr.mjs'], { ...runOptions, cwd: consumerFolder });
   console.log('→ Building packed umbrella ESM with Nuxt and Vite');
