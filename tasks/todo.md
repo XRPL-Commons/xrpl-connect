@@ -66,7 +66,7 @@
 - [x] Cut the RC1 changelog and update maintainer, migration, install, release-channel, trusted-publisher, and docs-deployment guidance so documented tags match npm availability.
 - [x] Run focused fail-before/proof tests, formatting/linting, builds, packed publish verification, docs checks, repository tests, and workflow/static validation.
 - [x] Review the final diff against every acceptance criterion, record results below, and correct any design or coverage gaps.
-- [ ] Commit only intentional files, push the branch, open the PR, and verify the remote PR metadata and checks.
+- [x] Commit only intentional files, push the branch, open the PR, and verify the remote PR metadata and checks.
 
 ## Review
 
@@ -78,6 +78,7 @@
 - All three immutable npm RC0 artifacts record git head `6cddda6`; the missing annotated `v1.0.0-rc.0` tag and prerelease now exist at that exact commit, repairing the changelog source links.
 - Verification passes: 18 focused release tests; live npm RC1 preflight; YAML parsing; `pnpm exec vp check`; `pnpm docs:snapshot:check`; `pnpm --filter xrpl-connect test:publish` including React 18/19, Vue, ESM/CJS/SSR, strict peers, and Nuxt 4; two exact-tree `pnpm test` runs; and `git diff --check`.
 - Independent review found a tag rollback race, job-wide credential exposure, unrestricted manual docs deployment, and the missing RC0 metadata. The race, credential scoping, and deployment trigger were corrected; RC0 metadata was created. A proposed stable-cleanup issue was disproved by the existing partial-cleanup regression, which re-adds missing staging tags before verification and promotion.
+- Signed commit `575fa08` was pushed as PR #185 targeting `develop`; the remote head, issue linkage, commit verification, and four started CI jobs were confirmed after delivery.
 
 ---
 
