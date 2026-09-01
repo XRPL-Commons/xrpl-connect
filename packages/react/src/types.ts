@@ -26,6 +26,8 @@ export interface XrplConnectContextValue {
   network: NetworkInfo | null;
   /** True while a `connect()` call (or the modal flow) is in progress. */
   connecting: boolean;
+  /** True while at least one `<WalletConnector>` is registered. */
+  ready: boolean;
   /** The most recent connection/adapter error, as a typed `WalletError`. */
   error: WalletError | null;
   connect: <const Wallet extends WalletIdentifier>(
@@ -43,7 +45,8 @@ export interface XrplConnectContextValue {
   reportModalError: (attempt: symbol | null, error: WalletError) => boolean;
   /** @internal — cancels modal attempts owned by a closing connector. */
   reportModalClosed: (attempts: readonly symbol[]) => void;
-  openModal: () => void;
+  openModal: () => Promise<void>;
+  openAndWaitModal: () => Promise<AccountInfo>;
   closeModal: () => void;
 }
 
