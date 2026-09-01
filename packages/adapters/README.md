@@ -886,7 +886,7 @@ export class YourWalletAdapter implements WalletAdapter, SupportsFetchAccount {
     "@xrpl-connect/core": "workspace:*"
   },
   "peerDependencies": {
-    "xrpl": "^2.0.0"
+    "xrpl": "^3.0.0 || ^4.0.0"
   }
 }
 ```

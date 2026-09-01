@@ -6,7 +6,7 @@ composables, and a typed `<WalletConnector>` modal component.
 ## Install
 
 ```bash
-npm install @xrpl-commons/xrpl-connect-vue@rc xrpl-connect@rc xrpl vue
+npm install @xrpl-commons/xrpl-connect-vue@rc xrpl-connect@rc xrpl@^4 vue
 ```
 
 ## Usage

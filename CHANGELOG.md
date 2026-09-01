@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Documentation: pin current install commands to `xrpl@^4` so registry-latest v5 cannot drift outside the supported v3/v4 peer range; packed-consumer verification now executes the literal React dependency specifications and rejects stale install examples (#169).
 - xrpl-connect (meta-bundle): emit the Xaman mock-WebSocket constructor without an optional chain so Nuxt 4 and Vite/Rollup production builds can consume the published ESM artifact. Consumers can remove `patch-package` or transpilation workarounds for `xrpl-connect.mjs` (#141).
 
 ## [1.0.0-rc.0] - 2026-08-17
