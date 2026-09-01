@@ -1,4 +1,9 @@
-import type { ComponentProps, ComponentType } from 'react';
+import {
+  createRef,
+  type ComponentProps,
+  type ComponentPropsWithRef,
+  type ComponentType,
+} from 'react';
 import {
   WalletConnector,
   XrplConnectProvider,
@@ -6,6 +11,7 @@ import {
   useSigner,
   useWallet,
   useWalletModal,
+  type WalletConnectorElement,
   type WalletConnectorProps,
   type XrplConnectConfig,
 } from '@xrpl-commons/xrpl-connect-react';
@@ -39,7 +45,15 @@ const invalidNetworkConfig: XrplConnectConfig = {
 };
 
 const provider: ComponentType<ComponentProps<typeof XrplConnectProvider>> = XrplConnectProvider;
-const connector: ComponentType<WalletConnectorProps> = WalletConnector;
+const connectorRef = createRef<WalletConnectorElement>();
+const connectorProps: ComponentPropsWithRef<typeof WalletConnector> = {
+  ref: connectorRef,
+  id: 'wallet-modal',
+  title: 'Choose a wallet',
+  'data-testid': 'wallet-connector',
+  'aria-label': 'Wallet connector',
+};
+const connectorElement: WalletConnectorElement | null = connectorRef.current;
 const cssVarsProps: WalletConnectorProps = { cssVars: { '--xc-primary-color': '#7c3aed' } };
 const invalidCssVarsProps: WalletConnectorProps = {
   cssVars: {
@@ -68,7 +82,8 @@ const errorGuard: (error: unknown) => error is WalletError = isWalletError;
 
 void [
   provider,
-  connector,
+  connectorProps,
+  connectorElement,
   cssVarsProps,
   invalidCssVarsProps,
   signedTransaction,

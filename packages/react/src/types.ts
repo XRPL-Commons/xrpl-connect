@@ -6,7 +6,7 @@ import type {
   WalletError,
 } from '@xrpl-connect/core';
 import type { ConnectOptionsFor, WalletConnectorCssVars, WalletIdentifier } from 'xrpl-connect';
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
 
 /**
  * Configuration for {@link XrplConnectProvider}. Identical to the core
@@ -70,7 +70,17 @@ export interface XrplConnectProviderProps {
 /** Built-in theme presets applied as `--xc-*` custom properties. */
 export type WalletConnectorTheme = 'dark' | 'light' | 'purple';
 
-export interface WalletConnectorProps {
+type WalletConnectorHostAttributes = Omit<
+  HTMLAttributes<WalletConnectorElement>,
+  'children' | 'dangerouslySetInnerHTML' | 'className' | 'style' | 'onError'
+>;
+
+interface WalletConnectorDataAttributes {
+  [attribute: `data-${string}`]: string | number | undefined;
+}
+
+export interface WalletConnectorProps
+  extends WalletConnectorHostAttributes, WalletConnectorDataAttributes {
   /** Pre-select a wallet in the modal (maps to the `primary-wallet` attribute). */
   primaryWallet?: WalletIdentifier;
   /** Restrict/order the wallet list (maps to the `wallets` attribute). */
@@ -81,6 +91,7 @@ export interface WalletConnectorProps {
   cssVars?: WalletConnectorCssVars;
   /** Extra inline styles forwarded to the host element. */
   style?: CSSProperties;
+  /** CSS class forwarded to the host element's native `class` attribute. */
   className?: string;
   /** Fired (with the wallet id) when a connection attempt starts. */
   onConnecting?: (walletId: WalletIdentifier) => void;

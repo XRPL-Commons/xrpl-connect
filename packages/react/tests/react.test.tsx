@@ -1,6 +1,6 @@
 import { describe, it, expect, expectTypeOf, beforeAll, vi } from 'vite-plus/test';
 import { render, act, waitFor, renderHook } from '@testing-library/react';
-import { StrictMode, useRef } from 'react';
+import { createRef, StrictMode, useRef } from 'react';
 import { renderToString } from 'react-dom/server';
 import {
   WalletManager,
@@ -17,6 +17,8 @@ import {
   useWalletModal,
   WalletConnector,
   WalletErrorCode,
+  type WalletConnectorElement,
+  type WalletConnectorProps,
 } from '../src';
 
 const ACCOUNT: AccountInfo = { address: 'rTEST', network: STANDARD_NETWORKS.testnet };
@@ -436,6 +438,9 @@ describe('<WalletConnector>', () => {
           this.opened = false;
           this.rejectWaiters(new Error('Modal closed before a wallet was connected.'));
         }
+        toggle() {
+          this.opened = !this.opened;
+        }
         resolveConnection(account: AccountInfo) {
           for (const waiter of this.waiters) waiter.resolve(account);
           this.waiters.clear();
@@ -458,6 +463,88 @@ describe('<WalletConnector>', () => {
     expectTypeOf<WalletModal['open']>().toEqualTypeOf<() => Promise<void>>();
     expectTypeOf<WalletModal['openAndWait']>().toEqualTypeOf<() => Promise<AccountInfo>>();
     expectTypeOf<WalletModal['close']>().toEqualTypeOf<() => void>();
+  });
+
+  it('forwards the custom element ref and its imperative methods', async () => {
+    const connectorRef = createRef<WalletConnectorElement>();
+    const { unmount } = render(
+      <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+        <WalletConnector ref={connectorRef} />
+      </XrplConnectProvider>
+    );
+
+    await waitFor(() => expect(connectorRef.current).not.toBeNull());
+    const element = document.querySelector('xrpl-wallet-connector') as WalletConnectorElement & {
+      manager: unknown;
+      opened: boolean;
+      resolveConnection(account: AccountInfo): void;
+    };
+    await waitFor(() => expect(element.manager).not.toBeNull());
+    expect(connectorRef.current).toBe(element);
+
+    await act(async () => connectorRef.current!.open());
+    expect(element.opened).toBe(true);
+
+    const connected = connectorRef.current!.openAndWait();
+    act(() => element.resolveConnection(ACCOUNT));
+    await expect(connected).resolves.toEqual(ACCOUNT);
+
+    act(() => connectorRef.current!.close());
+    expect(element.opened).toBe(false);
+    act(() => connectorRef.current!.toggle());
+    expect(element.opened).toBe(true);
+    act(() => connectorRef.current!.toggle());
+    expect(element.opened).toBe(false);
+
+    unmount();
+    expect(connectorRef.current).toBeNull();
+  });
+
+  it('forwards host attributes while managed connector props retain precedence', async () => {
+    const onClick = vi.fn();
+    const conflictingHostAttributes = {
+      class: 'forwarded-class',
+      'primary-wallet': 'forwarded-wallet',
+    } as unknown as WalletConnectorProps;
+
+    render(
+      <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+        <WalletConnector
+          {...conflictingHostAttributes}
+          id="wallet-modal"
+          title="Choose a wallet"
+          data-testid="wallet-connector"
+          aria-label="Wallet connector"
+          role="dialog"
+          tabIndex={0}
+          onClick={onClick}
+          primaryWallet="fake"
+          wallets={['fake']}
+          className="managed-class"
+          theme="dark"
+          cssVars={{ '--xc-primary-color': '#112233' }}
+          style={{ '--xc-primary-color': '#445566' } as React.CSSProperties}
+        />
+      </XrplConnectProvider>
+    );
+
+    const element = document.querySelector('xrpl-wallet-connector') as HTMLElement & {
+      manager: unknown;
+    };
+    await waitFor(() => expect(element.manager).not.toBeNull());
+    expect(element.getAttribute('id')).toBe('wallet-modal');
+    expect(element.getAttribute('title')).toBe('Choose a wallet');
+    expect(element.getAttribute('data-testid')).toBe('wallet-connector');
+    expect(element.getAttribute('aria-label')).toBe('Wallet connector');
+    expect(element.getAttribute('role')).toBe('dialog');
+    expect(element.getAttribute('tabindex')).toBe('0');
+    expect(element.getAttribute('primary-wallet')).toBe('fake');
+    expect(element.getAttribute('wallets')).toBe('fake');
+    expect(element.getAttribute('class')).toBe('managed-class');
+    expect(element.style.getPropertyValue('--xc-primary-color')).toBe('#445566');
+
+    act(() => element.click());
+    expect(onClick).toHaveBeenCalledOnce();
   });
 
   it('rejects modal calls until a connector is registered', async () => {

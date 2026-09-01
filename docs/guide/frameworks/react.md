@@ -139,6 +139,30 @@ back to the previous connector. `close()` is a safe no-op when none is registere
 - `theme`: `dark`, `light`, or `purple`
 - typed `--xc-*` values through `cssVars`
 - `className`, `style`, `onConnecting`, `onConnect`, and `onError`
+- standard host attributes such as `id`, `title`, `data-*`, and `aria-*`
+- a typed `WalletConnectorElement` ref exposing `open()`, `openAndWait()`, `close()`, and `toggle()`
+
+```tsx
+import { useRef } from 'react';
+import { WalletConnector, type WalletConnectorElement } from '@xrpl-commons/xrpl-connect-react';
+
+function WalletModal() {
+  const connectorRef = useRef<WalletConnectorElement>(null);
+
+  return (
+    <WalletConnector
+      ref={connectorRef}
+      id="wallet-modal"
+      aria-label="Choose a wallet"
+      data-testid="wallet-connector"
+    />
+  );
+}
+```
+
+Explicit `primaryWallet`, `wallets`, and `className` values take precedence over overlapping raw
+host attributes. For each CSS property, `style` takes precedence over `cssVars`, which takes
+precedence over the selected `theme`.
 
 ## Next.js App Router
 

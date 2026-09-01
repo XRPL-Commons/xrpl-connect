@@ -116,7 +116,40 @@ typed `CONFIGURATION_REQUIRED` error.
 
 React wrapper around the web component. Props: `primaryWallet`, `wallets`, `theme`
 (`'dark' | 'light' | 'purple'`), `cssVars` (`--xc-*` overrides), `style`, `className`,
-and typed callbacks `onConnecting(walletId)`, `onConnect(account)`, `onError(WalletError)`.
+typed callbacks `onConnecting(walletId)`, `onConnect(account)`, `onError(WalletError)`, and
+standard host attributes such as `id`, `title`, `data-*`, and `aria-*`.
+
+The wrapper forwards a `WalletConnectorElement` ref for direct access to `open()`,
+`openAndWait()`, `close()`, and `toggle()`:
+
+```tsx
+import { useRef } from 'react';
+import { WalletConnector, type WalletConnectorElement } from '@xrpl-commons/xrpl-connect-react';
+
+function WalletModal() {
+  const connectorRef = useRef<WalletConnectorElement>(null);
+  const connect = async () => {
+    const account = await connectorRef.current?.openAndWait();
+    if (account) console.log('connected', account.address);
+  };
+
+  return (
+    <>
+      <button onClick={() => void connect()}>Connect wallet</button>
+      <WalletConnector
+        ref={connectorRef}
+        id="wallet-modal"
+        aria-label="Choose a wallet"
+        data-testid="wallet-connector"
+      />
+    </>
+  );
+}
+```
+
+Explicit connector props are authoritative when raw forwarded attributes overlap: `primaryWallet`,
+`wallets`, and `className` set their native host attributes after passthrough. Per CSS property,
+inline `style` overrides `cssVars`, which overrides the selected `theme`.
 
 ### Errors
 

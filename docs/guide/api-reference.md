@@ -493,7 +493,11 @@ when the active connector unmounts. `ready` remains `true` while any connector i
 
 `<WalletConnector />` wraps the web component. It accepts `primaryWallet`,
 `wallets`, `theme`, `cssVars`, `style`, `className`, `onConnecting`, `onConnect`,
-and `onError`. See the [React guide](/guide/frameworks/react) for a complete setup.
+and `onError`, plus standard host attributes such as `id`, `title`, `data-*`, and `aria-*`.
+Its forwarded `WalletConnectorElement` ref exposes `open()`, `openAndWait()`, `close()`, and
+`toggle()`. Explicit connector props take precedence over overlapping raw host attributes; inline
+`style` overrides `cssVars`, which overrides `theme`. See the
+[React guide](/guide/frameworks/react) for a complete setup.
 
 ## Vue API
 

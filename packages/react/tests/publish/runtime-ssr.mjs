@@ -6,27 +6,28 @@ import * as reactEsm from '@xrpl-commons/xrpl-connect-react';
 
 const require = createRequire(import.meta.url);
 const reactCjs = require('@xrpl-commons/xrpl-connect-react');
-const publicExports = [
-  'XrplConnectProvider',
-  'WalletConnector',
-  'useWallet',
-  'useSigner',
-  'useWalletModal',
-];
+const publicExports = ['XrplConnectProvider', 'useWallet', 'useSigner', 'useWalletModal'];
 
 for (const api of [reactEsm, reactCjs]) {
   for (const exportName of publicExports) {
     assert.equal(typeof api[exportName], 'function', `React package is missing ${exportName}`);
   }
+  assert.ok(api.WalletConnector, 'React package is missing WalletConnector');
 
   const html = renderToString(
     createElement(
       api.XrplConnectProvider,
       { config: { adapters: [] } },
-      createElement('main', null, 'XRPL Connect SSR')
+      createElement(
+        'main',
+        null,
+        'XRPL Connect SSR',
+        createElement(api.WalletConnector, { id: 'wallet-connector' })
+      )
     )
   );
   assert.match(html, /XRPL Connect SSR/);
+  assert.match(html, /<xrpl-wallet-connector id="wallet-connector"/);
 }
 
 const umbrella = await import('xrpl-connect');
