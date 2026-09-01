@@ -90,7 +90,7 @@
 - [x] Implement the smallest consistent documentation/package/test change and add a literal-spec clean-install regression.
 - [x] Prove the regression against the pre-fix behavior, then run focused formatting, linting, build, test, publish, and documentation checks.
 - [x] Review the final diff against every acceptance criterion and record results below.
-- [ ] Commit only intentional files, push the branch, open the PR, and verify remote PR metadata/checks.
+- [x] Commit only intentional files, push the branch, open the PR, and verify remote PR metadata/checks.
 
 ## Review
 
@@ -100,3 +100,4 @@
 - Fail-before proof: the new guard rejected the original tree at `README.md` with `xrpl !== xrpl@^4` before packing or network installation.
 - Verification: `pnpm exec vp check`, `pnpm --filter xrpl-connect test:publish`, `pnpm docs:snapshot:check`, `pnpm docs:build`, `pnpm test`, `node --check packages/xrpl-connect/scripts/test-publish.mjs`, and `git diff --check` pass.
 - Independent acceptance and test-logic reviews found no implementation defects; the parser's intentional scope is the one-line npm, pnpm, and Yarn command forms used by current release documentation.
+- Delivery: signed commit `5a74500` was pushed and opened as PR #174 targeting `develop`; the remote head, title, body, issue linkage, and initial CI job creation were verified.
