@@ -1,14 +1,15 @@
 import type { DetailedHTMLProps, HTMLAttributes } from 'react';
+import type { WalletConnectorElement } from './types';
 
 /** Attributes supported by the `<xrpl-wallet-connector>` custom element in React JSX. */
 export type WalletConnectorIntrinsicProps = DetailedHTMLProps<
-  HTMLAttributes<HTMLElement> & {
+  HTMLAttributes<WalletConnectorElement> & {
     'primary-wallet'?: string;
     wallets?: string;
     'show-unavailable'?: true | '';
     class?: string;
   },
-  HTMLElement
+  WalletConnectorElement
 >;
 
 declare module 'react' {
