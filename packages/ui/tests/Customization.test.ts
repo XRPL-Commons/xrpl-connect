@@ -107,11 +107,13 @@ describe('wallet connector customization contract', () => {
       );
 
       const accountMarkup = document.createElement('div');
-      accountMarkup.innerHTML = renderAccountModal(
-        { address: 'rAccount' },
-        '1',
-        (address) => address,
-        () => ({ color1: '#000000', color2: '#ffffff' })
+      accountMarkup.append(
+        renderAccountModal(
+          { address: 'rAccount' },
+          '1',
+          (address) => address,
+          () => ({ color1: '#000000', color2: '#ffffff' })
+        )
       );
       expect(partNames(accountMarkup)).toEqual(
         Object.values(WALLET_CONNECTOR_PARTS.accountModal).sort()

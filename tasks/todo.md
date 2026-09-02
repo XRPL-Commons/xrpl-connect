@@ -147,3 +147,77 @@
 - The rebuilt packed artifact passes the original React 19.2.8 unmount reproduction for both native and wrapped refs.
 - Focused and full React checks, dependency-inclusive build, repository formatting/lint, documentation snapshot verification, full monorepo tests, packed publish/consumer verification, and `git diff --check` pass.
 - Merged the latest `origin/develop`, resolved the overlapping React API, documentation, and publish fixtures with `showUnavailable` intact, and repeated the full monorepo and packed-consumer verification on the combined tree.
+
+---
+
+# Issue #178
+
+## Issue summary
+
+- Provider- and adapter-controlled values are interpolated into HTML strings used by the wallet connector, allowing hostile text, attributes, or URLs to create executable DOM.
+- Dynamic text and attributes must be rendered through safe DOM APIs, and wallet/QR image URLs must reject executable or unexpected schemes while retaining bundled icons.
+- The fix must cover errors, wallet lists, loading, account selection/details, and QR images without changing styling, accessibility semantics, or customization parts.
+- Regression tests must prove markup, quote-breaking, event-handler, and unsafe-URL payloads remain inert and cannot create unexpected elements or execute code.
+
+## Plan
+
+- [x] Validate GitHub access, refresh `origin/develop`, and confirm issue state, comments, linked PRs, and acceptance criteria.
+- [x] Create a clean isolated worktree from the refreshed default branch and review applicable repository guidance and lessons.
+- [x] Inventory every UI rendering sink and define one consistent safe DOM boundary and URL policy.
+- [x] Implement the minimal production-ready rendering change while preserving public behavior, styles, ARIA, and `part` hooks.
+- [x] Add focused regressions for every affected view, account details, and QR image rendering.
+- [x] Run formatting, linting, type checks, focused UI tests, browser coverage where relevant, and repository-level verification.
+- [x] Review the final diff against every acceptance criterion and record results below.
+- [x] Commit only intentional files, push the branch, open the PR, and verify remote PR metadata/checks.
+
+## Review
+
+- All adapter- and provider-controlled text and attributes now reach the DOM through text, property, dataset, attribute, or CSSOM APIs. Source-controlled markup is isolated behind a tagged static-template helper that rejects substitutions, while connector and portal roots use `replaceChildren`.
+- Wallet and QR logo sources accept absolute HTTP(S) and supported `data:image/*` formats, including bundled SVG icons, while executable and unexpected schemes are rejected. Direct Xaman QR images additionally require HTTPS, the exact `xumm.app` host, `/sign/`, and a PNG path; adapter-produced deep links reject executable protocols.
+- Security regressions cover hostile markup, quote-breaking wallet/account attributes, error messages, wallet names and icons, account addresses and balances, unsafe URL schemes, Xaman origin confusion, and direct QR-image rendering. Existing customization assertions continue to prove stable parts, and the browser suite proves styling, dialog semantics, focus, scrolling, and portal behavior.
+- The UI dependency-inclusive build, source/public type checks, lint, all 134 UI tests, all 9 wallet-dialog browser tests, `pnpm exec vp check`, the full monorepo `pnpm test`, packed publish/consumer verification, and `git diff --check` pass.
+- Independent surface and final reviews found no remaining actionable security, compatibility, accessibility, styling, or test gaps. The intentional residual policies are a deep-link denylist that preserves wallet-specific schemes and continued support for bundled SVG data icons as image sources.
+
+## Fix PR #184 review finding
+
+- [x] Reconfirm the dedicated worktree is clean and matches the exact remote PR head.
+- [x] Replace unsupported `replaceChildren()` calls with one compatible DOM helper without reintroducing HTML parsing.
+- [x] Add a regression that fails against the reviewed PR head when native `replaceChildren()` is unavailable.
+- [x] Run focused UI checks, browser tests, repository checks, and packed-artifact verification appropriate to the fix.
+- [x] Review the final diff, commit, push, and verify the updated PR head and CI state.
+
+### Fix review
+
+- A single `replaceViewChildren()` helper now removes and appends nodes through long-supported DOM primitives; every connector, portal, QR, error, and copy-feedback replacement path uses it without reintroducing HTML parsing.
+- The compatibility regression temporarily masks native `replaceChildren()` on both affected DOM prototypes, then proves the connector renders its host button and opens its dialog. Against the reviewed PR head it failed with `TypeError: this.shadow.replaceChildren is not a function` before the button rendered.
+- The rebuilt UI ESM and CommonJS artifacts contain no `replaceChildren` calls.
+- All 135 UI tests, UI type-check/build, repository formatting/lint, all 9 Chromium wallet-dialog tests, the full monorepo build/test pipeline, packed ESM/CJS/SSR/React 18/React 19/Vue/Nuxt consumer verification, and `git diff --check` pass.
+
+# Issue #181 / PR #138
+
+## Issue summary
+
+- Crossmark's sign-in challenge used `Math.random()` when browser crypto was unavailable, weakening authentication material without warning.
+- The challenge must be generated exclusively with a supported cryptographically secure primitive and remain exactly 32 bytes / 64 hexadecimal characters.
+- Environments without secure randomness must fail closed with a clear typed error before Crossmark receives a sign-in request.
+- Regression coverage must prove the output contract, prevent any `Math.random()` fallback, and exercise the unavailable-crypto path.
+
+## Plan
+
+- [x] Validate GitHub access, refresh refs, inspect issue #181 and PR #138, and confirm authorization to update the existing PR.
+- [x] Attach a clean dedicated worktree to PR #138 and merge current `origin/develop` without rewriting history.
+- [x] Inspect the current Crossmark flow, typed-error conventions, test harness, and stale CI failures.
+- [x] Implement the minimal fail-closed secure randomness behavior.
+- [x] Add focused regressions for 32-byte/64-hex output, no `Math.random()` calls, and unavailable crypto.
+- [x] Run focused tests, formatting, linting, type checks, builds, and relevant repository verification.
+- [x] Review the cumulative diff against `develop` and every acceptance criterion, then record results below.
+- [x] Commit only intentional changes, push PR #138's branch, refresh its metadata, and verify CI.
+
+## Review
+
+- PR #138's original `window.crypto` check failed 14 of 19 Crossmark tests under CI's browser-free Node environment; the new regression suite also failed before the production fix, proving the defect.
+- The challenge generator now calls `globalThis.crypto.getRandomValues` with a 32-byte array, returns exactly 64 lowercase hexadecimal characters, and throws a clear typed `CONNECTION_FAILED` error before invoking Crossmark if the primitive is missing.
+- Focused tests deterministically verify the byte/hex contract, prove `Math.random()` is never called, and cover the unavailable-crypto error path; the Crossmark suite passes all 22 tests.
+- Crossmark formatting, lint, dependency-inclusive build, runtime smoke, and public-type checks pass. `pnpm exec vp check`, `pnpm test`, `pnpm --filter xrpl-connect test:publish`, `pnpm docs:snapshot:check`, and `git diff --check` also pass.
+- Independent security/test review found no remaining correctness, compatibility, isolation, or scope issues in the cumulative diff against `origin/develop`.
+- PR #138's refreshed CI is green for documentation and the complete test/build matrix on Node 20.19, 22.18, and 24.11.

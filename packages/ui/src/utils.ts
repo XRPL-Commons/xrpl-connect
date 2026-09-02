@@ -3,6 +3,7 @@
  */
 
 import { LUMINANCE, COLOR_ADJUSTMENT, BROWSER_PATTERNS } from './constants';
+import { getSafeImageUrl } from './security';
 
 /**
  * Re-export the shared mobile/tablet detection (incl. iPadOS desktop-mode, #16)
@@ -86,7 +87,16 @@ export function isSafari(): boolean {
  * @returns true if Xaman QR code image URL
  */
 export function isXamanQRImage(uri: string): boolean {
-  return uri.includes('xumm.app/sign') && uri.includes('.png');
+  const safeUri = getSafeImageUrl(uri);
+  if (!safeUri || safeUri.startsWith('data:')) return false;
+
+  const url = new URL(safeUri);
+  return (
+    url.protocol === 'https:' &&
+    url.hostname === 'xumm.app' &&
+    url.pathname.startsWith('/sign/') &&
+    url.pathname.endsWith('.png')
+  );
 }
 
 /**
