@@ -377,12 +377,13 @@
 - [x] Correct published import examples and dependency metadata, including the Crossmark type-only dependency path where feasible.
 - [x] Run focused adapter/core/UI/Vue checks, then repository lint, formatting, docs snapshots, full tests, browser tests, packed-consumer tests, and production audit.
 - [x] Review the cumulative diff for minimality, public API compatibility, and release risk; record results below.
-- [ ] Commit intentional changes, push the branch, open a PR against `develop`, and verify the remote head and CI state.
+- [x] Commit intentional changes, push the branch, open a PR against `develop`, and verify the remote head and CI state.
 
 ## Review
 
 - Corrected adapter capability contracts and made Ledger, Otsu, Xyra, WalletConnect, and manager connection ownership resilient to overlapping connect, reconnect, disconnect, and teardown work.
 - Made the web component and Vue wrapper invalidate stale manager, Xaman, WalletConnect, QR, account-enumeration, modal-error, and KeepAlive work; document scrolling is reference-counted across wallet and account dialogs.
 - Corrected current documentation for package imports, supported wallet capabilities, promise-based error handling, storage behavior, and browser-safe component initialization.
-- Verified focused core (90), UI (164), Vue (24), Ledger (48), Otsu (41), and WalletConnect (66) tests; the full monorepo build/test, lint, formatting, docs snapshot, Chromium (9), and packed ESM/CJS/React 18/React 19/Vue/Nuxt consumer checks pass.
+- Verified focused core (90), UI (164), Vue (25), Ledger (48), Otsu (41), and WalletConnect (66) tests; the full monorepo build/test, lint, formatting, docs snapshot, Chromium (9), and packed ESM/CJS/React 18/React 19/Vue/Nuxt consumer checks pass.
 - `pnpm audit --prod` reports no critical, high, or moderate advisories. The sole low-severity `elliptic` advisory is declarations-only through `@crossmarkio/typings`, has no patched release, is absent from runtime bundles, and remains documented in `docs/security/dependency-audit.md`.
+- Opened pull request [#187](https://github.com/XRPL-Commons/xrpl-connect/pull/187) from `fix/v1-package-readiness` into `develop`.
