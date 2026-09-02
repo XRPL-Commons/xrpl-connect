@@ -7,7 +7,7 @@ description: Upgrade XRPL Connect applications from 0.8.2 to the 1.0 release lin
 XRPL Connect 1.0 keeps the `WalletManager` and adapter model from 0.8.2, while tightening signing results, wallet capabilities, persistence, UI lifecycle, and framework integration.
 
 ::: info Current release channel
-The current candidate is `1.0.0-rc.0`. Install it with the `rc` tag. The npm `latest` tag remains on `0.8.2` until the stable release is approved.
+The current candidate is `1.0.0-rc.1`. Install it with the `rc` tag. Existing npm `latest` tags remain unchanged until all three stable artifacts are verified and promoted together.
 :::
 
 ## Choose the packages you use
@@ -29,9 +29,9 @@ The coordinated release candidate contains these three artifacts:
 
 | Package                            | 0.8.2 line    | Current 1.0 candidate           |
 | ---------------------------------- | ------------- | ------------------------------- |
-| `xrpl-connect`                     | `0.8.2`       | `1.0.0-rc.0`                    |
-| `@xrpl-commons/xrpl-connect-react` | Not available | `1.0.0-rc.0` (new)              |
-| `@xrpl-commons/xrpl-connect-vue`   | Not available | `1.0.0-rc.0` (new)              |
+| `xrpl-connect`                     | `0.8.2`       | `1.0.0-rc.1`                    |
+| `@xrpl-commons/xrpl-connect-react` | Not available | `1.0.0-rc.1` (new)              |
+| `@xrpl-commons/xrpl-connect-vue`   | Not available | `1.0.0-rc.1` (new)              |
 | Standalone core/UI/adapters        | `0.8.2` line  | Not part of this coordinated RC |
 
 If an application imports `@xrpl-connect/core`, `@xrpl-connect/ui`, or individual adapter packages directly, it can remain on the compatible 0.8.2 modular line. To adopt the complete 1.0 candidate, move those imports to the umbrella package:

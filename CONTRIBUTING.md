@@ -172,35 +172,59 @@ fresh reconnect prompt.
 
 ## Release Process
 
-Maintainers cut releases as follows:
+The three coordinated artifacts are `xrpl-connect`,
+`@xrpl-commons/xrpl-connect-react`, and `@xrpl-commons/xrpl-connect-vue`. Their versions and the
+framework packages' `xrpl-connect` peer ranges must move together. Standalone core, UI, and adapter
+packages remain on their independently versioned modular line.
 
-1. Make sure `develop` is green and the `CHANGELOG.md` `[Unreleased]` section is up to date.
-2. Bump the version in the relevant `package.json` files and move the `[Unreleased]` entries into a new dated version section.
-3. Merge `develop` → `main` via PR.
-4. Publish from the clean merge commit using the maintainer release procedure, verify the registry, then tag that exact commit (for example, `v0.8.0`) and push the tag. Stable publishing is currently a maintainer-run operation; this repository does not have a tag-triggered publish workflow.
+Publication runs through the protected `npm` GitHub environment in `release.yaml`. Configure each
+package's npm trusted publisher for `XRPL-Commons/xrpl-connect`, workflow `release.yaml`, environment
+`npm`, and the `npm publish` action. `NPM_READ_TOKEN` must be read-only and is exposed only to the
+access/ownership preflight. `NPM_DIST_TAG_TOKEN` must be a granular token limited to these packages;
+it is exposed only to the resumable `dist-tag` operations that npm OIDC does not support. Artifact
+uploads run without either token through npm's OIDC trusted publisher and emit provenance. Keep
+environment approval enabled.
 
-If you are not a maintainer, you do not need to bump versions or update `main` in your PR — leave that to the release process.
+Before dispatching a release:
+
+1. Make sure `develop` is green and the worktree is clean.
+2. Set the exact version in all three artifact manifests and `docs/package.json`; set both framework
+   peer ranges to `^<version>`.
+3. Move `[Unreleased]` into a dated changelog section and update current release/migration docs.
+4. Merge those changes to `develop`, then dispatch **Publish Release** from that exact commit with
+   the matching channel and version.
+
+The workflow repeats the complete build, packed-consumer, registry, access, ownership, and integrity
+checks. Only after final registry verification does it create the immutable `v<version>` source tag
+and GitHub Release. Publishing and tag/release creation are resumable, but an existing version or tag
+with different contents/commit is rejected. The guarded workflow then invokes the Pages workflow
+with that exact tag and waits for deployment, so unreleased `develop` content cannot get ahead of the
+documented npm channel.
 
 ### Release candidates
 
-Release candidates must never move the `latest` dist-tag. The candidate manifests declare the
-public npm registry and the `rc` tag, while the release command fixes those values, rejects dirty
-source trees or missing confirmation, verifies npm access, package ownership, and registry state,
-rebuilds and dry-runs every artifact, and checks the resulting dist-tags:
+Release candidates must never move any existing `latest` dist-tag. Prepare a version such as
+`1.0.0-rc.1`, keep the guarded manifest default on `rc`, and dispatch the release workflow with
+channel `rc`. For local maintainer verification, the equivalent guarded command is:
 
 ```bash
-pnpm --filter xrpl-connect run publish:rc -- --confirm 1.0.0-rc.0
+pnpm --filter xrpl-connect run publish:rc -- --confirm 1.0.0-rc.1
 ```
 
-The preflight requires `xrpl-connect@latest` at `0.8.2`; each candidate must be either unpublished
-or already present at the exact confirmed version. The packed candidate test performs each dry-run
-and installs the exact tarballs together with strict peer checking. For an exact candidate uploaded
-by an interrupted attempt, the publisher verifies its immutable integrity and restores the `rc` tag.
-The final registry check requires `rc` to point to the candidate, keeps the umbrella `latest` at
-`0.8.2`, and rejects unintended framework `latest` tags. If an attempt is interrupted, rerun the same
-command; do not bypass it with a manual publish. Before running it, move the changelog entries into
-a dated `[1.0.0-rc.0]` section, reset `[Unreleased]`, and commit those release changes. After the
-registry verification succeeds, tag that same clean commit as `v1.0.0-rc.0` and push the tag.
+Preflight records each package's existing `latest`, permits only an older candidate on `rc`, and
+rejects unknown tags. Before the first registry mutation, every local tarball is packed and every
+already-published artifact is checked for exact integrity. Fresh artifacts publish under `rc`; exact
+artifacts from an interrupted run are reused and retagged. The final check requires all three `rc`
+tags on the confirmed candidate and every `latest` value unchanged.
+
+### Stable v1
+
+After live-wallet approval, prepare `1.0.0` with framework peers `^1.0.0`, update installation docs
+from `@rc` to the stable/default channel, and dispatch channel `stable`. The stable publisher uploads
+under the temporary `release` tag. It verifies the immutable integrity of all three registry
+artifacts before moving the first `latest` tag, promotes all three packages, removes the temporary
+tag, and verifies the final coordinated state while preserving `rc`. An interrupted upload or
+promotion is resumed by rerunning the exact workflow input; never repair tags with ad hoc commands.
 
 ### Live wallet validation
 
