@@ -94,3 +94,33 @@
 - The rebuilt packed artifact passes the original React 19.2.8 unmount reproduction for both native and wrapped refs.
 - Focused and full React checks, dependency-inclusive build, repository formatting/lint, documentation snapshot verification, full monorepo tests, packed publish/consumer verification, and `git diff --check` pass.
 - Merged the latest `origin/develop`, resolved the overlapping React API, documentation, and publish fixtures with `showUnavailable` intact, and repeated the full monorepo and packed-consumer verification on the combined tree.
+
+---
+
+# Issue #181 / PR #138
+
+## Issue summary
+
+- Crossmark's sign-in challenge used `Math.random()` when browser crypto was unavailable, weakening authentication material without warning.
+- The challenge must be generated exclusively with a supported cryptographically secure primitive and remain exactly 32 bytes / 64 hexadecimal characters.
+- Environments without secure randomness must fail closed with a clear typed error before Crossmark receives a sign-in request.
+- Regression coverage must prove the output contract, prevent any `Math.random()` fallback, and exercise the unavailable-crypto path.
+
+## Plan
+
+- [x] Validate GitHub access, refresh refs, inspect issue #181 and PR #138, and confirm authorization to update the existing PR.
+- [x] Attach a clean dedicated worktree to PR #138 and merge current `origin/develop` without rewriting history.
+- [x] Inspect the current Crossmark flow, typed-error conventions, test harness, and stale CI failures.
+- [x] Implement the minimal fail-closed secure randomness behavior.
+- [x] Add focused regressions for 32-byte/64-hex output, no `Math.random()` calls, and unavailable crypto.
+- [x] Run focused tests, formatting, linting, type checks, builds, and relevant repository verification.
+- [x] Review the cumulative diff against `develop` and every acceptance criterion, then record results below.
+- [ ] Commit only intentional changes, push PR #138's branch, refresh its metadata, and verify CI.
+
+## Review
+
+- PR #138's original `window.crypto` check failed 14 of 19 Crossmark tests under CI's browser-free Node environment; the new regression suite also failed before the production fix, proving the defect.
+- The challenge generator now calls `globalThis.crypto.getRandomValues` with a 32-byte array, returns exactly 64 lowercase hexadecimal characters, and throws a clear typed `CONNECTION_FAILED` error before invoking Crossmark if the primitive is missing.
+- Focused tests deterministically verify the byte/hex contract, prove `Math.random()` is never called, and cover the unavailable-crypto error path; the Crossmark suite passes all 22 tests.
+- Crossmark formatting, lint, dependency-inclusive build, runtime smoke, and public-type checks pass. `pnpm exec vp check`, `pnpm test`, `pnpm --filter xrpl-connect test:publish`, `pnpm docs:snapshot:check`, and `git diff --check` also pass.
+- Independent security/test review found no remaining correctness, compatibility, isolation, or scope issues in the cumulative diff against `origin/develop`.

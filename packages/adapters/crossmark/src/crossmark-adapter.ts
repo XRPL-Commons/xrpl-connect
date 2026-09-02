@@ -354,12 +354,16 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
    * Generate a random hash for signing
    */
   private generateRandomHash(): string {
-    const array = new Uint8Array(32);
-    if (typeof window !== 'undefined' && window.crypto) {
-      window.crypto.getRandomValues(array);
-    } else {
-      throw new Error('crypto.getRandomValues is required but not available in this environment');
+    const crypto = globalThis.crypto;
+    if (typeof crypto?.getRandomValues !== 'function') {
+      throw createWalletError.connectionFailed(
+        this.name,
+        new Error('Secure randomness is unavailable; crypto.getRandomValues is required')
+      );
     }
+
+    const array = new Uint8Array(32);
+    crypto.getRandomValues(array);
     return Array.from(array, (byte) => byte.toString(16).padStart(2, '0')).join('');
   }
 }
