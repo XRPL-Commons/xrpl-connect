@@ -4,13 +4,25 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  CANDIDATE_VERSION,
   NPM_REGISTRY,
+  PUBLISH_CONFIG,
+  PUBLISH_GUARD,
+  RELEASE_PACKAGE_NAMES,
+  assertCompleteRegistryState,
+  assertDocumentedReleaseSpecs,
   assertSafePrepublishRegistryState,
-} from './publish-rc.mjs';
+} from './release-policy.mjs';
+import { readLocalReleaseConfig } from './publish-release.mjs';
 import { run } from './run-command.mjs';
 
-const FRAMEWORK_PEER_RANGE = '^1.0.0-rc.0';
+const cliArgs = process.argv.slice(2);
+const channelIndex = cliArgs.indexOf('--channel');
+const requestedChannel =
+  channelIndex === -1 ? process.env.XRPL_RELEASE_CHANNEL : cliArgs[channelIndex + 1];
+if (channelIndex !== -1) cliArgs.splice(channelIndex, 2);
+const releaseConfig = readLocalReleaseConfig(requestedChannel);
+const CANDIDATE_VERSION = releaseConfig.version;
+const FRAMEWORK_PEER_RANGE = `^${CANDIDATE_VERSION}`;
 const NPM_ORGANIZATION = 'xrpl-commons';
 const SUPPORTED_NODE_RANGE = '^20.19.0 || ^22.18.0 || >=24.11.0';
 const DOCUMENTED_XRPL_SPEC = 'xrpl@^4';
@@ -26,13 +38,6 @@ const DOCUMENTED_INSTALL_PATHS = [
   'docs/guide/frameworks/nuxt.md',
   'docs/guide/migration-v1.md',
 ];
-const PUBLISH_CONFIG = {
-  access: 'public',
-  registry: NPM_REGISTRY,
-  tag: 'rc',
-};
-const PUBLISH_GUARD =
-  "node -e \"const { npm_config_tag: tag, npm_config_access: access, npm_config_registry: registry } = process.env; let registryUrl = ''; try { registryUrl = new URL(registry).href; } catch {} if (tag !== 'rc' || access !== 'public' || registryUrl !== 'https://registry.npmjs.org/') { console.error('Publish requires --tag rc --access public --registry https://registry.npmjs.org/'); process.exit(1); }\"";
 const inheritedPnpmConfig = [
   'npm_config_dir',
   'npm_config_peer_dependency_rules',
@@ -98,6 +103,12 @@ const candidatePackages = [
   },
 ];
 
+assert.deepEqual(
+  candidatePackages.map(({ name }) => name),
+  RELEASE_PACKAGE_NAMES,
+  'Publish verification package order must match the coordinated release policy'
+);
+
 for (const { name } of candidatePackages.slice(1)) {
   assert(
     name.startsWith(`@${NPM_ORGANIZATION}/`),
@@ -130,7 +141,8 @@ function findInstallCommand(markdownPath, packageName) {
 function verifyDocumentedXrplSpecs() {
   for (const relativePath of DOCUMENTED_INSTALL_PATHS) {
     const markdownPath = path.join(repositoryRoot, relativePath);
-    const xrplSpecs = readInstallCommands(markdownPath)
+    const installCommands = readInstallCommands(markdownPath);
+    const xrplSpecs = installCommands
       .flat()
       .filter((dependency) => /^xrpl(?:@.+)?$/.test(dependency));
     assert(xrplSpecs.length > 0, `${relativePath} has no documented xrpl dependency`);
@@ -141,9 +153,17 @@ function verifyDocumentedXrplSpecs() {
         `${relativePath} does not pin documented xrpl to v4`
       );
     }
+    const releaseSpecCount = installCommands.reduce(
+      (count, dependencies) =>
+        count + assertDocumentedReleaseSpecs(dependencies, releaseConfig, relativePath),
+      0
+    );
+    assert(releaseSpecCount > 0, `${relativePath} has no coordinated release package`);
   }
 
-  console.log('✓ Current install documentation consistently pins xrpl to v4');
+  console.log(
+    `✓ Current install documentation consistently pins xrpl to v4 and the ${releaseConfig.channel} channel`
+  );
   return findInstallCommand(
     path.join(repositoryRoot, 'packages', 'react', 'README.md'),
     '@xrpl-commons/xrpl-connect-react'
@@ -268,8 +288,10 @@ function verifyPrepublishRegistryState() {
   const tagsByPackage = Object.fromEntries(
     candidatePackages.map(({ name }) => [name, readOptionalRegistryTags(name)])
   );
-  assertSafePrepublishRegistryState(tagsByPackage);
-  console.log('✓ Registry preflight is safe for a fresh or resumed candidate publication');
+  assertSafePrepublishRegistryState(tagsByPackage, releaseConfig);
+  console.log(
+    `✓ Registry preflight is safe for a fresh or resumed ${releaseConfig.channel} publication`
+  );
 }
 
 function verifyRegistryTags() {
@@ -277,17 +299,11 @@ function verifyRegistryTags() {
     candidatePackages.map(({ name }) => [name, readRegistryTags(name)])
   );
 
-  assert.deepEqual(tagsByPackage['xrpl-connect'], {
-    latest: '0.8.2',
-    rc: CANDIDATE_VERSION,
-  });
-  const frameworkTags = { latest: CANDIDATE_VERSION, rc: CANDIDATE_VERSION };
-  assert.deepEqual(tagsByPackage['@xrpl-commons/xrpl-connect-react'], frameworkTags);
-  assert.deepEqual(tagsByPackage['@xrpl-commons/xrpl-connect-vue'], frameworkTags);
-  console.log('✓ Registry tags expose the coordinated candidate and preserve umbrella latest');
+  assertCompleteRegistryState(tagsByPackage, releaseConfig);
+  console.log(`✓ Registry tags expose the coordinated ${releaseConfig.channel} release`);
 }
 
-const modes = new Set(process.argv.slice(2));
+const modes = new Set(cliArgs);
 const knownModes = new Set(['--check-access', '--check-prepublish', '--check-registry']);
 for (const mode of modes) {
   assert(knownModes.has(mode), `Unknown argument: ${mode}`);
@@ -339,14 +355,14 @@ try {
         '--dry-run',
         '--json',
         '--tag',
-        'rc',
+        releaseConfig.publishTag,
         '--access',
         'public',
         '--registry',
         NPM_REGISTRY,
       ],
       {
-        ...publishRunOptions('rc', NPM_REGISTRY),
+        ...publishRunOptions(releaseConfig.publishTag, NPM_REGISTRY),
         cwd: candidate.folder,
       }
     );
@@ -463,19 +479,19 @@ try {
           'publish',
           '--dry-run',
           '--tag',
-          'latest',
+          releaseConfig.channel === 'rc' ? 'latest' : 'rc',
           '--access',
           'public',
           '--registry',
           NPM_REGISTRY,
         ],
         {
-          ...publishRunOptions('latest', NPM_REGISTRY),
+          ...publishRunOptions(releaseConfig.channel === 'rc' ? 'latest' : 'rc', NPM_REGISTRY),
           capture: true,
           cwd: candidatePackages[0].folder,
         }
       ),
-    /Publish requires --tag rc --access public/
+    /Publish requires the version-matched rc\/release tag/
   );
   assert.throws(
     () =>
@@ -485,14 +501,14 @@ try {
           'publish',
           '--dry-run',
           '--tag',
-          'rc',
+          releaseConfig.publishTag,
           '--access',
           'public',
           '--registry',
           'https://registry.example/',
         ],
         {
-          ...publishRunOptions('rc', 'https://registry.example/'),
+          ...publishRunOptions(releaseConfig.publishTag, 'https://registry.example/'),
           capture: true,
           cwd: candidatePackages[0].folder,
         }

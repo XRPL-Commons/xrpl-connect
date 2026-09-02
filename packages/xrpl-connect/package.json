@@ -1,6 +1,6 @@
 {
   "name": "xrpl-connect",
-  "version": "1.0.0-rc.0",
+  "version": "1.0.0-rc.1",
   "description": "The easiest way to connect XRPL wallets to your app - Framework-agnostic toolkit with plug-and-play UI",
   "author": "XRPL Connect Contributors",
   "license": "MIT",
@@ -59,14 +59,15 @@
   "scripts": {
     "build": "vp pack",
     "dev": "vp pack --watch",
-    "prepublishOnly": "node -e \"console.error('Do not publish xrpl-connect from the source package; use pnpm --filter xrpl-connect run publish:rc -- --confirm <version>'); process.exit(1);\"",
+    "prepublishOnly": "node -e \"console.error('Do not publish xrpl-connect from the source package; use publish:rc or publish:stable with --confirm <version>'); process.exit(1);\"",
     "publish:build": "vp run -F \"{.}^...\" --no-cache build && vp pack && vp build -c vite.config.ts && node scripts/build-types.mjs && node scripts/prepare-publish.mjs",
-    "publish:rc": "node scripts/publish-rc.mjs",
+    "publish:rc": "node scripts/publish-release.mjs --channel rc",
+    "publish:stable": "node scripts/publish-release.mjs --channel stable",
     "test": "node scripts/run-command.test.mjs",
     "test:publish": "pnpm publish:build && vp run -F @xrpl-commons/xrpl-connect-react -F @xrpl-commons/xrpl-connect-vue --no-cache build && node scripts/test-publish.mjs",
-    "verify:rc:access": "node scripts/test-publish.mjs --check-access",
-    "verify:rc:preflight": "node scripts/test-publish.mjs --check-access --check-prepublish",
-    "verify:rc:registry": "node scripts/test-publish.mjs --check-registry",
+    "verify:release:access": "node scripts/test-publish.mjs --check-access",
+    "verify:release:preflight": "node scripts/test-publish.mjs --check-access --check-prepublish",
+    "verify:release:registry": "node scripts/test-publish.mjs --check-registry",
     "clean": "rm -rf dist dist-publish"
   },
   "dependencies": {

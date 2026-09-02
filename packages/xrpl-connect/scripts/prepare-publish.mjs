@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { PUBLISH_GUARD } from './release-policy.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootPkgPath = path.join(__dirname, '../package.json');
@@ -19,8 +20,6 @@ const walletConnectModalLicensePath = path.join(
   __dirname,
   '../licenses/WALLETCONNECT-MODAL-APACHE-2.0.txt'
 );
-const publishGuard =
-  "node -e \"const { npm_config_tag: tag, npm_config_access: access, npm_config_registry: registry } = process.env; let registryUrl = ''; try { registryUrl = new URL(registry).href; } catch {} if (tag !== 'rc' || access !== 'public' || registryUrl !== 'https://registry.npmjs.org/') { console.error('Publish requires --tag rc --access public --registry https://registry.npmjs.org/'); process.exit(1); }\"";
 
 // Read main package.json
 const mainPkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf-8'));
@@ -115,7 +114,7 @@ const distPkg = {
   // consumer who hasn't installed `xrpl` gets an unresolved import.
   peerDependencies: mainPkg.peerDependencies,
   publishConfig: mainPkg.publishConfig,
-  scripts: { prepublishOnly: publishGuard },
+  scripts: { prepublishOnly: PUBLISH_GUARD },
   keywords: mainPkg.keywords,
   repository: mainPkg.repository,
   bugs: mainPkg.bugs,
