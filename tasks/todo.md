@@ -116,8 +116,9 @@
 
 ### Rebase review
 
-- Rebased onto `origin/develop` at `744f096`, retaining both the #178/#179 changelog intent and the secure-random/authoritative-network Crossmark coverage.
+- Rebased onto `origin/develop` at `a58eef5`, retaining the #178/#179 changelog intent, the secure-random/authoritative-network Crossmark coverage, and both #180/#179 task histories.
 - The combined Crossmark test initially exposed a missing live-network response in the upstream secure-random success case; the integrated fixture now supplies both required dependencies and all 30 Crossmark tests pass.
+- The later Ledger multisigning merge exposed a stale fake-key custom-network fixture; it now performs a valid single-sign submission, preserving both custom endpoint coverage and Ledger signature verification. All 45 Ledger tests pass.
 - The old-to-new commit range preserves both PR behavior commits; the #179 release note now sits under `Unreleased` rather than the already dated `1.0.0-rc.1` section.
 - `pnpm test`, `pnpm lint`, `pnpm format:check`, `pnpm docs:snapshot:check`, and `git diff --check` pass on the rebased tree.
 

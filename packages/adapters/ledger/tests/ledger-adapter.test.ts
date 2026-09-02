@@ -190,10 +190,12 @@ describe('LedgerAdapter.connect', () => {
   it('uses a custom application-configured network for signing and submission', async () => {
     installNavigator({ hid: {} });
     xrpAppInstance.getAddress.mockResolvedValue({
-      address: 'rLedger',
-      publicKey: 'aabbcc',
+      address: SINGLE_SIGNER.classicAddress,
+      publicKey: SINGLE_SIGNER.publicKey,
     });
-    xrpAppInstance.signTransaction.mockResolvedValue('deadbeef');
+    xrpAppInstance.signTransaction.mockImplementation(async (_path, rawTransaction) =>
+      signWithSingleSigner(rawTransaction)
+    );
     const customNetwork = {
       id: 'private-sidechain',
       name: 'Private Sidechain',
@@ -202,7 +204,7 @@ describe('LedgerAdapter.connect', () => {
     const adapter = new LedgerAdapter();
 
     await adapter.connect({ network: customNetwork });
-    await adapter.signAndSubmit({ TransactionType: 'Payment' } as never);
+    await adapter.signAndSubmit(SINGLE_TRANSACTION);
 
     expect(await adapter.getNetwork()).toEqual(customNetwork);
     expect(Client).toHaveBeenCalledWith(customNetwork.wss);
