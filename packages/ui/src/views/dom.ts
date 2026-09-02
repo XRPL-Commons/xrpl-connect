@@ -14,6 +14,12 @@ export function getViewElement<T extends Element>(root: ParentNode, selector: st
   return element;
 }
 
+/** Replace child nodes using DOM methods supported by every advertised browser. */
+export function replaceViewChildren(parent: Node, ...children: Node[]): void {
+  while (parent.firstChild) parent.removeChild(parent.firstChild);
+  for (const child of children) parent.appendChild(child);
+}
+
 export function createWalletImage(
   source: string | undefined,
   alternativeText: string,

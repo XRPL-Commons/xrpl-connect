@@ -36,6 +36,7 @@ import {
   renderAccountSelectionView,
   renderAccountModal,
 } from './views';
+import { replaceViewChildren } from './views/dom';
 import { WalletService, EventHandler } from './services';
 import {
   isXamanStateAdapter,
@@ -959,14 +960,14 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           image.style.height = `${SIZES.QR_CODE}px`;
           image.style.borderRadius = `${SIZES.QR_IMAGE_BORDER_RADIUS}px`;
           image.style.display = 'block';
-          container.replaceChildren(image);
+          replaceViewChildren(container, image);
           return;
         }
 
         // Check if we have a pre-generated QR code with matching URI
         if (this.preGeneratedQRCode && this.preGeneratedURI === uri) {
           logger.debug('Using pre-generated QR code - instant render!');
-          container.replaceChildren();
+          replaceViewChildren(container);
           this.preGeneratedQRCode.append(container as HTMLElement);
           return;
         }
@@ -1000,7 +1001,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         });
 
         // Clear container and append QR code
-        container.replaceChildren();
+        replaceViewChildren(container);
         qrCode.append(container as HTMLElement);
         logger.debug('Modern QR code generated successfully');
       } catch (error) {
@@ -1009,7 +1010,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         message.className = 'qr-loading';
         message.style.color = DEFAULT_THEME.DANGER_COLOR;
         message.textContent = 'Failed to generate QR code';
-        container.replaceChildren(message);
+        replaceViewChildren(container, message);
       }
     }
 
@@ -1132,7 +1133,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       connectButton.id = 'connect-wallet-button';
       connectButton.setAttribute('part', WALLET_CONNECTOR_PARTS.connector.connectButton);
       connectButton.textContent = buttonText;
-      this.shadow.replaceChildren(createMainStyleElement(), connectButton);
+      replaceViewChildren(this.shadow, createMainStyleElement(), connectButton);
 
       // Wallet connection overlay — rendered in a portal on document.body to guarantee
       // position: fixed is always relative to the viewport (not a transformed ancestor)
@@ -1150,9 +1151,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         modal.tabIndex = -1;
         modal.append(content);
         overlay.append(modal);
-        overlayRoot.replaceChildren(createMainStyleElement(), overlay);
+        replaceViewChildren(overlayRoot, createMainStyleElement(), overlay);
       } else if (this.overlayPortal) {
-        this.overlayPortal.shadowRoot!.replaceChildren();
+        replaceViewChildren(this.overlayPortal.shadowRoot!);
       }
 
       // Account modal — same portal approach
@@ -1164,9 +1165,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           this.truncateAddress.bind(this),
           this.generateGradientFromAddress.bind(this)
         );
-        accountRoot.replaceChildren(createMainStyleElement(), accountModal);
+        replaceViewChildren(accountRoot, createMainStyleElement(), accountModal);
       } else if (this.accountModalPortal) {
-        this.accountModalPortal.shadowRoot!.replaceChildren();
+        replaceViewChildren(this.accountModalPortal.shadowRoot!);
       }
 
       this.eventHandler?.attachEventListeners();

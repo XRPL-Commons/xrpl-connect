@@ -4,6 +4,7 @@ import { createLogger, supportsDeepLink } from '@xrpl-connect/core';
 import type { WalletConnectorContext } from '../types';
 import { getSafeDeepLinkUrl } from '../security';
 import { getSafeExternalUrl, isMobile } from '../utils';
+import { replaceViewChildren } from '../views/dom';
 
 const logger = createLogger('[EventHandler]');
 
@@ -93,9 +94,9 @@ export class EventHandler {
           const originalChildren = [...btn.childNodes];
           const feedback = document.createElement('span');
           feedback.textContent = 'Copied!';
-          btn.replaceChildren(feedback);
+          replaceViewChildren(btn, feedback);
           setTimeout(() => {
-            btn.replaceChildren(...originalChildren);
+            replaceViewChildren(btn, ...originalChildren);
           }, TIMINGS.COPY_FEEDBACK_DURATION);
         } catch (error) {
           logger.error('Failed to copy address:', error);

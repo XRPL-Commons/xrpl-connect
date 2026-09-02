@@ -30,6 +30,38 @@ afterEach(() => {
 });
 
 describe('safe wallet connector rendering', () => {
+  it('renders without the newer ParentNode.replaceChildren API', async () => {
+    const prototypes = [Element.prototype, DocumentFragment.prototype];
+    const descriptors = prototypes.map((prototype) =>
+      Object.getOwnPropertyDescriptor(prototype, 'replaceChildren')
+    );
+
+    try {
+      for (const prototype of prototypes) {
+        Object.defineProperty(prototype, 'replaceChildren', {
+          configurable: true,
+          value: undefined,
+        });
+      }
+
+      const connector = document.createElement('xrpl-wallet-connector') as HTMLElement & {
+        open(): Promise<void>;
+        getOverlayRoot(): ShadowRoot | null;
+      };
+      document.body.append(connector);
+
+      expect(connector.shadowRoot?.querySelector('#connect-wallet-button')).not.toBeNull();
+      await connector.open();
+      expect(connector.getOverlayRoot()?.querySelector('[role="dialog"]')).not.toBeNull();
+    } finally {
+      prototypes.forEach((prototype, index) => {
+        const descriptor = descriptors[index];
+        if (descriptor) Object.defineProperty(prototype, 'replaceChildren', descriptor);
+        else Reflect.deleteProperty(prototype, 'replaceChildren');
+      });
+    }
+  });
+
   it('renders hostile provider text as text across every view', () => {
     const error = mount(renderErrorView(HOSTILE_TEXT, new Error(HOSTILE_TEXT)));
     expect(error.querySelector('.error-title')?.textContent).toBe(
