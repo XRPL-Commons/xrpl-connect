@@ -107,6 +107,13 @@
 - Otsu accepts the provider's primitive account/network events and the legacy object shape, retaining its existing malformed-network error behavior.
 - The four focused suites pass 247 tests. `pnpm test`, `pnpm lint`, `pnpm format:check`, `pnpm docs:snapshot:check`, and `git diff --check` pass on the final tree.
 
+## Rebase PR #186 for merge
+
+- [ ] Rebase the PR branch onto current `origin/develop` and resolve overlapping changelog and Crossmark test changes without losing either branch's coverage.
+- [ ] Review the integrated cumulative diff and verify no adjacent source or task-history changes were dropped.
+- [ ] Run focused conflict-area checks plus full repository tests, lint, formatting, documentation snapshot, and diff validation.
+- [ ] Push the rewritten branch with lease protection and verify the exact remote head, mergeability, and CI state.
+
 ---
 
 # Issue #170
