@@ -111,8 +111,15 @@
 
 - [x] Rebase the PR branch onto current `origin/develop` and resolve overlapping changelog and Crossmark test changes without losing either branch's coverage.
 - [x] Review the integrated cumulative diff and verify no adjacent source or task-history changes were dropped.
-- [ ] Run focused conflict-area checks plus full repository tests, lint, formatting, documentation snapshot, and diff validation.
+- [x] Run focused conflict-area checks plus full repository tests, lint, formatting, documentation snapshot, and diff validation.
 - [ ] Push the rewritten branch with lease protection and verify the exact remote head, mergeability, and CI state.
+
+### Rebase review
+
+- Rebased onto `origin/develop` at `744f096`, retaining both the #178/#179 changelog intent and the secure-random/authoritative-network Crossmark coverage.
+- The combined Crossmark test initially exposed a missing live-network response in the upstream secure-random success case; the integrated fixture now supplies both required dependencies and all 30 Crossmark tests pass.
+- The old-to-new commit range preserves both PR behavior commits; the #179 release note now sits under `Unreleased` rather than the already dated `1.0.0-rc.1` section.
+- `pnpm test`, `pnpm lint`, `pnpm format:check`, `pnpm docs:snapshot:check`, and `git diff --check` pass on the rebased tree.
 
 ---
 

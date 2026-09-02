@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Core/adapters: enforce requested-versus-wallet network consistency before session persistence, use authoritative live networks during initial connection, reject unsupported substitutions with typed errors, and prevent signing after a connected wallet changes ledgers (#179).
+
 ## [1.0.0-rc.1] - 2026-09-01
 
 ### Added
@@ -27,7 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Ledger: create and verify signer-address-bound parallel multisign contributions under `Signers`, preserve caller-prepared multisign fields without per-signer autofill, reject incomplete/signed inputs and multisign `signAndSubmit()`, and close XRPL clients on every signing and submission path (#180).
 - UI: render adapter- and provider-controlled wallet metadata, errors, accounts, and QR images through safe DOM APIs with validated image and deep-link URL schemes, eliminating connector DOM XSS sinks (#178).
-- Core/adapters: enforce requested-versus-wallet network consistency before session persistence, use authoritative live networks during initial connection, reject unsupported substitutions with typed errors, and prevent signing after a connected wallet changes ledgers (#179).
 - React: ship the custom-element JSX and typed-ref declaration in the packed package, and verify the advertised React 18 and 19 runtime/type compatibility in isolated consumers (#170).
 - Documentation: pin current install commands to `xrpl@^4` so registry-latest v5 cannot drift outside the supported v3/v4 peer range; packed-consumer verification now executes the literal React dependency specifications and rejects stale install examples (#169).
 - xrpl-connect (meta-bundle): emit the Xaman mock-WebSocket constructor without an optional chain so Nuxt 4 and Vite/Rollup production builds can consume the published ESM artifact. Consumers can remove `patch-package` or transpilation workarounds for `xrpl-connect.mjs` (#141).
