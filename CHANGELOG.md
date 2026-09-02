@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Ledger: create and verify signer-address-bound parallel multisign contributions under `Signers`, preserve caller-prepared multisign fields without per-signer autofill, reject incomplete/signed inputs and multisign `signAndSubmit()`, and close XRPL clients on every signing and submission path (#180).
 - UI: render adapter- and provider-controlled wallet metadata, errors, accounts, and QR images through safe DOM APIs with validated image and deep-link URL schemes, eliminating connector DOM XSS sinks (#178).
 - React: ship the custom-element JSX and typed-ref declaration in the packed package, and verify the advertised React 18 and 19 runtime/type compatibility in isolated consumers (#170).
 - Documentation: pin current install commands to `xrpl@^4` so registry-latest v5 cannot drift outside the supported v3/v4 peer range; packed-consumer verification now executes the literal React dependency specifications and rejects stale install examples (#169).

@@ -69,34 +69,60 @@ console.log('Transaction hash:', result.hash);
 
 ### Multi-Signature Transactions
 
-The Ledger adapter supports both single-signature and multi-signature transactions:
+The Ledger adapter supports single-signature transactions and parallel XRPL
+multisign contributions.
 
 **Single-signature (default):**
 
-- The Ledger device signs and submits the transaction directly
+- `sign()` returns the signed transaction without submitting it
+- `signAndSubmit()` signs and submits through the connected XRPL client
 - `SigningPubKey` is set to the device's public key
-- Transaction is broadcast to the network automatically
 
-**Multi-signature:**
+**Parallel multisigning:**
 
-- Set `SigningPubKey` to an empty string in your transaction
-- The Ledger signs but doesn't submit automatically
-- You collect signatures from multiple signers
-- Build the final transaction with all signatures in the `Signers` array
+- Prepare the transaction once with the multisign account, expected signer
+  count, fee, sequence, and last-ledger sequence fixed.
+- Give every signer that exact prepared transaction with `SigningPubKey: ''`
+  and without `TxnSignature` or `Signers`.
+- `Fee` and `Sequence` must already be present. The adapter rejects incomplete
+  multisign input and never autofills it independently for each signer.
+- `sign()` returns one signer contribution: its `tx_json` and `tx_blob` contain
+  one `Signers` entry bound to the connected Ledger account and no top-level
+  `TxnSignature`.
+- Combine the independent contribution blobs with `xrpl.multisign()`, then
+  submit the combined blob separately. `signAndSubmit()` rejects multisign
+  input with `UNSUPPORTED_METHOD` because one contribution may not satisfy the
+  signer quorum.
 
 ```typescript
-// Multi-sig example: Sign without submitting
-const result = await adapter.sign({
-  TransactionType: 'Payment',
-  Destination: 'rN7n7otQDd6FczFgLdlqtyMVrn3KeKniv',
-  Amount: '1000000',
-  SigningPubKey: '', // Empty for multisig
-  Fee: '30', // Higher fee for multisig : Base fee (10 drops) + (10 drops per signer in quorum)
-});
+import { Client, multisign } from 'xrpl';
 
-// The result contains the signed tx_blob
-// Now collect other signatures and build final transaction with Signers array
+const client = new Client('wss://xrplcluster.com');
+await client.connect();
+
+// All signers must receive this same prepared transaction.
+const prepared = await client.autofill(
+  {
+    TransactionType: 'Payment',
+    Account: 'rMultisignAccount...',
+    Destination: 'rN7n7otQDd6FczFgLdlqtyMVrn3KeKniv',
+    Amount: '1000000',
+    SigningPubKey: '',
+  },
+  2
+);
+
+const ledgerContribution = await walletManager.sign(prepared);
+const combinedBlob = multisign([ledgerContribution.tx_blob!, otherSignerContributionBlob]);
+
+await client.submitAndWait(combinedBlob);
+await client.disconnect();
 ```
+
+Ledger receives the ordinary unsigned transaction serialization. When
+`SigningPubKey` is empty, the XRP app on the device applies the XRPL `SMT`
+multisign prefix and the connected device AccountID before signing. The adapter
+verifies that signer-specific preimage locally before returning the contribution.
 
 ### Check Device State
 

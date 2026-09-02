@@ -89,11 +89,11 @@ export type Transaction = XRPLTransaction;
  * Result of signing a transaction
  */
 export interface SignedTransaction {
-  hash: string; // Transaction hash
-  tx_blob?: string; // Signed transaction blob
-  signature?: string; // Signature
+  hash: string; // Transaction hash when supplied; may be empty for a signer contribution
+  tx_blob?: string; // Signed transaction or multisign-contribution blob
+  signature?: string; // Top-level or signer-contribution signature
   signerAddress?: string; // Address of the account that produced the signature
-  tx_json?: Transaction; // Complete signed transaction JSON
+  tx_json?: Transaction; // Signed transaction or multisign contribution
   [key: string]: unknown; // Allow additional wallet-specific fields
 }
 

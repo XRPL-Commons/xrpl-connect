@@ -1,3 +1,65 @@
+# Issue #180
+
+## Issue summary
+
+- Ledger currently treats an empty `SigningPubKey` as multisign intent but signs the ordinary transaction serialization and writes a top-level `TxnSignature`, producing an invalid multisign contribution.
+- Valid multisigning must bind the signing preimage to the connected Ledger account and return a transaction with a `Signers` entry and no top-level signature.
+- Single-sign behavior and submission must remain unchanged, malformed multisign inputs must fail safely, and XRPL client connections must close on every path.
+- Ledger-specific and aggregate documentation must describe the actual v1 signing contract.
+
+## Plan
+
+- [x] Validate GitHub access, refresh `origin/develop`, inspect issue state/comments/linked PRs, and create a clean isolated worktree.
+- [x] Audit Ledger signing, public transaction types, XRPL serialization APIs, tests, lifecycle paths, and documentation claims.
+- [x] Define valid single-sign and multisign input/output invariants against authoritative XRPL vectors.
+- [x] Implement signer-bound multisigning and guaranteed client cleanup without changing single-sign submission behavior.
+- [x] Add focused regressions for single-sign, multisign, signer binding, malformed input, multiple signer contributions, and success/failure cleanup.
+- [x] Update Ledger and aggregate adapter documentation to match the implemented contract.
+- [x] Run focused formatting, linting, type/build, and tests plus repository-level verification appropriate to the change.
+- [x] Review the final diff against every acceptance criterion and record results below.
+- [x] Commit only intentional files, push the branch, open the PR, and verify remote metadata/checks.
+
+## Review
+
+- The root cause was a host/device contract mismatch: an empty `SigningPubKey` tells Ledger firmware to create the signer-bound multisigning preimage, while the adapter serialized the returned signature as a top-level single signature.
+- Ledger signing now sends the firmware's expected ordinary unsigned serialization, independently verifies the returned signature against either the single-sign or account-bound multisign preimage, and emits multisign contributions under `Signers` without a top-level `TxnSignature`.
+- Multisign input rejects missing source accounts and any pre-existing signature material; `signAndSubmit` rejects partial multisign contributions while preserving single-sign submission behavior. XRPL clients disconnect after successful signing and all covered autofill, device, verification, and submission failures.
+- Official XRPL TrustSet vectors prove the exact firmware payload, signer-bound preimages, each Ledger contribution, and the combined transaction hash `BD636194C48FD7A100DE4C972336534C8E710FD008C0F3CF7BC5BF34DAF3C3E6`. A fail-before check confirmed the prior top-level signature neither verified as a single signature nor could be combined with `xrpl.multisign`.
+- The initial Ledger suite passes all 39 tests. `pnpm exec vp check`, `pnpm docs:snapshot:check`, `pnpm docs:build`, `pnpm test`, and `git diff --check` pass; the exact final tree was rechecked with the focused Ledger suite, `vp check`, and the full monorepo suite.
+- Independent protocol, vector, and final-diff reviews found no blocking findings. The final review's documentation note was resolved by documenting multisign contribution hashes as potentially empty/non-final until aggregation.
+
+## Fix PR #183 review finding
+
+- [x] Make multisign signing consume an already prepared transaction without per-signer autofill.
+- [x] Reject multisign inputs missing the fee or sequence required for a submission-ready contribution.
+- [x] Add regressions for exact-payload preservation and fail-closed incomplete inputs.
+- [x] Align Ledger and aggregate documentation with the enforced prepared-input contract.
+- [x] Run focused and repository-level verification, review the final diff, commit, push, and verify the PR head.
+
+### Fix review
+
+- Multisign `sign()` now signs the caller-prepared transaction exactly as supplied and does not create an XRPL client, preventing signer-count fee underestimation and per-signer autofill drift.
+- Missing `Fee` or `Sequence` fails before XRPL or Ledger interaction; the authoritative two-signer vector still combines to the expected transaction hash.
+- Ledger documentation, aggregate adapter guidance, API reference, transaction guide, and changelog all state the enforced prepared-input contract.
+- All 41 Ledger tests, `pnpm exec vp check`, `pnpm test`, `pnpm docs:snapshot:check`, and `git diff --check` pass on the final tree.
+
+## Final documentation cleanup
+
+- [x] Make the Ledger multisign example use the manager defined by its setup.
+- [x] Make generic signing guidance distinguish single-sign artifacts from multisign artifacts whose quorum cannot be inferred locally.
+- [x] Align the active migration guide with the multisign contribution contract.
+- [x] Correct the stale authoritative transaction hash in this audit log.
+- [x] Run documentation and repository checks, review the diff, commit, push, and verify the final PR head.
+
+### Cleanup review
+
+- The Ledger example now uses the configured `walletManager` and an XRPL endpoint matching its network.
+- Generic and migration guidance refuse automatic submission of a `Signers` artifact without claiming that every such artifact is incomplete; both explain that quorum readiness requires adapter-specific handling.
+- The migration guide explicitly documents Ledger contributions and aggregation, and the internal audit now matches the authoritative combined-transaction hash asserted by the test vector.
+- `pnpm exec vp check`, `pnpm docs:snapshot:check`, `pnpm docs:build`, and `git diff --check` pass on the cleanup diff.
+
+---
+
 # Issue #170
 
 ## Issue summary
@@ -192,6 +254,8 @@
 - The compatibility regression temporarily masks native `replaceChildren()` on both affected DOM prototypes, then proves the connector renders its host button and opens its dialog. Against the reviewed PR head it failed with `TypeError: this.shadow.replaceChildren is not a function` before the button rendered.
 - The rebuilt UI ESM and CommonJS artifacts contain no `replaceChildren` calls.
 - All 135 UI tests, UI type-check/build, repository formatting/lint, all 9 Chromium wallet-dialog tests, the full monorepo build/test pipeline, packed ESM/CJS/SSR/React 18/React 19/Vue/Nuxt consumer verification, and `git diff --check` pass.
+
+---
 
 # Issue #181 / PR #138
 

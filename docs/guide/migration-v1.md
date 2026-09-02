@@ -50,22 +50,32 @@ import { WalletManager, XamanAdapter } from 'xrpl-connect';
 
 `sign()` and `signAndSubmit()` remain separate methods. Applications already using the 0.8.2 runtime API do not need to rename them. Some older package documentation showed a boolean overload for `signAndSubmit`; that overload was not part of the 0.8.2 implementation and must not be used.
 
-Do not assume every wallet returns the same signed representation. Use the optional artifact that is present:
+Do not assume every wallet returns the same signed representation. A `Signers`
+array may be one multisign contribution or a fully combined transaction, and the
+artifact alone does not prove that the account's signer quorum is satisfied:
 
 ```ts
-const signed = await manager.sign(transaction);
+import { decode, encode } from 'xrpl';
 
-if (signed.tx_blob) {
-  await client.submit(signed.tx_blob);
-} else if (signed.tx_json) {
-  // Submit or encode the signed JSON according to your xrpl.js flow.
-  await client.submit(signed.tx_json);
-} else {
-  throw new Error('The wallet did not return a submit-ready transaction artifact');
+const signed = await manager.sign(transaction);
+const signedBlob = signed.tx_blob ?? (signed.tx_json ? encode(signed.tx_json) : undefined);
+
+if (!signedBlob) {
+  throw new Error('The wallet did not return a signed transaction artifact');
 }
 
+const signedJson = signed.tx_json ?? decode(signedBlob);
+if (Array.isArray(signedJson.Signers)) {
+  throw new Error('Verify this multisigned artifact is complete before submitting');
+}
+
+await client.submit(signedBlob);
 console.log(signed.signerAddress);
 ```
+
+Follow the adapter's multisign contract before submitting an artifact with
+`Signers`. For example, Ledger `sign()` returns one contribution that must be
+combined with the other required contributions through `xrpl.multisign()`.
 
 `signAndSubmit()` returns a transaction hash after the wallet submits. A returned hash is not proof that the transaction reached a validated ledger; query a trusted XRPL client when confirmation matters.
 
