@@ -97,6 +97,48 @@
 
 ---
 
+# Issue #178
+
+## Issue summary
+
+- Provider- and adapter-controlled values are interpolated into HTML strings used by the wallet connector, allowing hostile text, attributes, or URLs to create executable DOM.
+- Dynamic text and attributes must be rendered through safe DOM APIs, and wallet/QR image URLs must reject executable or unexpected schemes while retaining bundled icons.
+- The fix must cover errors, wallet lists, loading, account selection/details, and QR images without changing styling, accessibility semantics, or customization parts.
+- Regression tests must prove markup, quote-breaking, event-handler, and unsafe-URL payloads remain inert and cannot create unexpected elements or execute code.
+
+## Plan
+
+- [x] Validate GitHub access, refresh `origin/develop`, and confirm issue state, comments, linked PRs, and acceptance criteria.
+- [x] Create a clean isolated worktree from the refreshed default branch and review applicable repository guidance and lessons.
+- [x] Inventory every UI rendering sink and define one consistent safe DOM boundary and URL policy.
+- [x] Implement the minimal production-ready rendering change while preserving public behavior, styles, ARIA, and `part` hooks.
+- [x] Add focused regressions for every affected view, account details, and QR image rendering.
+- [x] Run formatting, linting, type checks, focused UI tests, browser coverage where relevant, and repository-level verification.
+- [x] Review the final diff against every acceptance criterion and record results below.
+- [x] Commit only intentional files, push the branch, open the PR, and verify remote PR metadata/checks.
+
+## Review
+
+- All adapter- and provider-controlled text and attributes now reach the DOM through text, property, dataset, attribute, or CSSOM APIs. Source-controlled markup is isolated behind a tagged static-template helper that rejects substitutions, while connector and portal roots use `replaceChildren`.
+- Wallet and QR logo sources accept absolute HTTP(S) and supported `data:image/*` formats, including bundled SVG icons, while executable and unexpected schemes are rejected. Direct Xaman QR images additionally require HTTPS, the exact `xumm.app` host, `/sign/`, and a PNG path; adapter-produced deep links reject executable protocols.
+- Security regressions cover hostile markup, quote-breaking wallet/account attributes, error messages, wallet names and icons, account addresses and balances, unsafe URL schemes, Xaman origin confusion, and direct QR-image rendering. Existing customization assertions continue to prove stable parts, and the browser suite proves styling, dialog semantics, focus, scrolling, and portal behavior.
+- The UI dependency-inclusive build, source/public type checks, lint, all 134 UI tests, all 9 wallet-dialog browser tests, `pnpm exec vp check`, the full monorepo `pnpm test`, packed publish/consumer verification, and `git diff --check` pass.
+- Independent surface and final reviews found no remaining actionable security, compatibility, accessibility, styling, or test gaps. The intentional residual policies are a deep-link denylist that preserves wallet-specific schemes and continued support for bundled SVG data icons as image sources.
+
+## Fix PR #184 review finding
+
+- [x] Reconfirm the dedicated worktree is clean and matches the exact remote PR head.
+- [x] Replace unsupported `replaceChildren()` calls with one compatible DOM helper without reintroducing HTML parsing.
+- [x] Add a regression that fails against the reviewed PR head when native `replaceChildren()` is unavailable.
+- [x] Run focused UI checks, browser tests, repository checks, and packed-artifact verification appropriate to the fix.
+- [x] Review the final diff, commit, push, and verify the updated PR head and CI state.
+
+### Fix review
+
+- A single `replaceViewChildren()` helper now removes and appends nodes through long-supported DOM primitives; every connector, portal, QR, error, and copy-feedback replacement path uses it without reintroducing HTML parsing.
+- The compatibility regression temporarily masks native `replaceChildren()` on both affected DOM prototypes, then proves the connector renders its host button and opens its dialog. Against the reviewed PR head it failed with `TypeError: this.shadow.replaceChildren is not a function` before the button rendered.
+- The rebuilt UI ESM and CommonJS artifacts contain no `replaceChildren` calls.
+- All 135 UI tests, UI type-check/build, repository formatting/lint, all 9 Chromium wallet-dialog tests, the full monorepo build/test pipeline, packed ESM/CJS/SSR/React 18/React 19/Vue/Nuxt consumer verification, and `git diff --check` pass.
 # Issue #181 / PR #138
 
 ## Issue summary

@@ -1,18 +1,19 @@
 import { WALLET_CONNECTOR_PARTS } from '../customization';
+import { createStaticView, getViewElement } from './dom';
 
-export function renderErrorView(walletName: string, error: Error): string {
-  return `
+export function renderErrorView(walletName: string, error: Error): DocumentFragment {
+  const view = createStaticView`
       <div class="header">
         <h2 class="title" id="wallet-dialog-title">Connection Failed</h2>
-        <button class="close-button" part="${WALLET_CONNECTOR_PARTS.walletModal.closeButton}" aria-label="Close">×</button>
+        <button class="close-button" aria-label="Close">×</button>
       </div>
 
       <div class="content">
         <div class="error-view">
           <div class="error-icon">⚠</div>
           <div class="error-text">
-            <div class="error-title">Failed to connect to ${walletName}</div>
-            <div class="error-message">${error.message}</div>
+            <div class="error-title"></div>
+            <div class="error-message"></div>
           </div>
           <div class="error-buttons">
             <button class="error-button error-button-secondary" id="error-back-button">
@@ -25,4 +26,11 @@ export function renderErrorView(walletName: string, error: Error): string {
         </div>
       </div>
     `;
+  getViewElement(view, '.close-button').setAttribute(
+    'part',
+    WALLET_CONNECTOR_PARTS.walletModal.closeButton
+  );
+  getViewElement(view, '.error-title').append('Failed to connect to ', walletName);
+  getViewElement(view, '.error-message').textContent = error.message;
+  return view;
 }

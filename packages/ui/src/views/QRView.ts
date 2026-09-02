@@ -1,13 +1,14 @@
 import { WALLET_CONNECTOR_PARTS } from '../customization';
+import { createStaticView, getViewElement } from './dom';
 
-export function renderQRView(walletName: string): string {
-  return `
+export function renderQRView(walletName: string): DocumentFragment {
+  const view = createStaticView`
     <div class="header">
       <div class="header-with-back">
         <button class="back-button" id="back-button" aria-label="Back">←</button>
-        <h2 class="title" id="wallet-dialog-title">${walletName}</h2>
+        <h2 class="title" id="wallet-dialog-title"></h2>
       </div>
-      <button class="close-button" part="${WALLET_CONNECTOR_PARTS.walletModal.closeButton}" aria-label="Close">×</button>
+      <button class="close-button" aria-label="Close">×</button>
     </div>
 
     <div class="content">
@@ -24,4 +25,10 @@ export function renderQRView(walletName: string): string {
       </div>
     </div>
   `;
+  getViewElement(view, '.close-button').setAttribute(
+    'part',
+    WALLET_CONNECTOR_PARTS.walletModal.closeButton
+  );
+  getViewElement(view, '.title').textContent = walletName;
+  return view;
 }
