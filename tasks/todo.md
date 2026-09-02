@@ -24,8 +24,8 @@
 - The root cause was a host/device contract mismatch: an empty `SigningPubKey` tells Ledger firmware to create the signer-bound multisigning preimage, while the adapter serialized the returned signature as a top-level single signature.
 - Ledger signing now sends the firmware's expected ordinary unsigned serialization, independently verifies the returned signature against either the single-sign or account-bound multisign preimage, and emits multisign contributions under `Signers` without a top-level `TxnSignature`.
 - Multisign input rejects missing source accounts and any pre-existing signature material; `signAndSubmit` rejects partial multisign contributions while preserving single-sign submission behavior. XRPL clients disconnect after successful signing and all covered autofill, device, verification, and submission failures.
-- Official XRPL TrustSet vectors prove the exact firmware payload, signer-bound preimages, each Ledger contribution, and the combined transaction hash `BD636194AA63E5F70C44D995B472D71D945B79813C2A7030005E14DDF2BD30A5`. A fail-before check confirmed the prior top-level signature neither verified as a single signature nor could be combined with `xrpl.multisign`.
-- The Ledger suite passes all 39 tests. `pnpm exec vp check`, `pnpm docs:snapshot:check`, `pnpm docs:build`, `pnpm test`, and `git diff --check` pass; the exact final tree was rechecked with the focused Ledger suite, `vp check`, and the full monorepo suite.
+- Official XRPL TrustSet vectors prove the exact firmware payload, signer-bound preimages, each Ledger contribution, and the combined transaction hash `BD636194C48FD7A100DE4C972336534C8E710FD008C0F3CF7BC5BF34DAF3C3E6`. A fail-before check confirmed the prior top-level signature neither verified as a single signature nor could be combined with `xrpl.multisign`.
+- The initial Ledger suite passes all 39 tests. `pnpm exec vp check`, `pnpm docs:snapshot:check`, `pnpm docs:build`, `pnpm test`, and `git diff --check` pass; the exact final tree was rechecked with the focused Ledger suite, `vp check`, and the full monorepo suite.
 - Independent protocol, vector, and final-diff reviews found no blocking findings. The final review's documentation note was resolved by documenting multisign contribution hashes as potentially empty/non-final until aggregation.
 
 ## Fix PR #183 review finding
@@ -42,6 +42,21 @@
 - Missing `Fee` or `Sequence` fails before XRPL or Ledger interaction; the authoritative two-signer vector still combines to the expected transaction hash.
 - Ledger documentation, aggregate adapter guidance, API reference, transaction guide, and changelog all state the enforced prepared-input contract.
 - All 41 Ledger tests, `pnpm exec vp check`, `pnpm test`, `pnpm docs:snapshot:check`, and `git diff --check` pass on the final tree.
+
+## Final documentation cleanup
+
+- [x] Make the Ledger multisign example use the manager defined by its setup.
+- [x] Make generic signing guidance distinguish single-sign artifacts from multisign artifacts whose quorum cannot be inferred locally.
+- [x] Align the active migration guide with the multisign contribution contract.
+- [x] Correct the stale authoritative transaction hash in this audit log.
+- [x] Run documentation and repository checks, review the diff, commit, push, and verify the final PR head.
+
+### Cleanup review
+
+- The Ledger example now uses the configured `walletManager` and an XRPL endpoint matching its network.
+- Generic and migration guidance refuse automatic submission of a `Signers` artifact without claiming that every such artifact is incomplete; both explain that quorum readiness requires adapter-specific handling.
+- The migration guide explicitly documents Ledger contributions and aggregation, and the internal audit now matches the authoritative combined-transaction hash asserted by the test vector.
+- `pnpm exec vp check`, `pnpm docs:snapshot:check`, `pnpm docs:build`, and `git diff --check` pass on the cleanup diff.
 
 ---
 

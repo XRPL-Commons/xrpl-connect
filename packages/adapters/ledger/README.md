@@ -97,7 +97,7 @@ multisign contributions.
 ```typescript
 import { Client, multisign } from 'xrpl';
 
-const client = new Client('wss://s.altnet.rippletest.net:51233');
+const client = new Client('wss://xrplcluster.com');
 await client.connect();
 
 // All signers must receive this same prepared transaction.
@@ -112,7 +112,7 @@ const prepared = await client.autofill(
   2
 );
 
-const ledgerContribution = await adapter.sign(prepared);
+const ledgerContribution = await walletManager.sign(prepared);
 const combinedBlob = multisign([ledgerContribution.tx_blob!, otherSignerContributionBlob]);
 
 await client.submitAndWait(combinedBlob);
