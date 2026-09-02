@@ -252,6 +252,7 @@ describe('CrossmarkAdapter.connect', () => {
     sdk.methods.signInAndWait.mockResolvedValue({
       response: { data: { address: 'rUserAddress', publicKey: 'PUBKEY' } },
     });
+    mockLiveNetwork();
 
     await new CrossmarkAdapter().connect();
 

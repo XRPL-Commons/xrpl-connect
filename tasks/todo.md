@@ -109,8 +109,8 @@
 
 ## Rebase PR #186 for merge
 
-- [ ] Rebase the PR branch onto current `origin/develop` and resolve overlapping changelog and Crossmark test changes without losing either branch's coverage.
-- [ ] Review the integrated cumulative diff and verify no adjacent source or task-history changes were dropped.
+- [x] Rebase the PR branch onto current `origin/develop` and resolve overlapping changelog and Crossmark test changes without losing either branch's coverage.
+- [x] Review the integrated cumulative diff and verify no adjacent source or task-history changes were dropped.
 - [ ] Run focused conflict-area checks plus full repository tests, lint, formatting, documentation snapshot, and diff validation.
 - [ ] Push the rewritten branch with lease protection and verify the exact remote head, mergeability, and CI state.
 
