@@ -121,6 +121,13 @@
 - The old-to-new commit range preserves both PR behavior commits; the #179 release note now sits under `Unreleased` rather than the already dated `1.0.0-rc.1` section.
 - `pnpm test`, `pnpm lint`, `pnpm format:check`, `pnpm docs:snapshot:check`, and `git diff --check` pass on the rebased tree.
 
+## Verify PR #186 commit signatures
+
+- [ ] Record the signature-verification correction and confirm the configured GPG key, commit identity, and GitHub key registration agree.
+- [ ] Rewrite every PR commit with a fresh GPG signature without changing the cumulative tree.
+- [ ] Force-push with an exact lease and verify every remote commit is cryptographically `verified` by GitHub.
+- [ ] Confirm the rewritten head remains mergeable and all required CI checks pass.
+
 ---
 
 # Issue #170
