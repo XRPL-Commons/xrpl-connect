@@ -94,6 +94,9 @@ let WalletConnectorElement: {
 } | null = null;
 
 if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
+  let bodyScrollLockCount = 0;
+  let bodyOverflowBeforeFirstLock = '';
+
   const DERIVED_HOVER_VARIABLES = {
     connectButtonBackground: '--derived-connect-button-hover-background',
     primaryButtonBackground: '--derived-primary-button-hover-background',
@@ -108,6 +111,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     public readonly shadow: ShadowRoot;
     private isOpen = false;
     private openGeneration = 0;
+    private managerGeneration = 0;
+    private xamanProbeGeneration = 0;
+    private preInitializationGeneration = 0;
     private isFirstOpen = true;
     private primaryWalletId: string | null = null;
     private viewState: 'list' | 'qr' | 'loading' | 'error' | 'account-selection' = 'list';
@@ -118,6 +124,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private previousModalHeight: number = 0;
     private preGeneratedQRCode: QRCodeStyling | null = null;
     private preGeneratedURI: string | null = null;
+    private preInitializationAdapter: WalletAdapter | null = null;
     private availableWallets: WalletAdapter[] = [];
     // Specified wallets that are NOT installed/available — shown with an
     // "Install" affordance only when the `show-unavailable` attribute is set.
@@ -133,6 +140,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private walletDialogOpener: FocusReturnTarget | null = null;
     private accountDialogOpener: FocusReturnTarget | null = null;
     private readonly connectionWaiters = new Set<ConnectionWaiter>();
+    private qrRenderTimer: ReturnType<typeof setTimeout> | null = null;
+    private bodyScrollLocked = false;
     private walletManagerHandlers: {
       connect: (account: AccountInfo) => void;
       disconnect: () => void;
@@ -157,6 +166,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     connectedCallback() {
       this.attachWalletManagerHandlers();
       this.render();
+      void this.checkXamanStateOnInit();
 
       // Update derived colors on initial load
       requestAnimationFrame(() => this.updateDerivedColors());
@@ -174,10 +184,14 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     disconnectedCallback() {
+      this.walletService?.cancelPendingWork();
       this.cancelPendingConnection();
       this.openGeneration += 1;
+      this.managerGeneration += 1;
+      this.xamanProbeGeneration += 1;
       this.isOpen = false;
       this.accountModalOpen = false;
+      this.invalidateWalletConnectPreInitialization(true);
       this.rejectConnectionWaiters(
         new Error('Wallet connector was disconnected before a wallet was connected.')
       );
@@ -194,7 +208,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.overlayPortal = null;
       this.accountModalPortal?.remove();
       this.accountModalPortal = null;
-      document.body.style.overflow = '';
+      this.clearQRRenderTimer();
+      this.updateBodyScrollLock();
     }
 
     private forwardCSSVariables(portalHost: HTMLElement): void {
@@ -301,6 +316,18 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Set the WalletManager instance
      */
     setWalletManager(manager: WalletManager) {
+      if (manager === this.walletManager) {
+        this.attachWalletManagerHandlers();
+        this.render();
+        void this.checkXamanStateOnInit();
+        return;
+      }
+
+      const previousManager = this.walletManager;
+      this.walletService?.cancelPendingWork();
+      this.managerGeneration += 1;
+      this.xamanProbeGeneration += 1;
+      this.invalidateWalletConnectPreInitialization(true);
       this.detachWalletManagerHandlers();
       this.walletManager = manager;
       this.resetWalletAvailability();
@@ -323,7 +350,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.render();
       }
 
-      // Check for existing Xaman session after a short delay
+      if (previousManager) {
+        void previousManager.disconnect().catch((error) => {
+          logger.warn('Failed to disconnect replaced WalletManager:', error);
+        });
+      }
+
       void this.checkXamanStateOnInit();
     }
 
@@ -334,6 +366,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.walletManagerHandlers = {
         connect: (account: AccountInfo) => {
           if (manager !== this.walletManager) return;
+          this.invalidateWalletConnectPreInitialization(false);
           this.resolveConnectionWaiters(account);
           const connectedId = manager.wallet?.id;
           if (connectedId) this.recordMruId(connectedId);
@@ -378,8 +411,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Check for existing Xaman authentication on page load
      */
     private async checkXamanStateOnInit() {
+      const manager = this.walletManager;
+      if (!manager) return;
+      const managerGeneration = this.managerGeneration;
+      const probeGeneration = ++this.xamanProbeGeneration;
       try {
-        const xamanAdapter = this.walletManager?.adapters?.get('xaman');
+        const xamanAdapter = manager.adapters.get('xaman');
         if (
           !xamanAdapter ||
           !isXamanStateAdapter(xamanAdapter) ||
@@ -389,11 +426,25 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         }
 
         const account = await xamanAdapter.checkXamanState();
-        if (account && this.walletManager && !this.walletManager.connected) {
-          await this.walletManager.connect('xaman');
+        if (
+          account &&
+          this.isConnected &&
+          probeGeneration === this.xamanProbeGeneration &&
+          managerGeneration === this.managerGeneration &&
+          manager === this.walletManager &&
+          manager.adapters.get('xaman') === xamanAdapter &&
+          !manager.connected
+        ) {
+          await manager.connect('xaman');
         }
       } catch (err) {
-        console.error('Failed to check Xaman state:', err);
+        if (
+          probeGeneration === this.xamanProbeGeneration &&
+          managerGeneration === this.managerGeneration &&
+          manager === this.walletManager
+        ) {
+          console.error('Failed to check Xaman state:', err);
+        }
       }
     }
 
@@ -611,8 +662,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.isOpen = true;
       this.isFirstOpen = true;
 
-      // Prevent body scroll when modal is open
-      document.body.style.overflow = 'hidden';
+      this.updateBodyScrollLock();
 
       // Retry bounded checks for wallets that may have timed out or been injected
       // by a browser extension since the previous open.
@@ -673,10 +723,11 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.cancelPendingConnection();
       this.openGeneration += 1;
       this.isOpen = false;
+      this.invalidateWalletConnectPreInitialization(true);
       this.rejectConnectionWaiters(new Error('Modal closed before a wallet was connected.'));
 
-      // Restore body scroll when modal is closed
-      document.body.style.overflow = '';
+      this.clearQRRenderTimer();
+      this.updateBodyScrollLock();
 
       // Reset state to wallet list view when closing
       this.viewState = 'list';
@@ -711,6 +762,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.accountDialogOpener = this.captureFocusReturnTarget();
       }
       this.accountModalOpen = true;
+      this.updateBodyScrollLock();
       this.render();
     }
 
@@ -720,6 +772,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     public closeAccountModal() {
       const wasOpen = this.accountModalOpen;
       this.accountModalOpen = false;
+      this.updateBodyScrollLock();
       this.render();
       if (wasOpen) {
         this.restoreFocus(this.accountDialogOpener);
@@ -759,10 +812,14 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Based on ConnectKit's eager initialization pattern
      */
     private async preInitializeWalletConnect() {
-      if (!this.walletManager) return;
+      const manager = this.walletManager;
+      if (!manager || !this.isOpen) return;
+      const managerGeneration = this.managerGeneration;
+      const openGeneration = this.openGeneration;
+      const preInitializationGeneration = ++this.preInitializationGeneration;
 
       // Find WalletConnect adapter
-      const walletConnectAdapter = this.walletManager.wallets.find((w) => w.id === 'walletconnect');
+      const walletConnectAdapter = manager.wallets.find((w) => w.id === 'walletconnect');
 
       if (
         !walletConnectAdapter ||
@@ -771,18 +828,44 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       )
         return;
 
+      this.preInitializationAdapter = walletConnectAdapter;
+
       try {
         logger.debug('Pre-initializing WalletConnect...');
 
-        const network = this.walletManager.defaultNetwork;
+        const network = manager.defaultNetwork;
 
         await walletConnectAdapter.preInitialize(network, (uri) => {
+          if (
+            !this.isOpen ||
+            preInitializationGeneration !== this.preInitializationGeneration ||
+            managerGeneration !== this.managerGeneration ||
+            openGeneration !== this.openGeneration ||
+            manager !== this.walletManager
+          ) {
+            return;
+          }
           logger.debug('Pre-generating QR code...');
           this.preGenerateQRCode(uri);
         });
       } catch (error) {
-        logger.warn('Failed to pre-initialize WalletConnect:', error);
+        if (preInitializationGeneration === this.preInitializationGeneration) {
+          logger.warn('Failed to pre-initialize WalletConnect:', error);
+        }
         // Silent failure - connection will initialize on demand if this fails
+      }
+    }
+
+    private invalidateWalletConnectPreInitialization(disconnectAdapter: boolean): void {
+      this.preInitializationGeneration += 1;
+      this.preGeneratedURI = null;
+      this.preGeneratedQRCode = null;
+      const adapter = this.preInitializationAdapter;
+      this.preInitializationAdapter = null;
+      if (disconnectAdapter && adapter) {
+        void adapter.disconnect().catch((error) => {
+          logger.warn('Failed to cancel WalletConnect pre-initialization:', error);
+        });
       }
     }
 
@@ -837,6 +920,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Show QR code view
      */
     public showQRCodeView(walletId: string, uri?: string) {
+      this.clearQRRenderTimer();
       this.viewState = 'qr';
       this.qrCodeData = { walletId, uri: uri || '' };
       this.loadingData = null;
@@ -873,7 +957,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Show wallet list view
      */
     public showWalletList() {
+      this.clearQRRenderTimer();
       this.cancelPendingConnection();
+      this.invalidateWalletConnectPreInitialization(true);
       this.viewState = 'list';
       this.qrCodeData = null;
       this.loadingData = null;
@@ -885,6 +971,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private cancelPendingConnection(): void {
       if (!this.walletManager || this.walletManager.connected) return;
 
+      this.walletService?.cancelPendingWork();
       void this.walletManager.disconnect().catch((error) => {
         logger.warn('Failed to cancel pending wallet connection:', error);
       });
@@ -921,8 +1008,20 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       if (this.viewState === 'qr' && this.qrCodeData?.walletId === walletId) {
         this.qrCodeData.uri = uri;
+        this.clearQRRenderTimer();
+        const openGeneration = this.openGeneration;
 
-        setTimeout(() => {
+        this.qrRenderTimer = setTimeout(() => {
+          this.qrRenderTimer = null;
+          if (
+            !this.isOpen ||
+            openGeneration !== this.openGeneration ||
+            this.viewState !== 'qr' ||
+            this.qrCodeData?.walletId !== walletId ||
+            this.qrCodeData.uri !== uri
+          ) {
+            return;
+          }
           logger.debug('Attempting to render QR code...');
           const container = this.overlayPortal?.shadowRoot?.querySelector('#qr-container');
           logger.debug('QR container found:', !!container);
@@ -935,6 +1034,35 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           currentDataWallet: this.qrCodeData?.walletId,
         });
       }
+    }
+
+    private clearQRRenderTimer(): void {
+      if (this.qrRenderTimer === null) return;
+      clearTimeout(this.qrRenderTimer);
+      this.qrRenderTimer = null;
+    }
+
+    private acquireBodyScroll(): void {
+      if (this.bodyScrollLocked) return;
+      if (bodyScrollLockCount === 0) bodyOverflowBeforeFirstLock = document.body.style.overflow;
+      bodyScrollLockCount += 1;
+      this.bodyScrollLocked = true;
+      document.body.style.overflow = 'hidden';
+    }
+
+    private releaseBodyScroll(): void {
+      if (!this.bodyScrollLocked) return;
+      this.bodyScrollLocked = false;
+      bodyScrollLockCount = Math.max(0, bodyScrollLockCount - 1);
+      if (bodyScrollLockCount === 0) {
+        document.body.style.overflow = bodyOverflowBeforeFirstLock;
+        bodyOverflowBeforeFirstLock = '';
+      }
+    }
+
+    private updateBodyScrollLock(): void {
+      if (this.isOpen || this.accountModalOpen) this.acquireBodyScroll();
+      else this.releaseBodyScroll();
     }
 
     /**

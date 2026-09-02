@@ -204,6 +204,29 @@ describe('OtsuAdapter.connect', () => {
       code: WalletErrorCode.CONNECTION_REJECTED,
     });
   });
+
+  it('does not publish a pending connection after disconnect', async () => {
+    let resolveConnect!: (value: { address: string }) => void;
+    const provider = makeProvider({
+      connect: vi.fn(
+        () => new Promise<{ address: string }>((resolve) => (resolveConnect = resolve))
+      ),
+    });
+    installProvider(provider);
+    const adapter = new OtsuAdapter();
+    const connected = vi.fn();
+    adapter.on('connect', connected);
+
+    const connection = adapter.connect();
+    await vi.waitFor(() => expect(provider.connect).toHaveBeenCalledOnce());
+    await adapter.disconnect();
+    resolveConnect({ address: 'rStale' });
+
+    await expect(connection).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+    expect(provider.on).not.toHaveBeenCalled();
+    expect(connected).not.toHaveBeenCalled();
+  });
 });
 
 describe('OtsuAdapter.fetchAccount', () => {
@@ -394,6 +417,42 @@ describe('OtsuAdapter.disconnect', () => {
 });
 
 describe('OtsuAdapter provider events', () => {
+  it('keeps the existing session listeners active after a failed reconnect', async () => {
+    const provider = makeProvider({
+      connect: vi
+        .fn()
+        .mockResolvedValueOnce({ address: 'rOtsuUser' })
+        .mockRejectedValueOnce(new Error('replacement failed')),
+    });
+    installProvider(provider);
+    const adapter = new OtsuAdapter();
+    await adapter.connect();
+
+    await expect(adapter.connect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+    emitProviderEvent(provider, 'accountChanged', 'rStillListening');
+
+    await expect(adapter.getAccount()).resolves.toMatchObject({ address: 'rStillListening' });
+  });
+
+  it('removes the owning provider listeners when the provider disconnects', async () => {
+    const provider = makeProvider({
+      connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+    });
+    installProvider(provider);
+    const adapter = new OtsuAdapter();
+    await adapter.connect();
+
+    emitProviderEvent(provider, 'disconnected', undefined);
+
+    expect(provider.off).toHaveBeenCalledTimes(3);
+    expect(provider.off).toHaveBeenCalledWith('accountChanged', expect.any(Function));
+    expect(provider.off).toHaveBeenCalledWith('networkChanged', expect.any(Function));
+    expect(provider.off).toHaveBeenCalledWith('disconnected', expect.any(Function));
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
   it('signals an error and preserves account state for an unknown network event', async () => {
     const provider = makeProvider({
       connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),

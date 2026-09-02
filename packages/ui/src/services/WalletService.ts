@@ -73,14 +73,24 @@ export class WalletService {
     private component: WalletConnectorContext
   ) {}
 
-  private dispatchConnecting(walletId: string, detail: Record<string, unknown> = {}): number {
-    const connectionAttemptId = ++this.nextConnectionAttemptId;
+  private dispatchConnecting(
+    walletId: string,
+    connectionAttemptId: number,
+    detail: Record<string, unknown> = {}
+  ): void {
     this.component.dispatchEvent(
       new CustomEvent('connecting', {
         detail: { walletId, ...detail, connectionAttemptId },
       })
     );
-    return connectionAttemptId;
+  }
+
+  cancelPendingWork(): void {
+    this.nextConnectionAttemptId += 1;
+  }
+
+  private isCurrentAttempt(connectionAttemptId: number): boolean {
+    return connectionAttemptId === this.nextConnectionAttemptId;
   }
 
   async connectWallet(walletId: string, options?: ConnectOptions) {
@@ -89,7 +99,8 @@ export class WalletService {
       return;
     }
 
-    let connectionAttemptId: number | undefined;
+    const uiAttempt = ++this.nextConnectionAttemptId;
+    const connectionAttemptId = uiAttempt;
     try {
       // Get wallet info
       const wallet = this.walletManager.wallets.find((w) => w.id === walletId);
@@ -133,13 +144,15 @@ export class WalletService {
           // Show loading state first (with spinning animation like Xaman)
           this.component.showLoadingView(walletId, wallet.name, wallet.icon);
 
-          connectionAttemptId = this.dispatchConnecting(walletId);
+          this.dispatchConnecting(walletId, connectionAttemptId);
 
           // Small delay to show the loading animation before WC modal appears
           await delay(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+          if (!this.isCurrentAttempt(uiAttempt)) return;
 
           // Connect - WalletConnect modal will open on top of our loading view
           await this.walletManager.connect(walletId, options);
+          if (!this.isCurrentAttempt(uiAttempt)) return;
           this.component.dispatchEvent(
             new CustomEvent('connected', { detail: { walletId, connectionAttemptId } })
           );
@@ -157,13 +170,15 @@ export class WalletService {
           const connectOptions: ConnectOptions<WalletConnectConnectOptions> = {
             ...options,
             onQRCode: (uri: string) => {
+              if (!this.isCurrentAttempt(uiAttempt)) return;
               logger.debug('QR code callback received:', uri.substring(0, 50) + '...');
               this.component.setQRCode(walletId, uri);
             },
           };
 
-          connectionAttemptId = this.dispatchConnecting(walletId);
+          this.dispatchConnecting(walletId, connectionAttemptId);
           await this.walletManager.connect(walletId, connectOptions);
+          if (!this.isCurrentAttempt(uiAttempt)) return;
           this.component.dispatchEvent(
             new CustomEvent('connected', { detail: { walletId, connectionAttemptId } })
           );
@@ -171,6 +186,7 @@ export class WalletService {
       } else if (walletId === 'ledger') {
         // For Ledger, show account selection first
         const isAvailable = await checkWalletAvailability(wallet);
+        if (!this.isCurrentAttempt(uiAttempt)) return;
 
         if (!isAvailable) {
           throw new Error(
@@ -188,11 +204,13 @@ export class WalletService {
         // Small delay for UI
         if (!isSafari()) {
           await delay(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+          if (!this.isCurrentAttempt(uiAttempt)) return;
         }
 
         // Fetch accounts from Ledger
         logger.debug('Fetching Ledger accounts...');
         const accounts = await wallet.getAccounts(5, 0);
+        if (!this.isCurrentAttempt(uiAttempt)) return;
         logger.debug('Fetched accounts:', accounts);
 
         // Show account selection view
@@ -201,12 +219,13 @@ export class WalletService {
         // Show loading state
         this.component.showLoadingView(walletId, wallet.name, wallet.icon);
 
-        connectionAttemptId = this.dispatchConnecting(walletId);
+        this.dispatchConnecting(walletId, connectionAttemptId);
 
         // Browser-specific delay (Safari needs immediate connection for user gesture)
         if (!isSafari() && walletId !== 'xaman') {
           // Small delay for UI animation on non-Safari browsers
           await delay(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+          if (!this.isCurrentAttempt(uiAttempt)) return;
         }
 
         if (walletId === 'xaman') {
@@ -219,6 +238,7 @@ export class WalletService {
         }
 
         await this.walletManager.connect(walletId, options);
+        if (!this.isCurrentAttempt(uiAttempt)) return;
 
         if (walletId === 'xaman') {
           logger.info('Xaman UI connection phase: WalletManager connected');
@@ -228,6 +248,7 @@ export class WalletService {
         );
       }
     } catch (error: unknown) {
+      if (!this.isCurrentAttempt(uiAttempt)) return;
       const err = asErrorLike(error);
       const wallet = this.walletManager?.wallets.find((w) => w.id === walletId);
 
@@ -272,7 +293,8 @@ export class WalletService {
     if (!this.walletManager || !this.component.accountSelectionData) return;
 
     const { walletId, walletName, walletIcon } = this.component.accountSelectionData;
-    let connectionAttemptId: number | undefined;
+    const uiAttempt = ++this.nextConnectionAttemptId;
+    const connectionAttemptId = uiAttempt;
 
     try {
       // Show loading state
@@ -281,13 +303,15 @@ export class WalletService {
       // Small delay for UI
       if (!isSafari()) {
         await delay(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+        if (!this.isCurrentAttempt(uiAttempt)) return;
       }
 
       logger.debug('Connecting to Ledger with account index:', accountIndex);
-      connectionAttemptId = this.dispatchConnecting(walletId, { accountIndex });
+      this.dispatchConnecting(walletId, connectionAttemptId, { accountIndex });
 
       const ledgerOptions: ConnectOptions<LedgerConnectOptions> = { accountIndex };
       await this.walletManager.connect(walletId, ledgerOptions);
+      if (!this.isCurrentAttempt(uiAttempt)) return;
 
       this.component.dispatchEvent(
         new CustomEvent('connected', {
@@ -295,6 +319,7 @@ export class WalletService {
         })
       );
     } catch (error: unknown) {
+      if (!this.isCurrentAttempt(uiAttempt)) return;
       const err = asErrorLike(error);
       // Handle error - show error view
       let errorMessage = err.message || 'An unexpected error occurred';
@@ -323,7 +348,8 @@ export class WalletService {
     if (!this.walletManager || !this.component.accountSelectionData) return;
 
     const { walletId, walletName, walletIcon } = this.component.accountSelectionData;
-    let connectionAttemptId: number | undefined;
+    const uiAttempt = ++this.nextConnectionAttemptId;
+    const connectionAttemptId = uiAttempt;
 
     try {
       // Validate derivation path format
@@ -338,13 +364,15 @@ export class WalletService {
       // Small delay for UI
       if (!isSafari()) {
         await delay(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+        if (!this.isCurrentAttempt(uiAttempt)) return;
       }
 
       logger.debug('Connecting to Ledger with custom derivation path:', derivationPath);
-      connectionAttemptId = this.dispatchConnecting(walletId, { derivationPath });
+      this.dispatchConnecting(walletId, connectionAttemptId, { derivationPath });
 
       const ledgerOptions: ConnectOptions<LedgerConnectOptions> = { derivationPath };
       await this.walletManager.connect(walletId, ledgerOptions);
+      if (!this.isCurrentAttempt(uiAttempt)) return;
 
       this.component.dispatchEvent(
         new CustomEvent('connected', {
@@ -352,6 +380,7 @@ export class WalletService {
         })
       );
     } catch (error: unknown) {
+      if (!this.isCurrentAttempt(uiAttempt)) return;
       const err = asErrorLike(error);
       // Handle error - show error view
       let errorMessage = err.message || 'An unexpected error occurred';

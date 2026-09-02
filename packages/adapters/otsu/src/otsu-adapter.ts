@@ -72,6 +72,8 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
   private stateRevision = 0;
   private listeners: Map<WalletAdapterEvent, Set<(data?: unknown) => void>> = new Map();
   private providerListeners: Map<string, (data: unknown) => void> = new Map();
+  private providerListenerOwner: OtsuProvider | null = null;
+  private providerListenerGeneration = 0;
 
   // ==================== Availability ====================
 
@@ -100,6 +102,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
    * @returns Account info with address and network
    */
   async connect(options?: ConnectOptions): Promise<AccountInfo> {
+    const generation = ++this.connectionGeneration;
     try {
       // Validate the requested network before touching the provider. Otsu only
       // supports the canonical XRPL mainnet, testnet, and devnet IDs.
@@ -111,14 +114,15 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
       const response = await provider.connect({
         scopes: ['read', 'sign', 'submit', 'switchNetwork'],
       });
+      if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
 
       const networkInfo = await this.fetchNetworkInfo(provider, requestedNetwork);
+      if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
 
       this.currentAccount = {
         address: response.address,
         network: networkInfo,
       };
-      this.connectionGeneration += 1;
       this.stateRevision += 1;
 
       this.setupProviderListeners(provider);
@@ -128,6 +132,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
 
       return this.currentAccount;
     } catch (error) {
+      if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
       logger.error('Connection failed', error);
 
       const walletError = this.mapError(error, 'connect');
@@ -148,8 +153,8 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
     this.stateRevision += 1;
     this.currentAccount = null;
 
-    const provider = this.getProviderSafe();
-    if (provider) this.removeProviderListeners(provider);
+    const provider = this.providerListenerOwner ?? this.getProviderSafe();
+    if (this.providerListenerOwner) this.removeProviderListeners(this.providerListenerOwner);
     this.emit('disconnect');
     try {
       await provider?.disconnect();
@@ -473,7 +478,14 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
    * Set up listeners on the Otsu provider to forward events.
    */
   private setupProviderListeners(provider: OtsuProvider): void {
+    if (this.providerListenerOwner) this.removeProviderListeners(this.providerListenerOwner);
+    const listenerGeneration = ++this.providerListenerGeneration;
+    const ownsConnection = () =>
+      this.providerListenerOwner === provider &&
+      this.providerListenerGeneration === listenerGeneration;
+
     const accountHandler = (data: unknown) => {
+      if (!ownsConnection()) return;
       const address = this.getProviderEventValue(data, 'address');
       if (this.currentAccount && typeof address === 'string' && address.length > 0) {
         this.currentAccount = {
@@ -486,6 +498,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
     };
 
     const networkHandler = (data: unknown) => {
+      if (!ownsConnection()) return;
       if (this.currentAccount) {
         const networkId = this.getProviderEventValue(data, 'network');
         let networkInfo: NetworkInfo;
@@ -507,12 +520,15 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
     };
 
     const disconnectHandler = () => {
+      if (!ownsConnection()) return;
+      this.removeProviderListeners(provider);
       this.connectionGeneration += 1;
       this.stateRevision += 1;
       this.currentAccount = null;
       this.emit('disconnect');
     };
 
+    this.providerListenerOwner = provider;
     provider.on('accountChanged', accountHandler);
     provider.on('networkChanged', networkHandler);
     provider.on('disconnected', disconnectHandler);
@@ -534,10 +550,12 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
    * Remove listeners from the Otsu provider.
    */
   private removeProviderListeners(provider: OtsuProvider): void {
+    this.providerListenerGeneration += 1;
     for (const [event, handler] of this.providerListeners) {
       provider.off(event, handler);
     }
     this.providerListeners.clear();
+    if (this.providerListenerOwner === provider) this.providerListenerOwner = null;
   }
 
   /**

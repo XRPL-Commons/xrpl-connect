@@ -96,7 +96,7 @@ try {
 
 - Xaman now keeps `sign()` sign-only, verifies the returned blob and signer, and exposes `tx_blob`, `tx_json`, and `signature` when supplied. Use `signAndSubmit()` when Xaman should dispatch to the ledger.
 - WalletConnect returns a signed `tx_json` and `signature`; it does not mislabel `TxnSignature` as a serialized `tx_blob`.
-- WalletConnect and Xaman do not support arbitrary message signing. Check capabilities instead of displaying an action that will fail.
+- Crossmark, Ledger, WalletConnect, and Xaman do not support arbitrary message signing. Check capabilities instead of displaying an action that will fail.
 
 ## Capabilities and fresh account data
 

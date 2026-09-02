@@ -335,8 +335,9 @@ import { CrossmarkAdapter } from 'xrpl-connect';
 const adapter = new CrossmarkAdapter();
 ```
 
-**Supported Features:** Transaction signing, message signing, live account
-refresh
+**Supported Features:** Transaction signing and live account refresh. Arbitrary
+message signing is not supported because Crossmark exposes a sign-in challenge,
+not a documented general-purpose message-signing protocol.
 
 **Website:** [https://crossmark.io/](https://crossmark.io/)
 
@@ -388,9 +389,10 @@ const adapter = new LedgerAdapter({
 });
 ```
 
-**Supported Features:** On-device transaction confirmation, message signing,
-live account refresh, multiple derivation paths, and signer-bound parallel
+**Supported Features:** On-device transaction confirmation, live account refresh,
+multiple derivation paths, and signer-bound parallel
 multisign contributions. Requires Chrome / Edge / Opera with WebHID or WebUSB.
+Arbitrary message signing is not supported by the Ledger XRP application API.
 
 For Ledger multisigning, pass `sign()` one fully prepared transaction with an
 explicit source `Account`, `Fee`, `Sequence`, `SigningPubKey: ''`, and no existing
@@ -583,8 +585,8 @@ function adapterSupports(adapter: WalletAdapter, capability: keyof WalletCapabil
 
 Adapters use the optional `capabilities` property to declare operations that
 cannot succeed. Missing declarations fall back to `CAPABILITY_DEFAULTS`, so
-existing custom adapters retain support for all signing operations. Xaman and
-WalletConnect declare `signMessage: false`.
+existing custom adapters retain support for all signing operations. Crossmark,
+Ledger, WalletConnect, and Xaman declare `signMessage: false`.
 
 ### SupportsFetchAccount
 
@@ -734,16 +736,6 @@ Emitted when a wallet is disconnected.
 ```javascript
 walletManager.on('disconnect', () => {
   console.log('Disconnected');
-});
-```
-
-#### error
-
-Emitted when an error occurs.
-
-```javascript
-walletManager.on('error', (error: WalletError) => {
-  console.error('Error:', error.message);
 });
 ```
 

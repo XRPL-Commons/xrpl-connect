@@ -87,7 +87,7 @@ export function configureLogger(option: LoggerOptions | LoggerInstance | undefin
     return;
   }
   if (isLoggerInstance(option)) {
-    setGlobalConfig({ instance: option });
+    setGlobalConfig({ instance: option, level: 'debug' });
     return;
   }
   setGlobalConfig({ level: normalizeLevel(option.level) });

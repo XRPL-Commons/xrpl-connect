@@ -60,6 +60,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   private pendingReconnects = 0;
   private stateRevision = 0;
   private storageTail: Promise<void> = Promise.resolve();
+  private adapterTeardowns = new Map<WalletAdapter, Promise<void>>();
 
   constructor(options: WalletManagerOptions) {
     super();
@@ -91,11 +92,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    */
   private async autoConnect(): Promise<void> {
     try {
-      const stored = await this.storage.loadState();
-      if (stored && this.isStateValid(stored)) {
-        this.logger.debug('Attempting auto-reconnect', stored);
-        await this.reconnect();
-      }
+      await this.reconnect();
     } catch (error) {
       this.logger.warn('Auto-connect failed:', error);
     }
@@ -106,7 +103,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    */
   private isStateValid(state: StoredState): boolean {
     const age = Date.now() - state.timestamp;
-    return age < TIME.STATE_MAX_AGE;
+    return Number.isFinite(state.timestamp) && age >= 0 && age < TIME.STATE_MAX_AGE;
   }
 
   /**
@@ -153,6 +150,21 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     let generation: number | undefined;
 
     try {
+      const pendingTeardown = this.adapterTeardowns.get(adapter);
+      if (pendingTeardown) {
+        try {
+          await pendingTeardown;
+        } catch (error) {
+          this.logger.warn(`Previous ${adapter.name} teardown failed; retrying connection:`, error);
+        }
+        if (
+          connectionAttempt !== this.connectionAttemptGeneration ||
+          this.connectingAdapter !== adapter
+        ) {
+          throw createWalletError.notConnected();
+        }
+      }
+
       // Check availability
       const availability = await withTimeout<
         | { available: boolean; error?: never }
@@ -294,9 +306,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       this.subscribeToAdapter(adapter, generation);
       connectionCommitted = true;
 
-      const connectedAccount = this.currentAccount;
-      this.logger.info(`Connected to ${adapter.name}`, connectedAccount);
-      this.emit('connect', connectedAccount);
+      const connectedAccount = this.cloneAccount(this.currentAccount);
+      this.logger.info(`Connected to ${adapter.name}`, this.cloneAccount(connectedAccount));
+      this.emit('connect', this.cloneAccount(connectedAccount));
 
       return connectedAccount;
     } catch (error) {
@@ -309,12 +321,12 @@ export class WalletManager extends EventEmitter<WalletEvent> {
             shouldDisconnectAdapter = false;
           }
         }
-        const newerConnectionOwnsManager =
+        const newerConnectionOwnsSameAdapter =
           connectionAttempt !== this.connectionAttemptGeneration &&
-          (this.connectingAdapter !== null || this.currentAdapter !== null);
-        if (shouldDisconnectAdapter && !newerConnectionOwnsManager) {
+          (this.connectingAdapter === adapter || this.currentAdapter === adapter);
+        if (shouldDisconnectAdapter && !newerConnectionOwnsSameAdapter) {
           try {
-            await adapter.disconnect();
+            await this.teardownAdapter(adapter);
           } catch (disconnectError) {
             this.logger.warn(
               `Failed to clean up ${adapter.name} after connection failure:`,
@@ -351,9 +363,10 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       if (connectingAdapter) {
         this.connectionAttemptGeneration += 1;
         this.connectingAdapter = null;
+        const teardown = this.teardownAdapter(connectingAdapter);
         await this.queueStorage(() => this.storage.clearState());
         try {
-          await connectingAdapter.disconnect();
+          await teardown;
         } catch (error) {
           this.logger.warn(`Failed to cancel connection to ${connectingAdapter.name}:`, error);
         }
@@ -370,16 +383,35 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     const walletName = adapter.name;
     this.logger.info(`Disconnecting from ${walletName}`);
 
+    const cleanup = this.cleanup(adapter, generation);
+    const teardown = this.teardownAdapter(adapter);
+    const cleaned = await cleanup;
+    if (!cleaned) await this.storageTail;
+
+    let teardownFailed = false;
+    let teardownError: unknown;
     try {
-      await adapter.disconnect();
-      const cleaned = await this.cleanup(adapter, generation);
-      if (!cleaned) await this.storageTail;
+      await teardown;
       this.logger.info(`Disconnected from ${walletName}`);
-      if (cleaned) this.emit('disconnect');
     } catch (error) {
       this.logger.error(`Failed to disconnect from ${walletName}:`, error);
-      throw error;
+      teardownFailed = true;
+      teardownError = error;
     }
+
+    let eventFailed = false;
+    let eventError: unknown;
+    if (cleaned) {
+      try {
+        this.emit('disconnect');
+      } catch (error) {
+        eventFailed = true;
+        eventError = error;
+      }
+    }
+
+    if (teardownFailed) throw teardownError;
+    if (eventFailed) throw eventError;
   }
 
   /**
@@ -401,6 +433,19 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       if (reconnectGeneration !== this.reconnectGeneration) return null;
       if (!stored) {
         this.logger.debug('No stored state found for reconnection');
+        return null;
+      }
+      if (!this.isStateValid(stored)) {
+        this.logger.debug('Stored state expired; clearing it');
+        await this.queueStorage(async () => {
+          if (
+            reconnectGeneration === this.reconnectGeneration &&
+            this.currentAdapter === null &&
+            this.connectingAdapter === null
+          ) {
+            await this.storage.clearState();
+          }
+        });
         return null;
       }
 
@@ -613,7 +658,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       if (!this.isActiveSession(adapter, generation)) {
         throw createWalletError.notConnected();
       }
-      return this.currentAccount;
+      return this.currentAccount ? this.cloneAccount(this.currentAccount) : null;
     }
 
     if (!fetched) {
@@ -640,12 +685,12 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       if (!this.isActiveSession(adapter, generation)) {
         throw createWalletError.notConnected();
       }
-      return this.currentAccount;
+      return this.currentAccount ? this.cloneAccount(this.currentAccount) : null;
     }
 
-    if (addressChanged) this.emit('accountChanged', account);
-    if (networkChanged) this.emit('networkChanged', account.network);
-    return account;
+    if (addressChanged) this.emit('accountChanged', this.cloneAccount(account));
+    if (networkChanged) this.emit('networkChanged', { ...account.network });
+    return this.cloneAccount(account);
   }
 
   /**
@@ -659,7 +704,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * Get current account
    */
   get account(): AccountInfo | null {
-    return this.currentAccount;
+    return this.currentAccount ? this.cloneAccount(this.currentAccount) : null;
   }
 
   /**
@@ -726,7 +771,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     this.currentAccount = nextAccount;
     this.stateRevision += 1;
     void this.persistState(adapter, generation, nextAccount);
-    this.emit('accountChanged', nextAccount);
+    this.emit('accountChanged', this.cloneAccount(nextAccount));
   }
 
   /**
@@ -744,7 +789,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     this.currentAccount = nextAccount;
     this.stateRevision += 1;
     void this.persistState(adapter, generation, nextAccount);
-    this.emit('networkChanged', nextAccount.network);
+    this.emit('networkChanged', { ...nextAccount.network });
   }
 
   /** Serialize storage mutations so cleanup is always the final old-session write. */
@@ -754,6 +799,23 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       this.logger.warn('Failed to persist wallet state:', error);
     });
     return result;
+  }
+
+  /** Deduplicate provider teardown and block reuse of the same adapter until it settles. */
+  private teardownAdapter(adapter: WalletAdapter): Promise<void> {
+    const existing = this.adapterTeardowns.get(adapter);
+    if (existing) return existing;
+
+    const teardown = Promise.resolve().then(() => adapter.disconnect());
+    this.adapterTeardowns.set(adapter, teardown);
+    void teardown
+      .finally(() => {
+        if (this.adapterTeardowns.get(adapter) === teardown) {
+          this.adapterTeardowns.delete(adapter);
+        }
+      })
+      .catch(() => undefined);
+    return teardown;
   }
 
   /** Persist an immutable session snapshot without restoring stale state. */

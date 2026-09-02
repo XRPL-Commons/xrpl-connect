@@ -264,6 +264,93 @@ describe('WalletManager.disconnect()', () => {
     expect(manager.connected).toBe(true);
     expect(manager.account?.address).toBe(ACCOUNT.address);
   });
+
+  it('waits for an earlier teardown before reconnecting the same adapter', async () => {
+    let finishDisconnect!: () => void;
+    const adapter = createFakeAdapter();
+    adapter.disconnect = vi.fn(() => new Promise<void>((resolve) => (finishDisconnect = resolve)));
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    const disconnecting = manager.disconnect();
+    await vi.waitFor(() => expect(adapter.disconnect).toHaveBeenCalledOnce());
+    const reconnecting = manager.connect('fake');
+    await Promise.resolve();
+    expect(adapter.connect).toHaveBeenCalledOnce();
+
+    finishDisconnect();
+    await disconnecting;
+    await reconnecting;
+
+    expect(adapter.connect).toHaveBeenCalledTimes(2);
+    expect(manager.connected).toBe(true);
+  });
+
+  it('cleans up a cancelled adapter after another adapter takes ownership', async () => {
+    let resolveFirstConnect!: (account: AccountInfo) => void;
+    const first = createFakeAdapter();
+    first.connect = vi.fn(
+      () => new Promise<AccountInfo>((resolve) => (resolveFirstConnect = resolve))
+    );
+    const second = { ...createFakeAdapter(), id: 'second', name: 'Second Wallet' };
+    const manager = new WalletManager({ adapters: [first, second] });
+
+    const firstConnection = manager.connect('fake');
+    await vi.waitFor(() => expect(first.connect).toHaveBeenCalledOnce());
+    await manager.disconnect();
+    await manager.connect('second');
+    resolveFirstConnect(ACCOUNT);
+
+    await expect(firstConnection).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    expect(first.disconnect).toHaveBeenCalledTimes(2);
+    expect(manager.wallet).toBe(second);
+    expect(manager.connected).toBe(true);
+  });
+
+  it('clears local ownership even when provider teardown fails', async () => {
+    const failure = new Error('provider teardown failed');
+    const adapter = createFakeAdapter();
+    adapter.disconnect = vi.fn().mockRejectedValue(failure);
+    const storageAdapter = new MemoryStorageAdapter();
+    const manager = new WalletManager({ adapters: [adapter], storage: storageAdapter });
+    const disconnected = vi.fn();
+    manager.on('disconnect', disconnected);
+    await manager.connect('fake');
+
+    await expect(manager.disconnect()).rejects.toBe(failure);
+
+    expect(manager.connected).toBe(false);
+    expect(manager.account).toBeNull();
+    expect(manager.wallet).toBeNull();
+    expect(disconnected).toHaveBeenCalledOnce();
+    await expect(new Storage(storageAdapter).loadState()).resolves.toBeNull();
+  });
+
+  it('preserves an undefined provider teardown rejection', async () => {
+    const adapter = createFakeAdapter();
+    adapter.disconnect = vi.fn().mockRejectedValue(undefined);
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+
+    await expect(manager.disconnect()).rejects.toBeUndefined();
+
+    expect(manager.connected).toBe(false);
+  });
+
+  it('tears down the provider before notifying disconnect listeners', async () => {
+    const failure = new Error('listener failed');
+    const adapter = createFakeAdapter();
+    const manager = new WalletManager({ adapters: [adapter] });
+    manager.on('disconnect', () => {
+      throw failure;
+    });
+    await manager.connect('fake');
+
+    await expect(manager.disconnect()).rejects.toBe(failure);
+
+    expect(adapter.disconnect).toHaveBeenCalledOnce();
+    expect(manager.connected).toBe(false);
+  });
 });
 
 describe('WalletManager capabilities', () => {
@@ -372,6 +459,43 @@ describe('WalletManager signerAddress stamping', () => {
     expect(signed).not.toBe(result);
     expect(signed).toEqual({ hash: '0xhash', signerAddress: ACCOUNT.address });
     expect(result.signerAddress).toBeUndefined();
+  });
+});
+
+describe('WalletManager account snapshots', () => {
+  it('does not expose mutable internal state through connect, events, or the account getter', async () => {
+    const adapter = createFakeAdapter();
+    const manager = new WalletManager({ adapters: [adapter] });
+    manager.on('connect', (account) => {
+      account.address = 'rMutatedByListener';
+      account.network.id = 'mutated-by-listener';
+    });
+
+    const connected = await manager.connect('fake');
+    connected.address = 'rMutatedByCaller';
+    connected.network.id = 'mutated-by-caller';
+    const getterSnapshot = manager.account!;
+    getterSnapshot.address = 'rMutatedGetter';
+    getterSnapshot.network.id = 'mutated-getter';
+
+    expect(manager.account).toEqual(ACCOUNT);
+    expect(manager.account).not.toBe(getterSnapshot);
+    expect(manager.account?.network).not.toBe(getterSnapshot.network);
+  });
+
+  it('does not let adapter-event subscribers mutate committed account state', async () => {
+    const adapter = createFakeAdapter();
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+    manager.on('accountChanged', (account) => {
+      account.address = 'rMutatedBySubscriber';
+      account.network.id = 'mutated-by-subscriber';
+    });
+    const changed = { ...ACCOUNT, address: 'rAuthoritative', network: { ...NETWORK } };
+
+    adapter.emitAdapterEvent('accountChanged', changed);
+
+    expect(manager.account).toEqual(changed);
   });
 });
 
@@ -893,6 +1017,23 @@ describe('WalletManager.reconnect()', () => {
       signMessage: async () => ({ signature: '' }) as SignedMessage,
     };
   }
+
+  it('clears expired state instead of reconnecting it', async () => {
+    const storage = new MemoryStorageAdapter();
+    await new Storage(storage).saveState({
+      walletId: 'fake',
+      account: ACCOUNT,
+      network: NETWORK,
+      timestamp: Date.now() - TIME.STATE_MAX_AGE,
+    });
+    const adapter = createFakeAdapter();
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    expect(adapter.connect).not.toHaveBeenCalled();
+    await expect(new Storage(storage).loadState()).resolves.toBeNull();
+  });
 
   it('does not reconnect after disconnect while persisted state is loading', async () => {
     const backingStorage = new MemoryStorageAdapter();

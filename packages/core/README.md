@@ -25,8 +25,9 @@ The `WalletManager` is an event emitter that manages all wallet interactions and
 ### Initialization
 
 ```typescript
-import { WalletManager } from '@xrpl-connect/core';
-import { XamanAdapter, CrossmarkAdapter } from '@xrpl-connect/adapters';
+import { LocalStorageAdapter, WalletManager } from '@xrpl-connect/core';
+import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 
 const walletManager = new WalletManager({
   adapters: [new XamanAdapter({ apiKey: 'YOUR_API_KEY' }), new CrossmarkAdapter()],
@@ -124,6 +125,11 @@ try {
 #### `disconnect(): Promise<void>`
 
 Disconnects from the currently connected wallet and clears stored connection state.
+Local manager state is cleared before the wallet provider is asked to tear down its
+session. If provider teardown fails, the promise rejects with that error while the
+manager remains locally disconnected and safe to reconnect with another adapter.
+The `disconnect` event is emitted after the provider teardown attempt, including
+when that attempt fails.
 
 **Example**:
 
@@ -457,18 +463,9 @@ walletManager.on('networkChanged', (network: NetworkInfo) => {
 
 ---
 
-### `error` Event
-
-Emitted when an error occurs (connection failed, signing failed, etc.).
-
-```typescript
-walletManager.on('error', (error: WalletError) => {
-  console.error('Error code:', error.code);
-  console.error('Error message:', error.message);
-});
-```
-
-**Event Data**: `WalletError`
+Connection, signing, refresh, and disconnection errors reject their operation
+promises with `WalletError` where applicable. `WalletManager` does not emit a
+general-purpose `error` event.
 
 ---
 
@@ -497,7 +494,7 @@ function adapterSupports(adapter: WalletAdapter, capability: keyof WalletCapabil
 
 An omitted `capabilities` object or omitted flag resolves through
 `CAPABILITY_DEFAULTS`. Declare a flag as `false` only when the operation cannot
-succeed. Xaman and WalletConnect declare `signMessage: false`.
+succeed. Crossmark, Ledger, WalletConnect, and Xaman declare `signMessage: false`.
 
 `adapterSupports()` applies the same defaulting independently of connection
 state. `WalletManager.supports()` uses it for the connected or explicitly
@@ -685,10 +682,10 @@ The core package includes a storage abstraction for persisting connection state 
 
 ```typescript
 interface StorageAdapter {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  removeItem(key: string): void;
-  clear(): void;
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<void>;
+  remove(key: string): Promise<void>;
+  clear(): Promise<void>;
 }
 ```
 
@@ -722,21 +719,21 @@ Implement `StorageAdapter` to use custom storage (e.g., IndexedDB, sessionStorag
 
 ```typescript
 class CustomStorageAdapter implements StorageAdapter {
-  getItem(key: string): string | null {
+  async get(key: string): Promise<string | null> {
     // Implement custom retrieval
     return localStorage.getItem(`custom_${key}`);
   }
 
-  setItem(key: string, value: string): void {
+  async set(key: string, value: string): Promise<void> {
     // Implement custom storage
     localStorage.setItem(`custom_${key}`, value);
   }
 
-  removeItem(key: string): void {
+  async remove(key: string): Promise<void> {
     localStorage.removeItem(`custom_${key}`);
   }
 
-  clear(): void {
+  async clear(): Promise<void> {
     // Clear all stored items
   }
 }
@@ -866,11 +863,9 @@ walletManager.on('networkChanged', (network) => {
 walletManager.on('disconnect', () => {
   console.log('Disconnected');
 });
-
-walletManager.on('error', (error) => {
-  console.error('Error:', error.code, error.message);
-});
 ```
+
+Catch rejected operation promises to handle errors.
 
 ### Graceful Disconnection
 
@@ -921,7 +916,8 @@ packages/core/src/
 
 ```typescript
 import { WalletManager, STANDARD_NETWORKS } from '@xrpl-connect/core';
-import { XamanAdapter, CrossmarkAdapter } from '@xrpl-connect/adapters';
+import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
 
 const walletManager = new WalletManager({
   adapters: [new XamanAdapter({ apiKey: process.env.XUMM_API_KEY }), new CrossmarkAdapter()],
@@ -970,16 +966,13 @@ try {
 useEffect(() => {
   const onConnect = (account) => setAccount(account);
   const onDisconnect = () => setAccount(null);
-  const onError = (error) => setError(error);
 
   walletManager.on('connect', onConnect);
   walletManager.on('disconnect', onDisconnect);
-  walletManager.on('error', onError);
 
   return () => {
     walletManager.off('connect', onConnect);
     walletManager.off('disconnect', onDisconnect);
-    walletManager.off('error', onError);
   };
 }, []);
 ```

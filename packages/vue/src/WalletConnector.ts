@@ -63,8 +63,32 @@ export const WalletConnector = defineComponent({
     let active = false;
     let registered: WalletConnectorElement | null = null;
     let notifiedAccountKey: string | null = null;
+    let managerListenersAttached = false;
+    const modalAttempts = new Map<number, symbol>();
+    let legacyModalAttempt: symbol | null = null;
+    let modalOpen = false;
+    let highestCancelledAttemptId = 0;
+
+    const cancelModalAttempts = () => {
+      const attempts = [...modalAttempts.values()];
+      for (const connectionAttemptId of modalAttempts.keys()) {
+        highestCancelledAttemptId = Math.max(highestCancelledAttemptId, connectionAttemptId);
+      }
+      if (legacyModalAttempt) attempts.push(legacyModalAttempt);
+      modalAttempts.clear();
+      legacyModalAttempt = null;
+      if (attempts.length > 0) context.reportModalClosed(attempts);
+    };
+    const onOpen = () => {
+      modalOpen = true;
+    };
+    const onClose = () => {
+      modalOpen = false;
+      cancelModalAttempts();
+    };
 
     const onManagerConnect = (account: AccountInfo) => {
+      if (!active) return;
       const key = `${account.address}:${account.network.id}`;
       if (notifiedAccountKey === key) return;
       notifiedAccountKey = key;
@@ -74,9 +98,19 @@ export const WalletConnector = defineComponent({
       notifiedAccountKey = null;
     };
     const onConnecting = (event: Event) => {
-      const walletId = (event as CustomEvent<{ walletId?: string }>).detail?.walletId;
+      const detail = (event as CustomEvent<{ walletId?: string; connectionAttemptId?: number }>)
+        .detail;
+      const walletId = detail?.walletId;
       if (!walletId) return;
-      context.reportModalConnecting();
+      const attempt = context.reportModalConnecting();
+      if (detail?.connectionAttemptId === undefined) {
+        if (legacyModalAttempt) context.reportModalClosed([legacyModalAttempt]);
+        legacyModalAttempt = attempt;
+      } else {
+        const previousAttempt = modalAttempts.get(detail.connectionAttemptId);
+        if (previousAttempt) context.reportModalClosed([previousAttempt]);
+        modalAttempts.set(detail.connectionAttemptId, attempt);
+      }
       emit('connecting', walletId);
     };
     const onError = (event: Event) => {
@@ -85,21 +119,54 @@ export const WalletConnector = defineComponent({
           error?: unknown;
           errorType?: 'rejected' | 'unavailable' | 'failed';
           walletId?: string;
+          connectionAttemptId?: number;
         }>
       ).detail;
       const error = normalizeModalError(detail?.error, detail?.errorType, detail?.walletId);
-      context.reportModalError(error);
-      emit('error', error);
+      let attempt: symbol | null;
+      if (detail?.connectionAttemptId === undefined) {
+        attempt = legacyModalAttempt;
+        legacyModalAttempt = null;
+        if (attempt === null) return;
+      } else {
+        attempt = modalAttempts.get(detail.connectionAttemptId) ?? null;
+        if (attempt === null) {
+          if (!modalOpen || detail.connectionAttemptId <= highestCancelledAttemptId) return;
+        } else {
+          modalAttempts.delete(detail.connectionAttemptId);
+        }
+      }
+      if (context.reportModalError(attempt, error)) emit('error', error);
+    };
+
+    const attachManagerListeners = () => {
+      if (managerListenersAttached) return;
+      context.manager.on('connect', onManagerConnect);
+      context.manager.on('disconnect', onManagerDisconnect);
+      managerListenersAttached = true;
+    };
+
+    const detachManagerListeners = () => {
+      if (!managerListenersAttached) return;
+      context.manager.off('connect', onManagerConnect);
+      context.manager.off('disconnect', onManagerDisconnect);
+      managerListenersAttached = false;
     };
 
     const activateConnector = () => {
       if (active) return;
       active = true;
+      attachManagerListeners();
+      if (context.manager.connected && context.manager.account) {
+        onManagerConnect(context.manager.account);
+      }
       void customElements.whenDefined('xrpl-wallet-connector').then(() => {
         if (!active || registered || !element.value) return;
         element.value.setWalletManager(context.manager);
         element.value.addEventListener('connecting', onConnecting);
         element.value.addEventListener('error', onError);
+        element.value.addEventListener('open', onOpen);
+        element.value.addEventListener('close', onClose);
         context.registerConnector(element.value);
         registered = element.value;
       });
@@ -107,18 +174,19 @@ export const WalletConnector = defineComponent({
 
     const deactivateConnector = () => {
       active = false;
+      modalOpen = false;
+      detachManagerListeners();
+      cancelModalAttempts();
       if (!registered) return;
       registered.removeEventListener('connecting', onConnecting);
       registered.removeEventListener('error', onError);
+      registered.removeEventListener('open', onOpen);
+      registered.removeEventListener('close', onClose);
       context.unregisterConnector(registered);
       registered = null;
     };
 
     onMounted(() => {
-      context.manager.on('connect', onManagerConnect);
-      context.manager.on('disconnect', onManagerDisconnect);
-      if (context.manager.connected && context.manager.account)
-        onManagerConnect(context.manager.account);
       activateConnector();
     });
 
@@ -126,8 +194,6 @@ export const WalletConnector = defineComponent({
     onDeactivated(deactivateConnector);
 
     onBeforeUnmount(() => {
-      context.manager.off('connect', onManagerConnect);
-      context.manager.off('disconnect', onManagerDisconnect);
       deactivateConnector();
     });
 
