@@ -110,6 +110,44 @@ describe('MetaMaskSnapAdapter.connect', () => {
     expect(account.network.id).toBe('testnet');
   });
 
+  it('does not restore account state when disconnected during account approval', async () => {
+    let resolveAccount!: (value: unknown) => void;
+    setProvider(
+      mockProvider({
+        snapHandlers: {
+          xrpl_changeNetwork: () => ({}),
+          xrpl_getActiveNetwork: () => ({ chainId: 0, name: 'Mainnet', nodeUrl: '' }),
+          xrpl_getAccount: () => new Promise((resolve) => (resolveAccount = resolve)),
+        },
+      })
+    );
+    const adapter = new MetaMaskSnapAdapter();
+
+    const connecting = adapter.connect();
+    await vi.waitFor(() => expect(resolveAccount).toBeTypeOf('function'));
+    await adapter.disconnect();
+    resolveAccount({ account: 'rLate', publicKey: 'LATE_PK' });
+
+    await expect(connecting).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
+  it('rejects an unknown active Snap network with a typed error', async () => {
+    setProvider(
+      mockProvider({
+        snapHandlers: {
+          xrpl_getActiveNetwork: () => ({ chainId: 999, name: 'Unknown', nodeUrl: '' }),
+        },
+      })
+    );
+    const adapter = new MetaMaskSnapAdapter();
+
+    await expect(adapter.connect()).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_NOT_SUPPORTED,
+    });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
   it('throws WALLET_NOT_INSTALLED when MetaMask is absent', async () => {
     await expect(new MetaMaskSnapAdapter().connect()).rejects.toMatchObject({
       code: WalletErrorCode.WALLET_NOT_INSTALLED,
@@ -163,6 +201,31 @@ describe('MetaMaskSnapAdapter.connect', () => {
       code: WalletErrorCode.NOT_CONNECTED,
     });
   });
+
+  it('rejects an unsupported runtime network id before requesting the Snap', async () => {
+    const provider = mockProvider({});
+    setProvider(provider);
+
+    await expect(
+      new MetaMaskSnapAdapter().connect({ network: 'sidechain' as never })
+    ).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_NOT_SUPPORTED });
+    expect(provider.request).not.toHaveBeenCalled();
+  });
+
+  it('rejects when MetaMask does not apply the requested network', async () => {
+    setProvider(
+      mockProvider({
+        snapHandlers: {
+          xrpl_changeNetwork: () => ({}),
+          xrpl_getActiveNetwork: () => ({ chainId: 0, name: 'Mainnet', nodeUrl: '' }),
+        },
+      })
+    );
+
+    await expect(new MetaMaskSnapAdapter().connect({ network: 'testnet' })).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+  });
 });
 
 describe('MetaMaskSnapAdapter signing', () => {
@@ -188,6 +251,36 @@ describe('MetaMaskSnapAdapter signing', () => {
     });
     const signed = await adapter.sign({ TransactionType: 'Payment' } as never);
     expect(signed).toEqual({ hash: 'HASH', tx_blob: 'BLOB' });
+  });
+
+  it('does not sign or submit after the active Snap network changes', async () => {
+    let chainId = 0;
+    const sign = vi.fn(() => ({ hash: 'HASH', tx_blob: 'BLOB' }));
+    const submit = vi.fn(() => ({
+      result: { engine_result: 'tesSUCCESS', tx_json: { hash: 'SUBMITTED' } },
+    }));
+    setProvider(
+      mockProvider({
+        snapHandlers: {
+          xrpl_getActiveNetwork: () => ({ chainId, name: 'Network', nodeUrl: '' }),
+          xrpl_getAccount: () => ({ account: 'rSNAP', publicKey: 'PUBKEY' }),
+          xrpl_sign: sign,
+          xrpl_signAndSubmit: submit,
+        },
+      })
+    );
+    const adapter = new MetaMaskSnapAdapter();
+    await adapter.connect();
+    chainId = 1;
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    await expect(
+      adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+    ).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_MISMATCH });
+    expect(sign).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
   });
 
   it('signAndSubmit returns the submitted hash', async () => {

@@ -626,6 +626,161 @@ describe('WalletManager.connect()', () => {
     });
   });
 
+  it('rejects a requested network mismatch before committing or persisting the session', async () => {
+    const storage = new MemoryStorageAdapter();
+    const adapter = createFakeAdapter();
+    const serializeReconnectOptions = vi.fn(() => undefined);
+    adapter.serializeReconnectOptions = serializeReconnectOptions;
+    const manager = new WalletManager({ adapters: [adapter], storage });
+    const onConnect = vi.fn();
+    manager.on('connect', onConnect);
+
+    await expect(manager.connect('fake', { network: 'mainnet' })).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+      message: 'Network mismatch. Expected "mainnet" but wallet is connected to "testnet".',
+    });
+
+    expect(serializeReconnectOptions).not.toHaveBeenCalled();
+    expect(adapter.disconnect).toHaveBeenCalledOnce();
+    expect(adapter.listenerCount('accountChanged')).toBe(0);
+    expect(adapter.listenerCount('networkChanged')).toBe(0);
+    expect(manager.connected).toBe(false);
+    expect(manager.wallet).toBeNull();
+    expect(manager.account).toBeNull();
+    expect(onConnect).not.toHaveBeenCalled();
+    expect(await new Storage(storage).loadState()).toBeNull();
+  });
+
+  it('treats the manager default as an explicit requested network', async () => {
+    const adapter = createFakeAdapter();
+    const manager = new WalletManager({ adapters: [adapter], network: 'mainnet' });
+
+    await expect(manager.connect('fake')).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    expect(adapter.connect).toHaveBeenCalledWith({ network: 'mainnet' });
+    expect(adapter.disconnect).toHaveBeenCalledOnce();
+    expect(manager.connected).toBe(false);
+  });
+
+  it('uses an adapter-reported network when no network was requested', async () => {
+    const storage = new MemoryStorageAdapter();
+    const adapter = createFakeAdapter();
+    const liveNetwork: NetworkInfo = {
+      id: 'custom-live-network',
+      name: 'Custom Live Network',
+      wss: 'wss://wallet.example',
+    };
+    adapter.connect = vi.fn(async () => ({ ...ACCOUNT, network: liveNetwork }));
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    await expect(manager.connect('fake')).resolves.toMatchObject({ network: liveNetwork });
+
+    expect(adapter.connect).toHaveBeenCalledWith({ network: undefined });
+    expect(manager.account?.network).toEqual(liveNetwork);
+    expect(await new Storage(storage).loadState()).toMatchObject({ network: liveNetwork });
+  });
+
+  it('keeps adapter-reported metadata for a matching custom network id', async () => {
+    const requestedNetwork: NetworkInfo = {
+      id: 'custom',
+      name: 'Requested Custom',
+      wss: 'wss://requested.example',
+    };
+    const liveNetwork: NetworkInfo = {
+      id: 'custom',
+      name: 'Wallet Custom',
+      wss: 'wss://wallet.example',
+    };
+    const adapter = createFakeAdapter();
+    adapter.connect = vi.fn(async () => ({ ...ACCOUNT, network: liveNetwork }));
+    const manager = new WalletManager({ adapters: [adapter] });
+
+    await expect(manager.connect('fake', { network: requestedNetwork })).resolves.toMatchObject({
+      network: liveNetwork,
+    });
+    expect(manager.account?.network).toEqual(liveNetwork);
+  });
+
+  it('accepts an adapter-canonicalized network with the same WalletConnect chain id', async () => {
+    const requestedNetwork: NetworkInfo = {
+      id: 'xahau-alias',
+      name: 'Requested Xahau Testnet',
+      wss: 'wss://requested.example',
+      walletConnectId: 'xrpl:21338',
+    };
+    const liveNetwork: NetworkInfo = {
+      id: 'xahau-testnet',
+      name: 'Xahau Testnet',
+      wss: 'wss://wallet.example',
+      walletConnectId: 'xrpl:21338',
+    };
+    const adapter = createFakeAdapter();
+    adapter.connect = vi.fn(async () => ({ ...ACCOUNT, network: liveNetwork }));
+    const manager = new WalletManager({ adapters: [adapter] });
+
+    await expect(manager.connect('fake', { network: requestedNetwork })).resolves.toMatchObject({
+      network: liveNetwork,
+    });
+    expect(manager.account?.network).toEqual(liveNetwork);
+  });
+
+  it('rejects matching labels that carry conflicting WalletConnect chain ids', async () => {
+    const adapter = createFakeAdapter();
+    adapter.connect = vi.fn(async () => ({
+      ...ACCOUNT,
+      network: { ...NETWORK, walletConnectId: 'xrpl:0' },
+    }));
+    const manager = new WalletManager({ adapters: [adapter] });
+
+    await expect(
+      manager.connect('fake', {
+        network: { ...NETWORK, walletConnectId: 'xrpl:1' },
+      })
+    ).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_MISMATCH });
+    expect(adapter.disconnect).toHaveBeenCalledOnce();
+    expect(manager.connected).toBe(false);
+  });
+
+  it.each([
+    ['a standard network name', 'mainnet'],
+    [
+      'internally contradictory standard network metadata',
+      { id: 'mainnet', name: 'Mainnet', wss: 'wss://mainnet.example', walletConnectId: 'xrpl:1' },
+    ],
+  ] as const)(
+    'rejects a contradictory standard network returned for %s',
+    async (_label, network) => {
+      const adapter = createFakeAdapter();
+      adapter.connect = vi.fn(async () => ({
+        ...ACCOUNT,
+        network: { ...MAINNET, walletConnectId: 'xrpl:1' },
+      }));
+      const manager = new WalletManager({ adapters: [adapter] });
+
+      await expect(manager.connect('fake', { network })).rejects.toMatchObject({
+        code: WalletErrorCode.NETWORK_MISMATCH,
+      });
+      expect(adapter.disconnect).toHaveBeenCalledOnce();
+      expect(manager.connected).toBe(false);
+    }
+  );
+
+  it('rejects a contradictory standard network when no network was requested', async () => {
+    const adapter = createFakeAdapter();
+    adapter.connect = vi.fn(async () => ({
+      ...ACCOUNT,
+      network: { ...MAINNET, walletConnectId: 'xrpl:1' },
+    }));
+    const manager = new WalletManager({ adapters: [adapter] });
+
+    await expect(manager.connect('fake')).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    expect(adapter.disconnect).toHaveBeenCalledOnce();
+    expect(manager.connected).toBe(false);
+  });
+
   it('rejects a repeated connection without disturbing the active session', async () => {
     const storage = new MemoryStorageAdapter();
     const adapter = createFakeAdapter();
@@ -929,6 +1084,25 @@ describe('WalletManager.reconnect()', () => {
     await expect(manager.reconnect()).resolves.toBeNull();
     expect(manager.connected).toBe(false);
     expect(restoredAdapter.disconnect).toHaveBeenCalledOnce();
+    expect(await new Storage(storage).loadState()).toBeNull();
+  });
+
+  it('rejects a restored network mismatch for adapters without reconnect options', async () => {
+    const storage = new MemoryStorageAdapter();
+    await new Storage(storage).saveState({
+      walletId: 'fake',
+      account: ACCOUNT,
+      network: NETWORK,
+      timestamp: Date.now(),
+    });
+    const adapter = createFakeAdapter();
+    adapter.connect = vi.fn(async () => ({ ...ACCOUNT, network: MAINNET }));
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    expect(adapter.disconnect).toHaveBeenCalledOnce();
+    expect(manager.connected).toBe(false);
     expect(await new Storage(storage).loadState()).toBeNull();
   });
 

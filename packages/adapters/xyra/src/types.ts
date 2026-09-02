@@ -51,23 +51,25 @@ export type XyraConnectOptions = {
   timeout?: number;
 };
 
+/** Networks supported by the Xyra SDK integration. */
+export type XyraSupportedNetworkId = Extract<StandardNetworkId, 'mainnet' | 'testnet'>;
+
 /**
  * Network mapping between xrpl-connect network IDs and Xyra SDK network strings.
  *
- * xrpl-connect uses: 'mainnet', 'testnet', 'devnet'
+ * xrpl-connect uses: 'mainnet', 'testnet' (Xyra does not support devnet)
  * Xyra SDK uses: 'xrpl-mainnet', 'xrpl-testnet'
  *
  */
-export const XRPL_CONNECT_TO_XYRA_NETWORK: Record<StandardNetworkId, Network> = {
+export const XRPL_CONNECT_TO_XYRA_NETWORK: Record<XyraSupportedNetworkId, Network> = {
   mainnet: 'xrpl-mainnet',
   testnet: 'xrpl-testnet',
-  devnet: 'xrpl-testnet', // Xyra doesn't have devnet, fall back to testnet
 };
 
 /**
  * Reverse mapping: Xyra SDK network → xrpl-connect network ID
  */
-export const XYRA_TO_XRPL_CONNECT_NETWORK: Partial<Record<Network, StandardNetworkId>> = {
+export const XYRA_TO_XRPL_CONNECT_NETWORK: Partial<Record<Network, XyraSupportedNetworkId>> = {
   'xrpl-mainnet': 'mainnet',
   'xrpl-testnet': 'testnet',
 };

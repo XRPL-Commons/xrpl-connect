@@ -28,6 +28,18 @@ function installProvider(provider: ReturnType<typeof makeProvider> | null) {
   }
 }
 
+function emitProviderEvent(
+  provider: ReturnType<typeof makeProvider>,
+  event: string,
+  data: unknown
+) {
+  const registration = provider.on.mock.calls.find(
+    ([registeredEvent]) => registeredEvent === event
+  );
+  const callback = registration?.[1] as ((eventData: unknown) => void) | undefined;
+  callback?.(data);
+}
+
 afterEach(() => {
   delete (globalThis as unknown as { window?: unknown }).window;
 });
@@ -70,6 +82,110 @@ describe('OtsuAdapter.connect', () => {
     expect(account.network.id).toBe('mainnet');
     expect(provider.connect).toHaveBeenCalled();
   });
+
+  it.each(['mainnet', 'testnet', 'devnet'] as const)(
+    'uses the provider live %s network as the account network',
+    async (network) => {
+      const provider = makeProvider({
+        connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+        getNetwork: vi.fn().mockResolvedValue({ network }),
+      });
+      installProvider(provider);
+
+      const account = await new OtsuAdapter().connect({ network });
+
+      expect(account.network).toEqual(STANDARD_NETWORKS[network]);
+    }
+  );
+
+  it('accepts an omitted network when the provider reports a supported live network', async () => {
+    const provider = makeProvider({
+      connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      getNetwork: vi.fn().mockResolvedValue({ network: 'devnet' }),
+    });
+    installProvider(provider);
+
+    const account = await new OtsuAdapter().connect();
+
+    expect(account.network).toEqual(STANDARD_NETWORKS.devnet);
+  });
+
+  it.each([
+    ['custom', { id: 'custom', name: 'Custom', wss: 'wss://custom.example.com' }],
+    ['unknown', 'sidechain'],
+    ['prototype key', { id: 'toString', name: 'Custom', wss: 'wss://custom.example.com' }],
+  ])(
+    'rejects unsupported explicit network (%s) before connecting the provider',
+    async (_name, network) => {
+      const provider = makeProvider({
+        connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      });
+      installProvider(provider);
+
+      await expect(new OtsuAdapter().connect({ network: network as never })).rejects.toMatchObject({
+        code: WalletErrorCode.NETWORK_NOT_SUPPORTED,
+      });
+      expect(provider.connect).not.toHaveBeenCalled();
+      expect(provider.getNetwork).not.toHaveBeenCalled();
+    }
+  );
+
+  it('rejects a requested and live network mismatch before caching the account', async () => {
+    const provider = makeProvider({
+      connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      getNetwork: vi.fn().mockResolvedValue({ network: 'testnet' }),
+    });
+    installProvider(provider);
+    const adapter = new OtsuAdapter();
+
+    await expect(adapter.connect({ network: 'mainnet' })).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
+  it('fails closed when the initial live network query fails', async () => {
+    const provider = makeProvider({
+      connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      getNetwork: vi.fn().mockRejectedValue(new Error('network unavailable')),
+    });
+    installProvider(provider);
+    const adapter = new OtsuAdapter();
+
+    await expect(adapter.connect({ network: 'testnet' })).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
+  it('rejects an unsupported live network with a typed error', async () => {
+    const provider = makeProvider({
+      connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      getNetwork: vi.fn().mockResolvedValue({ network: 'sidechain' }),
+    });
+    installProvider(provider);
+
+    const adapter = new OtsuAdapter();
+    await expect(adapter.connect()).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_NOT_SUPPORTED,
+    });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
+  it.each([null, undefined, {}])(
+    'rejects malformed live network response %j with a typed error',
+    async (response) => {
+      const provider = makeProvider({
+        connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+        getNetwork: vi.fn().mockResolvedValue(response),
+      });
+      installProvider(provider);
+
+      await expect(new OtsuAdapter().connect()).rejects.toMatchObject({
+        code: WalletErrorCode.NETWORK_NOT_SUPPORTED,
+      });
+    }
+  );
 
   it('throws notInstalled when the provider is not injected', async () => {
     installProvider(null);
@@ -148,7 +264,7 @@ describe('OtsuAdapter.fetchAccount', () => {
     });
   });
 
-  it('maps unsupported live network data to a typed connection error', async () => {
+  it('maps unsupported live network data to a typed network error', async () => {
     const provider = makeProvider({
       isConnected: vi.fn(() => true),
       connect: vi.fn().mockResolvedValue({ address: 'rOriginal' }),
@@ -163,7 +279,7 @@ describe('OtsuAdapter.fetchAccount', () => {
     await adapter.connect();
 
     await expect(adapter.fetchAccount()).rejects.toMatchObject({
-      code: WalletErrorCode.CONNECTION_FAILED,
+      code: WalletErrorCode.NETWORK_NOT_SUPPORTED,
     });
     await expect(adapter.getAccount()).resolves.toMatchObject({ address: 'rOriginal' });
   });
@@ -219,6 +335,17 @@ describe('OtsuAdapter.sign', () => {
     expect(result.hash).toBe('H');
   });
 
+  it('does not sign after the provider changes to another live network', async () => {
+    const { adapter, provider } = await connected();
+    provider.getNetwork.mockResolvedValue({ network: 'testnet' });
+    provider.signTransaction.mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' });
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    expect(provider.signTransaction).not.toHaveBeenCalled();
+  });
+
   it('maps a user rejection to a sign-rejected error', async () => {
     const { adapter, provider } = await connected();
     provider.signTransaction.mockRejectedValue(new Error('User rejected the signing'));
@@ -263,5 +390,92 @@ describe('OtsuAdapter.disconnect', () => {
     await disconnecting;
 
     await expect(adapter.getAccount()).resolves.toMatchObject({ address: 'rOtsuUser' });
+  });
+});
+
+describe('OtsuAdapter provider events', () => {
+  it('signals an error and preserves account state for an unknown network event', async () => {
+    const provider = makeProvider({
+      connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      getNetwork: vi.fn().mockResolvedValue({ network: 'mainnet' }),
+    });
+    installProvider(provider);
+    const adapter = new OtsuAdapter();
+    await adapter.connect();
+    const accountBefore = await adapter.getAccount();
+    const errorListener = vi.fn();
+    const networkListener = vi.fn();
+    adapter.on('error', errorListener);
+    adapter.on('networkChanged', networkListener);
+
+    emitProviderEvent(provider, 'networkChanged', 'sidechain');
+
+    expect(errorListener).toHaveBeenCalledWith(
+      expect.objectContaining({ code: WalletErrorCode.NETWORK_NOT_SUPPORTED })
+    );
+    expect(networkListener).not.toHaveBeenCalled();
+    await expect(adapter.getAccount()).resolves.toEqual(accountBefore);
+  });
+
+  it.each([null, undefined, {}])(
+    'signals an error and preserves account state for malformed network event %j',
+    async (event) => {
+      const provider = makeProvider({
+        connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+        getNetwork: vi.fn().mockResolvedValue({ network: 'mainnet' }),
+      });
+      installProvider(provider);
+      const adapter = new OtsuAdapter();
+      await adapter.connect();
+      const accountBefore = await adapter.getAccount();
+      const errorListener = vi.fn();
+      const networkListener = vi.fn();
+      adapter.on('error', errorListener);
+      adapter.on('networkChanged', networkListener);
+
+      emitProviderEvent(provider, 'networkChanged', event);
+
+      expect(errorListener).toHaveBeenCalledWith(
+        expect.objectContaining({ code: WalletErrorCode.NETWORK_NOT_SUPPORTED })
+      );
+      expect(networkListener).not.toHaveBeenCalled();
+      await expect(adapter.getAccount()).resolves.toEqual(accountBefore);
+    }
+  );
+
+  it.each([
+    ['the provider primitive payload', 'devnet'],
+    ['the legacy object payload', { network: 'devnet' }],
+  ])('updates account state for %s', async (_label, event) => {
+    const provider = makeProvider({
+      connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      getNetwork: vi.fn().mockResolvedValue({ network: 'mainnet' }),
+    });
+    installProvider(provider);
+    const adapter = new OtsuAdapter();
+    await adapter.connect();
+
+    emitProviderEvent(provider, 'networkChanged', event);
+
+    await expect(adapter.getNetwork()).resolves.toEqual(STANDARD_NETWORKS.devnet);
+  });
+
+  it.each([
+    ['the provider primitive payload', 'rChanged'],
+    ['the legacy object payload', { address: 'rChanged' }],
+  ])('updates account state for %s', async (_label, event) => {
+    const provider = makeProvider({
+      connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+    });
+    installProvider(provider);
+    const adapter = new OtsuAdapter();
+    await adapter.connect();
+    const accountListener = vi.fn();
+    adapter.on('accountChanged', accountListener);
+
+    emitProviderEvent(provider, 'accountChanged', event);
+
+    await expect(adapter.getAccount()).resolves.toMatchObject({ address: 'rChanged' });
+    expect(accountListener).toHaveBeenCalledWith(expect.objectContaining({ address: 'rChanged' }));
   });
 });

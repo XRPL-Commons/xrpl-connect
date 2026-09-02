@@ -112,6 +112,30 @@ in-memory account.
 
 ## Built-in Adapters
 
+### Supported networks and authoritative source
+
+An explicit `network` option is a requirement, not a hint. Adapters reject networks they
+cannot serve with `NETWORK_NOT_SUPPORTED`; when a wallet reports a different live network,
+the connection fails with `NETWORK_MISMATCH`. If `network` is omitted, the behavior below
+applies and the returned `AccountInfo.network` always describes the ledger that will be used
+for transaction signing or submission.
+
+| Adapter       | Supported networks                                                                                                          | When `network` is omitted                                 | Authoritative source                                                       |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Xaman         | XRPL mainnet, testnet, and devnet; Xahau mainnet and testnet; JS Hooks testnet                                              | Uses the network reported by the authorized Xaman session | Xaman user/session network ID and endpoint                                 |
+| Crossmark     | Any XRPL-compatible network for which Crossmark returns complete network metadata                                           | Uses Crossmark's active network                           | Crossmark `NETWORK` request                                                |
+| GemWallet     | Any XRPL-compatible network for which GemWallet returns complete network metadata                                           | Uses GemWallet's active network                           | GemWallet `getNetwork()`                                                   |
+| WalletConnect | XRPL CAIP chains with an unsigned 32-bit network ID; custom networks require a numeric `walletConnectId` and wallet support | Requests XRPL mainnet                                     | Approved session account's CAIP-10 chain                                   |
+| Xyra          | XRPL mainnet and testnet                                                                                                    | Requests testnet and verifies the wallet response         | Xyra connect response                                                      |
+| Otsu          | XRPL mainnet, testnet, and devnet                                                                                           | Uses Otsu's active network                                | Otsu `getNetwork()`                                                        |
+| Ledger        | Standard networks and custom `NetworkInfo` endpoints                                                                        | Uses mainnet                                              | Application configuration; the XRP Ledger hardware app is network-agnostic |
+| MetaMask Snap | XRPL mainnet, testnet, and devnet                                                                                           | Selects and verifies mainnet                              | Snap active-network API after any requested switch                         |
+
+For wallet-selected adapters (Xaman, Crossmark, GemWallet, and Otsu), an explicit request
+must match the live wallet network. Ledger is the exception because the hardware app signs
+network-agnostic transaction bytes; the configured WebSocket endpoint is authoritative for
+autofill and submission.
+
 ### 1. Xaman Adapter
 
 **Package**: `@xrpl-connect/adapter-xaman`
@@ -186,6 +210,7 @@ adapter directly, `xamanAdapter.connect()` can override `returnUrl` for that ses
 
 - **isAvailable()**: Always returns `true`
 - **connect()**: Returns sign-in URL and waits for user approval via polling
+- **Networks**: Verifies the authorized session's live network against any explicit request
 - **Metadata**: Includes Xaman branding and official URL
 - **Event Handling**: Emits `connect`, `disconnect`, `accountChanged` events
 
@@ -209,7 +234,7 @@ Crossmark is a browser extension adapter. It uses injected provider APIs and mes
 - ✅ Available only if extension is installed
 - ✅ No OAuth required
 - ✅ Automatic account detection
-- ✅ Network switching support
+- ✅ Authoritative active-network reporting
 
 #### Constructor
 
@@ -247,7 +272,7 @@ if (available) {
 #### Implementation Details
 
 - **isAvailable()**: Checks if `window.crossmark` (injected by extension) exists
-- **connect()**: Creates a sign-in hash and requests user authorization via extension
+- **connect()**: Requests authorization, then queries and returns Crossmark's active network
 - **sign()**: Uses extension's `signAndWait` method to return signed blob
 - **signAndSubmit()**: Uses extension's `signAndSubmitAndWait` method
 - **signMessage()**: Uses extension's `signMessage` method
@@ -302,6 +327,9 @@ const walletManager = new WalletManager({
 const account = await walletManager.connect('gemwallet');
 ```
 
+GemWallet's active network is queried during connection. An explicit request must match it;
+an omitted request uses the wallet-reported network without assigning a default label.
+
 ---
 
 ### 4. WalletConnect Adapter
@@ -322,7 +350,7 @@ WalletConnect is a multi-wallet connection protocol supporting dozens of mobile 
 - ✅ QR code-based pairing
 - ✅ Mobile-first design
 - ✅ Pre-initialization for faster loading
-- ✅ Supports XRPL mainnet, testnet, devnet, and custom XRPL networks
+- ✅ Supports XRPL mainnet, testnet, devnet, and wallet-supported numeric custom XRPL chains
 
 #### Constructor
 
@@ -440,7 +468,7 @@ console.log('Connected:', account.address);
 #### Implementation Details
 
 - **isAvailable()**: Always returns `true` in browser environments (web-based wallet, no extension dependency)
-- **connect()**: Opens a popup at `wallet.xyra.now/connect` via the Xyra SDK; user selects an account and approves; address and public key are returned via `postMessage`
+- **connect()**: Opens a popup at `wallet.xyra.now/connect`; omitted requests select testnet, and the returned wallet network is verified before account state is stored
 - **sign()**: Opens a popup at `wallet.xyra.now/sign` showing full transaction details and requesting origin; does not submit to the transaction to the network.
   **signAndSubmit()**: Opens a popup at `wallet.xyra.now/sign` showing full transaction details and requesting origin; submit the transaction to the network.
 - **signMessage()**: Opens a popup at `wallet.xyra.now/sign-message` for arbitrary message signing (authentication, proof of ownership)
@@ -469,6 +497,9 @@ Otsu is an MV3 browser extension wallet for XRPL that supports mainnet, testnet,
 - Transaction simulation and risk scanning before user approval
 - Account and network change event forwarding
 - Message signing for authentication
+
+Otsu's live `getNetwork()` response is required during connection. The adapter fails closed
+if that query fails and never substitutes the requested network or mainnet.
 
 #### Constructor
 

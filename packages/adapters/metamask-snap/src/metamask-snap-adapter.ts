@@ -77,6 +77,7 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
   private readonly snapId: string;
   private provider: Eip1193Provider | null = null;
   private currentAccount: AccountInfo | null = null;
+  private connectionGeneration = 0;
 
   constructor(options: MetaMaskSnapAdapterOptions = {}) {
     this.snapId = options.snapId || DEFAULT_SNAP_ID;
@@ -137,8 +138,11 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
    * Connect to the XRPL Snap via MetaMask
    */
   async connect(options?: ConnectOptions): Promise<AccountInfo> {
+    const generation = ++this.connectionGeneration;
     try {
+      const network = this.resolveSupportedNetwork(options?.network);
       const available = await this.isAvailable();
+      if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
       if (!available) {
         throw createWalletError.notInstalled(this.name);
       }
@@ -147,24 +151,26 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
       if (!provider) {
         throw createWalletError.notInstalled(this.name);
       }
-      const network = resolveNetwork(options?.network);
 
       // Request snap installation/connection
       await provider.request({
         method: 'wallet_requestSnaps',
         params: { [this.snapId]: {} },
       });
+      if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
 
       // A failed reconnect must not leave an old account active after the Snap
       // has accepted a new network or account selection.
       this.currentAccount = null;
       const appliedNetwork = await this.selectNetwork(network);
+      if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
 
       // Get account info from the snap
       const accountResponse = (await this.invokeSnap('xrpl_getAccount')) as {
         account: string;
         publicKey: string;
       };
+      if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
 
       if (!accountResponse?.account) {
         throw new Error('Failed to get account from MetaMask Snap');
@@ -194,6 +200,7 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
    * Disconnect from the snap
    */
   async disconnect(): Promise<void> {
+    this.connectionGeneration += 1;
     this.currentAccount = null;
   }
 
@@ -220,7 +227,7 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
     if (!this.currentAccount) {
       throw createWalletError.notConnected();
     }
-    const applied = await this.selectNetwork(resolveNetwork(network));
+    const applied = await this.selectNetwork(this.resolveSupportedNetwork(network));
     this.currentAccount.network = applied;
     return applied;
   }
@@ -234,6 +241,7 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
     }
 
     try {
+      await this.assertActiveNetwork();
       const tx = {
         ...transaction,
         Account: transaction.Account || this.currentAccount.address,
@@ -249,6 +257,9 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
         tx_blob: result.tx_blob,
       };
     } catch (error) {
+      if (isWalletError(error)) {
+        throw error;
+      }
       if (error instanceof Error && error.message.toLowerCase().includes('reject')) {
         throw createWalletError.signRejected();
       }
@@ -265,6 +276,7 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
     }
 
     try {
+      await this.assertActiveNetwork();
       const tx = {
         ...transaction,
         Account: transaction.Account || this.currentAccount.address,
@@ -365,12 +377,32 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
     if (networkId && isStandardNetworkId(networkId)) {
       return STANDARD_NETWORKS[networkId];
     }
-    return {
-      id: `snap-chain-${snapNetwork.chainId}`,
-      name: snapNetwork.name,
-      wss: '',
-      rpc: snapNetwork.nodeUrl,
-    };
+    throw createWalletError.networkNotSupported(`snap-chain-${snapNetwork.chainId}`, this.name);
+  }
+
+  private resolveSupportedNetwork(network?: NetworkConfig): NetworkInfo {
+    if (typeof network === 'string' && !isStandardNetworkId(network)) {
+      throw createWalletError.networkNotSupported(network, this.name);
+    }
+    const resolved = resolveNetwork(network);
+    if (!isStandardNetworkId(resolved.id)) {
+      throw createWalletError.networkNotSupported(resolved.id, this.name);
+    }
+    return resolved;
+  }
+
+  private async assertActiveNetwork(): Promise<void> {
+    if (!this.currentAccount) {
+      throw createWalletError.notConnected();
+    }
+    const account = this.currentAccount;
+    const activeNetwork = await this.readActiveNetwork();
+    if (this.currentAccount !== account) {
+      throw createWalletError.notConnected();
+    }
+    if (activeNetwork.id !== this.currentAccount.network.id) {
+      throw createWalletError.networkMismatch(this.currentAccount.network.id, activeNetwork.id);
+    }
   }
 
   private async selectNetwork(network: NetworkInfo): Promise<NetworkInfo> {

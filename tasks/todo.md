@@ -60,6 +60,77 @@
 
 ---
 
+# Issue #179
+
+## Issue summary
+
+- Explicit network requests can currently be silently substituted or incorrectly attached to an account even when a wallet is signing on another ledger.
+- Adapters must reject unsupported explicit networks with `NETWORK_NOT_SUPPORTED` and use a wallet-reported live network whenever their provider exposes one.
+- `WalletManager` must reject requested-versus-returned mismatches before attaching listeners, committing account state, or persisting a session; an omitted request must preserve the adapter's authoritative network.
+- Signing, submission, regression coverage, and the bundled-adapter support documentation must all reflect the authoritative connected network.
+
+## Plan
+
+- [x] Validate GitHub access, refresh `origin/develop`, and confirm issue state, lock state, comments, linked PRs, and acceptance criteria.
+- [x] Create a clean isolated worktree from the refreshed default branch and review applicable repository guidance and lessons.
+- [x] Trace core connection state, typed network errors, and every bundled adapter's requested/reported/signing network behavior.
+- [x] Define the minimal authoritative-network contract for explicit standard/custom requests and omitted network options.
+- [x] Implement manager validation before state/session commit and correct adapters that substitute or mislabel requested networks.
+- [x] Add focused core and adapter regressions for mainnet, testnet, devnet, custom/unknown identifiers, omitted requests, and wallet/request mismatches.
+- [x] Document the supported network set and omitted-network behavior of each bundled adapter.
+- [x] Run formatting, type checks, focused tests, builds, repository verification, and `git diff --check` appropriate to the final diff.
+- [x] Review the final behavior and diff against every acceptance criterion and record results below.
+- [x] Commit only intentional files, push the branch, open the PR, and verify remote PR metadata/checks.
+
+## Review
+
+- `WalletManager` now validates an explicit call-level or configured network before reconnect serialization, listeners, state commit, or persistence. Exact IDs and equivalent CAIP chain IDs are accepted, conflicting IDs are rejected with `NETWORK_MISMATCH`, and omitted requests preserve the adapter-reported live network.
+- Xaman, Crossmark, GemWallet, WalletConnect, Xyra, Otsu, Ledger, and MetaMask Snap now expose explicit supported-network behavior without silent substitution. Wallet-reported adapters fail closed when the live network is missing, unsupported, or different from the request.
+- Transaction signing/submission revalidates authoritative live state where the wallet can change networks independently; Xaman validates the selected rail and returned signed payload, WalletConnect binds requests to the approved CAIP chain, and Ledger uses the configured endpoint as authority for autofill/submission.
+- Regression coverage spans standard and custom networks, omitted requests, request/live mismatches, malformed provider data, contradictory CAIP metadata, network changes before signing, persistence ordering, and stale connection races. Independent review findings in those edge cases were corrected before final verification.
+- The affected core/adapter matrix passes 395 tests. `pnpm lint`, `pnpm format:check`, `pnpm docs:snapshot:check`, the full `pnpm test` build-and-test run, and `git diff --check` pass on the final tree.
+
+## Fix PR #186 review findings
+
+- [x] Reject contradictory standard network IDs and CAIP identifiers before manager state commit.
+- [x] Prevent Xaman from committing a connection after disconnect during live-network resolution.
+- [x] Track or fail closed on WalletConnect account and chain session changes before signing.
+- [x] Normalize Otsu's real primitive account/network event payloads and preserve object compatibility.
+- [x] Add focused regressions that reproduce all four reviewed defects.
+- [x] Run focused and repository-level verification, review the final diff, commit, push, and verify the remote PR head.
+
+### Fix review
+
+- Standard XRPL IDs now derive their canonical CAIP chain and reject contradictory request or adapter metadata while custom aliases with the same explicit chain remain compatible.
+- Xaman rechecks its connection generation after the authoritative network query, so a completed lookup cannot revive state cleared by `disconnect()`.
+- WalletConnect reconciles `accountsChanged`, `chainChanged`, and `session_update`, emits adapter state events, removes all four session handlers, and closes invalid authorization before any signing request.
+- Otsu accepts the provider's primitive account/network events and the legacy object shape, retaining its existing malformed-network error behavior.
+- The four focused suites pass 247 tests. `pnpm test`, `pnpm lint`, `pnpm format:check`, `pnpm docs:snapshot:check`, and `git diff --check` pass on the final tree.
+
+## Rebase PR #186 for merge
+
+- [x] Rebase the PR branch onto current `origin/develop` and resolve overlapping changelog and Crossmark test changes without losing either branch's coverage.
+- [x] Review the integrated cumulative diff and verify no adjacent source or task-history changes were dropped.
+- [x] Run focused conflict-area checks plus full repository tests, lint, formatting, documentation snapshot, and diff validation.
+- [x] Push the rewritten branch with lease protection and verify the exact remote head, mergeability, and CI state.
+
+### Rebase review
+
+- Rebased onto `origin/develop` at `a58eef5`, retaining the #178/#179 changelog intent, the secure-random/authoritative-network Crossmark coverage, and both #180/#179 task histories.
+- The combined Crossmark test initially exposed a missing live-network response in the upstream secure-random success case; the integrated fixture now supplies both required dependencies and all 30 Crossmark tests pass.
+- The later Ledger multisigning merge exposed a stale fake-key custom-network fixture; it now performs a valid single-sign submission, preserving both custom endpoint coverage and Ledger signature verification. All 45 Ledger tests pass.
+- The old-to-new commit range preserves both PR behavior commits; the #179 release note now sits under `Unreleased` rather than the already dated `1.0.0-rc.1` section.
+- `pnpm test`, `pnpm lint`, `pnpm format:check`, `pnpm docs:snapshot:check`, and `git diff --check` pass on the rebased tree.
+
+## Verify PR #186 commit signatures
+
+- [x] Record the signature-verification correction and confirm the configured GPG key, commit identity, and GitHub key registration agree.
+- [x] Rewrite every PR commit with a fresh GPG signature without changing the cumulative tree.
+- [ ] Force-push with an exact lease and verify every remote commit is cryptographically `verified` by GitHub.
+- [ ] Confirm the rewritten head remains mergeable and all required CI checks pass.
+
+---
+
 # Issue #170
 
 ## Issue summary

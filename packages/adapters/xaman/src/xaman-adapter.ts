@@ -24,7 +24,13 @@ import {
   WalletCapabilities,
   WalletConnectionOptionsById,
 } from '@xrpl-connect/core';
-import { createWalletError, createLogger, isWalletError, resolveNetwork } from '@xrpl-connect/core';
+import {
+  createWalletError,
+  createLogger,
+  isWalletError,
+  resolveNetwork,
+  WalletErrorCode,
+} from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
 
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
@@ -209,7 +215,24 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
         new Error('Wait for the active Xaman operation to finish before restoring state.')
       );
     }
-    if (this.currentAccount && this.clientApiKey === apiKey) return this.currentAccount;
+    const requestedNetwork =
+      options?.network === undefined ? undefined : this.resolveRequestedNetwork(options.network);
+    const requestedXamanNetwork = requestedNetwork
+      ? this.resolveXamanNetwork(requestedNetwork)
+      : undefined;
+
+    if (this.currentAccount && this.clientApiKey === apiKey) {
+      if (requestedXamanNetwork) {
+        const currentXamanNetwork = this.resolveXamanNetwork(this.currentAccount.network);
+        if (currentXamanNetwork.networkId !== requestedXamanNetwork.networkId) {
+          throw createWalletError.networkMismatch(
+            requestedXamanNetwork.forceNetwork,
+            currentXamanNetwork.forceNetwork
+          );
+        }
+      }
+      return this.currentAccount;
+    }
     if (this.client) await this.disconnect();
 
     const generation = ++this.connectionGeneration;
@@ -235,21 +258,14 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
         return null;
       }
 
-      let resolvedNetwork: NetworkInfo;
-      if (options?.network) {
-        resolvedNetwork = resolveNetwork(options.network);
-        this.resolveXamanNetwork(resolvedNetwork);
-      } else {
-        const [endpoint, networkId] = await Promise.all([
-          client.user.networkEndpoint,
-          client.user.networkId,
-        ]);
-        if (!endpoint || networkId === undefined) {
-          throw new Error(
-            'Unable to determine network from Xaman. Make sure the API key and network are correct.'
-          );
-        }
-        resolvedNetwork = this.parseNetwork(endpoint, networkId);
+      const resolvedNetwork = await this.getAuthoritativeNetwork(client);
+      const resolvedXamanNetwork = this.resolveXamanNetwork(resolvedNetwork);
+      if (requestedXamanNetwork) {
+        this.validateXamanNetwork(
+          requestedXamanNetwork,
+          resolvedXamanNetwork.networkId,
+          resolvedXamanNetwork.forceNetwork
+        );
       }
 
       if (generation !== this.connectionGeneration || this.client !== client) {
@@ -341,13 +357,17 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
       );
     }
 
-    const network: NetworkInfo = options?.network
-      ? resolveNetwork(options.network)
-      : this.currentAccount?.network || resolveNetwork();
-    const xamanNetwork = this.resolveXamanNetwork(network);
+    const requestedNetwork =
+      options?.network === undefined ? undefined : this.resolveRequestedNetwork(options.network);
+    const requestedXamanNetwork = requestedNetwork
+      ? this.resolveXamanNetwork(requestedNetwork)
+      : undefined;
     if (this.currentAccount && this.client && this.clientApiKey === apiKey) {
       const currentXamanNetwork = this.resolveXamanNetwork(this.currentAccount.network);
-      if (currentXamanNetwork.networkId === xamanNetwork.networkId) {
+      if (
+        !requestedXamanNetwork ||
+        currentXamanNetwork.networkId === requestedXamanNetwork.networkId
+      ) {
         this.activeCallbacks = {
           onQRCode: options?.onQRCode,
           onDeepLink: options?.onDeepLink,
@@ -411,6 +431,18 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
       logger.info('Connection phase: authorization successful');
 
       const account = authResult.me.account;
+      const network = await this.getAuthoritativeNetwork(client, authResult.me);
+      if (generation !== this.connectionGeneration || this.client !== client) {
+        throw new Error('Xaman connection attempt was superseded or disconnected');
+      }
+      const xamanNetwork = this.resolveXamanNetwork(network);
+      if (requestedXamanNetwork) {
+        this.validateXamanNetwork(
+          requestedXamanNetwork,
+          xamanNetwork.networkId,
+          xamanNetwork.forceNetwork
+        );
+      }
 
       this.currentAccount = {
         address: account,
@@ -842,6 +874,68 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
       wss: endpoint,
       walletConnectId: `xrpl:${networkId}`,
     };
+  }
+
+  private resolveRequestedNetwork(
+    network: ConnectOptions<XamanConnectOptions>['network']
+  ): NetworkInfo {
+    try {
+      return resolveNetwork(network);
+    } catch (error) {
+      if (isWalletError(error) && error.code !== WalletErrorCode.UNKNOWN_ERROR) throw error;
+      throw createWalletError.networkNotSupported(String(network), this.name);
+    }
+  }
+
+  private async getAuthoritativeNetwork(
+    client: Xumm,
+    authorizedMe?: {
+      networkEndpoint?: unknown;
+      networkId?: unknown;
+      networkType?: unknown;
+    }
+  ): Promise<NetworkInfo> {
+    const user = client.user as unknown as {
+      networkEndpoint?: Promise<unknown>;
+      networkId?: Promise<unknown>;
+      networkType?: Promise<unknown>;
+    };
+    const [userEndpoint, userNetworkId, userNetworkType] = await Promise.all([
+      user.networkEndpoint,
+      user.networkId,
+      user.networkType,
+    ]);
+    const endpoint =
+      typeof authorizedMe?.networkEndpoint === 'string' && authorizedMe.networkEndpoint.length > 0
+        ? authorizedMe.networkEndpoint
+        : typeof userEndpoint === 'string' && userEndpoint.length > 0
+          ? userEndpoint
+          : undefined;
+    const networkId =
+      typeof authorizedMe?.networkId === 'number'
+        ? authorizedMe.networkId
+        : typeof userNetworkId === 'number'
+          ? userNetworkId
+          : undefined;
+    const networkType =
+      typeof authorizedMe?.networkType === 'string'
+        ? authorizedMe.networkType
+        : typeof userNetworkType === 'string'
+          ? userNetworkType
+          : undefined;
+
+    if (!endpoint || networkId === undefined) {
+      throw new Error(
+        'Unable to determine network from Xaman. Make sure the API key and network are correct.'
+      );
+    }
+
+    const network = this.parseNetwork(endpoint, networkId);
+    const xamanNetwork = this.resolveXamanNetwork(network);
+    if (networkType !== undefined) {
+      this.validateXamanNetwork(xamanNetwork, networkId, networkType);
+    }
+    return network;
   }
 
   /**

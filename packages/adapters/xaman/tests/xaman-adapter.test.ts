@@ -10,6 +10,7 @@ const mockXummInstance = {
     account: Promise.resolve<string | undefined>(undefined),
     networkEndpoint: Promise.resolve<string | undefined>(undefined),
     networkId: Promise.resolve<number | undefined>(undefined),
+    networkType: Promise.resolve<string | undefined>(undefined),
   },
   payload: {
     createAndSubscribe: vi.fn(),
@@ -177,20 +178,41 @@ function confirmedCancellation() {
   };
 }
 
+function setLiveXamanNetwork(network: NetworkConfig = 'mainnet') {
+  const networkId =
+    typeof network === 'string'
+      ? { mainnet: 0, testnet: 1, devnet: 2 }[network]
+      : Number(network.walletConnectId?.slice('xrpl:'.length));
+  const networkType = {
+    0: 'MAINNET',
+    1: 'TESTNET',
+    2: 'DEVNET',
+    21337: 'XAHAU',
+    21338: 'XAHAUTESTNET',
+    31338: 'JSHOOKS',
+  }[networkId];
+  mockXummInstance.user.networkEndpoint = Promise.resolve(
+    typeof network === 'string' ? 'wss://xrplcluster.com' : network.wss
+  );
+  mockXummInstance.user.networkId = Promise.resolve(networkId);
+  mockXummInstance.user.networkType = Promise.resolve(networkType);
+}
+
 beforeEach(() => {
   mockXummInstance.authorize.mockReset();
   mockXummInstance.ping.mockReset();
   mockXummInstance.logout.mockReset();
   mockXummInstance.user.account = Promise.resolve(undefined);
-  mockXummInstance.user.networkEndpoint = Promise.resolve(undefined);
-  mockXummInstance.user.networkId = Promise.resolve(undefined);
+  setLiveXamanNetwork();
   mockXummInstance.payload.createAndSubscribe.mockReset();
   mockXummInstance.payload.create.mockReset();
   mockXummInstance.payload.get.mockReset();
   mockXummInstance.payload.cancel.mockReset();
+  mockXummInstance.user.networkType = Promise.resolve(undefined);
 });
 
 async function signedAdapter(network: NetworkConfig = 'mainnet') {
+  setLiveXamanNetwork(network);
   mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
   const adapter = new XamanAdapter({ apiKey: 'test-key' });
   // Without an onQRCode callback, openSignWindow() falls back to window.open(),
@@ -425,6 +447,68 @@ describe('XamanAdapter.connect', () => {
     expect(account.network.id).toBe('mainnet');
   });
 
+  it('uses Xaman live network metadata when the network is omitted', async () => {
+    setLiveXamanNetwork('testnet');
+    mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
+    const adapter = new XamanAdapter({ apiKey: 'test-key' });
+
+    const account = await adapter.connect();
+
+    expect(account.network).toMatchObject({ id: 'testnet', walletConnectId: 'xrpl:1' });
+  });
+
+  it('uses network metadata returned by authorization when the user facade is incomplete', async () => {
+    mockXummInstance.user.networkEndpoint = Promise.resolve(undefined);
+    mockXummInstance.user.networkId = Promise.resolve(undefined);
+    mockXummInstance.user.networkType = Promise.resolve(undefined);
+    mockXummInstance.authorize.mockResolvedValue({
+      me: {
+        account: CONNECTED_ACCOUNT,
+        networkEndpoint: 'wss://s.altnet.rippletest.net:51233/',
+        networkId: 1,
+        networkType: 'TESTNET',
+      },
+    });
+    const adapter = new XamanAdapter({ apiKey: 'test-key' });
+
+    const account = await adapter.connect({ network: 'testnet' });
+
+    expect(account.network).toMatchObject({ id: 'testnet', walletConnectId: 'xrpl:1' });
+  });
+
+  it('rejects an explicit network that differs from Xaman live metadata before caching', async () => {
+    setLiveXamanNetwork('testnet');
+    mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
+    const adapter = new XamanAdapter({ apiKey: 'test-key' });
+
+    await expect(adapter.connect({ network: 'mainnet' })).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
+  it('does not label a connection when Xaman omits live network metadata', async () => {
+    mockXummInstance.user.networkEndpoint = Promise.resolve(undefined);
+    mockXummInstance.user.networkId = Promise.resolve(undefined);
+    mockXummInstance.user.networkType = Promise.resolve(undefined);
+    mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
+    const adapter = new XamanAdapter({ apiKey: 'test-key' });
+
+    await expect(adapter.connect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
+  it('maps an unknown requested network to NETWORK_NOT_SUPPORTED', async () => {
+    const adapter = new XamanAdapter({ apiKey: 'test-key' });
+
+    await expect(adapter.connect({ network: 'sidechain' as NetworkConfig })).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_NOT_SUPPORTED,
+    });
+    expect(mockXummInstance.authorize).not.toHaveBeenCalled();
+  });
+
   it('throws a configuration error when no API key is given', async () => {
     const adapter = new XamanAdapter();
     await expect(adapter.connect()).rejects.toMatchObject({
@@ -510,6 +594,27 @@ describe('XamanAdapter.connect', () => {
     });
     await disconnectPromise;
     expect(mockXummInstance.logout).toHaveBeenCalledTimes(2);
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
+  it('does not restore a connection whose live network lookup finishes after disconnect', async () => {
+    let resolveNetworkEndpoint!: (endpoint: string) => void;
+    mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
+    mockXummInstance.user.networkEndpoint = new Promise<string>((resolve) => {
+      resolveNetworkEndpoint = resolve;
+    });
+    mockXummInstance.logout.mockResolvedValue(undefined);
+    const adapter = new XamanAdapter({ apiKey: 'test-key' });
+
+    const connectPromise = adapter.connect();
+    await vi.waitFor(() => expect(mockXummInstance.authorize).toHaveBeenCalledTimes(1));
+    const disconnectPromise = adapter.disconnect();
+    resolveNetworkEndpoint('wss://xrplcluster.com');
+
+    await expect(connectPromise).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+    await disconnectPromise;
     await expect(adapter.getAccount()).resolves.toBeNull();
   });
 

@@ -15,6 +15,7 @@ import type {
   SupportsFetchAccount,
   AccountInfo,
   ConnectOptions,
+  StandardNetworkId,
   NetworkInfo,
   Transaction,
   SignedTransaction,
@@ -24,6 +25,7 @@ import type {
 } from '@xrpl-connect/core';
 import {
   createWalletError,
+  isWalletError,
   isStandardNetworkId,
   STANDARD_NETWORKS,
   createLogger,
@@ -98,16 +100,19 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
    * @returns Account info with address and network
    */
   async connect(options?: ConnectOptions): Promise<AccountInfo> {
-    const provider = this.getProvider();
-
     try {
+      // Validate the requested network before touching the provider. Otsu only
+      // supports the canonical XRPL mainnet, testnet, and devnet IDs.
+      const requestedNetwork = this.resolveRequestedNetwork(options?.network);
+      const provider = this.getProvider();
+
       logger.debug('Connecting to Otsu Wallet');
 
       const response = await provider.connect({
         scopes: ['read', 'sign', 'submit', 'switchNetwork'],
       });
 
-      const networkInfo = await this.fetchNetworkInfo(provider, options?.network);
+      const networkInfo = await this.fetchNetworkInfo(provider, requestedNetwork);
 
       this.currentAccount = {
         address: response.address,
@@ -230,10 +235,8 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
    * an xrpl-connect NetworkInfo object.
    */
   async getNetwork(): Promise<NetworkInfo> {
-    if (this.currentAccount) {
-      return this.currentAccount.network;
-    }
-    return STANDARD_NETWORKS.mainnet;
+    if (!this.currentAccount) throw createWalletError.notConnected();
+    return this.currentAccount.network;
   }
 
   // ==================== Signing Operations ====================
@@ -260,6 +263,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
         type: (transaction as Record<string, unknown>).TransactionType,
       });
 
+      await this.assertCurrentNetwork(provider);
       const response = await provider.signTransaction(
         transaction as unknown as Record<string, unknown>
       );
@@ -300,6 +304,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
         type: (transaction as Record<string, unknown>).TransactionType,
       });
 
+      await this.assertCurrentNetwork(provider);
       const response = await provider.signAndSubmit(
         transaction as unknown as Record<string, unknown>
       );
@@ -403,39 +408,65 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
    */
   private async fetchNetworkInfo(
     provider: OtsuProvider,
-    networkConfig?: string | NetworkInfo
+    requestedNetwork?: StandardNetworkId
   ): Promise<NetworkInfo> {
-    try {
-      const { network } = await provider.getNetwork();
-      return this.toNetworkInfo(network);
-    } catch {
-      // If getNetwork fails, use the requested network config
+    const response: unknown = await provider.getNetwork();
+    const network =
+      response && typeof response === 'object' && 'network' in response
+        ? (response as { network?: unknown }).network
+        : undefined;
+    const networkInfo = this.toNetworkInfo(network);
+
+    if (requestedNetwork && networkInfo.id !== requestedNetwork) {
+      throw createWalletError.networkMismatch(requestedNetwork, networkInfo.id);
     }
 
-    // Use the requested network or default to mainnet
-    if (networkConfig) {
-      if (typeof networkConfig === 'string' && isStandardNetworkId(networkConfig)) {
-        return STANDARD_NETWORKS[networkConfig];
-      }
-      if (typeof networkConfig === 'object') {
-        return networkConfig;
-      }
-    }
-
-    return STANDARD_NETWORKS.mainnet;
+    return networkInfo;
   }
 
-  private toNetworkInfo(network: string): NetworkInfo {
-    if (isStandardNetworkId(network)) {
+  private resolveRequestedNetwork(
+    networkConfig?: string | NetworkInfo
+  ): StandardNetworkId | undefined {
+    if (networkConfig === undefined) return undefined;
+
+    const networkId = typeof networkConfig === 'string' ? networkConfig : networkConfig.id;
+    if (!isStandardNetworkId(networkId)) {
+      throw createWalletError.networkNotSupported(networkId, this.name);
+    }
+
+    return networkId;
+  }
+
+  private toNetworkInfo(network: unknown): NetworkInfo {
+    if (typeof network === 'string' && isStandardNetworkId(network)) {
       return STANDARD_NETWORKS[network];
     }
 
-    const lower = network.toLowerCase();
-    if (lower.includes('main')) return STANDARD_NETWORKS.mainnet;
-    if (lower.includes('test')) return STANDARD_NETWORKS.testnet;
-    if (lower.includes('dev')) return STANDARD_NETWORKS.devnet;
+    throw createWalletError.networkNotSupported(String(network), this.name);
+  }
 
-    throw new Error(`Unsupported Otsu network: ${network}`);
+  /**
+   * Verify that the provider is still on the network represented by the
+   * cached account before asking it to sign. Otsu's signing methods do not
+   * accept a network argument, so this live check prevents signing after an
+   * unobserved wallet network switch.
+   */
+  private async assertCurrentNetwork(provider: OtsuProvider): Promise<void> {
+    if (!this.currentAccount) throw createWalletError.notConnected();
+    const generation = this.connectionGeneration;
+
+    const response: unknown = await provider.getNetwork();
+    if (generation !== this.connectionGeneration || !this.currentAccount) {
+      throw createWalletError.notConnected();
+    }
+    const network =
+      response && typeof response === 'object' && 'network' in response
+        ? (response as { network?: unknown }).network
+        : undefined;
+    const networkInfo = this.toNetworkInfo(network);
+    if (networkInfo.id !== this.currentAccount.network.id) {
+      throw createWalletError.networkMismatch(this.currentAccount.network.id, networkInfo.id);
+    }
   }
 
   /**
@@ -443,10 +474,11 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
    */
   private setupProviderListeners(provider: OtsuProvider): void {
     const accountHandler = (data: unknown) => {
-      if (this.currentAccount && data && typeof data === 'object' && 'address' in data) {
+      const address = this.getProviderEventValue(data, 'address');
+      if (this.currentAccount && typeof address === 'string' && address.length > 0) {
         this.currentAccount = {
           ...this.currentAccount,
-          address: (data as { address: string }).address,
+          address,
         };
         this.stateRevision += 1;
         this.emit('accountChanged', this.currentAccount);
@@ -454,11 +486,17 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
     };
 
     const networkHandler = (data: unknown) => {
-      if (this.currentAccount && data && typeof data === 'object' && 'network' in data) {
-        const networkId = (data as { network: string }).network;
-        const networkInfo = isStandardNetworkId(networkId)
-          ? STANDARD_NETWORKS[networkId]
-          : this.currentAccount.network;
+      if (this.currentAccount) {
+        const networkId = this.getProviderEventValue(data, 'network');
+        let networkInfo: NetworkInfo;
+        try {
+          networkInfo = this.toNetworkInfo(networkId);
+        } catch (error) {
+          const walletError = this.mapError(error, 'connect');
+          this.emit('error', walletError);
+          return;
+        }
+
         this.currentAccount = {
           ...this.currentAccount,
           network: networkInfo,
@@ -482,6 +520,14 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
     this.providerListeners.set('accountChanged', accountHandler);
     this.providerListeners.set('networkChanged', networkHandler);
     this.providerListeners.set('disconnected', disconnectHandler);
+  }
+
+  private getProviderEventValue(data: unknown, key: 'address' | 'network'): unknown {
+    if (typeof data === 'string') return data;
+    if (data && typeof data === 'object' && key in data) {
+      return (data as Record<string, unknown>)[key];
+    }
+    return undefined;
   }
 
   /**
@@ -517,6 +563,8 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
     error: unknown,
     operation: 'connect' | 'sign'
   ): ReturnType<typeof createWalletError.connectionFailed> {
+    if (isWalletError(error)) return error;
+
     if (!(error instanceof Error)) {
       if (operation === 'connect') {
         return createWalletError.connectionFailed('Otsu Wallet', new Error(String(error)));

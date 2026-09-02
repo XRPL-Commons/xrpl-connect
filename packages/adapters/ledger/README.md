@@ -55,6 +55,14 @@ const account = await walletManager.connect('ledger');
 console.log('Connected:', account.address);
 ```
 
+### Network selection
+
+The Ledger XRP app is network-agnostic and cannot report an active ledger. XRPL Connect
+therefore treats the application-supplied `network` as authoritative: standard mainnet,
+testnet, and devnet options are supported, as are custom `NetworkInfo` objects with a
+WebSocket endpoint. If the option is omitted, mainnet is used. The selected endpoint is used
+for transaction autofill and submission; the hardware device only signs the resulting bytes.
+
 ### Sign a Transaction
 
 ```typescript

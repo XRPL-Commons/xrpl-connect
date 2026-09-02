@@ -21,6 +21,7 @@ import type {
   SupportsPreInitialize,
   WalletCapabilities,
   WalletConnectionOptionsById,
+  WalletAdapterEvent,
 } from '@xrpl-connect/core';
 import {
   createWalletError,
@@ -28,7 +29,10 @@ import {
   createLogger,
   getErrorMessage,
   isMobile,
+  isStandardNetworkId,
   isWalletError,
+  STANDARD_NETWORKS,
+  WalletErrorCode,
 } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
 import { DISCONNECT_REASONS, DEFAULT_METADATA, LOGGING, XRPL_NAMESPACE } from './constants';
@@ -104,6 +108,9 @@ type ConnectionProposal = {
 type PendingConnection = ConnectionProposal & { uri: string };
 
 type SessionLifecycleEvent = { topic: string };
+type SessionEvent = SignClientTypes.EventArguments['session_event'];
+type SessionUpdateEvent = SignClientTypes.EventArguments['session_update'];
+type AdapterEventListener = (data?: unknown) => void;
 
 function isValidXrplChainId(chainId: string): boolean {
   const match = chainId.match(/^xrpl:(0|[1-9]\d*)$/);
@@ -114,15 +121,47 @@ function isValidXrplChainId(chainId: string): boolean {
 }
 
 function getXrplChainId(network: NetworkInfo): string {
-  const chainId = network.walletConnectId ?? `xrpl:${network.id}`;
+  const chainId = network.walletConnectId;
+  if (chainId === undefined) {
+    throw createWalletError.networkNotSupported(network.id, 'WalletConnect');
+  }
   if (!isValidXrplChainId(chainId)) {
-    throw new Error(`Invalid WalletConnect XRPL chain ID: ${chainId}`);
+    throw createWalletError.networkNotSupported(chainId, 'WalletConnect');
+  }
+  if (
+    isStandardNetworkId(network.id) &&
+    chainId !== STANDARD_NETWORKS[network.id].walletConnectId
+  ) {
+    throw createWalletError.networkNotSupported(chainId, 'WalletConnect');
   }
   return chainId;
 }
 
-function selectAccountForChain(accounts: string[], requestedChainId: string): string {
+function getApprovedXrplChainIds(session: SessionTypes.Struct): string[] {
+  const chains = session.namespaces[XRPL_NAMESPACE.KEY]?.chains;
+  if (chains === undefined) return [];
+  if (
+    !Array.isArray(chains) ||
+    !chains.every((chain): chain is string => typeof chain === 'string')
+  ) {
+    throw new Error('WalletConnect returned malformed XRPL session chain references');
+  }
+  if (!chains.every(isValidXrplChainId)) {
+    throw new Error('WalletConnect returned invalid XRPL session chain references');
+  }
+  return [...new Set(chains)];
+}
+
+function selectAccountForChain(
+  accounts: string[],
+  requestedChainId: string,
+  approvedChainIds: string[] = []
+): string {
   if (accounts.length === 0) {
+    const approvedChainId = approvedChainIds[0];
+    if (approvedChainId && approvedChainId !== requestedChainId) {
+      throw createWalletError.networkMismatch(requestedChainId, approvedChainId);
+    }
     throw new Error('No accounts returned from WalletConnect session');
   }
 
@@ -153,8 +192,18 @@ function selectAccountForChain(accounts: string[], requestedChainId: string): st
     };
   });
 
+  if (approvedChainIds.length > 0 && !approvedChainIds.includes(requestedChainId)) {
+    throw createWalletError.networkMismatch(requestedChainId, approvedChainIds[0]);
+  }
+
   const matchingAccount = parsedAccounts.find((account) => account.chainId === requestedChainId);
   if (!matchingAccount) {
+    const actualChainId =
+      parsedAccounts.find((account) => account.chainId !== requestedChainId)?.chainId ||
+      approvedChainIds.find((chainId) => chainId !== requestedChainId);
+    if (actualChainId) {
+      throw createWalletError.networkMismatch(requestedChainId, actualChainId);
+    }
     throw new Error(`WalletConnect did not return an account for ${requestedChainId}`);
   }
 
@@ -207,6 +256,9 @@ export class WalletConnectAdapter
   private eventListenerClient: SignClient | null = null;
   private sessionDeleteHandler: ((event: SessionLifecycleEvent) => void) | null = null;
   private sessionExpireHandler: ((event: SessionLifecycleEvent) => void) | null = null;
+  private sessionEventHandler: ((event: SessionEvent) => void) | null = null;
+  private sessionUpdateHandler: ((event: SessionUpdateEvent) => void) | null = null;
+  private listeners = new Map<WalletAdapterEvent, Set<AdapterEventListener>>();
 
   constructor(options: WalletConnectAdapterOptions = {}) {
     this.options = options;
@@ -396,7 +448,7 @@ export class WalletConnectAdapter
     }
 
     try {
-      const networkInfo = resolveNetwork(network);
+      const networkInfo = this.resolveRequestedNetwork(network);
       const requestedChainId = getXrplChainId(networkInfo);
       const existingPending = this.pendingConnection;
 
@@ -504,9 +556,10 @@ export class WalletConnectAdapter
     let network: NetworkInfo;
     let requestedChainId: string;
     try {
-      network = resolveNetwork(options?.network);
+      network = this.resolveRequestedNetwork(options?.network);
       requestedChainId = getXrplChainId(network);
     } catch (error) {
+      if (isWalletError(error)) throw error;
       throw createWalletError.connectionFailed(this.name, error as Error);
     }
 
@@ -693,7 +746,11 @@ export class WalletConnectAdapter
 
       let address: string;
       try {
-        address = selectAccountForChain(session.namespaces.xrpl?.accounts || [], requestedChainId);
+        address = selectAccountForChain(
+          session.namespaces.xrpl?.accounts || [],
+          requestedChainId,
+          getApprovedXrplChainIds(session)
+        );
       } catch (error) {
         await this.closeApprovedSession(client, session, connectionAttempt);
         throw error;
@@ -848,6 +905,18 @@ export class WalletConnectAdapter
     return this.currentAccount.network;
   }
 
+  on(event: WalletAdapterEvent, callback: AdapterEventListener): void {
+    const listeners = this.listeners.get(event) ?? new Set<AdapterEventListener>();
+    listeners.add(callback);
+    this.listeners.set(event, listeners);
+  }
+
+  off(event: WalletAdapterEvent, callback: AdapterEventListener): void {
+    const listeners = this.listeners.get(event);
+    listeners?.delete(callback);
+    if (listeners?.size === 0) this.listeners.delete(event);
+  }
+
   /**
    * Send a WalletConnect sign transaction request
    */
@@ -856,6 +925,13 @@ export class WalletConnectAdapter
     submit: boolean
   ): Promise<WalletConnectSignedTxJson> {
     if (!this.client || !this.session || !this.currentAccount) {
+      throw createWalletError.notConnected();
+    }
+
+    try {
+      this.assertSessionAuthorization(this.session, this.currentAccount);
+    } catch (error) {
+      this.failClosed(error);
       throw createWalletError.notConnected();
     }
 
@@ -954,18 +1030,41 @@ export class WalletConnectAdapter
 
     const client = this.client;
     const session = this.session;
+    const isCurrentSession = (topic: string): boolean =>
+      topic === session.topic && this.client === client && this.session?.topic === session.topic;
     const cleanupSession = (event: SessionLifecycleEvent): void => {
-      if (event.topic === session.topic && this.client === client && this.session === session) {
+      if (isCurrentSession(event.topic)) {
         this.cleanup();
+        this.emit('disconnect');
+      }
+    };
+    const handleSessionEvent = (event: SessionEvent): void => {
+      if (!isCurrentSession(event.topic)) return;
+      try {
+        this.handleSessionEvent(event);
+      } catch (error) {
+        this.failClosed(error);
+      }
+    };
+    const handleSessionUpdate = (event: SessionUpdateEvent): void => {
+      if (!isCurrentSession(event.topic)) return;
+      try {
+        this.handleSessionUpdate(event);
+      } catch (error) {
+        this.failClosed(error);
       }
     };
 
     this.eventListenerClient = client;
     this.sessionDeleteHandler = cleanupSession;
     this.sessionExpireHandler = cleanupSession;
+    this.sessionEventHandler = handleSessionEvent;
+    this.sessionUpdateHandler = handleSessionUpdate;
 
     client.on('session_delete', this.sessionDeleteHandler);
     client.on('session_expire', this.sessionExpireHandler);
+    client.on('session_event', this.sessionEventHandler);
+    client.on('session_update', this.sessionUpdateHandler);
   }
 
   private removeEventListeners(): void {
@@ -976,10 +1075,150 @@ export class WalletConnectAdapter
       if (this.sessionExpireHandler) {
         this.eventListenerClient.off('session_expire', this.sessionExpireHandler);
       }
+      if (this.sessionEventHandler) {
+        this.eventListenerClient.off('session_event', this.sessionEventHandler);
+      }
+      if (this.sessionUpdateHandler) {
+        this.eventListenerClient.off('session_update', this.sessionUpdateHandler);
+      }
     }
     this.eventListenerClient = null;
     this.sessionDeleteHandler = null;
     this.sessionExpireHandler = null;
+    this.sessionEventHandler = null;
+    this.sessionUpdateHandler = null;
+  }
+
+  private handleSessionEvent(event: SessionEvent): void {
+    if (!this.session || !this.currentAccount) throw createWalletError.notConnected();
+
+    const eventChainId = event.params.chainId;
+    if (!isValidXrplChainId(eventChainId)) {
+      throw new Error('WalletConnect returned an invalid XRPL session event chain');
+    }
+
+    if (event.params.event.name === 'accountsChanged') {
+      const data = event.params.event.data;
+      if (!Array.isArray(data) || !data.every((account) => typeof account === 'string')) {
+        throw new Error('WalletConnect returned malformed XRPL accounts');
+      }
+      const accounts = data.map((account) =>
+        isValidClassicAddress(account) ? `${eventChainId}:${account}` : account
+      );
+      const currentChainId = getXrplChainId(this.currentAccount.network);
+      if (eventChainId !== currentChainId) {
+        throw createWalletError.networkMismatch(currentChainId, eventChainId);
+      }
+      const address = selectAccountForChain(accounts, currentChainId);
+      const xrplNamespace = this.session.namespaces[XRPL_NAMESPACE.KEY];
+      this.session = {
+        ...this.session,
+        namespaces: {
+          ...this.session.namespaces,
+          [XRPL_NAMESPACE.KEY]: { ...xrplNamespace, accounts },
+        },
+      };
+      this.updateCurrentAccount(address, this.currentAccount.network);
+      return;
+    }
+
+    if (event.params.event.name === 'chainChanged') {
+      const changedChainId = this.normalizeChangedChainId(event.params.event.data);
+      if (changedChainId !== eventChainId) {
+        throw createWalletError.networkMismatch(eventChainId, changedChainId);
+      }
+      const network = this.resolveChangedNetwork(changedChainId);
+      const address = selectAccountForChain(
+        this.session.namespaces[XRPL_NAMESPACE.KEY]?.accounts || [],
+        changedChainId,
+        getApprovedXrplChainIds(this.session)
+      );
+      this.updateCurrentAccount(address, network);
+    }
+  }
+
+  private handleSessionUpdate(event: SessionUpdateEvent): void {
+    if (!this.session || !this.currentAccount) throw createWalletError.notConnected();
+    const updatedSession: SessionTypes.Struct = {
+      ...this.session,
+      namespaces: event.params.namespaces,
+    };
+    const chainId = getXrplChainId(this.currentAccount.network);
+    const address = selectAccountForChain(
+      updatedSession.namespaces[XRPL_NAMESPACE.KEY]?.accounts || [],
+      chainId,
+      getApprovedXrplChainIds(updatedSession)
+    );
+    this.session = updatedSession;
+    this.updateCurrentAccount(address, this.currentAccount.network);
+  }
+
+  private normalizeChangedChainId(data: unknown): string {
+    const chainId =
+      typeof data === 'number' && Number.isSafeInteger(data) && data >= 0
+        ? `${XRPL_NAMESPACE.KEY}:${data}`
+        : data;
+    if (typeof chainId !== 'string' || !isValidXrplChainId(chainId)) {
+      throw new Error('WalletConnect returned an invalid XRPL chain change');
+    }
+    return chainId;
+  }
+
+  private resolveChangedNetwork(chainId: string): NetworkInfo {
+    const standardNetwork = Object.values(STANDARD_NETWORKS).find(
+      (network) => network.walletConnectId === chainId
+    );
+    if (standardNetwork) return standardNetwork;
+    if (this.currentAccount?.network.walletConnectId === chainId) {
+      return this.currentAccount.network;
+    }
+    throw createWalletError.networkNotSupported(chainId, this.name);
+  }
+
+  private updateCurrentAccount(address: string, network: NetworkInfo): void {
+    if (!this.currentAccount) throw createWalletError.notConnected();
+    const addressChanged = address !== this.currentAccount.address;
+    const networkChanged = network.walletConnectId !== this.currentAccount.network.walletConnectId;
+    if (!addressChanged && !networkChanged) return;
+
+    this.currentAccount = { ...this.currentAccount, address, network };
+    if (addressChanged) this.emit('accountChanged', this.currentAccount);
+    if (networkChanged) this.emit('networkChanged', network);
+  }
+
+  private assertSessionAuthorization(session: SessionTypes.Struct, account: AccountInfo): void {
+    const chainId = getXrplChainId(account.network);
+    const authorizedAddress = selectAccountForChain(
+      session.namespaces[XRPL_NAMESPACE.KEY]?.accounts || [],
+      chainId,
+      getApprovedXrplChainIds(session)
+    );
+    if (authorizedAddress !== account.address) {
+      throw new Error('WalletConnect session no longer authorizes the connected account');
+    }
+  }
+
+  private failClosed(error: unknown): void {
+    const client = this.client;
+    const session = this.session;
+    this.connectionAttemptGeneration += 1;
+    this.cleanup();
+    if (client && session) {
+      void this.disconnectSession(
+        client,
+        session,
+        'Failed to close invalid WalletConnect session:'
+      );
+    }
+    const walletError = isWalletError(error)
+      ? error
+      : createWalletError.connectionFailed(this.name, normalizeError(error));
+    this.emit('error', walletError);
+    this.emit('disconnect');
+  }
+
+  private emit(event: WalletAdapterEvent, data?: unknown): void {
+    for (const listener of this.listeners.get(event) ?? []) listener(data);
   }
 
   /**
@@ -1006,6 +1245,15 @@ export class WalletConnectAdapter
     this.initializationPromise = null;
     this.initializationProjectId = null;
     this.clientProjectId = null;
+  }
+
+  private resolveRequestedNetwork(network: WalletConnectConnectOptions['network']): NetworkInfo {
+    try {
+      return resolveNetwork(network);
+    } catch (error) {
+      if (isWalletError(error) && error.code !== WalletErrorCode.UNKNOWN_ERROR) throw error;
+      throw createWalletError.networkNotSupported(String(network), this.name);
+    }
   }
 
   /**

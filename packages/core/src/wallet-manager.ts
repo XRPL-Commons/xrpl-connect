@@ -27,6 +27,8 @@ import {
   supportsFetchAccount,
   supportsReconnectOptions,
   getMissingAdapterConfiguration,
+  isStandardNetworkId,
+  STANDARD_NETWORKS,
   WalletErrorCode,
 } from './types';
 import { createWalletError, isWalletError } from './errors';
@@ -189,7 +191,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       // Merge network options
       const connectOptions: ConnectOptions = {
         ...options,
-        network: options?.network || this.options.network,
+        network: options?.network ?? this.options.network,
       };
 
       // Connect
@@ -202,6 +204,61 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         throw createWalletError.notConnected();
       }
 
+      const requestedNetwork = connectOptions.network;
+      const requestedNetworkId =
+        typeof requestedNetwork === 'string' ? requestedNetwork : requestedNetwork?.id;
+      const explicitRequestedWalletConnectId =
+        typeof requestedNetwork === 'object' ? requestedNetwork.walletConnectId : undefined;
+      const canonicalAccountWalletConnectId = isStandardNetworkId(account.network.id)
+        ? STANDARD_NETWORKS[account.network.id].walletConnectId
+        : undefined;
+      const accountNetworkIsContradictory =
+        canonicalAccountWalletConnectId !== undefined &&
+        account.network.walletConnectId !== undefined &&
+        account.network.walletConnectId !== canonicalAccountWalletConnectId;
+      if (requestedNetworkId === undefined && accountNetworkIsContradictory) {
+        throw createWalletError.networkMismatch(
+          canonicalAccountWalletConnectId,
+          account.network.walletConnectId!
+        );
+      }
+      if (requestedNetworkId !== undefined) {
+        const canonicalRequestedWalletConnectId = isStandardNetworkId(requestedNetworkId)
+          ? STANDARD_NETWORKS[requestedNetworkId].walletConnectId
+          : undefined;
+        const requestedWalletConnectId =
+          canonicalRequestedWalletConnectId ?? explicitRequestedWalletConnectId;
+        const accountWalletConnectId =
+          canonicalAccountWalletConnectId ?? account.network.walletConnectId;
+        const requestedNetworkIsContradictory =
+          canonicalRequestedWalletConnectId !== undefined &&
+          explicitRequestedWalletConnectId !== undefined &&
+          explicitRequestedWalletConnectId !== canonicalRequestedWalletConnectId;
+        const idsMatch = account.network.id === requestedNetworkId;
+        const walletConnectIdsMatch =
+          requestedWalletConnectId !== undefined &&
+          requestedWalletConnectId === accountWalletConnectId;
+
+        if (
+          requestedNetworkIsContradictory ||
+          accountNetworkIsContradictory ||
+          (!idsMatch && !walletConnectIdsMatch)
+        ) {
+          throw createWalletError.networkMismatch(
+            requestedNetworkIsContradictory
+              ? canonicalRequestedWalletConnectId
+              : accountNetworkIsContradictory
+                ? (requestedWalletConnectId ?? requestedNetworkId)
+                : requestedNetworkId,
+            requestedNetworkIsContradictory
+              ? explicitRequestedWalletConnectId!
+              : accountNetworkIsContradictory
+                ? account.network.walletConnectId!
+                : account.network.id
+          );
+        }
+      }
+
       if (expectedState && supportsReconnectOptions(adapter)) {
         if (account.address !== expectedState.account.address) {
           throw createWalletError.connectionFailed(
@@ -210,9 +267,6 @@ export class WalletManager extends EventEmitter<WalletEvent> {
               `Reconnected account mismatch. Expected "${expectedState.account.address}" but wallet returned "${account.address}".`
             )
           );
-        }
-        if (account.network.id !== expectedState.network.id) {
-          throw createWalletError.networkMismatch(expectedState.network.id, account.network.id);
         }
       }
 

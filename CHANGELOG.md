@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Core/adapters: enforce requested-versus-wallet network consistency before session persistence, use authoritative live networks during initial connection, reject unsupported substitutions with typed errors, and prevent signing after a connected wallet changes ledgers (#179).
+
 ## [1.0.0-rc.1] - 2026-09-01
 
 ### Added

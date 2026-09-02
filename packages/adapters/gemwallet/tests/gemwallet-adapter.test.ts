@@ -15,6 +15,17 @@ import { GemWalletAdapter } from '../src/gemwallet-adapter';
 
 const api = gemApi as unknown as Record<keyof typeof gemApi, ReturnType<typeof vi.fn>>;
 
+function mockLiveNetwork(overrides: Record<string, string> = {}) {
+  api.getNetwork.mockResolvedValue({
+    result: {
+      chain: 'XRPL',
+      network: 'Mainnet',
+      websocket: 'wss://mainnet.example',
+      ...overrides,
+    },
+  });
+}
+
 beforeEach(() => {
   api.isInstalled.mockReset();
   api.getNetwork.mockReset();
@@ -30,8 +41,10 @@ describe('GemWalletAdapter.fetchAccount', () => {
     api.getPublicKey.mockResolvedValue({
       result: { address: 'rOriginal', publicKey: 'ORIGINAL_PK' },
     });
+    mockLiveNetwork();
     const adapter = new GemWalletAdapter();
     await adapter.connect();
+    api.getNetwork.mockClear();
     return adapter;
   }
 
@@ -145,12 +158,115 @@ describe('GemWalletAdapter.connect', () => {
   it('returns the account on success', async () => {
     api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
     api.getPublicKey.mockResolvedValue({ result: { address: 'rGem', publicKey: 'PK' } });
+    mockLiveNetwork();
 
     const account = await new GemWalletAdapter().connect();
 
     expect(account.address).toBe('rGem');
     expect(account.publicKey).toBe('PK');
     expect(account.network.id).toBe('mainnet');
+  });
+
+  it('does not restore account state when disconnected during account approval', async () => {
+    let resolveAccount!: (value: unknown) => void;
+    api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
+    api.getPublicKey.mockImplementation(() => new Promise((resolve) => (resolveAccount = resolve)));
+    const adapter = new GemWalletAdapter();
+
+    const connecting = adapter.connect();
+    await vi.waitFor(() => expect(api.getPublicKey).toHaveBeenCalledOnce());
+    await adapter.disconnect();
+    resolveAccount({ result: { address: 'rLate', publicKey: 'LATE_PK' } });
+
+    await expect(connecting).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+    expect(api.getNetwork).not.toHaveBeenCalled();
+  });
+
+  it('uses the live testnet when no network is requested', async () => {
+    api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
+    api.getPublicKey.mockResolvedValue({
+      result: { address: 'rTestnet', publicKey: 'TESTNET_PK' },
+    });
+    mockLiveNetwork({ network: 'Testnet', websocket: 'wss://testnet.example' });
+
+    const account = await new GemWalletAdapter().connect();
+
+    expect(account.network).toEqual({
+      id: 'testnet',
+      name: 'Testnet',
+      wss: 'wss://testnet.example',
+    });
+  });
+
+  it('maps a live devnet network to the standard devnet ID', async () => {
+    api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
+    api.getPublicKey.mockResolvedValue({ result: { address: 'rDevnet', publicKey: 'DEVNET_PK' } });
+    mockLiveNetwork({ network: 'Devnet', websocket: 'wss://devnet.example' });
+
+    const account = await new GemWalletAdapter().connect();
+
+    expect(account.network).toEqual({
+      id: 'devnet',
+      name: 'Devnet',
+      wss: 'wss://devnet.example',
+    });
+  });
+
+  it('keeps a custom live network distinct from XRPL standard IDs', async () => {
+    api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
+    api.getPublicKey.mockResolvedValue({ result: { address: 'rXahau', publicKey: 'XAHAU_PK' } });
+    mockLiveNetwork({ chain: 'Xahau', network: 'Mainnet', websocket: 'wss://xahau.example' });
+
+    const account = await new GemWalletAdapter().connect({
+      network: {
+        id: 'xahau-mainnet',
+        name: 'Xahau Mainnet',
+        wss: 'wss://xahau.example',
+      },
+    });
+
+    expect(account.network).toEqual({
+      id: 'xahau-mainnet',
+      name: 'Xahau Mainnet',
+      wss: 'wss://xahau.example',
+    });
+  });
+
+  it('rejects an explicit network mismatch before caching the account', async () => {
+    api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
+    api.getPublicKey.mockResolvedValue({
+      result: { address: 'rTestnet', publicKey: 'TESTNET_PK' },
+    });
+    mockLiveNetwork({ network: 'Testnet', websocket: 'wss://testnet.example' });
+
+    const adapter = new GemWalletAdapter();
+    await expect(adapter.connect({ network: 'mainnet' })).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
+  it('returns a typed connection error when the live network query fails', async () => {
+    api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
+    api.getPublicKey.mockResolvedValue({ result: { address: 'rGem', publicKey: 'PK' } });
+    api.getNetwork.mockRejectedValue(new Error('network unavailable'));
+
+    const adapter = new GemWalletAdapter();
+    await expect(adapter.connect()).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
+  it('rejects an unsupported runtime network id before requesting an account', async () => {
+    api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
+
+    await expect(
+      new GemWalletAdapter().connect({ network: 'sidechain' as never })
+    ).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_NOT_SUPPORTED });
+    expect(api.getPublicKey).not.toHaveBeenCalled();
+    expect(api.getNetwork).not.toHaveBeenCalled();
   });
 
   it('preserves the typed not-installed error', async () => {
@@ -195,8 +311,10 @@ describe('GemWalletAdapter.sign', () => {
   async function connected() {
     api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
     api.getPublicKey.mockResolvedValue({ result: { address: 'rGem', publicKey: 'PK' } });
+    mockLiveNetwork();
     const adapter = new GemWalletAdapter();
     await adapter.connect();
+    api.getNetwork.mockClear();
     return adapter;
   }
 
@@ -207,6 +325,20 @@ describe('GemWalletAdapter.sign', () => {
     const result = await adapter.sign({ TransactionType: 'Payment' } as never);
 
     expect(result.tx_blob).toBe('SIG');
+  });
+
+  it('does not sign or submit after GemWallet changes networks', async () => {
+    const adapter = await connected();
+    mockLiveNetwork({ network: 'Testnet', websocket: 'wss://testnet.example' });
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    await expect(
+      adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+    ).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_MISMATCH });
+    expect(api.signTransaction).not.toHaveBeenCalled();
+    expect(api.submitTransaction).not.toHaveBeenCalled();
   });
 
   it('throws notConnected when no session exists', async () => {
@@ -247,6 +379,7 @@ describe('GemWalletAdapter.disconnect', () => {
   it('clears the current account', async () => {
     api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
     api.getPublicKey.mockResolvedValue({ result: { address: 'rGem', publicKey: 'PK' } });
+    mockLiveNetwork();
     const adapter = new GemWalletAdapter();
     await adapter.connect();
     expect(await adapter.getAccount()).not.toBeNull();

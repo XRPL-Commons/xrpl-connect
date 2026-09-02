@@ -81,6 +81,15 @@ Initiates connection to a specific wallet adapter. The availability preflight is
   accepts `apiKey`, WalletConnect accepts `projectId`, and cross-wallet options
   are rejected by TypeScript.
 
+An explicit per-call network, or the manager's configured default, is a requirement: the
+manager rejects an adapter response with a different network identity using
+`NETWORK_MISMATCH` before it commits or persists the session. Matching
+`walletConnectId` values identify the same CAIP chain when an adapter canonicalizes a custom
+network's display ID; conflicting CAIP identifiers are always rejected. If neither network
+is supplied, the adapter-reported network is authoritative and is stored without assigning
+a default label. See the adapter support matrix for each bundled wallet's omitted-network
+behavior.
+
 Xaman and WalletConnect should normally receive their credential in the adapter
 constructor. This makes them eligible for `getAvailableWallets()` and wallet
 picker discovery. A direct call can defer the credential for one connection:

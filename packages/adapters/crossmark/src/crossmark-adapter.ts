@@ -14,7 +14,12 @@ import type {
   SubmittedTransaction,
 } from '@xrpl-connect/core';
 
-import { createWalletError, isWalletError, resolveNetwork } from '@xrpl-connect/core';
+import {
+  createWalletError,
+  isStandardNetworkId,
+  isWalletError,
+  resolveNetwork,
+} from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
 import { CrossmarkSDK } from './sdk';
 
@@ -34,6 +39,14 @@ function isRejectedResponse(response: unknown): boolean {
     ?.data;
   return data?.meta?.isRejected === true;
 }
+
+type CrossmarkNetwork = {
+  protocol?: string;
+  type?: string;
+  label?: string;
+  wss?: string;
+  rpc?: string;
+};
 
 /**
  * Crossmark adapter options
@@ -78,21 +91,26 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
    * Connect to Crossmark wallet
    */
   async connect(options?: ConnectOptions): Promise<AccountInfo> {
+    const generation = ++this.connectionGeneration;
     try {
       // Check if Crossmark is available
       const available = await this.isAvailable();
+      if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
       if (!available) {
         throw createWalletError.notInstalled(this.name);
       }
 
-      // Determine network
-      const network = resolveNetwork(options?.network);
+      // Resolve an explicit requested network for validation after querying the
+      // wallet. An omitted network must come from Crossmark's live state.
+      const requestedNetwork =
+        options?.network === undefined ? undefined : this.resolveRequestedNetwork(options.network);
 
       // Generate a random hash for signing
       const hash = this.generateRandomHash();
 
       // Request sign-in from Crossmark
       const signInResponse = await sdk.methods.signInAndWait(hash);
+      if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
 
       if (isRejectedResponse(signInResponse)) {
         throw createWalletError.connectionRejected(this.name);
@@ -107,12 +125,17 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
         throw new Error('No address returned from Crossmark');
       }
 
+      const network = await this.getLiveNetwork();
+      if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
+      if (requestedNetwork && requestedNetwork.id !== network.id) {
+        throw createWalletError.networkMismatch(requestedNetwork.id, network.id);
+      }
+
       this.currentAccount = {
         address,
         publicKey,
         network,
       };
-      this.connectionGeneration += 1;
 
       return this.currentAccount;
     } catch (error) {
@@ -166,6 +189,23 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
       return null;
     }
 
+    const network = await this.getLiveNetwork();
+
+    if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
+    if (refreshRevision !== this.accountRefreshRevision) return this.currentAccount;
+    if (!this.currentAccount) return null;
+
+    const previousAccount = this.currentAccount;
+    this.currentAccount = {
+      address,
+      publicKey: previousAccount?.address === address ? previousAccount.publicKey : undefined,
+      network,
+    };
+
+    return this.currentAccount;
+  }
+
+  private async getLiveNetwork(): Promise<NetworkInfo> {
     let networkResponse: unknown;
     try {
       networkResponse = await sdk.api.awaitRequest({ command: typings.COMMANDS.NETWORK });
@@ -173,25 +213,14 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
       throw createWalletError.connectionFailed(this.name, error as Error);
     }
 
-    if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
-    if (refreshRevision !== this.accountRefreshRevision) return this.currentAccount;
-    if (!this.currentAccount) return null;
-
     const network = (
-      networkResponse as unknown as {
-        response?: {
-          data?: {
-            network?: {
-              protocol?: string;
-              type?: string;
-              label?: string;
-              wss?: string;
-              rpc?: string;
-            };
-          };
-        };
-      }
-    ).response?.data?.network;
+      networkResponse as
+        | {
+            response?: { data?: { network?: CrossmarkNetwork } };
+          }
+        | null
+        | undefined
+    )?.response?.data?.network;
 
     if (!network?.type || !network.label || !network.wss) {
       throw createWalletError.connectionFailed(
@@ -200,20 +229,32 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
       );
     }
 
-    const previousAccount = this.currentAccount;
-    this.currentAccount = {
-      address,
-      publicKey: previousAccount?.address === address ? previousAccount.publicKey : undefined,
-      network: this.toNetworkInfo({
-        protocol: network.protocol,
-        type: network.type,
-        label: network.label,
-        wss: network.wss,
-        rpc: network.rpc,
-      }),
-    };
+    return this.toNetworkInfo({
+      protocol: network.protocol,
+      type: network.type,
+      label: network.label,
+      wss: network.wss,
+      rpc: network.rpc,
+    });
+  }
 
-    return this.currentAccount;
+  private async assertCurrentNetwork(): Promise<void> {
+    if (!this.currentAccount) throw createWalletError.notConnected();
+    const generation = this.connectionGeneration;
+    const liveNetwork = await this.getLiveNetwork();
+    if (generation !== this.connectionGeneration || !this.currentAccount) {
+      throw createWalletError.notConnected();
+    }
+    if (liveNetwork.id !== this.currentAccount.network.id) {
+      throw createWalletError.networkMismatch(this.currentAccount.network.id, liveNetwork.id);
+    }
+  }
+
+  private resolveRequestedNetwork(network: string | NetworkInfo): NetworkInfo {
+    if (typeof network === 'string' && !isStandardNetworkId(network)) {
+      throw createWalletError.networkNotSupported(network, this.name);
+    }
+    return resolveNetwork(network);
   }
 
   /**
@@ -261,6 +302,7 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
     }
 
     try {
+      await this.assertCurrentNetwork();
       const tx = {
         ...transaction,
         Account: transaction.Account || this.currentAccount.address,
@@ -294,6 +336,7 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
     }
 
     try {
+      await this.assertCurrentNetwork();
       const tx = {
         ...transaction,
         Account: transaction.Account || this.currentAccount.address,
