@@ -115,7 +115,7 @@
 - [x] Add focused regressions for 32-byte/64-hex output, no `Math.random()` calls, and unavailable crypto.
 - [x] Run focused tests, formatting, linting, type checks, builds, and relevant repository verification.
 - [x] Review the cumulative diff against `develop` and every acceptance criterion, then record results below.
-- [ ] Commit only intentional changes, push PR #138's branch, refresh its metadata, and verify CI.
+- [x] Commit only intentional changes, push PR #138's branch, refresh its metadata, and verify CI.
 
 ## Review
 
@@ -124,3 +124,4 @@
 - Focused tests deterministically verify the byte/hex contract, prove `Math.random()` is never called, and cover the unavailable-crypto error path; the Crossmark suite passes all 22 tests.
 - Crossmark formatting, lint, dependency-inclusive build, runtime smoke, and public-type checks pass. `pnpm exec vp check`, `pnpm test`, `pnpm --filter xrpl-connect test:publish`, `pnpm docs:snapshot:check`, and `git diff --check` also pass.
 - Independent security/test review found no remaining correctness, compatibility, isolation, or scope issues in the cumulative diff against `origin/develop`.
+- PR #138's refreshed CI is green for documentation and the complete test/build matrix on Node 20.19, 22.18, and 24.11.
