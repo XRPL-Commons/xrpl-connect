@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vite-plus/test';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 import { WalletErrorCode } from '@xrpl-connect/core';
 
 vi.mock('@crossmarkio/sdk', () => {
@@ -30,12 +30,24 @@ const sdk = sdkDefault as unknown as {
   };
 };
 
+const getRandomValues = vi.fn((array: Uint8Array) => {
+  array.fill(0xab);
+  return array;
+});
+
 beforeEach(() => {
+  getRandomValues.mockClear();
+  vi.stubGlobal('crypto', { getRandomValues });
   sdk.sync.isInstalled.mockReset();
   sdk.api.awaitRequest.mockReset();
   sdk.methods.signInAndWait.mockReset();
   sdk.methods.signAndWait.mockReset();
   sdk.methods.signAndSubmitAndWait.mockReset();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('CrossmarkAdapter.fetchAccount', () => {
@@ -217,6 +229,44 @@ describe('CrossmarkAdapter.isAvailable', () => {
 });
 
 describe('CrossmarkAdapter.connect', () => {
+  it('passes a 32-byte secure random challenge as 64 hexadecimal characters', async () => {
+    sdk.sync.isInstalled.mockReturnValue(true);
+    sdk.methods.signInAndWait.mockResolvedValue({
+      response: { data: { address: 'rUserAddress', publicKey: 'PUBKEY' } },
+    });
+
+    await new CrossmarkAdapter().connect();
+
+    expect(getRandomValues).toHaveBeenCalledOnce();
+    expect(getRandomValues).toHaveBeenCalledWith(expect.any(Uint8Array));
+    expect(getRandomValues.mock.calls[0]?.[0]).toHaveLength(32);
+    expect(sdk.methods.signInAndWait).toHaveBeenCalledWith('ab'.repeat(32));
+    expect(sdk.methods.signInAndWait.mock.calls[0]?.[0]).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('never falls back to Math.random', async () => {
+    const mathRandom = vi.spyOn(Math, 'random');
+    vi.stubGlobal('crypto', undefined);
+    sdk.sync.isInstalled.mockReturnValue(true);
+
+    await expect(new CrossmarkAdapter().connect()).rejects.toBeDefined();
+
+    expect(mathRandom).not.toHaveBeenCalled();
+    expect(sdk.methods.signInAndWait).not.toHaveBeenCalled();
+  });
+
+  it('fails with a clear typed error when secure randomness is unavailable', async () => {
+    vi.stubGlobal('crypto', undefined);
+    sdk.sync.isInstalled.mockReturnValue(true);
+
+    await expect(new CrossmarkAdapter().connect()).rejects.toMatchObject({
+      name: 'WalletError',
+      code: WalletErrorCode.CONNECTION_FAILED,
+      message: expect.stringContaining('Secure randomness is unavailable'),
+    });
+    expect(sdk.methods.signInAndWait).not.toHaveBeenCalled();
+  });
+
   it('returns account info on success', async () => {
     sdk.sync.isInstalled.mockReturnValue(true);
     sdk.methods.signInAndWait.mockResolvedValue({
