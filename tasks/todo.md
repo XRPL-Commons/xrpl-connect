@@ -123,8 +123,8 @@
 
 ## Verify PR #186 commit signatures
 
-- [ ] Record the signature-verification correction and confirm the configured GPG key, commit identity, and GitHub key registration agree.
-- [ ] Rewrite every PR commit with a fresh GPG signature without changing the cumulative tree.
+- [x] Record the signature-verification correction and confirm the configured GPG key, commit identity, and GitHub key registration agree.
+- [x] Rewrite every PR commit with a fresh GPG signature without changing the cumulative tree.
 - [ ] Force-push with an exact lease and verify every remote commit is cryptographically `verified` by GitHub.
 - [ ] Confirm the rewritten head remains mergeable and all required CI checks pass.
 
