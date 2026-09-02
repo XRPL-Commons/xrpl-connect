@@ -9,6 +9,7 @@ import {
   PUBLISH_GUARD,
   RELEASE_PACKAGE_NAMES,
   assertCompleteRegistryState,
+  assertDocumentedReleaseSpecs,
   assertSafePrepublishRegistryState,
 } from './release-policy.mjs';
 import { readLocalReleaseConfig } from './publish-release.mjs';
@@ -140,7 +141,8 @@ function findInstallCommand(markdownPath, packageName) {
 function verifyDocumentedXrplSpecs() {
   for (const relativePath of DOCUMENTED_INSTALL_PATHS) {
     const markdownPath = path.join(repositoryRoot, relativePath);
-    const xrplSpecs = readInstallCommands(markdownPath)
+    const installCommands = readInstallCommands(markdownPath);
+    const xrplSpecs = installCommands
       .flat()
       .filter((dependency) => /^xrpl(?:@.+)?$/.test(dependency));
     assert(xrplSpecs.length > 0, `${relativePath} has no documented xrpl dependency`);
@@ -151,9 +153,17 @@ function verifyDocumentedXrplSpecs() {
         `${relativePath} does not pin documented xrpl to v4`
       );
     }
+    const releaseSpecCount = installCommands.reduce(
+      (count, dependencies) =>
+        count + assertDocumentedReleaseSpecs(dependencies, releaseConfig, relativePath),
+      0
+    );
+    assert(releaseSpecCount > 0, `${relativePath} has no coordinated release package`);
   }
 
-  console.log('✓ Current install documentation consistently pins xrpl to v4');
+  console.log(
+    `✓ Current install documentation consistently pins xrpl to v4 and the ${releaseConfig.channel} channel`
+  );
   return findInstallCommand(
     path.join(repositoryRoot, 'packages', 'react', 'README.md'),
     '@xrpl-commons/xrpl-connect-react'

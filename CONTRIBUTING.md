@@ -197,8 +197,9 @@ Before dispatching a release:
 The workflow repeats the complete build, packed-consumer, registry, access, ownership, and integrity
 checks. Only after final registry verification does it create the immutable `v<version>` source tag
 and GitHub Release. Publishing and tag/release creation are resumable, but an existing version or tag
-with different contents/commit is rejected. The release event deploys the documentation from that
-same tag, so unreleased `develop` content cannot get ahead of the documented npm channel.
+with different contents/commit is rejected. The guarded workflow then invokes the Pages workflow
+with that exact tag and waits for deployment, so unreleased `develop` content cannot get ahead of the
+documented npm channel.
 
 ### Release candidates
 

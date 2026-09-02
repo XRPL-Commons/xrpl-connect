@@ -10,6 +10,7 @@ import {
   RELEASE_PACKAGE_NAMES,
   STABLE_STAGING_TAG,
   assertCompleteRegistryState,
+  assertDocumentedReleaseSpecs,
   assertSafePrepublishRegistryState,
   assertStagedRegistryState,
   createReleaseConfig,
@@ -19,6 +20,8 @@ import { createCommandRunner } from './run-command.mjs';
 const RC1 = createReleaseConfig('1.0.0-rc.1', 'rc');
 const RC2 = createReleaseConfig('1.0.0-rc.2', 'rc');
 const STABLE = createReleaseConfig('1.0.0', 'stable');
+const NEXT_RC = createReleaseConfig('1.1.0-rc.0', 'rc');
+const NEXT_STABLE = createReleaseConfig('1.1.0', 'stable');
 const currentTags = {
   'xrpl-connect': { latest: '0.8.2', rc: '1.0.0-rc.0' },
   '@xrpl-commons/xrpl-connect-react': {
@@ -105,7 +108,42 @@ test('release configuration enforces version/channel combinations', () => {
   assert.throws(() => createReleaseConfig('1.0.0-rc.1', 'next'), /Unsupported release channel/);
 });
 
-test('trusted release workflow publishes before tagging and deploys docs from releases', () => {
+test('documentation package specs must match the release channel', () => {
+  assert.equal(
+    assertDocumentedReleaseSpecs(
+      ['xrpl-connect@rc', '@xrpl-commons/xrpl-connect-react@rc', 'xrpl@^4'],
+      RC1,
+      'RC fixture'
+    ),
+    2
+  );
+  assert.throws(
+    () => assertDocumentedReleaseSpecs(['xrpl-connect'], RC1, 'RC fixture'),
+    /must install xrpl-connect@rc/
+  );
+  assert.throws(
+    () => assertDocumentedReleaseSpecs(['xrpl-connect@1.0.0-rc.1'], RC1, 'RC fixture'),
+    /must install xrpl-connect@rc/
+  );
+  assert.equal(
+    assertDocumentedReleaseSpecs(
+      ['xrpl-connect', '@xrpl-commons/xrpl-connect-vue', 'xrpl@^4'],
+      STABLE,
+      'stable fixture'
+    ),
+    2
+  );
+  assert.throws(
+    () => assertDocumentedReleaseSpecs(['xrpl-connect@rc'], STABLE, 'stable fixture'),
+    /must install xrpl-connect for the stable channel/
+  );
+  assert.throws(
+    () => assertDocumentedReleaseSpecs(['xrpl-connect@1.0.0'], STABLE, 'stable fixture'),
+    /must install xrpl-connect for the stable channel/
+  );
+});
+
+test('trusted release workflow publishes before tagging and calls exact-tag docs deployment', () => {
   const workflow = readFileSync(
     new URL('../../../.github/workflows/release.yaml', import.meta.url),
     'utf-8'
@@ -130,8 +168,18 @@ test('trusted release workflow publishes before tagging and deploys docs from re
     workflow.indexOf('Create immutable source tag') < workflow.indexOf('Create GitHub Release'),
     'GitHub Release is created before its source tag'
   );
-  assert.match(docsWorkflow, /release:\n\s+types: \[published\]/);
+  assert.match(workflow, /permissions: \{\}/);
+  assert.match(workflow, /deploy-docs:[\s\S]*needs: publish/);
+  assert.match(workflow, /uses: \.\/\.github\/workflows\/deploy_vitepressDoc\.yaml/);
+  assert.match(workflow, /release_tag: v\$\{\{ inputs\.version \}\}/);
+  assert.match(workflow, /--json tagName,isDraft,isPrerelease/);
+  assert.match(workflow, /gh release edit "\$tag" --draft=false --prerelease/);
+  assert.match(workflow, /gh release edit "\$tag" --draft=false --prerelease=false --latest/);
+  assert.match(workflow, /repos\/\$\{GITHUB_REPOSITORY\}\/releases\/latest/);
+  assert.match(docsWorkflow, /workflow_call:[\s\S]*release_tag:/);
+  assert.match(docsWorkflow, /ref: \$\{\{ inputs\.release_tag \}\}/);
   assert.doesNotMatch(docsWorkflow, /branches: \[develop\]/);
+  assert.doesNotMatch(docsWorkflow, /release:\n\s+types:/);
   assert.doesNotMatch(docsWorkflow, /workflow_dispatch/);
 });
 
@@ -143,6 +191,46 @@ test('RC policy accepts fresh and subsequent candidates while preserving latest'
 
   const subsequent = clone(complete);
   assert.doesNotThrow(() => assertSafePrepublishRegistryState(subsequent, RC2));
+});
+
+test('RC policy can start a new release train without manually removing rc', () => {
+  const postStable = clone(currentTags);
+  for (const tags of Object.values(postStable)) {
+    tags.latest = STABLE.version;
+    tags.rc = RC1.version;
+  }
+
+  const snapshot = assertSafePrepublishRegistryState(postStable, NEXT_RC);
+  const complete = clone(postStable);
+  for (const tags of Object.values(complete)) tags.rc = NEXT_RC.version;
+  assert.doesNotThrow(() => assertCompleteRegistryState(complete, NEXT_RC, snapshot));
+
+  assert.throws(
+    () => assertSafePrepublishRegistryState(postStable, NEXT_STABLE),
+    /must belong to the 1\.1\.0 release/
+  );
+  assert.doesNotThrow(() => assertSafePrepublishRegistryState(complete, NEXT_STABLE));
+
+  const newerRc = clone(postStable);
+  newerRc['xrpl-connect'].rc = '1.1.0-rc.1';
+  assert.throws(
+    () => assertSafePrepublishRegistryState(newerRc, NEXT_RC),
+    /cannot be newer than 1\.1\.0-rc\.0/
+  );
+
+  const newerTrain = clone(postStable);
+  newerTrain['xrpl-connect'].rc = '2.0.0-rc.0';
+  assert.throws(
+    () => assertSafePrepublishRegistryState(newerTrain, NEXT_RC),
+    /cannot be newer than 1\.1\.0-rc\.0/
+  );
+
+  const stableRcTag = clone(currentTags);
+  stableRcTag['xrpl-connect'].rc = STABLE.version;
+  assert.throws(
+    () => assertSafePrepublishRegistryState(stableRcTag, STABLE),
+    /must point to a release candidate/
+  );
 });
 
 test('RC policy rejects latest movement, future RCs, and unknown tags', () => {

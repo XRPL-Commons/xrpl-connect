@@ -84,15 +84,36 @@ function assertCompatibleRc(packageName, rcVersion, config) {
   const rc = parseReleaseVersion(rcVersion);
   const candidate = parseReleaseVersion(config.version);
   assert.notEqual(rc.rc, null, `${packageName}@rc must point to a release candidate`);
-  assert.deepEqual(
-    [rc.major, rc.minor, rc.patch],
-    [candidate.major, candidate.minor, candidate.patch],
-    `${packageName}@rc must belong to the ${candidate.major}.${candidate.minor}.${candidate.patch} release`
-  );
+  if (config.channel === 'stable') {
+    assert.deepEqual(
+      [rc.major, rc.minor, rc.patch],
+      [candidate.major, candidate.minor, candidate.patch],
+      `${packageName}@rc must belong to the ${candidate.major}.${candidate.minor}.${candidate.patch} release`
+    );
+  }
   assert(
     compareReleaseVersions(rcVersion, config.version) <= 0,
     `${packageName}@rc cannot be newer than ${config.version}`
   );
+}
+
+export function assertDocumentedReleaseSpecs(dependencies, config, context) {
+  let releaseSpecCount = 0;
+  for (const dependency of dependencies) {
+    const packageName = RELEASE_PACKAGE_NAMES.find(
+      (name) => dependency === name || dependency.startsWith(`${name}@`)
+    );
+    if (!packageName) continue;
+
+    releaseSpecCount += 1;
+    const expected = config.channel === 'rc' ? `${packageName}@rc` : packageName;
+    assert.equal(
+      dependency,
+      expected,
+      `${context} must install ${expected} for the ${config.channel} channel`
+    );
+  }
+  return releaseSpecCount;
 }
 
 export function assertSafePrepublishRegistryState(tagsByPackage, config) {

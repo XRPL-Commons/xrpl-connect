@@ -15,9 +15,7 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: write
-  id-token: write
+permissions: {}
 
 concurrency:
   group: publish-release
@@ -28,6 +26,9 @@ jobs:
     name: Publish ${{ inputs.version }}
     runs-on: ubuntu-latest
     environment: npm
+    permissions:
+      contents: write
+      id-token: write
     env:
       NPM_CONFIG_PROVENANCE: true
     steps:
@@ -90,9 +91,45 @@ jobs:
         run: |
           tag="v${RELEASE_VERSION}"
           if gh release view "$tag" >/dev/null 2>&1; then
-            test "$(gh release view "$tag" --json tagName --jq .tagName)" = "$tag"
+            read -r actual_tag is_draft is_prerelease <<< \
+              "$(gh release view "$tag" --json tagName,isDraft,isPrerelease --jq '[.tagName, .isDraft, .isPrerelease] | @tsv')"
+            test "$actual_tag" = "$tag"
+            expected_prerelease=false
+            if test "$RELEASE_CHANNEL" = rc; then expected_prerelease=true; fi
+            if test "$is_draft" != false || test "$is_prerelease" != "$expected_prerelease"; then
+              if test "$RELEASE_CHANNEL" = rc; then
+                gh release edit "$tag" --draft=false --prerelease
+              else
+                gh release edit "$tag" --draft=false --prerelease=false --latest
+              fi
+            fi
           elif test "$RELEASE_CHANNEL" = rc; then
             gh release create "$tag" --verify-tag --title "$tag" --generate-notes --prerelease
           else
             gh release create "$tag" --verify-tag --title "$tag" --generate-notes --latest
           fi
+
+          read -r actual_tag is_draft is_prerelease <<< \
+            "$(gh release view "$tag" --json tagName,isDraft,isPrerelease --jq '[.tagName, .isDraft, .isPrerelease] | @tsv')"
+          test "$actual_tag" = "$tag"
+          test "$is_draft" = false
+          if test "$RELEASE_CHANNEL" = rc; then
+            test "$is_prerelease" = true
+          else
+            test "$is_prerelease" = false
+            if test "$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)" != "$tag"; then
+              gh release edit "$tag" --latest
+            fi
+            test "$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)" = "$tag"
+          fi
+
+  deploy-docs:
+    name: Deploy documentation for ${{ inputs.version }}
+    needs: publish
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/deploy_vitepressDoc.yaml
+    with:
+      release_tag: v${{ inputs.version }}
