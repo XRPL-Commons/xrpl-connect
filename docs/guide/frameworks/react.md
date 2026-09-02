@@ -9,7 +9,7 @@ Use the official React bindings instead of building a custom context around the 
 ## Install
 
 ```bash
-pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-react@rc xrpl react react-dom
+pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-react@rc xrpl@^4 react react-dom
 ```
 
 ## Configure the provider
@@ -44,6 +44,7 @@ export function App() {
       <Header />
       <WalletConnector
         wallets={['xaman', 'crossmark', 'walletconnect', 'metamask-snap']}
+        showUnavailable
         theme="dark"
         onError={(error) => console.error(error.code, error.message)}
       />
@@ -61,11 +62,11 @@ import { useWallet, useWalletModal } from '@xrpl-commons/xrpl-connect-react';
 
 function Header() {
   const { connected, connecting, account, network, error, disconnect } = useWallet();
-  const { open } = useWalletModal();
+  const { ready, open } = useWalletModal();
 
   if (!connected || !account) {
     return (
-      <button onClick={open} disabled={connecting}>
+      <button onClick={() => void open()} disabled={!ready || connecting}>
         Connect wallet
       </button>
     );
@@ -123,12 +124,50 @@ function PaymentButton({ destination }: { destination: string }) {
 
 ## Modal control
 
-`useWalletModal()` returns `open` and `close`. Render one or more `<WalletConnector>` components inside the provider; modal ownership follows the mounted connector. `WalletConnector` accepts:
+`useWalletModal()` returns reactive `ready`, `open(): Promise<void>`,
+`openAndWait(): Promise<AccountInfo>`, and `close(): void`. Await `open()` to observe availability
+failures, or await `openAndWait()` when the caller needs the connected account; `openAndWait()`
+also rejects if the modal closes before a connection completes.
+
+`ready` becomes `true` after a connector registers and returns to `false` after the last connector
+unmounts. Calling `open()` or `openAndWait()` while it is `false` rejects with a namespaced setup
+error. With multiple connectors, the newest registration owns modal calls; unmounting it falls
+back to the previous connector. `close()` is a safe no-op when none is registered.
+
+`WalletConnector` accepts:
 
 - `primaryWallet` and ordered `wallets`
+- `showUnavailable` to include Install or disabled Unavailable wallet rows
 - `theme`: `dark`, `light`, or `purple`
 - typed `--xc-*` values through `cssVars`
 - `className`, `style`, `onConnecting`, `onConnect`, and `onError`
+- standard host attributes such as `id`, `title`, `data-*`, and `aria-*`
+- a typed `WalletConnectorElement` ref exposing `open()`, `openAndWait()`, `close()`, and `toggle()`
+
+```tsx
+import { useRef } from 'react';
+import { WalletConnector, type WalletConnectorElement } from '@xrpl-commons/xrpl-connect-react';
+
+function WalletModal() {
+  const connectorRef = useRef<WalletConnectorElement>(null);
+
+  return (
+    <WalletConnector
+      ref={connectorRef}
+      id="wallet-modal"
+      aria-label="Choose a wallet"
+      data-testid="wallet-connector"
+    />
+  );
+}
+```
+
+Explicit `primaryWallet`, `wallets`, and `className` values take precedence over overlapping raw
+host attributes. For each CSS property, `style` takes precedence over `cssVars`, which takes
+precedence over the selected `theme`.
+
+Unavailable wallets are hidden by default. The camelCase `showUnavailable` prop maps to the native
+`show-unavailable` boolean attribute; setting the prop to `false` removes the attribute again.
 
 ## Next.js App Router
 

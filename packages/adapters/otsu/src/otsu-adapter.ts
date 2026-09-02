@@ -22,7 +22,12 @@ import type {
   SubmittedTransaction,
   WalletAdapterEvent,
 } from '@xrpl-connect/core';
-import { createWalletError, STANDARD_NETWORKS, createLogger } from '@xrpl-connect/core';
+import {
+  createWalletError,
+  isStandardNetworkId,
+  STANDARD_NETWORKS,
+  createLogger,
+} from '@xrpl-connect/core';
 import type { OtsuProvider } from './types';
 import iconDataUrl from './assets/icon.png';
 
@@ -72,13 +77,11 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
    * Check if the Otsu Wallet extension is installed.
    *
    * The extension injects a provider object at window.xrpl with
-   * isOtsu=true. Returns false in non-browser environments.
+   * isOtsu=true. The provider is checked on every call so an extension
+   * injected after adapter construction can be detected.
    */
   async isAvailable(): Promise<boolean> {
-    if (typeof window === 'undefined') {
-      return false;
-    }
-    return true;
+    return typeof window !== 'undefined' && window.xrpl?.isOtsu === true;
   }
 
   // ==================== Connection Lifecycle ====================
@@ -411,7 +414,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
 
     // Use the requested network or default to mainnet
     if (networkConfig) {
-      if (typeof networkConfig === 'string' && STANDARD_NETWORKS[networkConfig]) {
+      if (typeof networkConfig === 'string' && isStandardNetworkId(networkConfig)) {
         return STANDARD_NETWORKS[networkConfig];
       }
       if (typeof networkConfig === 'object') {
@@ -423,7 +426,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
   }
 
   private toNetworkInfo(network: string): NetworkInfo {
-    if (STANDARD_NETWORKS[network]) {
+    if (isStandardNetworkId(network)) {
       return STANDARD_NETWORKS[network];
     }
 
@@ -453,7 +456,9 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
     const networkHandler = (data: unknown) => {
       if (this.currentAccount && data && typeof data === 'object' && 'network' in data) {
         const networkId = (data as { network: string }).network;
-        const networkInfo = STANDARD_NETWORKS[networkId] || this.currentAccount.network;
+        const networkInfo = isStandardNetworkId(networkId)
+          ? STANDARD_NETWORKS[networkId]
+          : this.currentAccount.network;
         this.currentAccount = {
           ...this.currentAccount,
           network: networkInfo,

@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeAll, vi } from 'vite-plus/test';
+import { describe, it, expect, expectTypeOf, beforeAll, vi } from 'vite-plus/test';
 import { render, act, waitFor, renderHook } from '@testing-library/react';
-import { StrictMode, useRef } from 'react';
+import { createRef, StrictMode, useRef } from 'react';
 import { renderToString } from 'react-dom/server';
 import {
   WalletManager,
@@ -17,6 +17,8 @@ import {
   useWalletModal,
   WalletConnector,
   WalletErrorCode,
+  type WalletConnectorElement,
+  type WalletConnectorProps,
 } from '../src';
 
 const ACCOUNT: AccountInfo = { address: 'rTEST', network: STANDARD_NETWORKS.testnet };
@@ -408,18 +410,220 @@ describe('<WalletConnector>', () => {
       class Stub extends HTMLElement {
         manager: unknown = null;
         opened = false;
+        openError: Error | null = null;
+        private waiters = new Set<{
+          resolve: (account: AccountInfo) => void;
+          reject: (error: Error) => void;
+        }>();
         setWalletManager(m: unknown) {
           this.manager = m;
         }
-        open() {
+        open(): Promise<void> {
+          if (this.openError) return Promise.reject(this.openError);
           this.opened = true;
+          return Promise.resolve();
+        }
+        openAndWait(): Promise<AccountInfo> {
+          const opening = this.open();
+          return new Promise<AccountInfo>((resolve, reject) => {
+            const waiter = { resolve, reject };
+            this.waiters.add(waiter);
+            void opening.catch((error: unknown) => {
+              if (!this.waiters.delete(waiter)) return;
+              reject(error instanceof Error ? error : new Error(String(error)));
+            });
+          });
         }
         close() {
           this.opened = false;
+          this.rejectWaiters(new Error('Modal closed before a wallet was connected.'));
+        }
+        toggle() {
+          this.opened = !this.opened;
+        }
+        resolveConnection(account: AccountInfo) {
+          for (const waiter of this.waiters) waiter.resolve(account);
+          this.waiters.clear();
+        }
+        disconnectedCallback() {
+          this.rejectWaiters(new Error('Wallet connector disconnected.'));
+        }
+        private rejectWaiters(error: Error) {
+          for (const waiter of this.waiters) waiter.reject(error);
+          this.waiters.clear();
         }
       }
       customElements.define('xrpl-wallet-connector', Stub);
     }
+  });
+
+  it('exposes the complete asynchronous modal contract', () => {
+    type WalletModal = ReturnType<typeof useWalletModal>;
+    expectTypeOf<WalletModal['ready']>().toEqualTypeOf<boolean>();
+    expectTypeOf<WalletModal['open']>().toEqualTypeOf<() => Promise<void>>();
+    expectTypeOf<WalletModal['openAndWait']>().toEqualTypeOf<() => Promise<AccountInfo>>();
+    expectTypeOf<WalletModal['close']>().toEqualTypeOf<() => void>();
+  });
+
+  it('forwards the custom element ref and its imperative methods', async () => {
+    const connectorRef = createRef<WalletConnectorElement>();
+    const { unmount } = render(
+      <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+        <WalletConnector ref={connectorRef} />
+      </XrplConnectProvider>
+    );
+
+    await waitFor(() => expect(connectorRef.current).not.toBeNull());
+    const element = document.querySelector('xrpl-wallet-connector') as WalletConnectorElement & {
+      manager: unknown;
+      opened: boolean;
+      resolveConnection(account: AccountInfo): void;
+    };
+    await waitFor(() => expect(element.manager).not.toBeNull());
+    expect(connectorRef.current).toBe(element);
+
+    await act(async () => connectorRef.current!.open());
+    expect(element.opened).toBe(true);
+
+    const connected = connectorRef.current!.openAndWait();
+    act(() => element.resolveConnection(ACCOUNT));
+    await expect(connected).resolves.toEqual(ACCOUNT);
+
+    act(() => connectorRef.current!.close());
+    expect(element.opened).toBe(false);
+    act(() => connectorRef.current!.toggle());
+    expect(element.opened).toBe(true);
+    act(() => connectorRef.current!.toggle());
+    expect(element.opened).toBe(false);
+
+    unmount();
+    expect(connectorRef.current).toBeNull();
+  });
+
+  it('does not reinterpret non-function callback ref returns as cleanups', async () => {
+    let connector: WalletConnectorElement | null = null;
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    try {
+      const { unmount } = render(
+        <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+          <WalletConnector ref={(element) => (connector = element)} />
+        </XrplConnectProvider>
+      );
+
+      await waitFor(() => expect(connector).not.toBeNull());
+      unmount();
+      expect(connector).toBeNull();
+      expect(consoleError.mock.calls.flat().join('\n')).not.toContain(
+        'Unexpected return value from a callback ref'
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it('forwards host attributes while managed connector props retain precedence', async () => {
+    const onClick = vi.fn();
+    const conflictingHostAttributes = {
+      class: 'forwarded-class',
+      'primary-wallet': 'forwarded-wallet',
+    } as unknown as WalletConnectorProps;
+
+    render(
+      <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+        <WalletConnector
+          {...conflictingHostAttributes}
+          id="wallet-modal"
+          title="Choose a wallet"
+          data-testid="wallet-connector"
+          aria-label="Wallet connector"
+          role="dialog"
+          tabIndex={0}
+          onClick={onClick}
+          primaryWallet="fake"
+          wallets={['fake']}
+          className="managed-class"
+          theme="dark"
+          cssVars={{ '--xc-primary-color': '#112233' }}
+          style={{ '--xc-primary-color': '#445566' } as React.CSSProperties}
+        />
+      </XrplConnectProvider>
+    );
+
+    const element = document.querySelector('xrpl-wallet-connector') as HTMLElement & {
+      manager: unknown;
+    };
+    await waitFor(() => expect(element.manager).not.toBeNull());
+    expect(element.getAttribute('id')).toBe('wallet-modal');
+    expect(element.getAttribute('title')).toBe('Choose a wallet');
+    expect(element.getAttribute('data-testid')).toBe('wallet-connector');
+    expect(element.getAttribute('aria-label')).toBe('Wallet connector');
+    expect(element.getAttribute('role')).toBe('dialog');
+    expect(element.getAttribute('tabindex')).toBe('0');
+    expect(element.getAttribute('primary-wallet')).toBe('fake');
+    expect(element.getAttribute('wallets')).toBe('fake');
+    expect(element.getAttribute('class')).toBe('managed-class');
+    expect(element.style.getPropertyValue('--xc-primary-color')).toBe('#445566');
+
+    act(() => element.click());
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+
+  it('exposes showUnavailable through the wrapper and direct custom-element JSX', () => {
+    const wrapperElement = <WalletConnector showUnavailable />;
+    const customElement = <xrpl-wallet-connector show-unavailable />;
+
+    expectTypeOf(wrapperElement).toEqualTypeOf(customElement);
+  });
+
+  it('rejects modal calls until a connector is registered', async () => {
+    const { result } = renderHook(() => useWalletModal(), {
+      wrapper: wrapper([makeAdapter()]),
+    });
+
+    expect(result.current.ready).toBe(false);
+    await expect(result.current.open()).rejects.toThrow(
+      'xrpl-connect/react: no <WalletConnector> is registered'
+    );
+    await expect(result.current.openAndWait()).rejects.toThrow(
+      'xrpl-connect/react: no <WalletConnector> is registered'
+    );
+    expect(() => result.current.close()).not.toThrow();
+  });
+
+  it('forwards open failures and openAndWait results from the active connector', async () => {
+    let modal: ReturnType<typeof useWalletModal> | null = null;
+    function Capture() {
+      modal = useWalletModal();
+      return null;
+    }
+    render(
+      <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+        <Capture />
+        <WalletConnector />
+      </XrplConnectProvider>
+    );
+
+    await waitFor(() => expect(modal!.ready).toBe(true));
+    const element = document.querySelector('xrpl-wallet-connector') as HTMLElement & {
+      opened: boolean;
+      openError: Error | null;
+      resolveConnection(account: AccountInfo): void;
+    };
+    const failure = new Error('availability check failed');
+    element.openError = failure;
+    await expect(modal!.open()).rejects.toBe(failure);
+    await expect(modal!.openAndWait()).rejects.toBe(failure);
+    element.openError = null;
+
+    const connected = modal!.openAndWait();
+    await waitFor(() => expect(element.opened).toBe(true));
+    element.resolveConnection(ACCOUNT);
+    await expect(connected).resolves.toEqual(ACCOUNT);
+
+    const closed = modal!.openAndWait();
+    modal!.close();
+    await expect(closed).rejects.toThrow(/closed/i);
   });
 
   it('binds the provider manager and fires onConnect with the account', async () => {
@@ -446,6 +650,27 @@ describe('<WalletConnector>', () => {
       await mgr!.connect('fake');
     });
     await waitFor(() => expect(onConnect).toHaveBeenCalledWith(ACCOUNT));
+  });
+
+  it('forwards explicit hover cssVars to the custom element', async () => {
+    const cssVars = {
+      '--xc-primary-button-hover-background': '#112233',
+      '--xc-connect-button-hover-background': '#223344',
+      '--xc-account-address-button-hover-color': '#334455',
+    } as const;
+    render(
+      <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+        <WalletConnector cssVars={cssVars} />
+      </XrplConnectProvider>
+    );
+
+    const element = document.querySelector('xrpl-wallet-connector') as HTMLElement & {
+      manager: unknown;
+    };
+    await waitFor(() => expect(element.manager).not.toBeNull());
+    for (const [variable, value] of Object.entries(cssVars)) {
+      expect(element.style.getPropertyValue(variable)).toBe(value);
+    }
   });
 
   it('observes a connection started before custom-element binding settles', async () => {
@@ -748,37 +973,54 @@ describe('<WalletConnector>', () => {
     expect(onError).toHaveBeenCalledWith(currentError);
   });
 
-  it('keeps the remaining connector registered when a sibling unmounts', async () => {
+  it('tracks readiness and falls back to the previous connector when the newest unmounts', async () => {
     let modal: ReturnType<typeof useWalletModal> | null = null;
     function Capture() {
       modal = useWalletModal();
       return null;
     }
-    function View({ showFirst }: { showFirst: boolean }) {
+    function View({ showFirst, showSecond }: { showFirst: boolean; showSecond: boolean }) {
       return (
         <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
           <Capture />
           {showFirst && <WalletConnector key="first" className="first" />}
-          <WalletConnector key="second" className="second" />
+          {showSecond && <WalletConnector key="second" className="second" />}
         </XrplConnectProvider>
       );
     }
 
-    const { rerender } = render(<View showFirst />);
+    const { rerender } = render(<View showFirst={false} showSecond={false} />);
+    expect(modal!.ready).toBe(false);
+
+    rerender(<View showFirst showSecond />);
     await waitFor(() => {
+      expect(modal!.ready).toBe(true);
+      expect(
+        (document.querySelector('.first') as HTMLElement & { manager: unknown }).manager
+      ).not.toBeNull();
       expect(
         (document.querySelector('.second') as HTMLElement & { manager: unknown }).manager
       ).not.toBeNull();
     });
-    rerender(<View showFirst={false} />);
+    const first = document.querySelector('.first') as HTMLElement & { opened: boolean };
+    const second = document.querySelector('.second') as HTMLElement & { opened: boolean };
 
-    act(() => modal!.open());
-    expect((document.querySelector('.second') as HTMLElement & { opened: boolean }).opened).toBe(
-      true
-    );
+    await act(async () => modal!.open());
+    expect(first.opened).toBe(false);
+    expect(second.opened).toBe(true);
+
+    rerender(<View showFirst showSecond={false} />);
+    expect(modal!.ready).toBe(true);
+    first.opened = false;
+    await act(async () => modal!.open());
+    expect(first.opened).toBe(true);
+
+    rerender(<View showFirst={false} showSecond={false} />);
+    expect(modal!.ready).toBe(false);
+    await expect(modal!.open()).rejects.toThrow(/no <WalletConnector> is registered/);
   });
 
-  it('updates and removes the wallet allowlist attribute on rerender', () => {
+  it('updates and removes the wallet allowlist attribute on rerender', async () => {
     function View({ wallets }: { wallets?: string[] }) {
       return (
         <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
@@ -787,12 +1029,36 @@ describe('<WalletConnector>', () => {
       );
     }
     const { rerender } = render(<View wallets={['first', 'second']} />);
-    const el = document.querySelector('xrpl-wallet-connector')!;
+    const el = document.querySelector('xrpl-wallet-connector') as HTMLElement & {
+      manager: unknown;
+    };
+    await waitFor(() => expect(el.manager).not.toBeNull());
     expect(el.getAttribute('wallets')).toBe('first,second');
 
     rerender(<View wallets={['third']} />);
     expect(el.getAttribute('wallets')).toBe('third');
     rerender(<View />);
     expect(el.hasAttribute('wallets')).toBe(false);
+  });
+
+  it('enables and disables unavailable-wallet rendering on rerender', async () => {
+    function View({ showUnavailable }: { showUnavailable?: boolean }) {
+      return (
+        <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+          <WalletConnector showUnavailable={showUnavailable} />
+        </XrplConnectProvider>
+      );
+    }
+    const { rerender } = render(<View />);
+    const el = document.querySelector('xrpl-wallet-connector') as HTMLElement & {
+      manager: unknown;
+    };
+    await waitFor(() => expect(el.manager).not.toBeNull());
+    expect(el.hasAttribute('show-unavailable')).toBe(false);
+
+    rerender(<View showUnavailable />);
+    expect(el.getAttribute('show-unavailable')).toBe('');
+    rerender(<View showUnavailable={false} />);
+    expect(el.hasAttribute('show-unavailable')).toBe(false);
   });
 });

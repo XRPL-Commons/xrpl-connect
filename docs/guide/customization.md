@@ -8,7 +8,7 @@ Learn how to customize the XRPL-Connect wallet component to match your applicati
 
 ## Overview
 
-The `<xrpl-wallet-connector>` web component is designed to be fully customizable. You can control:
+The `<xrpl-wallet-connector>` web component exposes a stable customization contract. You can control:
 
 - **Colors** - All UI colors via CSS variables
 - **Styling** - Typography, spacing, and borders
@@ -16,7 +16,10 @@ The `<xrpl-wallet-connector>` web component is designed to be fully customizable
 
 ## CSS Variable Customization
 
-The component uses CSS custom properties (CSS variables) prefixed with `--xc-` (xrpl-connect). Override these variables to customize the component's appearance.
+The component supports the exact CSS custom properties listed below. They are exported as
+`WALLET_CONNECTOR_CSS_VARIABLES`; TypeScript consumers can use
+`WalletConnectorCssVariable` and `WalletConnectorCssVars` from `xrpl-connect` or
+`@xrpl-connect/ui`. Unknown `--xc-*` names are not forwarded into modal portals.
 
 ### How to Apply CSS Variables
 
@@ -84,12 +87,10 @@ In your CSS file or global styles:
 
 #### Status Colors
 
-| Variable             | Default                   | Purpose                  |
-| -------------------- | ------------------------- | ------------------------ |
-| `--xc-success-color` | `#10b981`                 | Success state (green)    |
-| `--xc-warning-color` | `#f59e0b`                 | Warning state (yellow)   |
-| `--xc-danger-color`  | `#ef4444`                 | Error/danger state (red) |
-| `--xc-focus-color`   | `var(--xc-primary-color)` | Focus/active state       |
+| Variable            | Default                   | Purpose                          |
+| ------------------- | ------------------------- | -------------------------------- |
+| `--xc-danger-color` | `#ef4444`                 | Error and destructive states     |
+| `--xc-focus-color`  | `var(--xc-primary-color)` | Keyboard focus indicator outline |
 
 #### Overlay & Modal
 
@@ -103,10 +104,10 @@ In your CSS file or global styles:
 
 ### Spacing & Typography Variables
 
-| Variable             | Default           | Purpose                                |
-| -------------------- | ----------------- | -------------------------------------- |
-| `--xc-font-family`   | System font stack | Typography for all text                |
-| `--xc-border-radius` | `12px`            | Default roundness for modals and cards |
+| Variable             | Default           | Purpose                 |
+| -------------------- | ----------------- | ----------------------- |
+| `--xc-font-family`   | System font stack | Typography for all text |
+| `--xc-border-radius` | `12px`            | Default modal roundness |
 
 ### Connect Button Variables
 
@@ -153,6 +154,105 @@ In your CSS file or global styles:
 | `--xc-loading-border-color` | `#0EA5E9` | Loading spinner color |
 
 > Variables marked "derived" are automatically computed from `--xc-primary-color` / `--xc-background-color`. You can still override them explicitly.
+
+### Typed overrides
+
+React and Vue use the same exact `WalletConnectorCssVars` contract as the web component:
+
+```ts
+import type { WalletConnectorCssVars } from 'xrpl-connect';
+
+const walletTheme = {
+  '--xc-primary-color': '#7c3aed',
+  '--xc-modal-border-radius': '16px',
+} satisfies WalletConnectorCssVars;
+```
+
+Pass `walletTheme` to React's `cssVars` prop or Vue's `:css-vars` prop. Misspelled or unsupported
+keys are rejected by TypeScript.
+
+## Shadow parts and portal hosts
+
+The connect button stays inside `<xrpl-wallet-connector>`, while both modals render into separate
+body-level shadow hosts so transformed ancestors cannot interfere with their fixed positioning.
+The following selectors and part names are stable public API:
+
+| Shadow host                        | Part selector                    | Target                     | Lifecycle                                             |
+| ---------------------------------- | -------------------------------- | -------------------------- | ----------------------------------------------------- |
+| `xrpl-wallet-connector`            | `::part(connect-button)`         | Connect/account button     | Present while the connector is mounted                |
+| `[data-xrpl-overlay-portal]`       | `::part(overlay)`                | Wallet modal backdrop      | Shadow content exists while the wallet modal is open  |
+| `[data-xrpl-overlay-portal]`       | `::part(modal)`                  | Wallet modal container     | Shadow content exists while the wallet modal is open  |
+| `[data-xrpl-overlay-portal]`       | `::part(close-button)`           | Wallet modal close button  | Present in every wallet modal view                    |
+| `[data-xrpl-account-modal-portal]` | `::part(overlay)`                | Account modal backdrop     | Shadow content exists while the account modal is open |
+| `[data-xrpl-account-modal-portal]` | `::part(modal)`                  | Account modal container    | Shadow content exists while the account modal is open |
+| `[data-xrpl-account-modal-portal]` | `::part(close-button)`           | Account modal close button | Present while the account modal is open               |
+| `[data-xrpl-account-modal-portal]` | `::part(account-address-button)` | Address/copy button        | Present while the account modal is open               |
+| `[data-xrpl-account-modal-portal]` | `::part(disconnect-button)`      | Disconnect button          | Present while the account modal is open               |
+
+Each portal host is created on its modal's first open, kept with an empty shadow root after close for
+reuse, and removed when its owning connector is unmounted. Every variable in
+`WALLET_CONNECTOR_CSS_VARIABLES` is copied from the connector's computed style to both portal hosts.
+
+### Styling both modals
+
+```css
+xrpl-wallet-connector::part(connect-button) {
+  min-width: 12rem;
+}
+
+[data-xrpl-overlay-portal]::part(modal),
+[data-xrpl-account-modal-portal]::part(modal) {
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+}
+
+[data-xrpl-account-modal-portal]::part(disconnect-button) {
+  text-transform: uppercase;
+}
+```
+
+The portal hosts are direct children of `<body>`, not descendants of your Vue component. Put portal
+rules in an unscoped/global stylesheet. In a Vue single-file component, either use a separate
+unscoped block:
+
+```vue
+<style>
+[data-xrpl-overlay-portal]::part(modal),
+[data-xrpl-account-modal-portal]::part(modal) {
+  max-width: 30rem;
+}
+</style>
+```
+
+or explicitly escape a scoped block:
+
+```vue
+<style scoped>
+:global([data-xrpl-overlay-portal]::part(modal)),
+:global([data-xrpl-account-modal-portal]::part(modal)) {
+  max-width: 30rem;
+}
+</style>
+```
+
+For Nuxt, place the portal rules in a global asset:
+
+```css
+/* assets/css/xrpl-connect.css */
+[data-xrpl-overlay-portal]::part(modal),
+[data-xrpl-account-modal-portal]::part(modal) {
+  max-width: 30rem;
+}
+```
+
+and register it in `nuxt.config.ts`:
+
+```ts
+export default defineNuxtConfig({
+  css: ['~/assets/css/xrpl-connect.css'],
+});
+```
+
+Scoped descendant selectors and `:deep()` cannot reach these body-level portal hosts.
 
 ## Primary Wallet Attribute
 
@@ -348,4 +448,5 @@ Want to see your customizations in real-time? Check out the **[Customization Bui
 
 ### Need More Control?
 
-For advanced customization beyond CSS variables, check out the [API Reference](/guide/api-reference) for component methods and events you can use to build custom UI.
+Use the stable portal-host and shadow-part selectors above. For component methods and events, see
+the [API Reference](/guide/api-reference).

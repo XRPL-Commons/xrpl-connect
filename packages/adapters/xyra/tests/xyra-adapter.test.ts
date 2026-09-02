@@ -70,6 +70,20 @@ describe('XyraAdapter.connect', () => {
     expect(account.network.id).toBe('mainnet');
   });
 
+  it('does not treat prototype keys as standard network ids', async () => {
+    mockSdk.connect.mockResolvedValue({
+      address: 'rXyraUser',
+      publicKey: 'PK',
+      network: 'xrpl-testnet',
+    });
+
+    await new XyraAdapter().connect({
+      network: { id: 'toString', name: 'Custom', wss: 'wss://custom.example.com' },
+    });
+
+    expect(mockSdk.connect).toHaveBeenCalledWith({ network: 'xrpl-testnet' });
+  });
+
   it('maps a closed-popup error to connection-rejected', async () => {
     mockSdk.connect.mockRejectedValue(new Error('User closed popup'));
 

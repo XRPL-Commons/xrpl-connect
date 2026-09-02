@@ -11,7 +11,7 @@ Get up and running with XRPL-Connect in minutes.
 ### Using npm
 
 ```bash
-npm install xrpl-connect@rc xrpl
+npm install xrpl-connect@rc xrpl@^4
 ```
 
 Add the official bindings for your framework:
@@ -27,13 +27,13 @@ npm install @xrpl-commons/xrpl-connect-vue@rc vue
 ### Using pnpm
 
 ```bash
-pnpm add xrpl-connect@rc xrpl
+pnpm add xrpl-connect@rc xrpl@^4
 ```
 
 ### Using yarn
 
 ```bash
-yarn add xrpl-connect@rc xrpl
+yarn add xrpl-connect@rc xrpl@^4
 ```
 
 The `xrpl-connect` package includes:

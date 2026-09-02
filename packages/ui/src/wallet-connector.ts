@@ -4,8 +4,19 @@
  */
 
 import type { AccountInfo, WalletAdapter, WalletManager } from '@xrpl-connect/core';
-import { createLogger, supportsPreInitialize, withTimeout, TIME } from '@xrpl-connect/core';
+import {
+  createLogger,
+  isAdapterConfigured,
+  supportsPreInitialize,
+  withTimeout,
+  TIME,
+} from '@xrpl-connect/core';
 import QRCodeStyling from 'qr-code-styling';
+import {
+  WALLET_CONNECTOR_CSS_VARIABLES,
+  WALLET_CONNECTOR_PARTS,
+  WALLET_CONNECTOR_PORTAL_ATTRIBUTES,
+} from './customization';
 import { mainStyles } from './styles/main';
 import {
   SIZES,
@@ -62,6 +73,12 @@ interface ConnectionWaiter {
   reject(error: Error): void;
 }
 
+interface FocusReturnTarget {
+  element: HTMLElement;
+  root: Document | ShadowRoot;
+  id: string | null;
+}
+
 // Only define the component in browser (guard against SSR)
 let WalletConnectorElement: {
   new (): WalletConnectorElementInstance;
@@ -69,44 +86,11 @@ let WalletConnectorElement: {
 } | null = null;
 
 if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
-  const XC_CSS_VARIABLES = [
-    '--xc-font-family',
-    '--xc-border-radius',
-    '--xc-overlay-background',
-    '--xc-overlay-backdrop-filter',
-    '--xc-primary-color',
-    '--xc-background-color',
-    '--xc-text-color',
-    '--xc-text-muted-color',
-    '--xc-background-secondary',
-    '--xc-background-tertiary',
-    '--xc-loading-border-color',
-    '--xc-connect-button-font-size',
-    '--xc-connect-button-border-radius',
-    '--xc-connect-button-color',
-    '--xc-connect-button-background',
-    '--xc-connect-button-border',
-    '--xc-connect-button-hover-background',
-    '--xc-connect-button-font-weight',
-    '--xc-primary-button-color',
-    '--xc-primary-button-background',
-    '--xc-primary-button-border-radius',
-    '--xc-primary-button-font-weight',
-    '--xc-primary-button-hover-background',
-    '--xc-secondary-button-color',
-    '--xc-secondary-button-background',
-    '--xc-secondary-button-border-radius',
-    '--xc-secondary-button-font-weight',
-    '--xc-secondary-button-hover-background',
-    '--xc-account-address-button-hover-color',
-    '--xc-modal-background',
-    '--xc-modal-border-radius',
-    '--xc-modal-box-shadow',
-    '--xc-focus-color',
-    '--xc-danger-color',
-    '--xc-success-color',
-    '--xc-warning-color',
-  ] as const;
+  const DERIVED_HOVER_VARIABLES = {
+    connectButtonBackground: '--derived-connect-button-hover-background',
+    primaryButtonBackground: '--derived-primary-button-hover-background',
+    accountAddressColor: '--derived-account-address-button-hover-color',
+  } as const;
 
   class WalletConnectorElementImpl
     extends HTMLElement
@@ -138,6 +122,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private overlayPortal: HTMLDivElement | null = null;
     private accountModalPortal: HTMLDivElement | null = null;
     private styleObserver: MutationObserver | null = null;
+    private walletDialogOpener: FocusReturnTarget | null = null;
+    private accountDialogOpener: FocusReturnTarget | null = null;
     private readonly connectionWaiters = new Set<ConnectionWaiter>();
     private walletManagerHandlers: {
       connect: (account: AccountInfo) => void;
@@ -193,6 +179,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       this.styleObserver?.disconnect();
       this.styleObserver = null;
+      this.walletDialogOpener = null;
+      this.accountDialogOpener = null;
 
       this.overlayPortal?.remove();
       this.overlayPortal = null;
@@ -203,8 +191,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     private forwardCSSVariables(portalHost: HTMLElement): void {
       const computedStyle = window.getComputedStyle(this);
-      for (const varName of XC_CSS_VARIABLES) {
+      for (const varName of WALLET_CONNECTOR_CSS_VARIABLES) {
         const value = computedStyle.getPropertyValue(varName).trim();
+        if (value) portalHost.style.setProperty(varName, value);
+      }
+      for (const varName of Object.values(DERIVED_HOVER_VARIABLES)) {
+        const value = this.style.getPropertyValue(varName).trim();
         if (value) portalHost.style.setProperty(varName, value);
       }
     }
@@ -212,7 +204,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private ensureOverlayPortal(): ShadowRoot {
       if (!this.overlayPortal) {
         this.overlayPortal = document.createElement('div');
-        this.overlayPortal.setAttribute('data-xrpl-overlay-portal', '');
+        this.overlayPortal.setAttribute(WALLET_CONNECTOR_PORTAL_ATTRIBUTES.wallet, '');
         this.overlayPortal.attachShadow({ mode: 'open' });
         document.body.appendChild(this.overlayPortal);
       }
@@ -223,7 +215,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private ensureAccountModalPortal(): ShadowRoot {
       if (!this.accountModalPortal) {
         this.accountModalPortal = document.createElement('div');
-        this.accountModalPortal.setAttribute('data-xrpl-account-modal-portal', '');
+        this.accountModalPortal.setAttribute(WALLET_CONNECTOR_PORTAL_ATTRIBUTES.account, '');
         this.accountModalPortal.attachShadow({ mode: 'open' });
         document.body.appendChild(this.accountModalPortal);
       }
@@ -260,10 +252,21 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         COLOR_ADJUSTMENT.HOVER_BRIGHTNESS
       );
 
-      // Apply hover colors
-      this.style.setProperty('--xc-primary-button-hover-background', primaryHoverColor);
-      this.style.setProperty('--xc-connect-button-hover-background', backgroundHoverColor);
-      this.style.setProperty('--xc-account-address-button-hover-color', primaryHoverColor);
+      const derivedColors = [
+        [DERIVED_HOVER_VARIABLES.primaryButtonBackground, primaryHoverColor],
+        [DERIVED_HOVER_VARIABLES.connectButtonBackground, backgroundHoverColor],
+        [DERIVED_HOVER_VARIABLES.accountAddressColor, primaryHoverColor],
+      ] as const;
+      let changed = false;
+
+      for (const [variable, value] of derivedColors) {
+        if (this.style.getPropertyValue(variable).trim() === value) continue;
+        this.style.setProperty(variable, value);
+        changed = true;
+      }
+
+      // Ignore style mutations caused by these internal fallback updates.
+      if (changed) this.styleObserver?.takeRecords();
 
       // Forward updated variables to portals
       if (this.overlayPortal) this.forwardCSSVariables(this.overlayPortal);
@@ -327,10 +330,11 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           const connectedId = manager.wallet?.id;
           if (connectedId) this.recordMruId(connectedId);
           this.close();
-          this.render();
         },
         disconnect: () => {
-          if (manager === this.walletManager) this.render();
+          if (manager !== this.walletManager) return;
+          if (this.accountModalOpen) this.closeAccountModal();
+          else this.render();
         },
         accountChanged: () => {
           if (manager === this.walletManager) this.render();
@@ -368,7 +372,11 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private async checkXamanStateOnInit() {
       try {
         const xamanAdapter = this.walletManager?.adapters?.get('xaman');
-        if (!xamanAdapter || !isXamanStateAdapter(xamanAdapter)) {
+        if (
+          !xamanAdapter ||
+          !isXamanStateAdapter(xamanAdapter) ||
+          !isAdapterConfigured(xamanAdapter)
+        ) {
           return;
         }
 
@@ -417,10 +425,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     /**
      * Check which wallets are available
      * Filters wallets based on 'wallets' attribute and checks isAvailable() on each
+     * When retryWalletIds is provided, previously available wallets remain cached.
      */
-    private async checkWalletAvailability(): Promise<boolean> {
+    private async checkWalletAvailability(retryWalletIds?: ReadonlySet<string>): Promise<boolean> {
       const manager = this.walletManager;
       const generation = ++this.walletAvailabilityGeneration;
+      const cachedAvailableWalletIds = new Set(this.availableWallets.map((wallet) => wallet.id));
 
       if (!manager || !manager.wallets.length) {
         logger.warn('No wallet manager or wallets registered');
@@ -439,8 +449,13 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
         logger.debug('Checking availability for wallets:', specifiedWalletIds);
 
-        // Get adapters for specified wallet IDs
-        const walletsToCheck = manager.wallets.filter((w) => specifiedWalletIds.includes(w.id));
+        const configuredWallets = manager.wallets.filter((wallet) => isAdapterConfigured(wallet));
+        const walletsById = new Map(configuredWallets.map((wallet) => [wallet.id, wallet]));
+        const walletsToCheck = configuredWallets.filter(
+          (wallet) =>
+            specifiedWalletIds.includes(wallet.id) &&
+            (!retryWalletIds || retryWalletIds.has(wallet.id))
+        );
 
         // Check availability for each wallet in parallel. Each check is capped
         // with a timeout so one slow or hung wallet (e.g. a network probe on a
@@ -479,9 +494,22 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
         this.walletAvailabilityTimedOut = availabilityChecks.some((check) => check.timedOut);
 
-        // Split into available / unavailable, preserving the specified order.
+        // Merge retried results with cached available wallets while preserving
+        // the configured order.
+        const availabilityByWalletId = new Map(
+          availabilityChecks.map((check) => [check.wallet.id, check])
+        );
         const ordered = specifiedWalletIds
-          .map((id) => availabilityChecks.find((check) => check.wallet.id === id))
+          .map((id) => {
+            const wallet = walletsById.get(id);
+            if (!wallet) return undefined;
+            return (
+              availabilityByWalletId.get(id) ??
+              (retryWalletIds && cachedAvailableWalletIds.has(id)
+                ? { wallet, available: true, timedOut: false }
+                : undefined)
+            );
+          })
           .filter(
             (check): check is { wallet: WalletAdapter; available: boolean; timedOut: boolean } =>
               !!check
@@ -500,6 +528,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           return false;
         }
         logger.error('Error checking wallet availability:', error);
+        if (retryWalletIds) {
+          this.walletAvailabilityTimedOut = true;
+          return true;
+        }
         this.availableWallets = [];
         this.unavailableWallets = [];
         this.walletAvailabilityTimedOut = true;
@@ -564,6 +596,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Open the modal
      */
     async open() {
+      if (!this.isOpen) {
+        this.walletDialogOpener = this.captureFocusReturnTarget();
+      }
       const openGeneration = ++this.openGeneration;
       this.isOpen = true;
       this.isFirstOpen = true;
@@ -571,9 +606,18 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       // Prevent body scroll when modal is open
       document.body.style.overflow = 'hidden';
 
-      // Retry a bounded check on later opens when an adapter previously timed out.
-      if (!this.walletAvailabilityChecked || this.walletAvailabilityTimedOut) {
-        const availabilityApplied = await this.checkWalletAvailability();
+      // Retry bounded checks for wallets that may have timed out or been injected
+      // by a browser extension since the previous open.
+      const retryWalletIds =
+        this.walletAvailabilityChecked && this.unavailableWallets.length > 0
+          ? new Set(this.unavailableWallets.map((wallet) => wallet.id))
+          : undefined;
+      if (
+        !this.walletAvailabilityChecked ||
+        this.walletAvailabilityTimedOut ||
+        retryWalletIds !== undefined
+      ) {
+        const availabilityApplied = await this.checkWalletAvailability(retryWalletIds);
         if (openGeneration !== this.openGeneration || !this.isOpen) {
           return;
         }
@@ -617,6 +661,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Close the modal
      */
     close() {
+      const wasOpen = this.isOpen;
       this.cancelPendingConnection();
       this.openGeneration += 1;
       this.isOpen = false;
@@ -632,6 +677,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.errorData = null;
       this.accountSelectionData = null;
       this.render();
+      if (wasOpen) {
+        this.restoreFocus(this.walletDialogOpener);
+        this.walletDialogOpener = null;
+      }
       this.dispatchEvent(new CustomEvent('close'));
     }
 
@@ -650,6 +699,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Open the account details modal
      */
     public openAccountModal() {
+      if (!this.accountModalOpen) {
+        this.accountDialogOpener = this.captureFocusReturnTarget();
+      }
       this.accountModalOpen = true;
       this.render();
     }
@@ -658,8 +710,13 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Close the account details modal
      */
     public closeAccountModal() {
+      const wasOpen = this.accountModalOpen;
       this.accountModalOpen = false;
       this.render();
+      if (wasOpen) {
+        this.restoreFocus(this.accountDialogOpener);
+        this.accountDialogOpener = null;
+      }
     }
 
     /**
@@ -668,8 +725,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     public async disconnectFromAccountModal() {
       try {
         await this.walletManager?.disconnect();
-        this.closeAccountModal();
-        this.render();
+        if (this.accountModalOpen) this.closeAccountModal();
       } catch (error) {
         logger.error('Failed to disconnect:', error);
       }
@@ -700,7 +756,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       // Find WalletConnect adapter
       const walletConnectAdapter = this.walletManager.wallets.find((w) => w.id === 'walletconnect');
 
-      if (!walletConnectAdapter || !supportsPreInitialize(walletConnectAdapter)) return;
+      if (
+        !walletConnectAdapter ||
+        !isAdapterConfigured(walletConnectAdapter) ||
+        !supportsPreInitialize(walletConnectAdapter)
+      )
+        return;
 
       try {
         logger.debug('Pre-initializing WalletConnect...');
@@ -1062,7 +1123,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     <style>
       ${mainStyles}
     </style>
-    <button class="connect-button" id="connect-wallet-button" part="connect-button">${buttonText}</button>
+    <button class="connect-button" id="connect-wallet-button" part="${WALLET_CONNECTOR_PARTS.connector.connectButton}">${buttonText}</button>
   `;
 
       // Wallet connection overlay — rendered in a portal on document.body to guarantee
@@ -1071,8 +1132,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         const overlayRoot = this.ensureOverlayPortal();
         overlayRoot.innerHTML = `
     <style>${mainStyles}</style>
-    <div class="${overlayClass}" part="overlay">
-      <div class="${modalClass}" part="modal">
+    <div class="${overlayClass}" part="${WALLET_CONNECTOR_PARTS.walletModal.overlay}">
+      <div
+        class="${modalClass}"
+        part="${WALLET_CONNECTOR_PARTS.walletModal.modal}"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="wallet-dialog-title"
+        tabindex="-1"
+      >
         ${contentHTML}
       </div>
     </div>
@@ -1098,6 +1166,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       this.eventHandler?.attachEventListeners();
+      if (this.isOpen) this.ensureDialogFocus('wallet');
+      if (this.accountModalOpen) this.ensureDialogFocus('account');
 
       // Update modal height smoothly after render
       requestAnimationFrame(() => {
@@ -1134,6 +1204,97 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       // Store current height for next transition
       this.previousModalHeight = newHeight;
+    }
+
+    private captureFocusReturnTarget(): FocusReturnTarget | null {
+      let root: Document | ShadowRoot = document;
+      let activeElement = root.activeElement;
+
+      while (activeElement instanceof HTMLElement && activeElement.shadowRoot?.activeElement) {
+        root = activeElement.shadowRoot;
+        activeElement = root.activeElement;
+      }
+
+      if (
+        !(activeElement instanceof HTMLElement) ||
+        activeElement === document.body ||
+        activeElement === document.documentElement
+      ) {
+        return null;
+      }
+
+      return {
+        element: activeElement,
+        root,
+        id: activeElement.id || null,
+      };
+    }
+
+    private restoreFocus(target: FocusReturnTarget | null): void {
+      if (!target) return;
+
+      const replacement = target.id ? target.root.getElementById(target.id) : null;
+      const element = target.element.isConnected ? target.element : replacement;
+      if (element?.isConnected) element.focus();
+    }
+
+    private getDialog(dialog: 'wallet' | 'account'): HTMLElement | null {
+      const root = dialog === 'wallet' ? this.getOverlayRoot() : this.getAccountModalRoot();
+      return root?.querySelector<HTMLElement>('[role="dialog"]') ?? null;
+    }
+
+    private getDialogFocusables(dialog: HTMLElement): HTMLElement[] {
+      return Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      );
+    }
+
+    private ensureDialogFocus(dialogType: 'wallet' | 'account'): void {
+      const dialog = this.getDialog(dialogType);
+      if (!dialog) return;
+
+      const root = dialog.getRootNode() as ShadowRoot;
+      if (root.activeElement && dialog.contains(root.activeElement)) return;
+
+      (this.getDialogFocusables(dialog)[0] ?? dialog).focus();
+    }
+
+    public handleDialogKeyDown(dialogType: 'wallet' | 'account', event: KeyboardEvent): void {
+      const dialog = this.getDialog(dialogType);
+      if (!dialog) return;
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        if (dialogType === 'wallet') this.close();
+        else this.closeAccountModal();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = this.getDialogFocusables(dialog);
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const root = dialog.getRootNode() as ShadowRoot;
+      const activeElement = root.activeElement;
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const shouldWrapBackward = event.shiftKey && activeElement === firstElement;
+      const shouldWrapForward = !event.shiftKey && activeElement === lastElement;
+      const focusIsOutsideDialog = !activeElement || !dialog.contains(activeElement);
+
+      if (shouldWrapBackward || shouldWrapForward || focusIsOutsideDialog) {
+        event.preventDefault();
+        if (event.shiftKey) lastElement.focus();
+        else firstElement.focus();
+      }
     }
   }
 

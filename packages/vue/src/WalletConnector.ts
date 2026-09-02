@@ -1,11 +1,22 @@
-import { defineComponent, h, onBeforeUnmount, onMounted, ref, type PropType } from 'vue';
+import {
+  defineComponent,
+  h,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  onMounted,
+  ref,
+  type PropType,
+} from 'vue';
 import {
   createWalletError,
   getErrorMessage,
   isWalletError,
   type AccountInfo,
   type WalletError,
+  type WalletIdentifier,
 } from '@xrpl-connect/core';
+import type { WalletConnectorCssVars } from 'xrpl-connect';
 import { useXrplConnectContext, type WalletConnectorElement } from './context';
 
 const THEMES: Record<WalletConnectorTheme, Record<string, string>> = {
@@ -35,13 +46,14 @@ export const WalletConnector = defineComponent({
   name: 'WalletConnector',
   inheritAttrs: false,
   props: {
-    primaryWallet: String,
-    wallets: Array as PropType<string[]>,
+    primaryWallet: String as PropType<WalletIdentifier>,
+    wallets: Array as PropType<WalletIdentifier[]>,
+    showUnavailable: Boolean,
     theme: String as PropType<WalletConnectorTheme>,
-    cssVars: Object as PropType<Record<`--xc-${string}`, string>>,
+    cssVars: Object as PropType<WalletConnectorCssVars>,
   },
   emits: {
-    connecting: (walletId: string) => typeof walletId === 'string',
+    connecting: (walletId: WalletIdentifier) => typeof walletId === 'string',
     connect: (account: AccountInfo) => Boolean(account),
     error: (error: WalletError) => isWalletError(error),
   },
@@ -80,31 +92,43 @@ export const WalletConnector = defineComponent({
       emit('error', error);
     };
 
-    onMounted(() => {
+    const activateConnector = () => {
+      if (active) return;
       active = true;
-      context.manager.on('connect', onManagerConnect);
-      context.manager.on('disconnect', onManagerDisconnect);
-      if (context.manager.connected && context.manager.account)
-        onManagerConnect(context.manager.account);
-
       void customElements.whenDefined('xrpl-wallet-connector').then(() => {
-        if (!active || !element.value) return;
+        if (!active || registered || !element.value) return;
         element.value.setWalletManager(context.manager);
         element.value.addEventListener('connecting', onConnecting);
         element.value.addEventListener('error', onError);
         context.registerConnector(element.value);
         registered = element.value;
       });
-    });
+    };
 
-    onBeforeUnmount(() => {
+    const deactivateConnector = () => {
       active = false;
-      context.manager.off('connect', onManagerConnect);
-      context.manager.off('disconnect', onManagerDisconnect);
       if (!registered) return;
       registered.removeEventListener('connecting', onConnecting);
       registered.removeEventListener('error', onError);
       context.unregisterConnector(registered);
+      registered = null;
+    };
+
+    onMounted(() => {
+      context.manager.on('connect', onManagerConnect);
+      context.manager.on('disconnect', onManagerDisconnect);
+      if (context.manager.connected && context.manager.account)
+        onManagerConnect(context.manager.account);
+      activateConnector();
+    });
+
+    onActivated(activateConnector);
+    onDeactivated(deactivateConnector);
+
+    onBeforeUnmount(() => {
+      context.manager.off('connect', onManagerConnect);
+      context.manager.off('disconnect', onManagerDisconnect);
+      deactivateConnector();
     });
 
     return () =>
@@ -113,6 +137,7 @@ export const WalletConnector = defineComponent({
         ref: element,
         'primary-wallet': props.primaryWallet,
         wallets: props.wallets?.join(','),
+        'show-unavailable': props.showUnavailable ? '' : undefined,
         style: [props.theme ? THEMES[props.theme] : undefined, props.cssVars, attrs.style],
       });
   },

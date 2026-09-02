@@ -42,7 +42,7 @@ const walletManager = new WalletManager({
 ```typescript
 interface WalletManagerOptions {
   adapters: WalletAdapter[]; // Array of wallet adapters to register
-  network?: NetworkConfig | string; // Default network ('mainnet', 'testnet', 'devnet')
+  network?: NetworkConfig; // Default network ('mainnet', 'testnet', 'devnet', or custom NetworkInfo)
   autoConnect?: boolean; // Attempt to reconnect from stored state
   storage?: StorageAdapter; // Custom storage implementation (defaults to LocalStorageAdapter)
   logger?: LoggerOptions | LoggerInstance; // Logging configuration — pass options or a custom logger
@@ -77,7 +77,21 @@ Initiates connection to a specific wallet adapter. The availability preflight is
 - `options` (optional): Network and wallet-specific connection options. Set
   `skipRequestAccess: true` to ask a supporting wallet to reuse existing access
   without prompting; adapters that cannot distinguish silent access may ignore
-  this hint.
+  this hint. Packaged adapter imports augment this type by wallet ID, so Xaman
+  accepts `apiKey`, WalletConnect accepts `projectId`, and cross-wallet options
+  are rejected by TypeScript.
+
+Xaman and WalletConnect should normally receive their credential in the adapter
+constructor. This makes them eligible for `getAvailableWallets()` and wallet
+picker discovery. A direct call can defer the credential for one connection:
+
+```typescript
+await walletManager.connect('xaman', { apiKey: process.env.XUMM_API_KEY });
+await walletManager.connect('walletconnect', { projectId: process.env.WALLETCONNECT_ID });
+```
+
+Deferred credentials are not stored. Configure the constructor when using
+automatic reconnection; otherwise reconnecting reports `CONFIGURATION_REQUIRED`.
 
 **Returns**: `AccountInfo` containing the connected account details
 
@@ -87,9 +101,7 @@ Initiates connection to a specific wallet adapter. The availability preflight is
 
 ```typescript
 try {
-  const account = await walletManager.connect('xaman', {
-    apiKey: process.env.XUMM_API_KEY,
-  });
+  const account = await walletManager.connect('xaman');
   console.log('Connected to:', account.address);
 } catch (error) {
   console.error('Connection failed:', error.code);

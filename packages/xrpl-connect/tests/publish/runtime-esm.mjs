@@ -13,6 +13,43 @@ assert.equal(typeof api.GemWalletAPI.getAddress, 'function');
 assert.equal(typeof api.XRPLMethod, 'object');
 assert.equal(typeof api.LEDGER_STATE_MESSAGES, 'object');
 
+assert.deepEqual(api.STANDARD_WALLET_IDS, [
+  'xaman',
+  'crossmark',
+  'gemwallet',
+  'walletconnect',
+  'ledger',
+  'xyra',
+  'otsu',
+  'metamask-snap',
+]);
+assert.equal(api.ADAPTER_DESCRIPTORS.length, Object.keys(api.Adapters).length);
+assert.deepEqual(
+  api.ADAPTER_DESCRIPTORS.map(({ id }) => id),
+  api.STANDARD_WALLET_IDS
+);
+assert.equal(
+  new Set(api.ADAPTER_DESCRIPTORS.map(({ exportKey }) => exportKey)).size,
+  api.ADAPTER_DESCRIPTORS.length
+);
+assert.equal(
+  new Set(api.ADAPTER_DESCRIPTORS.map(({ id }) => id)).size,
+  api.ADAPTER_DESCRIPTORS.length
+);
+for (const descriptor of api.ADAPTER_DESCRIPTORS) {
+  assert.equal(descriptor.Adapter, api.Adapters[descriptor.exportKey]);
+  assert.equal(new descriptor.Adapter().id, descriptor.id);
+}
+assert.deepEqual(
+  api
+    .createAdapters({
+      xaman: { apiKey: 'publish-smoke-test' },
+      walletconnect: { projectId: 'publish-smoke-test' },
+    })
+    .map(({ id }) => id),
+  api.STANDARD_WALLET_IDS
+);
+
 for (const exportName of ['XummPkce', 'XummPkceThread']) {
   assert(exportName in api.XamanOAuth2, `XamanOAuth2 is missing ${exportName}`);
 }

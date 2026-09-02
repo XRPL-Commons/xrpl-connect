@@ -11,7 +11,7 @@ Vue composables must also run only on the client.
 ## Installation
 
 ```bash
-npm install @xrpl-commons/xrpl-connect-vue@rc xrpl-connect@rc xrpl vue
+npm install @xrpl-commons/xrpl-connect-vue@rc xrpl-connect@rc xrpl@^4 vue
 ```
 
 ## Client plugin

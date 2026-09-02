@@ -13,6 +13,19 @@ import { run } from './run-command.mjs';
 const FRAMEWORK_PEER_RANGE = '^1.0.0-rc.0';
 const NPM_ORGANIZATION = 'xrpl-commons';
 const SUPPORTED_NODE_RANGE = '^20.19.0 || ^22.18.0 || >=24.11.0';
+const DOCUMENTED_XRPL_SPEC = 'xrpl@^4';
+const DOCUMENTED_INSTALL_PATHS = [
+  'README.md',
+  'packages/react/README.md',
+  'packages/vue/README.md',
+  'examples/react/README.md',
+  'examples/vanilla-js/README.md',
+  'docs/guide/getting-started.md',
+  'docs/guide/frameworks/react.md',
+  'docs/guide/frameworks/vue.md',
+  'docs/guide/frameworks/nuxt.md',
+  'docs/guide/migration-v1.md',
+];
 const PUBLISH_CONFIG = {
   access: 'public',
   registry: NPM_REGISTRY,
@@ -96,6 +109,114 @@ function parseJson(command, args, options) {
   return JSON.parse(run(command, args, { ...options, capture: true }));
 }
 
+function readInstallCommands(markdownPath) {
+  return readFileSync(markdownPath, 'utf-8')
+    .split(/\r?\n/)
+    .map((line) => line.trim().match(/^(?:npm install|pnpm add|yarn add)\s+(.+)$/)?.[1])
+    .filter(Boolean)
+    .map((dependencies) => dependencies.split(/\s+/));
+}
+
+function findInstallCommand(markdownPath, packageName) {
+  const command = readInstallCommands(markdownPath).find((dependencies) =>
+    dependencies.some(
+      (dependency) => dependency === packageName || dependency.startsWith(`${packageName}@`)
+    )
+  );
+  assert(command, `${path.relative(repositoryRoot, markdownPath)} has no ${packageName} install`);
+  return command;
+}
+
+function verifyDocumentedXrplSpecs() {
+  for (const relativePath of DOCUMENTED_INSTALL_PATHS) {
+    const markdownPath = path.join(repositoryRoot, relativePath);
+    const xrplSpecs = readInstallCommands(markdownPath)
+      .flat()
+      .filter((dependency) => /^xrpl(?:@.+)?$/.test(dependency));
+    assert(xrplSpecs.length > 0, `${relativePath} has no documented xrpl dependency`);
+    for (const spec of xrplSpecs) {
+      assert.equal(
+        spec,
+        DOCUMENTED_XRPL_SPEC,
+        `${relativePath} does not pin documented xrpl to v4`
+      );
+    }
+  }
+
+  console.log('✓ Current install documentation consistently pins xrpl to v4');
+  return findInstallCommand(
+    path.join(repositoryRoot, 'packages', 'react', 'README.md'),
+    '@xrpl-commons/xrpl-connect-react'
+  );
+}
+
+function resolveCandidateSpecs(dependencies, tarballsByName) {
+  return dependencies.map((dependency) => {
+    const candidate = candidatePackages.find(
+      ({ name }) => dependency === name || dependency.startsWith(`${name}@`)
+    );
+    return candidate ? tarballsByName.get(candidate.name) : dependency;
+  });
+}
+
+function resolveReactCandidateSpecs(dependencies, tarballsByName, reactMajor) {
+  return resolveCandidateSpecs(dependencies, tarballsByName).map((dependency) => {
+    for (const packageName of ['react', 'react-dom']) {
+      if (dependency === packageName || dependency.startsWith(`${packageName}@`)) {
+        return `${packageName}@${reactMajor}`;
+      }
+    }
+    return dependency;
+  });
+}
+
+function writeConsumerManifest(consumerFolder, name) {
+  mkdirSync(consumerFolder);
+  writeFileSync(
+    path.join(consumerFolder, 'package.json'),
+    JSON.stringify({ name, private: true, type: 'module' }, null, 2)
+  );
+}
+
+function verifyInstalledReactMajor(consumerFolder, reactMajor) {
+  for (const dependency of ['react', 'react-dom', '@types/react', '@types/react-dom']) {
+    const manifest = JSON.parse(
+      readFileSync(path.join(consumerFolder, 'node_modules', dependency, 'package.json'), 'utf-8')
+    );
+    assert.equal(
+      manifest.version.split('.')[0],
+      String(reactMajor),
+      `${dependency}@${manifest.version} does not match the React ${reactMajor} consumer`
+    );
+  }
+  console.log(`✓ React ${reactMajor} consumer uses matching runtime and type-package majors`);
+}
+
+function copyReactFixtures(consumerFolder) {
+  for (const fixture of [
+    'runtime-dom.mjs',
+    'runtime-ssr.mjs',
+    'types-react-esm.mts',
+    'types-react-cjs.cts',
+    'types-react-jsx.tsx',
+    'tsconfig.react.json',
+  ]) {
+    copyFileSync(path.join(reactFixturesFolder, fixture), path.join(consumerFolder, fixture));
+  }
+}
+
+function verifyPackedReactConsumer(consumerFolder, reactMajor, tscPath, options) {
+  console.log(`→ Type-checking packed React ${reactMajor} ESM, CommonJS, and JSX consumers`);
+  run(process.execPath, [tscPath, '--project', 'tsconfig.react.json'], {
+    ...options,
+    cwd: consumerFolder,
+  });
+  console.log(`→ Loading packed React ${reactMajor} ESM and CommonJS entries in SSR`);
+  run(process.execPath, ['runtime-ssr.mjs'], { ...options, cwd: consumerFolder });
+  console.log(`→ Mounting packed React ${reactMajor} connector and verifying callbacks`);
+  run(process.execPath, ['runtime-dom.mjs'], { ...options, cwd: consumerFolder });
+}
+
 function verifyNpmAccess() {
   const username = run('npm', ['whoami', '--registry', NPM_REGISTRY], {
     ...registryRunOptions,
@@ -177,6 +298,7 @@ if (modes.has('--check-prepublish')) verifyPrepublishRegistryState();
 if (modes.has('--check-registry')) verifyRegistryTags();
 if (modes.size > 0) process.exit(0);
 
+const documentedReactInstall = verifyDocumentedXrplSpecs();
 const temporaryRoot = mkdtempSync(path.join(os.tmpdir(), 'xrpl-connect-publish-'));
 const runOptions = {
   env: { npm_config_cache: path.join(temporaryRoot, '.npm-cache') },
@@ -193,7 +315,7 @@ const publishRunOptions = (tag, registry) => ({
 });
 
 try {
-  const tarballs = [];
+  const tarballsByName = new Map();
   for (const candidate of candidatePackages) {
     const [packMetadata] = parseJson(
       'npm',
@@ -208,7 +330,7 @@ try {
       assert(packedFiles.has(requiredFile), `${candidate.name} is missing ${requiredFile}`);
     }
 
-    tarballs.push(path.join(temporaryRoot, packMetadata.filename));
+    tarballsByName.set(candidate.name, path.join(temporaryRoot, packMetadata.filename));
     console.log(`→ Dry-running ${candidate.name}@${CANDIDATE_VERSION}`);
     run(
       'npm',
@@ -230,16 +352,8 @@ try {
     );
   }
 
-  const consumerFolder = path.join(temporaryRoot, 'consumer');
-  mkdirSync(consumerFolder);
-  writeFileSync(
-    path.join(consumerFolder, 'package.json'),
-    JSON.stringify(
-      { name: 'xrpl-connect-publish-consumer', private: true, type: 'module' },
-      null,
-      2
-    )
-  );
+  const consumerFolder = path.join(temporaryRoot, 'consumer-react-18');
+  writeConsumerManifest(consumerFolder, 'xrpl-connect-publish-consumer-react-18');
 
   run(
     'npm',
@@ -250,19 +364,21 @@ try {
       '--no-audit',
       '--no-fund',
       '--package-lock=false',
-      ...tarballs,
-      '@types/react@^18.3.0',
-      '@types/react-dom@^18.3.0',
-      'xrpl@^4.0.0',
+      ...resolveReactCandidateSpecs(documentedReactInstall, tarballsByName, 18),
+      tarballsByName.get('@xrpl-commons/xrpl-connect-vue'),
+      '@types/react@18',
+      '@types/react-dom@18',
       'jsdom@^22.1.0',
-      'react@^18.3.1',
-      'react-dom@^18.3.1',
+      'nuxt@4.1.3',
+      'rollup@4.62.2',
+      'vite@7.1.11',
       'vue@^3.5.22',
       '@vue/server-renderer@^3.5.22',
     ],
     { ...runOptions, cwd: consumerFolder }
   );
   console.log('✓ Candidate install completed with strict peer dependency checks');
+  verifyInstalledReactMajor(consumerFolder, 18);
 
   const installedManifests = Object.fromEntries(
     candidatePackages.map(({ name }) => [
@@ -271,6 +387,15 @@ try {
         readFileSync(path.join(consumerFolder, 'node_modules', name, 'package.json'), 'utf-8')
       ),
     ])
+  );
+  const packedReactInstall = findInstallCommand(
+    path.join(consumerFolder, 'node_modules', '@xrpl-commons', 'xrpl-connect-react', 'README.md'),
+    '@xrpl-commons/xrpl-connect-react'
+  );
+  assert.deepEqual(
+    packedReactInstall,
+    documentedReactInstall,
+    'Packed React README changed the verified install command'
   );
 
   for (const [name, manifest] of Object.entries(installedManifests)) {
@@ -309,12 +434,24 @@ try {
 
   const unresolvedXyraImport =
     /import\s*\(\s*(?:\/\*[\s\S]*?\*\/\s*)?[`'"]@xyrawallet\/sdk[`'"]\s*\)/;
+  const optionalChainConstructor = /new\s*\(\s*globalThis\?\.MockedWebSocket\s*\)/;
+  const directMockedWebSocketConstructor = /new\s+globalThis\.MockedWebSocket\s*\(/;
   for (const entry of ['xrpl-connect.mjs', 'xrpl-connect.umd.js']) {
-    const contents = readFileSync(path.join(candidatePackages[0].folder, entry), 'utf-8');
+    const contents = readFileSync(path.join(installedUmbrellaFolder, entry), 'utf-8');
     assert.doesNotMatch(
       contents,
       unresolvedXyraImport,
       `${entry} leaves the Xyra SDK as a browser-unresolvable bare import`
+    );
+    assert.doesNotMatch(
+      contents,
+      optionalChainConstructor,
+      `${entry} contains an optional-chain constructor that consumer builds cannot parse`
+    );
+    assert.match(
+      contents,
+      directMockedWebSocketConstructor,
+      `${entry} does not contain the guarded direct MockedWebSocket constructor`
     );
   }
 
@@ -407,8 +544,9 @@ try {
     const installedFrameworkFolder = path.join(consumerFolder, 'node_modules', name);
     for (const declaration of ['dist/index.d.ts', 'dist/index.d.mts']) {
       const contents = readFileSync(path.join(installedFrameworkFolder, declaration), 'utf-8');
+      const declarationCode = contents.replace(/\/\*[\s\S]*?\*\//g, '');
       assert(
-        !contents.includes('@xrpl-connect/core'),
+        !declarationCode.includes('@xrpl-connect/core'),
         `${name}/${declaration} leaks the development-only @xrpl-connect/core package`
       );
     }
@@ -424,18 +562,15 @@ try {
     'types-cjs.cts',
     'tsconfig.esm.json',
     'tsconfig.cjs.json',
+    'nuxt.config.mjs',
   ];
   for (const fixture of fixtures) {
     copyFileSync(path.join(fixturesFolder, fixture), path.join(consumerFolder, fixture));
   }
-  for (const fixture of [
-    'runtime-ssr.mjs',
-    'types-react-esm.mts',
-    'types-react-cjs.cts',
-    'tsconfig.react.json',
-  ]) {
-    copyFileSync(path.join(reactFixturesFolder, fixture), path.join(consumerFolder, fixture));
-  }
+  const nuxtAppFolder = path.join(consumerFolder, 'app');
+  mkdirSync(nuxtAppFolder);
+  copyFileSync(path.join(fixturesFolder, 'nuxt-app.vue'), path.join(nuxtAppFolder, 'app.vue'));
+  copyReactFixtures(consumerFolder);
   for (const fixture of ['types-vue-esm.mts', 'types-vue-cjs.cts', 'tsconfig.vue.json']) {
     copyFileSync(path.join(vueFixturesFolder, fixture), path.join(consumerFolder, fixture));
   }
@@ -455,11 +590,30 @@ try {
     ...runOptions,
     cwd: consumerFolder,
   });
-  console.log('→ Type-checking packed React ESM and CommonJS consumers');
-  run(process.execPath, [tscPath, '--project', 'tsconfig.react.json'], {
-    ...runOptions,
-    cwd: consumerFolder,
-  });
+  verifyPackedReactConsumer(consumerFolder, 18, tscPath, runOptions);
+
+  const react19ConsumerFolder = path.join(temporaryRoot, 'consumer-react-19');
+  writeConsumerManifest(react19ConsumerFolder, 'xrpl-connect-publish-consumer-react-19');
+  run(
+    'npm',
+    [
+      'install',
+      '--strict-peer-deps',
+      '--ignore-scripts',
+      '--no-audit',
+      '--no-fund',
+      '--package-lock=false',
+      ...resolveReactCandidateSpecs(documentedReactInstall, tarballsByName, 19),
+      '@types/react@19',
+      '@types/react-dom@19',
+      'jsdom@^22.1.0',
+    ],
+    { ...runOptions, cwd: react19ConsumerFolder }
+  );
+  verifyInstalledReactMajor(react19ConsumerFolder, 19);
+  copyReactFixtures(react19ConsumerFolder);
+  verifyPackedReactConsumer(react19ConsumerFolder, 19, tscPath, runOptions);
+
   console.log('→ Type-checking packed Vue ESM and CommonJS consumers');
   run(process.execPath, [tscPath, '--project', 'tsconfig.vue.json'], {
     ...runOptions,
@@ -473,12 +627,22 @@ try {
   run(process.execPath, ['runtime-esm.mjs'], { ...runOptions, cwd: consumerFolder });
   console.log('→ Loading packed CommonJS runtime');
   run(process.execPath, ['runtime-cjs.cjs'], { ...runOptions, cwd: consumerFolder });
-  console.log('→ Loading packed React ESM and CommonJS entries in SSR');
-  run(process.execPath, ['runtime-ssr.mjs'], { ...runOptions, cwd: consumerFolder });
   console.log('→ Loading packed Vue ESM and CommonJS entries in SSR');
   run(process.execPath, ['vue-runtime-ssr.mjs'], { ...runOptions, cwd: consumerFolder });
+  console.log('→ Building packed umbrella ESM with Nuxt and Vite');
+  run(
+    process.execPath,
+    [path.join(consumerFolder, 'node_modules', 'nuxt', 'bin', 'nuxt.mjs'), 'build'],
+    {
+      ...runOptions,
+      env: { ...runOptions.env, NUXT_TELEMETRY_DISABLED: '1' },
+      cwd: consumerFolder,
+    }
+  );
 
-  console.log('✓ Packed candidates passed manifest, publish, peer, runtime, and type checks');
+  console.log(
+    '✓ Packed candidates passed manifest, publish, peer, runtime, type, and consumer-build checks'
+  );
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true });
 }

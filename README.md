@@ -33,7 +33,7 @@ Please read the documentation here [DOCS](https://xrpl-commons.github.io/xrpl-co
 ### Installation
 
 ```bash
-npm install xrpl-connect@rc xrpl
+npm install xrpl-connect@rc xrpl@^4
 ```
 
 That's it! Everything you need in one package.

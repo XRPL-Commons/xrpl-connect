@@ -37,6 +37,6 @@ export function useSigner() {
 }
 
 export function useWalletModal() {
-  const { openModal, closeModal } = useXrplConnectContext();
-  return { open: openModal, close: closeModal };
+  const { ready, openModal, openAndWaitModal, closeModal } = useXrplConnectContext();
+  return { ready, open: openModal, openAndWait: openAndWaitModal, close: closeModal };
 }

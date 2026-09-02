@@ -22,6 +22,7 @@ import {
   SupportsDeepLink,
   SupportsFetchAccount,
   WalletCapabilities,
+  WalletConnectionOptionsById,
 } from '@xrpl-connect/core';
 import { createWalletError, createLogger, isWalletError, resolveNetwork } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
@@ -133,12 +134,7 @@ export interface XamanAdapterOptions {
   returnUrl?: XamanReturnUrl;
 }
 
-export type XamanConnectOptions = {
-  apiKey?: string;
-  onQRCode?: (uri: string) => void;
-  onDeepLink?: (uri: string) => string;
-  returnUrl?: XamanReturnUrl;
-};
+export type XamanConnectOptions = WalletConnectionOptionsById['xaman'];
 
 /**
  * Xaman wallet adapter implementation
@@ -178,6 +174,10 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
     this.options = options;
   }
 
+  getMissingConfiguration(options?: ConnectOptions<XamanConnectOptions>): readonly string[] {
+    return options?.apiKey || this.options.apiKey ? [] : ['apiKey'];
+  }
+
   /**
    * Xaman is always available (uses OAuth flow, no extension needed)
    */
@@ -191,12 +191,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
     const apiKey = options?.apiKey || this.options.apiKey;
 
     if (!apiKey) {
-      throw createWalletError.connectionFailed(
-        this.name,
-        new Error(
-          'API key is required for Xaman. Please provide it in connect options or adapter constructor.'
-        )
-      );
+      throw createWalletError.configurationRequired(this.name, ['apiKey']);
     }
 
     if (this.sdkApiKey && this.sdkApiKey !== apiKey) {
@@ -315,12 +310,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
     });
 
     if (!apiKey) {
-      throw createWalletError.connectionFailed(
-        this.name,
-        new Error(
-          'API key is required for Xaman. Please provide it in connect options or adapter constructor.'
-        )
-      );
+      throw createWalletError.configurationRequired(this.name, ['apiKey']);
     }
 
     if (this.sdkApiKey && this.sdkApiKey !== apiKey) {

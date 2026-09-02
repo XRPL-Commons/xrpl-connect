@@ -9,9 +9,12 @@ export { WalletManager } from './wallet-manager';
 // Types
 export type {
   WalletAdapter,
+  WalletId,
+  WalletIdentifier,
   WalletManagerOptions,
   AccountInfo,
   NetworkInfo,
+  StandardNetworkId,
   NetworkConfig,
   Transaction,
   SignedTransaction,
@@ -20,6 +23,8 @@ export type {
   ManagedSignedMessage,
   SubmittedTransaction,
   ConnectOptions,
+  ConnectOptionsFor,
+  WalletConnectionOptionsById,
   ReconnectOptions,
   WalletEvent,
   WalletAdapterEvent,
@@ -36,7 +41,9 @@ export type {
 } from './types';
 
 export {
+  STANDARD_WALLET_IDS,
   STANDARD_NETWORKS,
+  isStandardNetworkId,
   WalletErrorCode,
   WalletErrorCategory,
   supportsPreInitialize,
@@ -45,6 +52,8 @@ export {
   adapterSupports,
   CAPABILITY_DEFAULTS,
   supportsReconnectOptions,
+  getMissingAdapterConfiguration,
+  isAdapterConfigured,
 } from './types';
 
 // Errors

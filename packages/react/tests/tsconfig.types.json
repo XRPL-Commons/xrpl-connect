@@ -6,5 +6,6 @@
     "strict": true,
     "skipLibCheck": false
   },
-  "files": ["public-api.types.ts"]
+  "files": ["public-api.types.ts"],
+  "include": []
 }

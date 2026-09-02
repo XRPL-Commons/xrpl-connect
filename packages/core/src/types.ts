@@ -4,6 +4,24 @@
 
 import type { SubmittableTransaction as XRPLTransaction } from 'xrpl';
 
+/** Canonical runtime IDs for the adapters packaged by `xrpl-connect`. */
+export const STANDARD_WALLET_IDS = [
+  'xaman',
+  'crossmark',
+  'gemwallet',
+  'walletconnect',
+  'ledger',
+  'xyra',
+  'otsu',
+  'metamask-snap',
+] as const;
+
+/** Runtime ID of an adapter packaged by `xrpl-connect`. */
+export type WalletId = (typeof STANDARD_WALLET_IDS)[number];
+
+/** A packaged wallet ID or an application-defined custom adapter ID. */
+export type WalletIdentifier = WalletId | (string & Record<never, never>);
+
 /**
  * Network information
  */
@@ -18,7 +36,9 @@ export interface NetworkInfo {
 /**
  * Standard XRPL networks
  */
-export const STANDARD_NETWORKS: Record<string, NetworkInfo> = {
+export type StandardNetworkId = 'mainnet' | 'testnet' | 'devnet';
+
+export const STANDARD_NETWORKS: Record<StandardNetworkId, NetworkInfo> = {
   mainnet: {
     id: 'mainnet',
     name: 'Mainnet',
@@ -45,7 +65,11 @@ export const STANDARD_NETWORKS: Record<string, NetworkInfo> = {
 /**
  * Network configuration type - can be a standard network key or custom NetworkInfo
  */
-export type NetworkConfig = keyof typeof STANDARD_NETWORKS | NetworkInfo;
+export type NetworkConfig = StandardNetworkId | NetworkInfo;
+
+export function isStandardNetworkId(networkId: string): networkId is StandardNetworkId {
+  return Object.prototype.hasOwnProperty.call(STANDARD_NETWORKS, networkId);
+}
 
 /**
  * Account information returned after connection
@@ -105,7 +129,7 @@ export interface SubmittedTransaction {
  * Options for connecting to a wallet
  */
 // oxlint-disable-next-line typescript/no-empty-object-type
-export type ConnectOptions<WalletSpecificOptions extends Record<string, unknown> = {}> = {
+export type ConnectOptions<WalletSpecificOptions extends object = {}> = {
   network?: NetworkConfig; // Preferred network
   autoReconnect?: boolean; // Auto-reconnect on page load
   /**
@@ -115,6 +139,41 @@ export type ConnectOptions<WalletSpecificOptions extends Record<string, unknown>
    */
   skipRequestAccess?: boolean;
 } & WalletSpecificOptions;
+
+/**
+ * Adapter-specific connection options keyed by wallet ID. Third-party adapter
+ * packages can extend this interface through module augmentation. Augment the
+ * public module specifier being consumed: `@xrpl-connect/core` for the standalone
+ * package or `xrpl-connect` for the rolled umbrella package. Custom IDs retain
+ * an open options object without requiring augmentation.
+ */
+export interface WalletConnectionOptionsById {
+  xaman: {
+    apiKey?: string;
+    onQRCode?: (uri: string) => void;
+    onDeepLink?: (uri: string) => string;
+    returnUrl?: {
+      app?: string;
+      web?: string;
+    };
+  };
+  walletconnect: {
+    projectId?: string;
+    onQRCode?: (uri: string) => void;
+  };
+}
+
+type WalletSpecificConnectOptions<Wallet extends WalletIdentifier> =
+  Wallet extends keyof WalletConnectionOptionsById
+    ? WalletConnectionOptionsById[Wallet] extends object
+      ? WalletConnectionOptionsById[Wallet]
+      : never
+    : Record<string, unknown>;
+
+/** Connection options narrowed to the selected packaged wallet. */
+export type ConnectOptionsFor<Wallet extends WalletIdentifier> = ConnectOptions<
+  WalletSpecificConnectOptions<Wallet>
+>;
 
 /**
  * Adapter-owned, JSON-safe options required to restore a wallet account.
@@ -178,7 +237,7 @@ export function adapterSupports(
  */
 export interface WalletAdapter {
   // Metadata
-  readonly id: string; // 'xaman', 'crossmark', 'walletconnect', 'gemwallet'
+  readonly id: WalletIdentifier; // packaged or application-defined adapter ID
   readonly name: string; // 'Xaman Wallet', 'Crossmark', etc.
   readonly icon?: string; // URL or base64 icon
   readonly url?: string; // Wallet website/download URL
@@ -195,6 +254,7 @@ export interface WalletAdapter {
   serializeReconnectOptions?(options: ConnectOptions): ReconnectOptions | undefined;
 
   // Availability
+  getMissingConfiguration?(options?: ConnectOptions): readonly string[];
   isAvailable(): Promise<boolean>; // Check if wallet is installed/accessible
 
   // Connection lifecycle
@@ -213,6 +273,19 @@ export interface WalletAdapter {
   // Events (optional, for wallets that support event listening)
   on?(event: WalletAdapterEvent, callback: (data: unknown) => void): void;
   off?(event: WalletAdapterEvent, callback: (data: unknown) => void): void;
+}
+
+/** Return the configuration fields an adapter still needs before connecting. */
+export function getMissingAdapterConfiguration(
+  adapter: WalletAdapter,
+  options?: ConnectOptions
+): readonly string[] {
+  return adapter.getMissingConfiguration?.(options) ?? [];
+}
+
+/** Whether an adapter has enough configuration to begin a connection. */
+export function isAdapterConfigured(adapter: WalletAdapter, options?: ConnectOptions): boolean {
+  return getMissingAdapterConfiguration(adapter, options).length === 0;
 }
 
 /**
@@ -304,7 +377,7 @@ export interface StorageAdapter {
  * Stored connection state
  */
 export interface StoredState {
-  walletId: string;
+  walletId: WalletIdentifier;
   account: AccountInfo;
   network: NetworkInfo;
   timestamp: number;
@@ -353,6 +426,7 @@ export enum WalletErrorCode {
   WALLET_NOT_AVAILABLE = 'WALLET_NOT_AVAILABLE',
   CONNECTION_FAILED = 'CONNECTION_FAILED',
   CONNECTION_REJECTED = 'CONNECTION_REJECTED',
+  CONFIGURATION_REQUIRED = 'CONFIGURATION_REQUIRED',
 
   // Signing errors
   SIGN_FAILED = 'SIGN_FAILED',

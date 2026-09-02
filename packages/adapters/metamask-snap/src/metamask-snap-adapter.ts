@@ -11,6 +11,7 @@ import type {
   ConnectOptions,
   NetworkInfo,
   NetworkConfig,
+  StandardNetworkId,
   Transaction,
   SignedTransaction,
   SignedMessage,
@@ -18,6 +19,7 @@ import type {
 } from '@xrpl-connect/core';
 import {
   createWalletError,
+  isStandardNetworkId,
   isWalletError,
   STANDARD_NETWORKS,
   resolveNetwork,
@@ -44,7 +46,7 @@ const DEFAULT_SNAP_ID = 'npm:xrpl-snap';
 /**
  * Mapping between xrpl-connect network IDs and snap chainIds
  */
-const NETWORK_TO_CHAIN_ID: Record<string, number> = {
+const NETWORK_TO_CHAIN_ID: Record<StandardNetworkId, number> = {
   mainnet: 0,
   testnet: 1,
   devnet: 2,
@@ -360,7 +362,7 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
       nodeUrl: string;
     };
     const networkId = CHAIN_ID_TO_NETWORK[snapNetwork.chainId];
-    if (networkId && STANDARD_NETWORKS[networkId]) {
+    if (networkId && isStandardNetworkId(networkId)) {
       return STANDARD_NETWORKS[networkId];
     }
     return {
@@ -372,10 +374,10 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
   }
 
   private async selectNetwork(network: NetworkInfo): Promise<NetworkInfo> {
-    const chainId = NETWORK_TO_CHAIN_ID[network.id];
-    if (chainId === undefined) {
+    if (!isStandardNetworkId(network.id)) {
       throw createWalletError.networkNotSupported(network.id, this.name);
     }
+    const chainId = NETWORK_TO_CHAIN_ID[network.id];
 
     const current = await this.readActiveNetwork();
     if (current.id !== network.id) {

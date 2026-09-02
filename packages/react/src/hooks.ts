@@ -53,10 +53,10 @@ export function useSigner() {
  * Imperatively control the `<WalletConnector>` modal.
  *
  * @example
- * const { open } = useWalletModal();
- * <button onClick={open}>Connect Wallet</button>
+ * const { ready, open } = useWalletModal();
+ * <button disabled={!ready} onClick={() => void open()}>Connect Wallet</button>
  */
 export function useWalletModal() {
-  const { openModal, closeModal } = useXrplConnectContext();
-  return { open: openModal, close: closeModal };
+  const { ready, openModal, openAndWaitModal, closeModal } = useXrplConnectContext();
+  return { ready, open: openModal, openAndWait: openAndWaitModal, close: closeModal };
 }

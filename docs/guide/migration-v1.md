@@ -16,13 +16,13 @@ Do not install both framework bindings. Upgrade the umbrella package and only th
 
 ```bash
 # Vanilla JavaScript or a custom framework integration
-pnpm add xrpl-connect@rc xrpl
+pnpm add xrpl-connect@rc xrpl@^4
 
 # React
-pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-react@rc xrpl react react-dom
+pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-react@rc xrpl@^4 react react-dom
 
 # Vue 3 or Nuxt
-pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-vue@rc xrpl vue
+pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-vue@rc xrpl@^4 vue
 ```
 
 The coordinated release candidate contains these three artifacts:

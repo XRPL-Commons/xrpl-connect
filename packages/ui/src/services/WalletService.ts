@@ -1,5 +1,11 @@
 import type { ConnectOptions, WalletAdapter, WalletManager } from '@xrpl-connect/core';
-import { createLogger, TIME, WalletErrorCode, withTimeout } from '@xrpl-connect/core';
+import {
+  createLogger,
+  isAdapterConfigured,
+  TIME,
+  WalletErrorCode,
+  withTimeout,
+} from '@xrpl-connect/core';
 import { isSafari, isMobile, delay } from '../utils';
 import { TIMINGS, ERROR_CODES } from '../constants';
 import {
@@ -14,6 +20,8 @@ const logger = createLogger('[WalletService]');
 const AVAILABILITY_TIMED_OUT = Symbol('availability-timed-out');
 
 async function checkWalletAvailability(wallet: WalletAdapter): Promise<boolean> {
+  if (!isAdapterConfigured(wallet)) return false;
+
   const result = await withTimeout<
     | { available: boolean; error?: never }
     | { available?: never; error: unknown }

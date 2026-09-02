@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- React: forward typed `WalletConnectorElement` refs and safe host attributes through `<WalletConnector>`, with explicit managed-prop precedence (#172).
+- React: make `useWalletModal()` awaitable with connector readiness, `openAndWait()`, explicit missing-connector failures, and deterministic ownership when multiple connectors are mounted (#171).
+- React: expose unavailable-wallet rows through the typed `showUnavailable` wrapper prop and align direct custom-element JSX attributes (#168).
+- Vue: make `useWalletModal()` awaitable with connector readiness, `openAndWait()`, explicit missing-connector failures, and deterministic ownership when multiple connectors are mounted (#145).
+- Vue: expose the native unavailable-wallet display behavior through the typed `showUnavailable` component prop (#146).
+- UI: export the exact wallet-connector CSS-variable contract and stable modal portal/part metadata, with typed React and Vue overrides and connected-account modal styling hooks (#151).
+
+### Fixed
+
+- React: ship the custom-element JSX and typed-ref declaration in the packed package, and verify the advertised React 18 and 19 runtime/type compatibility in isolated consumers (#170).
+- Documentation: pin current install commands to `xrpl@^4` so registry-latest v5 cannot drift outside the supported v3/v4 peer range; packed-consumer verification now executes the literal React dependency specifications and rejects stale install examples (#169).
+- xrpl-connect (meta-bundle): emit the Xaman mock-WebSocket constructor without an optional chain so Nuxt 4 and Vite/Rollup production builds can consume the published ESM artifact. Consumers can remove `patch-package` or transpilation workarounds for `xrpl-connect.mjs` (#141).
+
 ## [1.0.0-rc.0] - 2026-08-17
 
 ### Added
@@ -29,6 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Otsu/UI: report Otsu as available only when its injected provider is present,
+  and retry unavailable wallets when the connector is reopened so late provider
+  injection is discovered (#140).
 - Dependencies: refresh WalletConnect and constrain vulnerable transitive ranges used by WalletConnect, Crossmark declarations, and documentation tooling so production installs no longer report high-severity advisories; document the remaining declarations-only low-severity finding (#116).
 - Xyra/meta-bundle: lazy-load the browser-only Xyra SDK so both ESM and CommonJS umbrella imports are safe during SSR; verify no-DOM imports in fresh packed consumers.
 - Crossmark: normalize the upstream CommonJS SDK namespace so the standalone adapter loads through both Node ESM and CommonJS, with a build-time runtime smoke test.

@@ -53,9 +53,9 @@ A Web Component is a reusable, encapsulated HTML element built using the Web Com
     <xrpl-wallet-connector
       primary-wallet="xaman"
       style="
-        --xrpl-primary-color: #0EA5E9;
-        --xrpl-background-color: #000637;
-        --xrpl-text-color: #F5F4E7;
+        --xc-primary-color: #0EA5E9;
+        --xc-background-color: #000637;
+        --xc-text-color: #F5F4E7;
       "
     ></xrpl-wallet-connector>
   </body>
@@ -72,7 +72,8 @@ All attributes are optional and control the behavior of the component:
 | `wallets`          | string  | -       | Comma-separated list of wallet IDs to include (e.g., `'xaman,crossmark,walletconnect'`)   |
 | `show-unavailable` | boolean | false   | Show unavailable wallets with an Install link, or a disabled row when no URL is available |
 
-All styling is controlled exclusively via CSS variables (see [Customization](./CUSTOMIZATION.md) guide).
+Use the supported CSS variables and stable shadow parts documented in the
+[Customization Guide](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/docs/guide/customization.md).
 
 ### JavaScript API
 
@@ -341,7 +342,9 @@ Shows error message and recovery options.
 
 ## Customization
 
-The component is fully customizable using CSS variables. See the [Customization Guide](./CUSTOMIZATION.md) for comprehensive documentation.
+The component exposes exact CSS variables plus stable shadow parts. See the
+[Customization Guide](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/docs/guide/customization.md)
+for the complete contract.
 
 ### Theme Colors
 
@@ -350,10 +353,10 @@ Control the appearance via CSS variables:
 ```html
 <xrpl-wallet-connector
   style="
-    --xrpl-background-color: #1a1a2e;
-    --xrpl-text-color: #eaeaea;
-    --xrpl-primary-color: #00d4ff;
-    --xrpl-font-family: 'Inter', sans-serif;
+    --xc-background-color: #1a1a2e;
+    --xc-text-color: #eaeaea;
+    --xc-primary-color: #00d4ff;
+    --xc-font-family: 'Inter', sans-serif;
   "
 ></xrpl-wallet-connector>
 ```
@@ -362,10 +365,10 @@ Or define variables in your stylesheet:
 
 ```css
 :root {
-  --xrpl-background-color: #1a1a2e;
-  --xrpl-text-color: #eaeaea;
-  --xrpl-primary-color: #00d4ff;
-  --xrpl-font-family: 'Inter', sans-serif;
+  --xc-background-color: #1a1a2e;
+  --xc-text-color: #eaeaea;
+  --xc-primary-color: #00d4ff;
+  --xc-font-family: 'Inter', sans-serif;
 }
 ```
 
@@ -639,25 +642,26 @@ customElements.define('xrpl-wallet-connector', WalletConnectorElement);
 
 ### Shadow DOM Structure
 
-The component creates an isolated DOM tree inside the Shadow DOM:
+The connect button uses the component's shadow root. Each modal uses a separate body-level portal
+host so fixed positioning is not constrained by transformed ancestors:
 
 ```html
-#shadow-root (open)
-<style>
-  /* Scoped styles */
-</style>
+<xrpl-wallet-connector>
+  #shadow-root (open)
+  <button part="connect-button">Connect Wallet</button>
+</xrpl-wallet-connector>
 
-<div class="overlay">
-  <div class="modal">
-    <div class="modal-header">
-      <h2>Connect Wallet</h2>
-      <button class="close-btn">×</button>
-    </div>
+<div data-xrpl-overlay-portal>
+  #shadow-root (open)
+  <div part="overlay">
+    <div part="modal">...</div>
+  </div>
+</div>
 
-    <div class="modal-content">
-      <!-- View content inserted here -->
-      <!-- List view, QR view, Loading view, or Error view -->
-    </div>
+<div data-xrpl-account-modal-portal>
+  #shadow-root (open)
+  <div part="overlay">
+    <div part="modal">...</div>
   </div>
 </div>
 ```
@@ -845,7 +849,7 @@ connector.addEventListener('connected', (e) => {
 
 **Solutions**:
 
-1. Ensure variable names use the `--xrpl-` prefix (e.g., `--xrpl-primary-color`)
+1. Use a key exported by `WALLET_CONNECTOR_CSS_VARIABLES` (for example, `--xc-primary-color`)
 2. Use valid hex colors or CSS color values (e.g., `#0EA5E9`, not `blue`)
 3. Set variables via `style` attribute or CSS before the component renders
 
@@ -853,16 +857,16 @@ connector.addEventListener('connected', (e) => {
 <!-- Correct -->
 <xrpl-wallet-connector
   style="
-    --xrpl-background-color: #000637;
-    --xrpl-text-color: #F5F4E7;
+    --xc-background-color: #000637;
+    --xc-text-color: #F5F4E7;
   "
 ></xrpl-wallet-connector>
 
 <!-- Also correct (in stylesheet) -->
 <style>
   xrpl-wallet-connector {
-    --xrpl-background-color: #000637;
-    --xrpl-text-color: #f5f4e7;
+    --xc-background-color: #000637;
+    --xc-text-color: #f5f4e7;
   }
 </style>
 ```
@@ -913,9 +917,9 @@ Previous versions used HTML attributes for styling. The component now uses CSS v
 ```html
 <xrpl-wallet-connector
   style="
-    --xrpl-background-color: #000637;
-    --xrpl-text-color: #F5F4E7;
-    --xrpl-primary-color: #0EA5E9;
+    --xc-background-color: #000637;
+    --xc-text-color: #F5F4E7;
+    --xc-primary-color: #0EA5E9;
   "
 ></xrpl-wallet-connector>
 ```
@@ -956,7 +960,7 @@ Benefits of CSS variables:
 
 The component is designed to be self-contained, but you can extend it by:
 
-1. **CSS Customization**: Use CSS variables to customize colors, sizing, and other visual properties (see [Customization Guide](./CUSTOMIZATION.md))
+1. **CSS Customization**: Use the supported CSS variables and stable shadow parts in the [Customization Guide](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/docs/guide/customization.md)
 2. **Wrapping in Framework Components**: Create React/Vue wrappers if needed
 3. **Custom Adapters**: Create custom wallet adapters for additional wallet support
 4. **Event Monitoring**: Listen to all events and send to analytics

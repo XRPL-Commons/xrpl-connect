@@ -41,9 +41,19 @@ describe('OtsuAdapter.isAvailable', () => {
     await expect(new OtsuAdapter().isAvailable()).resolves.toBe(false);
   });
 
-  it('returns true when window exists', async () => {
+  it('returns false in a browser without an Otsu provider', async () => {
+    installProvider(null);
+
+    await expect(new OtsuAdapter().isAvailable()).resolves.toBe(false);
+  });
+
+  it('detects an Otsu provider injected after an earlier availability check', async () => {
+    const adapter = new OtsuAdapter();
+    installProvider(null);
+    await expect(adapter.isAvailable()).resolves.toBe(false);
+
     installProvider(makeProvider());
-    await expect(new OtsuAdapter().isAvailable()).resolves.toBe(true);
+    await expect(adapter.isAvailable()).resolves.toBe(true);
   });
 });
 

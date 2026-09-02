@@ -4,9 +4,9 @@ import type {
   AccountInfo,
   NetworkInfo,
   WalletError,
-  ConnectOptions,
 } from '@xrpl-connect/core';
-import type { CSSProperties, ReactNode } from 'react';
+import type { ConnectOptionsFor, WalletConnectorCssVars, WalletIdentifier } from 'xrpl-connect';
+import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
 
 /**
  * Configuration for {@link XrplConnectProvider}. Identical to the core
@@ -26,9 +26,14 @@ export interface XrplConnectContextValue {
   network: NetworkInfo | null;
   /** True while a `connect()` call (or the modal flow) is in progress. */
   connecting: boolean;
+  /** True while at least one `<WalletConnector>` is registered. */
+  ready: boolean;
   /** The most recent connection/adapter error, as a typed `WalletError`. */
   error: WalletError | null;
-  connect: (walletId: string, options?: ConnectOptions) => Promise<AccountInfo>;
+  connect: <const Wallet extends WalletIdentifier>(
+    walletId: Wallet,
+    options?: ConnectOptionsFor<Wallet>
+  ) => Promise<AccountInfo>;
   disconnect: () => Promise<void>;
   /** @internal — used by `<WalletConnector>` to register its element. */
   registerConnector: (el: WalletConnectorElement) => void;
@@ -40,7 +45,8 @@ export interface XrplConnectContextValue {
   reportModalError: (attempt: symbol | null, error: WalletError) => boolean;
   /** @internal — cancels modal attempts owned by a closing connector. */
   reportModalClosed: (attempts: readonly symbol[]) => void;
-  openModal: () => void;
+  openModal: () => Promise<void>;
+  openAndWaitModal: () => Promise<AccountInfo>;
   closeModal: () => void;
 }
 
@@ -64,20 +70,33 @@ export interface XrplConnectProviderProps {
 /** Built-in theme presets applied as `--xc-*` custom properties. */
 export type WalletConnectorTheme = 'dark' | 'light' | 'purple';
 
-export interface WalletConnectorProps {
+type WalletConnectorHostAttributes = Omit<
+  HTMLAttributes<WalletConnectorElement>,
+  'children' | 'dangerouslySetInnerHTML' | 'className' | 'style' | 'onError'
+>;
+
+interface WalletConnectorDataAttributes {
+  [attribute: `data-${string}`]: string | number | undefined;
+}
+
+export interface WalletConnectorProps
+  extends WalletConnectorHostAttributes, WalletConnectorDataAttributes {
   /** Pre-select a wallet in the modal (maps to the `primary-wallet` attribute). */
-  primaryWallet?: string;
+  primaryWallet?: WalletIdentifier;
   /** Restrict/order the wallet list (maps to the `wallets` attribute). */
-  wallets?: string[];
+  wallets?: WalletIdentifier[];
+  /** Show unavailable wallets (maps to the `show-unavailable` boolean attribute). */
+  showUnavailable?: boolean;
   /** Built-in theme preset. Overridden per-token by `cssVars`. */
   theme?: WalletConnectorTheme;
-  /** Arbitrary `--xc-*` custom properties to override modal styling. */
-  cssVars?: Record<`--xc-${string}`, string>;
+  /** Supported `--xc-*` custom properties to override modal styling. */
+  cssVars?: WalletConnectorCssVars;
   /** Extra inline styles forwarded to the host element. */
   style?: CSSProperties;
+  /** CSS class forwarded to the host element's native `class` attribute. */
   className?: string;
   /** Fired (with the wallet id) when a connection attempt starts. */
-  onConnecting?: (walletId: string) => void;
+  onConnecting?: (walletId: WalletIdentifier) => void;
   /** Fired with the connected account once the wallet approves. */
   onConnect?: (account: AccountInfo) => void;
   /** Fired with a typed `WalletError` (`error.code`, `error.category`) on failure. */

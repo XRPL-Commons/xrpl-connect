@@ -8,7 +8,7 @@ export const mainStyles = `
     margin: 0;
     padding: 0;
     font-family: var(--font-family);
-    color: var(--text-color);
+    color: inherit;
   }
 
   html, body {
@@ -38,7 +38,7 @@ export const mainStyles = `
     --xc-connect-button-color: var(--xc-text-color);
     --xc-connect-button-background: var(--xc-background-color);
     --xc-connect-button-border: 1px solid rgba(255, 255, 255, 0.1);
-    --xc-connect-button-hover-background: var(--xc-background-color);
+    --xc-connect-button-hover-background: var(--derived-connect-button-hover-background);
     --xc-connect-button-font-weight: 600;
 
     /* Primary Button */
@@ -46,7 +46,7 @@ export const mainStyles = `
     --xc-primary-button-background: var(--xc-primary-color);
     --xc-primary-button-border-radius: 8px;
     --xc-primary-button-font-weight: 600;
-    --xc-primary-button-hover-background: var(--xc-primary-color);
+    --xc-primary-button-hover-background: var(--derived-primary-button-hover-background);
 
     /* Secondary Button */
     --xc-secondary-button-color: var(--xc-text-color);
@@ -56,18 +56,16 @@ export const mainStyles = `
     --xc-secondary-button-hover-background: var(--xc-background-tertiary);
 
     /* Account Address Button */
-    --xc-account-address-button-hover-color: var(--xc-primary-color);
+    --xc-account-address-button-hover-color: var(--derived-account-address-button-hover-color);
 
     /* Modal */
     --xc-modal-background: var(--xc-background-color);
-    --xc-modal-border-radius: 12px;
+    --xc-modal-border-radius: var(--xc-border-radius);
     --xc-modal-box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
 
     /* Miscellaneous */
     --xc-focus-color: var(--xc-primary-color);
     --xc-danger-color: #ef4444;
-    --xc-success-color: #10b981;
-    --xc-warning-color: #f59e0b;
 
     /* Internal aliases */
     --bg-color: var(--xc-background-color);
@@ -77,6 +75,9 @@ export const mainStyles = `
     --font-family: var(--xc-font-family);
     --wallet-btn-bg: var(--xc-background-secondary);
     --wallet-btn-hover: var(--xc-background-tertiary);
+    --derived-connect-button-hover-background: var(--xc-background-color);
+    --derived-primary-button-hover-background: var(--xc-primary-color);
+    --derived-account-address-button-hover-color: var(--xc-primary-color);
   }
 
   /* WalletConnect Modal Overrides */
@@ -146,6 +147,7 @@ export const mainStyles = `
 
   .header {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
     justify-content: space-between;
     padding: ${SIZES.HEADER_PADDING}px 20px 16px;
@@ -208,7 +210,9 @@ export const mainStyles = `
 
   .content {
     flex: 1;
-    overflow-y: hidden;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 0 24px 24px;
     transition: opacity 0.3s ease;
     -ms-overflow-style: none;
@@ -520,11 +524,12 @@ export const mainStyles = `
     height: ${SIZES.ICON_LARGE}px;
     border-radius: 50%;
     background: rgba(239, 68, 68, 0.1);
+    background: color-mix(in srgb, var(--xc-danger-color) 10%, transparent);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 48px;
-    color: #ef4444;
+    color: var(--xc-danger-color);
   }
 
   .error-text {
@@ -907,6 +912,13 @@ export const mainStyles = `
   }
 
   .account-disconnect-button:hover .disconnect-icon path {
-    fill: #ef4444;
+    fill: var(--xc-danger-color);
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  .custom-path-input:focus-visible {
+    outline: 2px solid var(--xc-focus-color);
+    outline-offset: 2px;
   }
 `;

@@ -99,6 +99,7 @@ export interface WalletConnectorContext extends HTMLElement {
 
   getOverlayRoot(): ShadowRoot | null;
   getAccountModalRoot(): ShadowRoot | null;
+  handleDialogKeyDown(dialog: 'wallet' | 'account', event: KeyboardEvent): void;
 }
 
 /**

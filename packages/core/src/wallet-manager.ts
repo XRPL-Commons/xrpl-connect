@@ -14,16 +14,19 @@ import type {
   SubmittedTransaction,
   WalletEvent,
   ConnectOptions,
+  ConnectOptionsFor,
   NetworkConfig,
   NetworkInfo,
   StoredState,
   WalletCapabilities,
   ReconnectOptions,
+  WalletIdentifier,
 } from './types';
 import {
   adapterSupports,
   supportsFetchAccount,
   supportsReconnectOptions,
+  getMissingAdapterConfiguration,
   WalletErrorCode,
 } from './types';
 import { createWalletError, isWalletError } from './errors';
@@ -107,12 +110,15 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   /**
    * Connect to a wallet
    */
-  async connect(walletId: string, options?: ConnectOptions): Promise<AccountInfo> {
+  async connect<const Wallet extends WalletIdentifier>(
+    walletId: Wallet,
+    options?: ConnectOptionsFor<Wallet>
+  ): Promise<AccountInfo> {
     return this.connectInternal(walletId, options);
   }
 
   private async connectInternal(
-    walletId: string,
+    walletId: WalletIdentifier,
     options?: ConnectOptions,
     expectedState?: StoredState
   ): Promise<AccountInfo> {
@@ -131,6 +137,12 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     if (activeAdapter) {
       throw createWalletError.alreadyConnected(activeAdapter.name);
     }
+
+    const missingConfiguration = getMissingAdapterConfiguration(adapter, options);
+    if (missingConfiguration.length > 0) {
+      throw createWalletError.configurationRequired(adapter.name, missingConfiguration);
+    }
+
     this.connectingAdapter = adapter;
     const connectionAttempt = ++this.connectionAttemptGeneration;
 
@@ -353,9 +365,14 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       // disconnect() invalidates reconnect work before cancelling or replacing
       // its adapter. A stale failure must not clear a newer session's storage.
       if (reconnectGeneration !== this.reconnectGeneration) return null;
-      // A connection may have started after the ownership check above. Do not
-      // erase its persisted state by treating that overlap as a failed restore.
-      if (isWalletError(error) && error.code === WalletErrorCode.ALREADY_CONNECTED) {
+      // Recoverable caller-action errors must remain visible and must not erase
+      // the persisted session. A later retry can succeed after the caller
+      // supplies the missing adapter configuration or resolves the overlap.
+      if (
+        isWalletError(error) &&
+        (error.code === WalletErrorCode.ALREADY_CONNECTED ||
+          error.code === WalletErrorCode.CONFIGURATION_REQUIRED)
+      ) {
         throw error;
       }
       this.logger.warn('Reconnection failed:', error);
@@ -465,6 +482,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     // single slow or hung `isAvailable()` can't stall the whole list.
     const results = await Promise.all(
       adapters.map(async (adapter) => {
+        if (getMissingAdapterConfiguration(adapter).length > 0) {
+          return false;
+        }
         const result = await withTimeout<boolean | typeof AVAILABILITY_TIMED_OUT>(
           async () => {
             try {

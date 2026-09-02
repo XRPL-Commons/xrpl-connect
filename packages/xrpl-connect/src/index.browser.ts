@@ -15,33 +15,5 @@
  * ```
  */
 
-export * from '../../core';
-export * from '../../ui';
-
-// Re-export all adapters
-export { XamanAdapter } from '../../adapters/xaman';
-export { CrossmarkAdapter } from '../../adapters/crossmark';
-export { GemWalletAdapter } from '../../adapters/gemwallet';
-export { WalletConnectAdapter } from '../../adapters/walletconnect';
-export { LedgerAdapter } from '../../adapters/ledger';
-export { XyraAdapter } from '../../adapters/xyra';
-export { OtsuAdapter } from '../../adapters/otsu';
-
-// Convenient grouped exports for better DX
-import { XamanAdapter } from '../../adapters/xaman';
-import { CrossmarkAdapter } from '../../adapters/crossmark';
-import { GemWalletAdapter } from '../../adapters/gemwallet';
-import { WalletConnectAdapter } from '../../adapters/walletconnect';
-import { LedgerAdapter } from '../../adapters/ledger';
-import { XyraAdapter } from '../../adapters/xyra';
-import { OtsuAdapter } from '../../adapters/otsu';
-
-export const Adapters = {
-  Xaman: XamanAdapter,
-  Crossmark: CrossmarkAdapter,
-  GemWallet: GemWalletAdapter,
-  WalletConnect: WalletConnectAdapter,
-  Ledger: LedgerAdapter,
-  Xyra: XyraAdapter,
-  Otsu: OtsuAdapter,
-};
+// Forward the complete public surface instead of maintaining a second export list.
+export * from './index';

@@ -4,7 +4,7 @@
 
 import { createWalletError } from './errors';
 import type { ConnectOptions, NetworkInfo } from './types';
-import { STANDARD_NETWORKS } from './types';
+import { isStandardNetworkId, STANDARD_NETWORKS } from './types';
 
 /**
  * Resolve a `ConnectOptions['network']` value to a concrete `NetworkInfo`.
@@ -19,11 +19,10 @@ export function resolveNetwork(config?: ConnectOptions['network']): NetworkInfo 
   }
 
   if (typeof config === 'string') {
-    const network = STANDARD_NETWORKS[config];
-    if (!network) {
+    if (!isStandardNetworkId(config)) {
       throw createWalletError.unknown(`Unknown network: ${config}`);
     }
-    return network;
+    return STANDARD_NETWORKS[config];
   }
 
   return config;

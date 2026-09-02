@@ -60,7 +60,7 @@ Xaman API keys and WalletConnect project IDs are browser identifiers, not server
 - `MetaMaskSnapAdapter`: optional `snapId`; use the default published Snap unless developing a local Snap.
 - Xyra, Otsu, Crossmark, and GemWallet work without application credentials.
 
-Connect-time options can override supported adapter settings. Configure Xaman return URLs on the adapter constructor when connecting through `WalletManager`; direct `XamanAdapter.connect()` calls can override them for one session. Return navigation may open another browser tab, so restore application state and use the signing result—not navigation—as confirmation. Keep the Xaman API key stable for the lifetime of the page because its browser SDK owns page-global OAuth state.
+Xaman and WalletConnect need constructor credentials to appear in wallet discovery and to support automatic reconnection. Direct calls can defer a credential for one session with `manager.connect('xaman', { apiKey })` or `manager.connect('walletconnect', { projectId })`; these options are selected from the wallet ID at compile time and are not persisted. Missing credentials fail early with `CONFIGURATION_REQUIRED`. Other connect-time options can override supported adapter settings. Configure Xaman return URLs on the adapter constructor when connecting through `WalletManager`; direct `XamanAdapter.connect()` calls can override them for one session. Return navigation may open another browser tab, so restore application state and use the signing result—not navigation—as confirmation. Keep the Xaman API key stable for the lifetime of the page because its browser SDK owns page-global OAuth state.
 
 ## Networks
 
@@ -76,5 +76,12 @@ The web component hides unavailable wallets by default. Use its `wallets` attrib
   show-unavailable
 ></xrpl-wallet-connector>
 ```
+
+Otsu is available only when its extension has injected a provider with
+`window.xrpl?.isOtsu === true`. The adapter checks the current provider on every
+`isAvailable()` call, so applications using `WalletManager` directly can call
+`getAvailableWallets()` again after a late extension injection. The wallet
+connector retries wallets that were unavailable or timed out whenever the modal
+is opened again, so closing and reopening it refreshes late-injected providers.
 
 See the [API reference](/guide/api-reference) for constructor and connect-option types.
