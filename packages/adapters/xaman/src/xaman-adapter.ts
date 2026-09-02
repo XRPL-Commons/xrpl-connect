@@ -432,6 +432,9 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
 
       const account = authResult.me.account;
       const network = await this.getAuthoritativeNetwork(client, authResult.me);
+      if (generation !== this.connectionGeneration || this.client !== client) {
+        throw new Error('Xaman connection attempt was superseded or disconnected');
+      }
       const xamanNetwork = this.resolveXamanNetwork(network);
       if (requestedXamanNetwork) {
         this.validateXamanNetwork(

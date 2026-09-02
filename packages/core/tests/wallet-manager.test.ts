@@ -742,6 +742,45 @@ describe('WalletManager.connect()', () => {
     expect(manager.connected).toBe(false);
   });
 
+  it.each([
+    ['a standard network name', 'mainnet'],
+    [
+      'internally contradictory standard network metadata',
+      { id: 'mainnet', name: 'Mainnet', wss: 'wss://mainnet.example', walletConnectId: 'xrpl:1' },
+    ],
+  ] as const)(
+    'rejects a contradictory standard network returned for %s',
+    async (_label, network) => {
+      const adapter = createFakeAdapter();
+      adapter.connect = vi.fn(async () => ({
+        ...ACCOUNT,
+        network: { ...MAINNET, walletConnectId: 'xrpl:1' },
+      }));
+      const manager = new WalletManager({ adapters: [adapter] });
+
+      await expect(manager.connect('fake', { network })).rejects.toMatchObject({
+        code: WalletErrorCode.NETWORK_MISMATCH,
+      });
+      expect(adapter.disconnect).toHaveBeenCalledOnce();
+      expect(manager.connected).toBe(false);
+    }
+  );
+
+  it('rejects a contradictory standard network when no network was requested', async () => {
+    const adapter = createFakeAdapter();
+    adapter.connect = vi.fn(async () => ({
+      ...ACCOUNT,
+      network: { ...MAINNET, walletConnectId: 'xrpl:1' },
+    }));
+    const manager = new WalletManager({ adapters: [adapter] });
+
+    await expect(manager.connect('fake')).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    expect(adapter.disconnect).toHaveBeenCalledOnce();
+    expect(manager.connected).toBe(false);
+  });
+
   it('rejects a repeated connection without disturbing the active session', async () => {
     const storage = new MemoryStorageAdapter();
     const adapter = createFakeAdapter();

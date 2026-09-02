@@ -597,6 +597,27 @@ describe('XamanAdapter.connect', () => {
     await expect(adapter.getAccount()).resolves.toBeNull();
   });
 
+  it('does not restore a connection whose live network lookup finishes after disconnect', async () => {
+    let resolveNetworkEndpoint!: (endpoint: string) => void;
+    mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
+    mockXummInstance.user.networkEndpoint = new Promise<string>((resolve) => {
+      resolveNetworkEndpoint = resolve;
+    });
+    mockXummInstance.logout.mockResolvedValue(undefined);
+    const adapter = new XamanAdapter({ apiKey: 'test-key' });
+
+    const connectPromise = adapter.connect();
+    await vi.waitFor(() => expect(mockXummInstance.authorize).toHaveBeenCalledTimes(1));
+    const disconnectPromise = adapter.disconnect();
+    resolveNetworkEndpoint('wss://xrplcluster.com');
+
+    await expect(connectPromise).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+    await disconnectPromise;
+    await expect(adapter.getAccount()).resolves.toBeNull();
+  });
+
   it('rejects a concurrent connection attempt without replacing the active authorization', async () => {
     let resolveAuthorization: ((value: { me: { account: string } }) => void) | undefined;
     mockXummInstance.authorize.mockImplementation(

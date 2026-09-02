@@ -408,7 +408,7 @@ describe('OtsuAdapter provider events', () => {
     adapter.on('error', errorListener);
     adapter.on('networkChanged', networkListener);
 
-    emitProviderEvent(provider, 'networkChanged', { network: 'sidechain' });
+    emitProviderEvent(provider, 'networkChanged', 'sidechain');
 
     expect(errorListener).toHaveBeenCalledWith(
       expect.objectContaining({ code: WalletErrorCode.NETWORK_NOT_SUPPORTED })
@@ -443,7 +443,10 @@ describe('OtsuAdapter provider events', () => {
     }
   );
 
-  it('updates account state for a supported network event', async () => {
+  it.each([
+    ['the provider primitive payload', 'devnet'],
+    ['the legacy object payload', { network: 'devnet' }],
+  ])('updates account state for %s', async (_label, event) => {
     const provider = makeProvider({
       connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
       getNetwork: vi.fn().mockResolvedValue({ network: 'mainnet' }),
@@ -452,8 +455,27 @@ describe('OtsuAdapter provider events', () => {
     const adapter = new OtsuAdapter();
     await adapter.connect();
 
-    emitProviderEvent(provider, 'networkChanged', { network: 'devnet' });
+    emitProviderEvent(provider, 'networkChanged', event);
 
     await expect(adapter.getNetwork()).resolves.toEqual(STANDARD_NETWORKS.devnet);
+  });
+
+  it.each([
+    ['the provider primitive payload', 'rChanged'],
+    ['the legacy object payload', { address: 'rChanged' }],
+  ])('updates account state for %s', async (_label, event) => {
+    const provider = makeProvider({
+      connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+    });
+    installProvider(provider);
+    const adapter = new OtsuAdapter();
+    await adapter.connect();
+    const accountListener = vi.fn();
+    adapter.on('accountChanged', accountListener);
+
+    emitProviderEvent(provider, 'accountChanged', event);
+
+    await expect(adapter.getAccount()).resolves.toMatchObject({ address: 'rChanged' });
+    expect(accountListener).toHaveBeenCalledWith(expect.objectContaining({ address: 'rChanged' }));
   });
 });

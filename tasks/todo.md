@@ -90,6 +90,23 @@
 - Regression coverage spans standard and custom networks, omitted requests, request/live mismatches, malformed provider data, contradictory CAIP metadata, network changes before signing, persistence ordering, and stale connection races. Independent review findings in those edge cases were corrected before final verification.
 - The affected core/adapter matrix passes 395 tests. `pnpm lint`, `pnpm format:check`, `pnpm docs:snapshot:check`, the full `pnpm test` build-and-test run, and `git diff --check` pass on the final tree.
 
+## Fix PR #186 review findings
+
+- [x] Reject contradictory standard network IDs and CAIP identifiers before manager state commit.
+- [x] Prevent Xaman from committing a connection after disconnect during live-network resolution.
+- [x] Track or fail closed on WalletConnect account and chain session changes before signing.
+- [x] Normalize Otsu's real primitive account/network event payloads and preserve object compatibility.
+- [x] Add focused regressions that reproduce all four reviewed defects.
+- [x] Run focused and repository-level verification, review the final diff, commit, push, and verify the remote PR head.
+
+### Fix review
+
+- Standard XRPL IDs now derive their canonical CAIP chain and reject contradictory request or adapter metadata while custom aliases with the same explicit chain remain compatible.
+- Xaman rechecks its connection generation after the authoritative network query, so a completed lookup cannot revive state cleared by `disconnect()`.
+- WalletConnect reconciles `accountsChanged`, `chainChanged`, and `session_update`, emits adapter state events, removes all four session handlers, and closes invalid authorization before any signing request.
+- Otsu accepts the provider's primitive account/network events and the legacy object shape, retaining its existing malformed-network error behavior.
+- The four focused suites pass 247 tests. `pnpm test`, `pnpm lint`, `pnpm format:check`, `pnpm docs:snapshot:check`, and `git diff --check` pass on the final tree.
+
 ---
 
 # Issue #170

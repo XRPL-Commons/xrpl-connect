@@ -474,10 +474,11 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
    */
   private setupProviderListeners(provider: OtsuProvider): void {
     const accountHandler = (data: unknown) => {
-      if (this.currentAccount && data && typeof data === 'object' && 'address' in data) {
+      const address = this.getProviderEventValue(data, 'address');
+      if (this.currentAccount && typeof address === 'string' && address.length > 0) {
         this.currentAccount = {
           ...this.currentAccount,
-          address: (data as { address: string }).address,
+          address,
         };
         this.stateRevision += 1;
         this.emit('accountChanged', this.currentAccount);
@@ -486,10 +487,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
 
     const networkHandler = (data: unknown) => {
       if (this.currentAccount) {
-        const networkId =
-          data && typeof data === 'object' && 'network' in data
-            ? (data as { network?: unknown }).network
-            : undefined;
+        const networkId = this.getProviderEventValue(data, 'network');
         let networkInfo: NetworkInfo;
         try {
           networkInfo = this.toNetworkInfo(networkId);
@@ -522,6 +520,14 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
     this.providerListeners.set('accountChanged', accountHandler);
     this.providerListeners.set('networkChanged', networkHandler);
     this.providerListeners.set('disconnected', disconnectHandler);
+  }
+
+  private getProviderEventValue(data: unknown, key: 'address' | 'network'): unknown {
+    if (typeof data === 'string') return data;
+    if (data && typeof data === 'object' && key in data) {
+      return (data as Record<string, unknown>)[key];
+    }
+    return undefined;
   }
 
   /**

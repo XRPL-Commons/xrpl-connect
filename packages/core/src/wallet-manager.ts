@@ -27,6 +27,8 @@ import {
   supportsFetchAccount,
   supportsReconnectOptions,
   getMissingAdapterConfiguration,
+  isStandardNetworkId,
+  STANDARD_NETWORKS,
   WalletErrorCode,
 } from './types';
 import { createWalletError, isWalletError } from './errors';
@@ -205,24 +207,56 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       const requestedNetwork = connectOptions.network;
       const requestedNetworkId =
         typeof requestedNetwork === 'string' ? requestedNetwork : requestedNetwork?.id;
-      const requestedWalletConnectId =
+      const explicitRequestedWalletConnectId =
         typeof requestedNetwork === 'object' ? requestedNetwork.walletConnectId : undefined;
-      const hasConflictingWalletConnectId =
-        requestedWalletConnectId !== undefined &&
+      const canonicalAccountWalletConnectId = isStandardNetworkId(account.network.id)
+        ? STANDARD_NETWORKS[account.network.id].walletConnectId
+        : undefined;
+      const accountNetworkIsContradictory =
+        canonicalAccountWalletConnectId !== undefined &&
         account.network.walletConnectId !== undefined &&
-        requestedWalletConnectId !== account.network.walletConnectId;
-      const hasMatchingWalletConnectId =
-        requestedWalletConnectId !== undefined &&
-        requestedWalletConnectId === account.network.walletConnectId;
-      if (
-        requestedNetworkId !== undefined &&
-        ((account.network.id !== requestedNetworkId && !hasMatchingWalletConnectId) ||
-          hasConflictingWalletConnectId)
-      ) {
+        account.network.walletConnectId !== canonicalAccountWalletConnectId;
+      if (requestedNetworkId === undefined && accountNetworkIsContradictory) {
         throw createWalletError.networkMismatch(
-          hasConflictingWalletConnectId ? requestedWalletConnectId! : requestedNetworkId,
-          hasConflictingWalletConnectId ? account.network.walletConnectId! : account.network.id
+          canonicalAccountWalletConnectId,
+          account.network.walletConnectId!
         );
+      }
+      if (requestedNetworkId !== undefined) {
+        const canonicalRequestedWalletConnectId = isStandardNetworkId(requestedNetworkId)
+          ? STANDARD_NETWORKS[requestedNetworkId].walletConnectId
+          : undefined;
+        const requestedWalletConnectId =
+          canonicalRequestedWalletConnectId ?? explicitRequestedWalletConnectId;
+        const accountWalletConnectId =
+          canonicalAccountWalletConnectId ?? account.network.walletConnectId;
+        const requestedNetworkIsContradictory =
+          canonicalRequestedWalletConnectId !== undefined &&
+          explicitRequestedWalletConnectId !== undefined &&
+          explicitRequestedWalletConnectId !== canonicalRequestedWalletConnectId;
+        const idsMatch = account.network.id === requestedNetworkId;
+        const walletConnectIdsMatch =
+          requestedWalletConnectId !== undefined &&
+          requestedWalletConnectId === accountWalletConnectId;
+
+        if (
+          requestedNetworkIsContradictory ||
+          accountNetworkIsContradictory ||
+          (!idsMatch && !walletConnectIdsMatch)
+        ) {
+          throw createWalletError.networkMismatch(
+            requestedNetworkIsContradictory
+              ? canonicalRequestedWalletConnectId
+              : accountNetworkIsContradictory
+                ? (requestedWalletConnectId ?? requestedNetworkId)
+                : requestedNetworkId,
+            requestedNetworkIsContradictory
+              ? explicitRequestedWalletConnectId!
+              : accountNetworkIsContradictory
+                ? account.network.walletConnectId!
+                : account.network.id
+          );
+        }
       }
 
       if (expectedState && supportsReconnectOptions(adapter)) {

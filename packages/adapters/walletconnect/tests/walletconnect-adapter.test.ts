@@ -1,6 +1,7 @@
 import { describe, it, expect, expectTypeOf, vi, beforeEach } from 'vite-plus/test';
 import {
   createWalletError,
+  STANDARD_NETWORKS,
   WalletErrorCategory,
   WalletErrorCode,
   type Transaction,
@@ -34,6 +35,15 @@ const OTHER_PAIRING_TOPIC = 'b'.repeat(64);
 
 function walletConnectUri(topic: string): string {
   return `wc:${topic}@2?relay-protocol=irn&symKey=${'c'.repeat(64)}`;
+}
+
+function getClientEventHandler(event: string): (payload: never) => void {
+  const registration = [...mockClient.on.mock.calls]
+    .reverse()
+    .find(([registeredEvent]) => registeredEvent === event);
+  const handler = registration?.[1] as ((payload: never) => void) | undefined;
+  if (!handler) throw new Error(`No ${event} handler was registered`);
+  return handler;
 }
 
 beforeEach(() => {
@@ -863,6 +873,131 @@ describe('WalletConnectAdapter.connect', () => {
 
     const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
     await expect(adapter.connect()).rejects.toBe(typedError);
+  });
+});
+
+describe('WalletConnectAdapter session changes', () => {
+  function approveSession(namespaces: Record<string, unknown>) {
+    mockClient.connect.mockResolvedValue({
+      uri: 'wc:example',
+      approval: vi.fn().mockResolvedValue({ topic: 'topic-events', namespaces }),
+    });
+  }
+
+  it('updates the account from an accountsChanged event before signing', async () => {
+    approveSession({ xrpl: { accounts: [`xrpl:0:${MAINNET_ADDRESS}`] } });
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+    const accountListener = vi.fn();
+    adapter.on('accountChanged', accountListener);
+    await adapter.connect({ network: 'mainnet' });
+
+    getClientEventHandler('session_event')({
+      topic: 'topic-events',
+      params: {
+        chainId: 'xrpl:0',
+        event: { name: 'accountsChanged', data: [TESTNET_ADDRESS] },
+      },
+    } as never);
+
+    await expect(adapter.getAccount()).resolves.toMatchObject({ address: TESTNET_ADDRESS });
+    expect(accountListener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: TESTNET_ADDRESS,
+        network: expect.objectContaining({ id: 'mainnet' }),
+      })
+    );
+
+    mockClient.request.mockResolvedValue({ tx_json: { TransactionType: 'Payment' } });
+    await adapter.sign({ TransactionType: 'Payment' } as never);
+    expect(mockClient.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chainId: 'xrpl:0',
+        request: expect.objectContaining({
+          params: expect.objectContaining({
+            tx_json: expect.objectContaining({ Account: TESTNET_ADDRESS }),
+          }),
+        }),
+      })
+    );
+  });
+
+  it('updates the standard network and account from a chainChanged event', async () => {
+    approveSession({
+      xrpl: {
+        chains: ['xrpl:0', 'xrpl:1'],
+        accounts: [`xrpl:0:${MAINNET_ADDRESS}`, `xrpl:1:${TESTNET_ADDRESS}`],
+      },
+    });
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+    const accountListener = vi.fn();
+    const networkListener = vi.fn();
+    adapter.on('accountChanged', accountListener);
+    adapter.on('networkChanged', networkListener);
+    await adapter.connect({ network: 'mainnet' });
+
+    getClientEventHandler('session_event')({
+      topic: 'topic-events',
+      params: {
+        chainId: 'xrpl:1',
+        event: { name: 'chainChanged', data: 'xrpl:1' },
+      },
+    } as never);
+
+    await expect(adapter.getAccount()).resolves.toMatchObject({
+      address: TESTNET_ADDRESS,
+      network: { id: 'testnet', walletConnectId: 'xrpl:1' },
+    });
+    expect(accountListener).toHaveBeenCalledOnce();
+    expect(networkListener).toHaveBeenCalledWith(STANDARD_NETWORKS.testnet);
+  });
+
+  it('reconciles account authorization from a session update', async () => {
+    approveSession({ xrpl: { accounts: [`xrpl:0:${MAINNET_ADDRESS}`] } });
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+    const accountListener = vi.fn();
+    adapter.on('accountChanged', accountListener);
+    await adapter.connect({ network: 'mainnet' });
+
+    getClientEventHandler('session_update')({
+      topic: 'topic-events',
+      params: { namespaces: { xrpl: { accounts: [`xrpl:0:${TESTNET_ADDRESS}`] } } },
+    } as never);
+
+    await expect(adapter.getAccount()).resolves.toMatchObject({ address: TESTNET_ADDRESS });
+    expect(accountListener).toHaveBeenCalledOnce();
+  });
+
+  it('fails closed when a session update removes XRPL authorization', async () => {
+    approveSession({ xrpl: { accounts: [`xrpl:0:${MAINNET_ADDRESS}`] } });
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+    const disconnectListener = vi.fn();
+    adapter.on('disconnect', disconnectListener);
+    await adapter.connect({ network: 'mainnet' });
+
+    getClientEventHandler('session_update')({
+      topic: 'topic-events',
+      params: { namespaces: {} },
+    } as never);
+
+    await expect(adapter.getAccount()).resolves.toBeNull();
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NOT_CONNECTED,
+    });
+    expect(mockClient.request).not.toHaveBeenCalled();
+    expect(disconnectListener).toHaveBeenCalledOnce();
+  });
+
+  it('removes every session listener on disconnect', async () => {
+    approveSession({ xrpl: { accounts: [`xrpl:0:${MAINNET_ADDRESS}`] } });
+    const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+    await adapter.connect({ network: 'mainnet' });
+    const registrations = new Map(mockClient.on.mock.calls);
+
+    await adapter.disconnect();
+
+    for (const event of ['session_delete', 'session_expire', 'session_event', 'session_update']) {
+      expect(mockClient.off).toHaveBeenCalledWith(event, registrations.get(event));
+    }
   });
 });
 
