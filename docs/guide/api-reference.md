@@ -393,11 +393,12 @@ live account refresh, multiple derivation paths, and signer-bound parallel
 multisign contributions. Requires Chrome / Edge / Opera with WebHID or WebUSB.
 
 For Ledger multisigning, pass `sign()` one fully prepared transaction with an
-explicit source `Account`, `SigningPubKey: ''`, and no existing signatures. The
-result contains one `Signers` entry and no top-level `TxnSignature`. Give every
-signer the identical prepared transaction, combine the contribution blobs with
-`xrpl.multisign()`, and submit the combined blob separately. Ledger
-`signAndSubmit()` rejects multisign input.
+explicit source `Account`, `Fee`, `Sequence`, `SigningPubKey: ''`, and no existing
+signatures. Ledger rejects incomplete multisign input instead of autofilling it
+independently. The result contains one `Signers` entry and no top-level
+`TxnSignature`. Give every signer the identical prepared transaction, combine
+the contribution blobs with `xrpl.multisign()`, and submit the combined blob
+separately. Ledger `signAndSubmit()` rejects multisign input.
 
 ### Xyra Adapter
 

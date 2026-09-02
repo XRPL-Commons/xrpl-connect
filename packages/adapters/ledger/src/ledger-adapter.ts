@@ -272,21 +272,14 @@ export class LedgerAdapter
     return this.currentAccount.network;
   }
 
-  /** Autofill, encode, and sign a transaction with the Ledger device. */
-  private async prepareAndSign(
+  /** Encode and sign a prepared transaction with the Ledger device. */
+  private async signPreparedTransaction(
     transaction: Transaction,
-    client: Client,
     account: AccountInfo,
     xrpApp: Xrp,
     multisigned: boolean
   ): Promise<LedgerSignedTransaction> {
-    const tx = {
-      ...transaction,
-      Account: transaction.Account || account.address,
-    };
-
-    const prepared = await client.autofill(tx as Transaction);
-    const txForSigning = { ...prepared };
+    const txForSigning = { ...transaction };
     const publicKey = account.publicKey?.toUpperCase();
     if (!publicKey) throw new Error('Ledger did not provide a public key for signing');
 
@@ -352,8 +345,19 @@ export class LedgerAdapter
     }
 
     const multisigned = transaction.SigningPubKey === '';
-    if (multisigned && !transaction.Account) {
-      throw new Error('Ledger multisigning requires the source Account');
+    if (multisigned) {
+      if (typeof transaction.Account !== 'string' || transaction.Account.length === 0) {
+        throw new Error('Ledger multisigning requires the source Account');
+      }
+      if (
+        typeof transaction.Fee !== 'string' ||
+        transaction.Fee.length === 0 ||
+        typeof transaction.Sequence !== 'number'
+      ) {
+        throw new Error(
+          'Ledger multisigning requires a prepared transaction with Fee and Sequence'
+        );
+      }
     }
     return multisigned;
   }
@@ -378,9 +382,16 @@ export class LedgerAdapter
     try {
       const { account, xrpApp } = this.getSigningContext();
       const multisigned = this.validateSigningInput(transaction);
-      const signed = await this.withClient(account.network, (client) =>
-        this.prepareAndSign(transaction, client, account, xrpApp, multisigned)
-      );
+      const tx = {
+        ...transaction,
+        Account: transaction.Account || account.address,
+      } as Transaction;
+      const signed = multisigned
+        ? await this.signPreparedTransaction(tx, account, xrpApp, true)
+        : await this.withClient(account.network, async (client) => {
+            const prepared = await client.autofill(tx);
+            return this.signPreparedTransaction(prepared, account, xrpApp, false);
+          });
 
       return {
         hash: '',
@@ -420,7 +431,12 @@ export class LedgerAdapter
       }
 
       return await this.withClient(account.network, async (client) => {
-        const signed = await this.prepareAndSign(transaction, client, account, xrpApp, false);
+        const tx = {
+          ...transaction,
+          Account: transaction.Account || account.address,
+        } as Transaction;
+        const prepared = await client.autofill(tx);
+        const signed = await this.signPreparedTransaction(prepared, account, xrpApp, false);
         const result = await client.submitAndWait(signed.tx_blob);
         return {
           hash: result.result.hash || '',

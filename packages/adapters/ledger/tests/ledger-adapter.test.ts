@@ -343,6 +343,8 @@ describe('LedgerAdapter.sign', () => {
     expect(hashes.hashSignedTx(combined)).toBe(
       'BD636194C48FD7A100DE4C972336534C8E710FD008C0F3CF7BC5BF34DAF3C3E6'
     );
+    expect(client.connect).not.toHaveBeenCalled();
+    expect(client.autofill).not.toHaveBeenCalled();
   });
 
   it('fails when the multisign signature is not bound to the connected address', async () => {
@@ -353,7 +355,7 @@ describe('LedgerAdapter.sign', () => {
       code: WalletErrorCode.SIGN_FAILED,
       message: expect.stringContaining('does not match the connected account'),
     });
-    expect(client.disconnect).toHaveBeenCalledTimes(1);
+    expect(client.connect).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -379,6 +381,21 @@ describe('LedgerAdapter.sign', () => {
       message: expect.stringContaining('requires the source Account'),
     });
     expect(client.connect).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['Fee', (({ Fee: _fee, ...transaction }) => transaction)(MULTISIGN_TRANSACTION)],
+    ['Sequence', (({ Sequence: _sequence, ...transaction }) => transaction)(MULTISIGN_TRANSACTION)],
+  ])('requires a prepared multisign transaction with %s', async (_field, transaction) => {
+    const adapter = await connected(LEDGER_SIGNER.Account, LEDGER_SIGNER.SigningPubKey);
+
+    await expect(adapter.sign(transaction as Transaction)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+      message: expect.stringContaining('requires a prepared transaction with Fee and Sequence'),
+    });
+    expect(client.connect).not.toHaveBeenCalled();
+    expect(client.autofill).not.toHaveBeenCalled();
+    expect(xrpAppInstance.signTransaction).not.toHaveBeenCalled();
   });
 
   it('maps a user-rejected device signature to sign-rejected', async () => {

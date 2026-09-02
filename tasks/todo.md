@@ -28,6 +28,21 @@
 - The Ledger suite passes all 39 tests. `pnpm exec vp check`, `pnpm docs:snapshot:check`, `pnpm docs:build`, `pnpm test`, and `git diff --check` pass; the exact final tree was rechecked with the focused Ledger suite, `vp check`, and the full monorepo suite.
 - Independent protocol, vector, and final-diff reviews found no blocking findings. The final review's documentation note was resolved by documenting multisign contribution hashes as potentially empty/non-final until aggregation.
 
+## Fix PR #183 review finding
+
+- [x] Make multisign signing consume an already prepared transaction without per-signer autofill.
+- [x] Reject multisign inputs missing the fee or sequence required for a submission-ready contribution.
+- [x] Add regressions for exact-payload preservation and fail-closed incomplete inputs.
+- [x] Align Ledger and aggregate documentation with the enforced prepared-input contract.
+- [x] Run focused and repository-level verification, review the final diff, commit, push, and verify the PR head.
+
+### Fix review
+
+- Multisign `sign()` now signs the caller-prepared transaction exactly as supplied and does not create an XRPL client, preventing signer-count fee underestimation and per-signer autofill drift.
+- Missing `Fee` or `Sequence` fails before XRPL or Ledger interaction; the authoritative two-signer vector still combines to the expected transaction hash.
+- Ledger documentation, aggregate adapter guidance, API reference, transaction guide, and changelog all state the enforced prepared-input contract.
+- All 41 Ledger tests, `pnpm exec vp check`, `pnpm test`, `pnpm docs:snapshot:check`, and `git diff --check` pass on the final tree.
+
 ---
 
 # Issue #170

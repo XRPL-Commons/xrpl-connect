@@ -84,6 +84,8 @@ multisign contributions.
   count, fee, sequence, and last-ledger sequence fixed.
 - Give every signer that exact prepared transaction with `SigningPubKey: ''`
   and without `TxnSignature` or `Signers`.
+- `Fee` and `Sequence` must already be present. The adapter rejects incomplete
+  multisign input and never autofills it independently for each signer.
 - `sign()` returns one signer contribution: its `tx_json` and `tx_blob` contain
   one `Signers` entry bound to the connected Ledger account and no top-level
   `TxnSignature`.

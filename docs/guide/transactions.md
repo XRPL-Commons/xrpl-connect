@@ -83,8 +83,9 @@ await xrplClient.submitAndWait(combinedBlob);
 ```
 
 Do not pass an existing `TxnSignature` or `Signers` array to Ledger. Its
-`signAndSubmit()` path rejects multisign input because one contribution may not
-satisfy the account's signer quorum.
+`sign()` path also rejects multisign input without `Fee` and `Sequence`; it never
+autofills a contribution independently. `signAndSubmit()` rejects multisign input
+because one contribution may not satisfy the account's signer quorum.
 
 ## Message signing
 

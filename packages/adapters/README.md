@@ -534,11 +534,12 @@ if (state === LedgerDeviceState.READY) {
 Ledger access requires HTTPS (localhost is allowed), a compatible Chromium browser, a user gesture, and the XRP app open on an unlocked device. `LedgerAdapterOptions`, `LedgerConnectOptions`, `LedgerDeviceState`, and `LEDGER_STATE_MESSAGES` are public exports.
 
 For multisigning, prepare one identical transaction for every signer with an
-explicit source `Account` and `SigningPubKey: ''`, then call `sign()` on each
-wallet. Every Ledger result contains one verified `Signers` entry and no
-top-level `TxnSignature`; combine the contribution blobs with `xrpl.multisign()`
-and submit the combined blob separately. Inputs that already contain signatures
-are rejected, and `signAndSubmit()` does not accept multisign input.
+explicit source `Account`, `Fee`, `Sequence`, and `SigningPubKey: ''`, then call
+`sign()` on each wallet. Ledger never autofills multisign input independently.
+Every result contains one verified `Signers` entry and no top-level
+`TxnSignature`; combine the contribution blobs with `xrpl.multisign()` and submit
+the combined blob separately. Incomplete or already-signed inputs are rejected,
+and `signAndSubmit()` does not accept multisign input.
 
 ---
 
