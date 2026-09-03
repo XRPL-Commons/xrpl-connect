@@ -7,7 +7,7 @@ This demo application uses the official XRPL Connect React provider, hooks, and 
 - Connect to Xaman, WalletConnect, Crossmark, GemWallet, Xyra, Otsu, and MetaMask Snap
 - Typed React provider, hooks, and wallet modal integration
 - Sign XRPL transactions
-- Sign arbitrary messages
+- Sign arbitrary messages when the connected wallet supports it
 - Dynamic theme customization
 - Real-time event logging
 - Beautiful, responsive UI
@@ -116,8 +116,10 @@ Use the typed `WalletConnector` wrapper and its callbacks:
 Components below the provider share the same manager through `useWallet()` and `useSigner()`:
 
 ```tsx
-const { connected, account, disconnect } = useWallet();
+const { connected, account, disconnect, manager } = useWallet();
 const { signAndSubmit, signMessage } = useSigner();
+
+const canSignMessage = manager.supports('signMessage');
 ```
 
 See `src/main.tsx` for provider configuration and `src/components/` for complete state, modal,
@@ -149,10 +151,13 @@ transaction, message-signing, and error-handling examples.
 
 ### Signing a Message
 
-1. Enter any text message
-2. Click "Sign Message"
-3. Approve the signing request in your wallet
-4. The signature will be displayed
+The form is available only when the connected wallet declares message-signing support.
+
+1. Connect a wallet that supports message signing
+2. Enter any text message
+3. Click "Sign Message"
+4. Approve the signing request in your wallet
+5. The signature will be displayed
 
 ### Event Log
 

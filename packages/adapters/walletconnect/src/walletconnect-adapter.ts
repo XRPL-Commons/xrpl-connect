@@ -261,7 +261,24 @@ export class WalletConnectAdapter
   private listeners = new Map<WalletAdapterEvent, Set<AdapterEventListener>>();
 
   constructor(options: WalletConnectAdapterOptions = {}) {
-    this.options = options;
+    this.options = { ...options };
+  }
+
+  private composeQRCodeCallbacks(
+    runtimeCallback?: (uri: string) => void
+  ): ((uri: string) => void) | undefined {
+    const configuredCallback = this.options.onQRCode;
+    if (!configuredCallback) return runtimeCallback;
+    if (!runtimeCallback || runtimeCallback === configuredCallback) return configuredCallback;
+
+    return (uri: string) => {
+      try {
+        configuredCallback(uri);
+      } catch (error) {
+        logger.warn('Configured onQRCode callback failed:', error);
+      }
+      runtimeCallback(uri);
+    };
   }
 
   getMissingConfiguration(
@@ -442,10 +459,7 @@ export class WalletConnectAdapter
       return;
     }
 
-    // Remember the QR callback so the subsequent connect() call can reuse it
-    if (onQRCode) {
-      this.options.onQRCode = onQRCode;
-    }
+    const notifyQRCode = this.composeQRCodeCallbacks(onQRCode);
 
     try {
       const networkInfo = this.resolveRequestedNetwork(network);
@@ -484,11 +498,7 @@ export class WalletConnectAdapter
       const requiredNamespaces = {
         [XRPL_NAMESPACE.KEY]: {
           chains: [requestedChainId],
-          methods: [
-            XRPLMethod.SIGN_TRANSACTION,
-            XRPLMethod.SIGN_TRANSACTION_FOR,
-            'xrpl_signMessage',
-          ],
+          methods: [XRPLMethod.SIGN_TRANSACTION, XRPLMethod.SIGN_TRANSACTION_FOR],
           events: XRPL_NAMESPACE.EVENTS,
         },
       };
@@ -516,9 +526,9 @@ export class WalletConnectAdapter
         proposal.uri.substring(0, LOGGING.URI_PREVIEW_LENGTH) + '...'
       );
 
-      if (this.options.onQRCode) {
+      if (notifyQRCode) {
         logger.debug('Calling onQRCode callback during pre-init');
-        this.options.onQRCode(proposal.uri);
+        notifyQRCode(proposal.uri);
       }
     } catch (error) {
       if (proposal) {
@@ -578,7 +588,7 @@ export class WalletConnectAdapter
     }
 
     // Merge runtime options with constructor options (runtime takes precedence)
-    const onQRCode = options?.onQRCode || this.options.onQRCode;
+    const onQRCode = this.composeQRCodeCallbacks(options?.onQRCode);
     const useModal = this.options.useModal ?? false;
     const modalMode = this.options.modalMode ?? 'mobile-only';
 
@@ -610,11 +620,7 @@ export class WalletConnectAdapter
       const requiredNamespaces = {
         [XRPL_NAMESPACE.KEY]: {
           chains: [requestedChainId],
-          methods: [
-            XRPLMethod.SIGN_TRANSACTION,
-            XRPLMethod.SIGN_TRANSACTION_FOR,
-            'xrpl_signMessage',
-          ],
+          methods: [XRPLMethod.SIGN_TRANSACTION, XRPLMethod.SIGN_TRANSACTION_FOR],
           events: XRPL_NAMESPACE.EVENTS,
         },
       };
@@ -1014,7 +1020,7 @@ export class WalletConnectAdapter
    */
   async signMessage(_message: string | Uint8Array): Promise<SignedMessage> {
     throw createWalletError.unsupportedMethod(
-      'Message signing is not supported via WalletConnect. Please use Xaman, Crossmark, or GemWallet for signing messages.'
+      'Message signing is not supported via WalletConnect. Use an adapter that declares message-signing support.'
     );
   }
 

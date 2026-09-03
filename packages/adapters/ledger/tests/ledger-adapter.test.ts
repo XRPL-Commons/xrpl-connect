@@ -284,6 +284,26 @@ describe('LedgerAdapter.connect', () => {
       code: WalletErrorCode.WALLET_NOT_INSTALLED,
     });
   });
+
+  it('closes an attempt-local transport when disconnect invalidates address discovery', async () => {
+    installNavigator({ hid: {} });
+    let resolveAddress!: (value: { address: string; publicKey: string }) => void;
+    xrpAppInstance.getAddress.mockReturnValue(
+      new Promise((resolve) => {
+        resolveAddress = resolve;
+      })
+    );
+    const adapter = new LedgerAdapter();
+
+    const connection = adapter.connect();
+    await vi.waitFor(() => expect(xrpAppInstance.getAddress).toHaveBeenCalledOnce());
+    await adapter.disconnect();
+    resolveAddress({ address: 'rStale', publicKey: 'STALE_PK' });
+
+    await expect(connection).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+    expect(mockTransport.close).toHaveBeenCalledOnce();
+  });
 });
 
 describe('LedgerAdapter.getDeviceState', () => {
@@ -294,6 +314,16 @@ describe('LedgerAdapter.getDeviceState', () => {
     );
 
     await expect(new LedgerAdapter().getDeviceState()).resolves.toBe(LedgerDeviceState.UNKNOWN);
+  });
+
+  it('closes the probe transport when reading the address fails', async () => {
+    installNavigator({ hid: {} });
+    xrpAppInstance.getAddress.mockRejectedValue(new Error('No device found'));
+
+    await expect(new LedgerAdapter().getDeviceState()).resolves.toBe(
+      LedgerDeviceState.NOT_CONNECTED
+    );
+    expect(mockTransport.close).toHaveBeenCalledOnce();
   });
 });
 
@@ -456,15 +486,14 @@ describe('LedgerAdapter.sign', () => {
     expect(client.disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it('maps a user-rejected message signature to sign-rejected', async () => {
+  it('advertises arbitrary-message signing as unsupported', async () => {
     const adapter = await connected();
-    const rejected = Object.assign(new Error('rejected'), { statusCode: 0x6985 });
-    xrpAppInstance.signTransaction.mockRejectedValue(rejected);
 
+    expect(adapter.capabilities.signMessage).toBe(false);
     await expect(adapter.signMessage('hello')).rejects.toMatchObject({
-      code: WalletErrorCode.SIGN_REJECTED,
-      originalError: rejected,
+      code: WalletErrorCode.UNSUPPORTED_METHOD,
     });
+    expect(xrpAppInstance.signTransaction).not.toHaveBeenCalled();
   });
 
   it('retains the provider cause for unknown signing failures', async () => {
@@ -620,6 +649,55 @@ describe('LedgerAdapter.fetchAccount', () => {
 });
 
 describe('LedgerAdapter.getAccounts', () => {
+  it('closes an in-flight discovery transport when disconnect is requested', async () => {
+    installNavigator({ hid: {} });
+    let finishDiscovery!: (account: { address: string; publicKey: string }) => void;
+    xrpAppInstance.getAddress.mockReturnValue(
+      new Promise<{ address: string; publicKey: string }>((resolve) => (finishDiscovery = resolve))
+    );
+    const adapter = new LedgerAdapter();
+
+    const discovery = adapter.getAccounts(1);
+    await vi.waitFor(() => expect(xrpAppInstance.getAddress).toHaveBeenCalledOnce());
+    await adapter.disconnect();
+
+    expect(mockTransport.close).toHaveBeenCalledOnce();
+    finishDiscovery({ address: 'rStale', publicKey: 'stale-key' });
+    await expect(discovery).rejects.toMatchObject({
+      code: WalletErrorCode.NOT_CONNECTED,
+    });
+    expect(mockTransport.close).toHaveBeenCalledOnce();
+  });
+
+  it('does not close a connection established during temporary account discovery', async () => {
+    installNavigator({ hid: {} });
+    const temporaryTransport = { close: vi.fn().mockResolvedValue(undefined) };
+    const connectedTransport = { close: vi.fn().mockResolvedValue(undefined) };
+    transportWebHID.create
+      .mockResolvedValueOnce(temporaryTransport)
+      .mockResolvedValueOnce(connectedTransport);
+    let finishDiscovery!: (account: { address: string; publicKey: string }) => void;
+    xrpAppInstance.getAddress
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ address: string; publicKey: string }>(
+            (resolve) => (finishDiscovery = resolve)
+          )
+      )
+      .mockResolvedValueOnce({ address: 'rConnected', publicKey: 'connected-key' });
+    const adapter = new LedgerAdapter();
+
+    const discovery = adapter.getAccounts(1);
+    await vi.waitFor(() => expect(xrpAppInstance.getAddress).toHaveBeenCalledOnce());
+    await adapter.connect();
+    finishDiscovery({ address: 'rDiscovered', publicKey: 'discovered-key' });
+    await expect(discovery).resolves.toHaveLength(1);
+
+    expect(temporaryTransport.close).toHaveBeenCalledOnce();
+    expect(connectedTransport.close).not.toHaveBeenCalled();
+    await expect(adapter.getAccount()).resolves.toMatchObject({ address: 'rConnected' });
+  });
+
   it('maps transport chooser cancellation to connection-rejected with its cause', async () => {
     installNavigator({ usb: {} });
     const rejected = Object.assign(new Error('No device selected.'), {

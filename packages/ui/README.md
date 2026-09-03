@@ -2,7 +2,7 @@
 
 ## Overview
 
-`@xrpl-connect/ui` is a framework-agnostic web component that provides a production-ready user interface for wallet connection. It wraps the `WalletManager` from `@xrpl-connect/core` and multiple wallet adapters from `@xrpl-connect/adapters`, presenting users with a polished modal-based experience for connecting to XRPL wallets.
+`@xrpl-connect/ui` is a framework-agnostic web component that provides a production-ready user interface for wallet connection. It wraps the `WalletManager` from `@xrpl-connect/core` and adapters from the individual `@xrpl-connect/adapter-*` packages, presenting users with a polished modal-based experience for connecting to XRPL wallets.
 
 **Key Responsibility**: Render a beautiful, accessible, responsive UI component that handles wallet selection, QR code display, loading states, error handling, and user feedback—all wrapped in a custom HTML element that works in any JavaScript environment.
 
@@ -34,21 +34,7 @@ A Web Component is a reusable, encapsulated HTML element built using the Web Com
 ```html
 <!DOCTYPE html>
 <html>
-  <head>
-    <script type="module">
-      import { WalletManager } from '@xrpl-connect/core';
-      import { XamanAdapter, CrossmarkAdapter } from '@xrpl-connect/adapters';
-
-      const walletManager = new WalletManager({
-        adapters: [new XamanAdapter({ apiKey: 'YOUR_KEY' }), new CrossmarkAdapter()],
-        network: 'mainnet',
-        autoConnect: true,
-      });
-
-      const connector = document.querySelector('xrpl-wallet-connector');
-      connector.setWalletManager(walletManager);
-    </script>
-  </head>
+  <head></head>
   <body>
     <xrpl-wallet-connector
       primary-wallet="xaman"
@@ -58,6 +44,21 @@ A Web Component is a reusable, encapsulated HTML element built using the Web Com
         --xc-text-color: #F5F4E7;
       "
     ></xrpl-wallet-connector>
+    <script type="module">
+      import '@xrpl-connect/ui';
+      import { WalletManager } from '@xrpl-connect/core';
+      import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+      import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+
+      const walletManager = new WalletManager({
+        adapters: [new XamanAdapter({ apiKey: 'YOUR_KEY' }), new CrossmarkAdapter()],
+        network: 'mainnet',
+        autoConnect: true,
+      });
+
+      await customElements.whenDefined('xrpl-wallet-connector');
+      document.querySelector('xrpl-wallet-connector').setWalletManager(walletManager);
+    </script>
   </body>
 </html>
 ```
@@ -160,7 +161,8 @@ connector.addEventListener('open', () => {
 });
 ```
 
-**Event Detail**: None
+**Event Detail**: `{ connectionAttemptId: number }` when closing cancels an active connection
+attempt; otherwise no detail.
 
 ---
 
@@ -179,9 +181,34 @@ connector.addEventListener('close', () => {
 
 ---
 
+### `cancelled` Event
+
+Emitted when an in-progress connection flow is cancelled while the modal remains open, such as
+when the user returns to the wallet list.
+
+```typescript
+connector.addEventListener('cancelled', (e) => {
+  console.log('Connection flow cancelled:', e.detail.reason);
+});
+```
+
+**Event Detail**:
+
+```typescript
+{
+  reason: 'wallet-list';
+  connectionAttemptId: number; // The active attempt cancelled by returning to the list
+}
+```
+
+This settles every active connection attempt started by this connector. It does not mean the modal
+closed and does not disconnect an established wallet session.
+
+---
+
 ### `connecting` Event
 
-Emitted when the user clicks on a wallet to initiate connection.
+Emitted immediately before the component hands a connection attempt to the wallet manager.
 
 ```typescript
 connector.addEventListener('connecting', (e) => {
@@ -195,6 +222,9 @@ connector.addEventListener('connecting', (e) => {
 ```typescript
 {
   walletId: string; // ID of the wallet being connected (e.g., 'xaman')
+  connectionAttemptId?: number; // Correlates this attempt with connected/error when present
+  accountIndex?: number; // Ledger account selection only
+  derivationPath?: string; // Ledger custom derivation path only
 }
 ```
 
@@ -226,6 +256,9 @@ connector.addEventListener('connected', (e) => {
 ```typescript
 {
   walletId: string; // ID of the connected wallet
+  connectionAttemptId?: number; // Matches the connecting event when both include an ID
+  accountIndex?: number; // Ledger account selection only
+  derivationPath?: string; // Ledger custom derivation path only
 }
 ```
 
@@ -253,9 +286,19 @@ connector.addEventListener('error', (e) => {
 {
   error: Error | WalletError; // The error object
   walletId: string; // ID of the wallet
-  errorType: string; // Error type ('connection_rejected', 'wallet_not_available', etc.)
+  errorType: 'rejected' | 'unavailable' | 'failed';
+  connectionAttemptId?: number; // Correlates this failure with its attempt when present
 }
 ```
+
+`connected`, `error`, and `cancelled` settle connection attempts. When `connectionAttemptId` is
+present, use it to correlate a `connecting` event with `connected` or `error`; consumers must also
+tolerate producers that omit the optional ID. `cancelled` identifies the active flow invalidated by
+returning to the list, so consumers can reject a late preflight error even when no `connecting`
+event was emitted first.
+Validation, availability checks, and Ledger account discovery can fail before a `connecting` event
+is emitted. Those preflight `error` events can still include a `connectionAttemptId`, so do not
+require a preceding `connecting` event before handling an error.
 
 ---
 
@@ -396,8 +439,9 @@ Specify which wallets to include:
 
 ```typescript
 import { useEffect, useRef } from 'react';
+import '@xrpl-connect/ui';
 import { WalletManager } from '@xrpl-connect/core';
-import { XamanAdapter } from '@xrpl-connect/adapters';
+import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
 
 function WalletConnection() {
   const connectorRef = useRef<any>(null);
@@ -458,8 +502,9 @@ function WalletConnection() {
 
 <script setup>
 import { onMounted, ref } from 'vue';
+import '@xrpl-connect/ui';
 import { WalletManager } from '@xrpl-connect/core';
-import { XamanAdapter } from '@xrpl-connect/adapters';
+import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
 
 const connector = ref();
 
@@ -487,7 +532,9 @@ const handleError = (e) => {
 
 ```javascript
 import { WalletManager } from '@xrpl-connect/core';
-import { XamanAdapter, CrossmarkAdapter } from '@xrpl-connect/adapters';
+import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+import '@xrpl-connect/ui';
 
 // Initialize wallet manager
 const walletManager = new WalletManager({
@@ -543,102 +590,11 @@ document.getElementById('connect-button').addEventListener('click', () => {
 
 **Location**: `src/wallet-connector.ts`
 
-The web component extends `HTMLElement` and uses the Shadow DOM for style isolation:
-
-```typescript
-class WalletConnectorElement extends HTMLElement {
-  private shadow: ShadowRoot;
-  private walletManager: WalletManager | null = null;
-
-  // View state
-  private viewState: 'list' | 'qr' | 'loading' | 'error' = 'list';
-  private isOpen: boolean = false;
-
-  // QR Code data
-  private qrCodeData: { walletId: string; uri: string } | null = null;
-
-  // Loading data
-  private loadingData: { walletId: string; walletName: string; walletIcon?: string } | null = null;
-
-  // Error data
-  private errorData: { walletId: string; walletName: string; error: Error } | null = null;
-
-  constructor() {
-    super();
-    this.shadow = this.attachShadow({ mode: 'open' });
-    this.render();
-  }
-
-  // Lifecycle hooks
-  connectedCallback(): void {
-    /* ... */
-  }
-  attributeChangedCallback(name: string, oldValue: string, newValue: string): void {
-    /* ... */
-  }
-
-  // Public methods
-  setWalletManager(manager: WalletManager): void {
-    /* ... */
-  }
-  open(): void {
-    /* ... */
-  }
-  close(): void {
-    /* ... */
-  }
-  toggle(): void {
-    /* ... */
-  }
-
-  // Rendering
-  private render(): void {
-    /* ... */
-  }
-  private renderListView(): string {
-    /* ... */
-  }
-  private renderQRView(): string {
-    /* ... */
-  }
-  private renderLoadingView(): string {
-    /* ... */
-  }
-  private renderErrorView(): string {
-    /* ... */
-  }
-
-  // Event handlers
-  private handleWalletClick(walletId: string): void {
-    /* ... */
-  }
-  private handleConnect(walletId: string): Promise<void> {
-    /* ... */
-  }
-  private handleError(error: Error, walletId: string): void {
-    /* ... */
-  }
-
-  // Private helpers
-  private showQRCode(uri: string, walletId: string): void {
-    /* ... */
-  }
-  private showLoading(walletId: string): void {
-    /* ... */
-  }
-  private showError(error: Error, walletId: string): void {
-    /* ... */
-  }
-  private back(): void {
-    /* ... */
-  }
-  private emit(eventName: string, detail?: any): void {
-    /* ... */
-  }
-}
-
-customElements.define('xrpl-wallet-connector', WalletConnectorElement);
-```
+The custom element owns modal lifecycle, focus restoration, body-scroll locking,
+availability refreshes, and cancellation of stale connection work. Rendering and
+interaction logic are split into view and service modules. Treat those modules as
+implementation details; the supported integration surface is the element's
+attributes, CSS variables, methods, and events documented above.
 
 ### Shadow DOM Structure
 
@@ -714,23 +670,15 @@ Success?
 
 ### QR Code Pre-generation
 
-The component eagerly generates QR codes for WalletConnect adapters before the user sees them. This reduces perceived latency.
-
-```typescript
-private async preloadQRCode(walletId: string): Promise<void> {
-  // Pre-generate QR before user sees it
-  // Caches in memory for quick display
-}
-```
+When the modal opens, the component asks compatible WalletConnect adapters to
+prepare a proposal and caches the resulting QR code for the active modal session.
+Closing the modal or replacing the manager invalidates that work and tears down
+the pending proposal.
 
 ### Browser Detection
 
-Special handling for Safari and mobile browsers optimizes the UX:
-
-```typescript
-private isSafari(): boolean { /* ... */ }
-private isMobile(): boolean { /* ... */ }
-```
+The connection service preserves Safari's user gesture requirements and selects
+the configured WalletConnect modal mode for mobile browsers.
 
 ### Lazy Rendering
 
@@ -742,15 +690,16 @@ The component only renders the active view, not hidden views, for efficiency.
 
 ```
 packages/ui/src/
-├── index.ts                    # Main export
-├── wallet-connector.ts         # WalletConnectorElement class
-├── constants.ts                # UI configuration (sizes, colors, timings)
-├── utils.ts                    # Helper functions
-│   ├── generateQRCode()        # QR code generation
-│   ├── detectBrowser()         # Browser detection
-│   ├── isMobile()              # Device detection
-│   └── copyToClipboard()       # Clipboard helper
-└── types.ts                    # TypeScript type definitions
+├── index.ts                    # Public registration and exports
+├── wallet-connector.ts         # Custom-element lifecycle and orchestration
+├── customization.ts            # CSS-variable customization contract
+├── security.ts                 # URL and rendering safety helpers
+├── services/                   # Wallet operations and DOM event binding
+├── styles/                     # Component styles
+├── views/                      # Modal, list, QR, loading, error, and account views
+├── constants.ts                # Shared UI constants
+├── utils.ts                    # Browser, color, and QR helpers
+└── types.ts                    # Public and internal TypeScript types
 ```
 
 ---
@@ -942,7 +891,7 @@ Benefits of CSS variables:
 
 3. **Listen to Events Early**: Add event listeners immediately after setting up the component
 
-4. **Handle All Event Types**: Listen to `connected`, `error`, and `connecting` for a complete flow
+4. **Handle All Event Types**: Listen to `connecting`, `connected`, `error`, and `cancelled` for a complete flow
 
 5. **Close Modal on Success**: Use the `close()` method or auto-close on successful connection
 

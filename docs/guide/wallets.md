@@ -9,10 +9,10 @@ XRPL Connect v1.0 ships eight adapters behind one `WalletManager` API. Register 
 | Adapter ID      | Wallet        | Requirement                     | Sign | Submit | Messages | Live account refresh |
 | --------------- | ------------- | ------------------------------- | :--: | :----: | :------: | :------------------: |
 | `xaman`         | Xaman         | Browser API key                 | Yes  |  Yes   |    No    |         Yes          |
-| `crossmark`     | Crossmark     | Browser extension               | Yes  |  Yes   |   Yes    |         Yes          |
+| `crossmark`     | Crossmark     | Browser extension               | Yes  |  Yes   |    No    |         Yes          |
 | `gemwallet`     | GemWallet     | Browser extension               | Yes  |  Yes   |   Yes    |         Yes          |
 | `walletconnect` | WalletConnect | Project ID                      | Yes  |  Yes   |    No    |          No          |
-| `ledger`        | Ledger        | XRP app and WebHID/WebUSB       | Yes  |  Yes   |   Yes    |         Yes          |
+| `ledger`        | Ledger        | XRP app and WebHID/WebUSB       | Yes  |  Yes   |    No    |         Yes          |
 | `xyra`          | Xyra          | Browser wallet                  | Yes  |  Yes   |   Yes    |          No          |
 | `otsu`          | Otsu          | Browser wallet                  | Yes  |  Yes   |   Yes    |         Yes          |
 | `metamask-snap` | MetaMask Snap | MetaMask with XRPL Snap support | Yes  |  Yes   |   Yes    |          No          |

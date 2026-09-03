@@ -750,6 +750,7 @@ describe('<WalletConnector>', () => {
     expect(walletState!.connecting).toBe(false);
     expect(onError).toHaveBeenCalledWith(error);
 
+    act(() => el.dispatchEvent(new CustomEvent('close')));
     act(() => {
       el.dispatchEvent(
         new CustomEvent('error', {
@@ -761,12 +762,101 @@ describe('<WalletConnector>', () => {
         })
       );
     });
-    await waitFor(() =>
-      expect(walletState!.error?.code).toBe(WalletErrorCode.WALLET_NOT_INSTALLED)
+    expect(walletState!.error).toBe(error);
+    expect(onError).toHaveBeenCalledOnce();
+  });
+
+  it('settles a cancelled modal attempt and accepts a later tagged preflight error', async () => {
+    const onError = vi.fn();
+    let walletState: ReturnType<typeof useWallet> | null = null;
+    function Capture() {
+      walletState = useWallet();
+      return null;
+    }
+    render(
+      <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+        <Capture />
+        <WalletConnector onError={onError} />
+      </XrplConnectProvider>
     );
-    expect(onError).toHaveBeenLastCalledWith(
-      expect.objectContaining({ code: WalletErrorCode.WALLET_NOT_INSTALLED })
+
+    const el = document.querySelector('xrpl-wallet-connector') as HTMLElement & {
+      manager: unknown;
+    };
+    await waitFor(() => expect(el.manager).not.toBeNull());
+    act(() => {
+      el.dispatchEvent(new CustomEvent('open'));
+      el.dispatchEvent(
+        new CustomEvent('connecting', {
+          detail: { walletId: 'fake', connectionAttemptId: 1 },
+        })
+      );
+    });
+    expect(walletState!.connecting).toBe(true);
+
+    act(() =>
+      el.dispatchEvent(new CustomEvent('cancelled', { detail: { connectionAttemptId: 1 } }))
     );
+    expect(walletState!.connecting).toBe(false);
+
+    const staleError = createWalletError.connectionRejected('Fake');
+    act(() => {
+      el.dispatchEvent(
+        new CustomEvent('error', {
+          detail: { error: staleError, walletId: 'fake', connectionAttemptId: 1 },
+        })
+      );
+    });
+    expect(walletState!.error).toBeNull();
+    expect(onError).not.toHaveBeenCalled();
+
+    const preflightError = createWalletError.notAvailable('Fake');
+    act(() => {
+      el.dispatchEvent(
+        new CustomEvent('error', {
+          detail: { error: preflightError, walletId: 'fake', connectionAttemptId: 2 },
+        })
+      );
+    });
+    expect(walletState!.connecting).toBe(false);
+    expect(walletState!.error).toBe(preflightError);
+    expect(onError).toHaveBeenCalledWith(preflightError);
+  });
+
+  it('ignores a tagged preflight error at the cancellation boundary', async () => {
+    const onError = vi.fn();
+    let walletState: ReturnType<typeof useWallet> | null = null;
+    function Capture() {
+      walletState = useWallet();
+      return null;
+    }
+    render(
+      <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+        <Capture />
+        <WalletConnector onError={onError} />
+      </XrplConnectProvider>
+    );
+
+    const el = document.querySelector('xrpl-wallet-connector') as HTMLElement & {
+      manager: unknown;
+    };
+    await waitFor(() => expect(el.manager).not.toBeNull());
+    act(() => {
+      el.dispatchEvent(new CustomEvent('open'));
+      el.dispatchEvent(new CustomEvent('cancelled', { detail: { connectionAttemptId: 1 } }));
+      el.dispatchEvent(
+        new CustomEvent('error', {
+          detail: {
+            error: createWalletError.notAvailable('Ledger'),
+            walletId: 'ledger',
+            connectionAttemptId: 1,
+          },
+        })
+      );
+    });
+
+    expect(walletState!.error).toBeNull();
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it('keeps connecting true when a modal error overlaps a manual connection', async () => {

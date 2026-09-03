@@ -203,10 +203,6 @@ function App() {
       setAccount(null);
     });
 
-    manager.on('error', (error) => {
-      console.error('Error:', error);
-    });
-
     setWalletManager(manager);
 
     if (connectorRef.current) {

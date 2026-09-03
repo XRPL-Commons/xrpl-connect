@@ -151,6 +151,31 @@ describe('XyraAdapter.connect', () => {
     });
   });
 
+  it('does not restore state when a pending connection resolves after disconnect', async () => {
+    let resolveConnect!: (value: {
+      address: string;
+      publicKey: string;
+      network: 'xrpl-mainnet';
+    }) => void;
+    mockSdk.connect.mockReturnValue(
+      new Promise((resolve) => {
+        resolveConnect = resolve;
+      })
+    );
+    const adapter = new XyraAdapter();
+    const connectEvent = vi.fn();
+    adapter.on('connect', connectEvent);
+
+    const connection = adapter.connect({ network: 'mainnet' });
+    await vi.waitFor(() => expect(mockSdk.connect).toHaveBeenCalledOnce());
+    await adapter.disconnect();
+    resolveConnect({ address: 'rStale', publicKey: 'PK', network: 'xrpl-mainnet' });
+
+    await expect(connection).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    await expect(adapter.getAccount()).resolves.toBeNull();
+    expect(connectEvent).not.toHaveBeenCalled();
+  });
+
   it('destroys an SDK that finishes initializing after the adapter is destroyed', async () => {
     const adapter = new XyraAdapter();
     const connection = adapter.connect();
@@ -158,7 +183,7 @@ describe('XyraAdapter.connect', () => {
     adapter.destroy();
 
     await expect(connection).rejects.toMatchObject({
-      code: WalletErrorCode.CONNECTION_FAILED,
+      code: WalletErrorCode.NOT_CONNECTED,
     });
     expect(mockSdk.destroy).toHaveBeenCalledOnce();
   });
@@ -200,6 +225,31 @@ describe('XyraAdapter.sign', () => {
 
     await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_REJECTED,
+    });
+  });
+});
+
+describe('XyraAdapter.signMessage', () => {
+  it('preserves the signer address reported by Xyra', async () => {
+    mockSdk.connect.mockResolvedValue({
+      address: 'rConnected',
+      publicKey: 'CONNECTED_PK',
+      network: 'xrpl-mainnet',
+    });
+    mockSdk.signMessage.mockResolvedValue({
+      address: 'rSigner',
+      message: 'hello',
+      signature: 'SIG',
+      publicKey: 'SIGNER_PK',
+    });
+    const adapter = new XyraAdapter();
+    await adapter.connect({ network: 'mainnet' });
+
+    await expect(adapter.signMessage('hello')).resolves.toMatchObject({
+      signerAddress: 'rSigner',
+      message: 'hello',
+      signature: 'SIG',
+      publicKey: 'SIGNER_PK',
     });
   });
 });

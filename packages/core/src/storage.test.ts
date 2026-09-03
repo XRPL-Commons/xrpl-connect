@@ -136,3 +136,30 @@ describe('Storage versioning', () => {
     expect(await adapter.get(STATE_KEY)).toBeNull();
   });
 });
+
+describe('Storage defaults', () => {
+  it('falls back to memory when the localStorage getter throws', async () => {
+    const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    const restrictedWindow = {} as Window;
+    Object.defineProperty(restrictedWindow, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new DOMException('Blocked', 'SecurityError');
+      },
+    });
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: restrictedWindow,
+    });
+
+    try {
+      const storage = new Storage();
+      const state = makeState();
+      await storage.saveState(state);
+      await expect(storage.loadState()).resolves.toEqual(state);
+    } finally {
+      if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+      else Reflect.deleteProperty(globalThis, 'window');
+    }
+  });
+});

@@ -7,7 +7,7 @@ This is a demo application showcasing the XRPL Connect wallet toolkit with a van
 - Connect to Xaman Wallet (OAuth2 PKCE flow)
 - Connect to WalletConnect (QR code modal)
 - Sign XRPL transactions
-- Sign arbitrary messages
+- Sign arbitrary messages when the connected wallet supports it
 - Real-time event logging
 - Beautiful, responsive UI
 
@@ -89,10 +89,13 @@ The application will be available at [http://localhost:5173](http://localhost:51
 
 ### Signing a Message
 
-1. Enter any text message
-2. Click "Sign Message"
-3. Approve the signing request in your wallet
-4. The signature will be displayed
+The form is shown only when the connected wallet declares message-signing support.
+
+1. Connect a wallet that supports message signing
+2. Enter any text message
+3. Click "Sign Message"
+4. Approve the signing request in your wallet
+5. The signature will be displayed
 
 ### Event Log
 
