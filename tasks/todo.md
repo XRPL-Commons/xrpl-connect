@@ -399,7 +399,7 @@
 - [x] Add fail-before regression coverage for all ten reviewed defects and exercise overlapping lifecycle paths.
 - [x] Run focused suites, repository checks, full tests, browser tests, packed-consumer verification, docs checks, and the production audit.
 - [x] Review the cumulative PR diff for lifecycle ownership, API compatibility, documentation accuracy, and minimality.
-- [ ] Sign and push the corrective commit, verify the remote PR head and signatures, and wait for required CI.
+- [x] Sign and push the corrective commit, verify the remote PR head and signatures, and wait for required CI.
 
 ### Review-fix results
 
@@ -409,3 +409,4 @@
 - Focused core (97), UI (179), Ledger (49), React (35), and Vue (28) suites passed; the full monorepo suite, browser suite (9), docs snapshot/build, and packed-consumer matrix also passed.
 - Repeated adversarial review of teardown ordering, shared-manager ownership, cancellation boundaries, and framework lifecycle behavior found no remaining correctness issue.
 - Production audit reports only the known low-severity `elliptic` advisory inherited through Crossmark typings; no patched dependency version is available.
+- Corrective commit `7468f6c` is GPG-verified by GitHub and is the remote PR head; documentation and the Node 20.19, 22.18, and 24.11 test/build jobs all passed.
