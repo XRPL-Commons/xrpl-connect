@@ -164,7 +164,7 @@ describe('WalletConnector wallet availability', () => {
     expect(manager.wallet).toBeNull();
   });
 
-  it('cancels an in-flight connection owned by a replaced manager', async () => {
+  it('does not cancel an in-flight connection owned by a replaced manager', async () => {
     let resolveConnection!: (account: { address: string; network: NetworkInfo }) => void;
     const firstAdapter = createAdapter(
       'first',
@@ -184,11 +184,11 @@ describe('WalletConnector wallet availability', () => {
     const connection = firstManager.connect('first');
     await vi.waitFor(() => expect(firstAdapter.connect).toHaveBeenCalledOnce());
     element.setWalletManager(secondManager);
-    await vi.waitFor(() => expect(firstAdapter.disconnect).toHaveBeenCalledOnce());
     resolveConnection({ address: 'rFirst', network: NETWORK });
 
-    await expect(connection).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
-    expect(firstManager.connected).toBe(false);
+    await expect(connection).resolves.toMatchObject({ address: 'rFirst' });
+    expect(firstAdapter.disconnect).not.toHaveBeenCalled();
+    expect(firstManager.connected).toBe(true);
     expect(secondManager.connected).toBe(false);
   });
 
@@ -462,6 +462,150 @@ describe('WalletConnector wallet availability', () => {
     expect(xaman.connect).toHaveBeenCalledOnce();
   });
 
+  it('does not reconnect Xaman after the manager is explicitly disconnected', async () => {
+    let resolveState!: (account: { address: string; network: NetworkInfo }) => void;
+    const state = new Promise<{ address: string; network: NetworkInfo }>((resolve) => {
+      resolveState = resolve;
+    });
+    const xaman = {
+      ...createAdapter(
+        'xaman',
+        'Xaman',
+        vi.fn(async () => true)
+      ),
+      getMissingConfiguration: vi.fn(() => []),
+      checkXamanState: vi.fn(() => state),
+    };
+    const manager = new WalletManager({ adapters: [xaman] });
+    element = createElement(manager);
+    document.body.appendChild(element);
+
+    await vi.waitFor(() => expect(xaman.checkXamanState).toHaveBeenCalled());
+    await manager.disconnect();
+
+    resolveState({ address: 'rStaleXaman', network: NETWORK });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(xaman.connect).not.toHaveBeenCalled();
+    expect(manager.connected).toBe(false);
+  });
+
+  it('does not disconnect a manager-owned WalletConnect session when closing the modal', async () => {
+    const preInitialize = vi.fn(async () => {});
+    const walletConnect = {
+      ...createAdapter(
+        'walletconnect',
+        'WalletConnect',
+        vi.fn(async () => true)
+      ),
+      connect: vi.fn(async () => ({ address: 'rWalletConnect', network: NETWORK })),
+      preInitialize,
+    };
+    const manager = new WalletManager({ adapters: [walletConnect] });
+    await manager.connect('walletconnect');
+    element = createElement(manager);
+    document.body.appendChild(element);
+
+    await element.open();
+    element.close();
+
+    expect(preInitialize).not.toHaveBeenCalled();
+    expect(walletConnect.disconnect).not.toHaveBeenCalled();
+    expect(manager.connected).toBe(true);
+    expect(manager.wallet).toBe(walletConnect);
+  });
+
+  it('does not disconnect a shared manager when rebinding the connector', async () => {
+    const sharedAdapter = createAdapter(
+      'shared',
+      'Shared Wallet',
+      vi.fn(async () => true)
+    );
+    sharedAdapter.connect = vi.fn(async () => ({ address: 'rShared', network: NETWORK }));
+    const sharedManager = new WalletManager({ adapters: [sharedAdapter] });
+    await sharedManager.connect('shared');
+    const replacementManager = new WalletManager({ adapters: [] });
+    element = createElement(sharedManager);
+
+    element.setWalletManager(replacementManager);
+
+    expect(sharedAdapter.disconnect).not.toHaveBeenCalled();
+    expect(sharedManager.connected).toBe(true);
+    expect(sharedManager.wallet).toBe(sharedAdapter);
+  });
+
+  it('does not claim an external active session when its UI attempt is rejected', async () => {
+    const sharedAdapter = createAdapter(
+      'shared',
+      'Shared Wallet',
+      vi.fn(async () => true)
+    );
+    sharedAdapter.connect = vi.fn(async () => ({ address: 'rShared', network: NETWORK }));
+    const xaman = {
+      ...createAdapter(
+        'xaman',
+        'Xaman',
+        vi.fn(async () => true)
+      ),
+      getMissingConfiguration: vi.fn(() => []),
+      checkXamanState: vi.fn(async () => null),
+    };
+    const sharedManager = new WalletManager({ adapters: [sharedAdapter, xaman] });
+    await sharedManager.connect('shared');
+    const replacementManager = new WalletManager({ adapters: [] });
+    element = createElement(sharedManager);
+
+    const rejectedAttempt = (
+      element as unknown as {
+        walletService: { connectWallet(walletId: string): Promise<void> };
+      }
+    ).walletService.connectWallet('xaman');
+    element.setWalletManager(replacementManager);
+    await rejectedAttempt;
+
+    expect(sharedAdapter.disconnect).not.toHaveBeenCalled();
+    expect(sharedManager.connected).toBe(true);
+    expect(sharedManager.wallet).toBe(sharedAdapter);
+  });
+
+  it('cancels a connector-owned pending session when rebinding the manager', async () => {
+    let resolveConnection!: (account: AccountInfo) => void;
+    let finishDisconnect!: () => void;
+    const walletConnect = {
+      ...createAdapter(
+        'walletconnect',
+        'WalletConnect',
+        vi.fn(async () => true)
+      ),
+      preInitialize: vi.fn(async () => {}),
+      connect: vi.fn(() => new Promise<AccountInfo>((resolve) => (resolveConnection = resolve))),
+      disconnect: vi.fn(() => new Promise<void>((resolve) => (finishDisconnect = resolve))),
+    };
+    const previousManager = new WalletManager({ adapters: [walletConnect] });
+    const replacementManager = new WalletManager({ adapters: [] });
+    element = createElement(previousManager);
+    await element.open();
+    await vi.waitFor(() => expect(walletConnect.preInitialize).toHaveBeenCalledOnce());
+
+    const connection = (
+      element as unknown as {
+        walletService: { connectWallet(walletId: string): Promise<void> };
+      }
+    ).walletService.connectWallet('walletconnect');
+    await vi.waitFor(() => expect(walletConnect.connect).toHaveBeenCalledOnce());
+
+    element.setWalletManager(replacementManager);
+    await vi.waitFor(() => expect(walletConnect.disconnect).toHaveBeenCalledOnce());
+    resolveConnection({ address: 'rStaleWalletConnect', network: NETWORK });
+    await Promise.resolve();
+    finishDisconnect();
+    await connection;
+
+    expect(previousManager.connected).toBe(false);
+    expect(walletConnect.disconnect).toHaveBeenCalledOnce();
+    expect(replacementManager.connected).toBe(false);
+  });
+
   it('cancels and ignores WalletConnect pre-initialization after close', async () => {
     let publishQRCode!: (uri: string) => void;
     const walletConnect = {
@@ -484,6 +628,91 @@ describe('WalletConnector wallet availability', () => {
 
     expect(walletConnect.disconnect).toHaveBeenCalledOnce();
     expect((element as unknown as { preGeneratedURI: string | null }).preGeneratedURI).toBeNull();
+  });
+
+  it('lets the manager exclusively tear down an in-flight WalletConnect attempt', async () => {
+    let resolveConnection!: (account: AccountInfo) => void;
+    let finishDisconnect!: () => void;
+    const walletConnect = {
+      ...createAdapter(
+        'walletconnect',
+        'WalletConnect',
+        vi.fn(async () => true)
+      ),
+      preInitialize: vi.fn(async () => {}),
+      connect: vi.fn(() => new Promise<AccountInfo>((resolve) => (resolveConnection = resolve))),
+      disconnect: vi.fn(() => new Promise<void>((resolve) => (finishDisconnect = resolve))),
+    };
+    element = createElement(new WalletManager({ adapters: [walletConnect] }));
+    await element.open();
+    await vi.waitFor(() => expect(walletConnect.preInitialize).toHaveBeenCalledOnce());
+
+    const connection = (
+      element as unknown as {
+        walletService: { connectWallet(walletId: string): Promise<void> };
+      }
+    ).walletService.connectWallet('walletconnect');
+    await vi.waitFor(() => expect(walletConnect.connect).toHaveBeenCalledOnce());
+
+    element.showWalletList();
+    await vi.waitFor(() => expect(walletConnect.disconnect).toHaveBeenCalledOnce());
+    resolveConnection({ address: 'rCancelledWalletConnect', network: NETWORK });
+    await Promise.resolve();
+    expect(walletConnect.disconnect).toHaveBeenCalledOnce();
+
+    finishDisconnect();
+    await connection;
+    expect(walletConnect.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('settles the public cancelled event when returning to the wallet list', async () => {
+    let resolveConnection!: (account: AccountInfo) => void;
+    const adapter = createAdapter(
+      'wallet',
+      'Wallet',
+      vi.fn(async () => true)
+    );
+    adapter.connect = vi.fn(
+      () => new Promise<AccountInfo>((resolve) => (resolveConnection = resolve))
+    );
+    element = createElement(new WalletManager({ adapters: [adapter] }));
+    await element.open();
+    const onCancelled = vi.fn();
+    element.addEventListener('cancelled', onCancelled);
+
+    const connection = (
+      element as unknown as {
+        walletService: { connectWallet(walletId: string): Promise<void> };
+      }
+    ).walletService.connectWallet('wallet');
+    await vi.advanceTimersByTimeAsync(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+    await vi.waitFor(() => expect(adapter.connect).toHaveBeenCalledOnce());
+    element.showWalletList();
+
+    expect(onCancelled).toHaveBeenCalledOnce();
+    expect(onCancelled.mock.calls[0]?.[0]).toMatchObject({
+      detail: { reason: 'wallet-list', connectionAttemptId: 1 },
+    });
+
+    resolveConnection({ address: 'rCancelled', network: NETWORK });
+    await connection;
+  });
+
+  it('does not emit cancelled when returning from an already-settled error', async () => {
+    const adapter = createAdapter(
+      'wallet',
+      'Wallet',
+      vi.fn(async () => true)
+    );
+    element = createElement(new WalletManager({ adapters: [adapter] }));
+    await element.open();
+    const onCancelled = vi.fn();
+    element.addEventListener('cancelled', onCancelled);
+
+    element.showErrorView('wallet', 'Wallet', new Error('settled'));
+    element.showWalletList();
+
+    expect(onCancelled).not.toHaveBeenCalled();
   });
 
   it('does not render a QR code scheduled by an earlier modal session', async () => {

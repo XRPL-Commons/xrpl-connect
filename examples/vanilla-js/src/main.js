@@ -230,6 +230,12 @@ elements.msgForm.addEventListener('submit', async (e) => {
 
   const message = document.getElementById('message').value;
 
+  if (!walletManager.supports('signMessage')) {
+    elements.msgResult.innerHTML =
+      '<div class="error">The connected wallet does not support message signing.</div>';
+    return;
+  }
+
   try {
     elements.msgResult.innerHTML = '<div class="loading">Signing message...</div>';
 
@@ -269,7 +275,9 @@ function updateUI() {
     // Show account section
     elements.accountSection.style.display = 'block';
     elements.transactionSection.style.display = 'block';
-    elements.messageSection.style.display = 'block';
+    const canSignMessage = walletManager.supports('signMessage');
+    elements.messageSection.style.display = canSignMessage ? 'block' : 'none';
+    if (!canSignMessage) elements.msgResult.innerHTML = '';
 
     // Update account info
     elements.address.textContent = account.address;

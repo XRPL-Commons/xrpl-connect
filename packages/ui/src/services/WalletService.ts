@@ -65,8 +65,15 @@ function asErrorLike(value: unknown): ErrorLike {
   return {};
 }
 
+export interface CancelledConnectionAttempt {
+  connectionAttemptId: number;
+  walletId: string;
+  managerConnectionStarted: boolean;
+}
+
 export class WalletService {
   private nextConnectionAttemptId = 0;
+  private activeConnectionAttempt: CancelledConnectionAttempt | null = null;
 
   constructor(
     private walletManager: WalletManager,
@@ -85,12 +92,41 @@ export class WalletService {
     );
   }
 
-  cancelPendingWork(): void {
+  cancelPendingWork(): CancelledConnectionAttempt | null {
+    const cancelledAttempt = this.activeConnectionAttempt;
+    this.activeConnectionAttempt = null;
     this.nextConnectionAttemptId += 1;
+    return cancelledAttempt;
   }
 
   private isCurrentAttempt(connectionAttemptId: number): boolean {
     return connectionAttemptId === this.nextConnectionAttemptId;
+  }
+
+  private beginConnectionAttempt(walletId: string): number {
+    const connectionAttemptId = ++this.nextConnectionAttemptId;
+    this.activeConnectionAttempt = {
+      connectionAttemptId,
+      walletId,
+      managerConnectionStarted: false,
+    };
+    return connectionAttemptId;
+  }
+
+  private markManagerConnectionStarted(connectionAttemptId: number): void {
+    if (
+      this.activeConnectionAttempt?.connectionAttemptId === connectionAttemptId &&
+      !this.walletManager.connected &&
+      !this.walletManager.connectingWallet
+    ) {
+      this.activeConnectionAttempt.managerConnectionStarted = true;
+    }
+  }
+
+  private settleConnectionAttempt(connectionAttemptId: number): void {
+    if (this.activeConnectionAttempt?.connectionAttemptId === connectionAttemptId) {
+      this.activeConnectionAttempt = null;
+    }
   }
 
   async connectWallet(walletId: string, options?: ConnectOptions) {
@@ -99,7 +135,7 @@ export class WalletService {
       return;
     }
 
-    const uiAttempt = ++this.nextConnectionAttemptId;
+    const uiAttempt = this.beginConnectionAttempt(walletId);
     const connectionAttemptId = uiAttempt;
     try {
       // Get wallet info
@@ -151,6 +187,7 @@ export class WalletService {
           if (!this.isCurrentAttempt(uiAttempt)) return;
 
           // Connect - WalletConnect modal will open on top of our loading view
+          this.markManagerConnectionStarted(connectionAttemptId);
           await this.walletManager.connect(walletId, options);
           if (!this.isCurrentAttempt(uiAttempt)) return;
           this.component.dispatchEvent(
@@ -177,6 +214,7 @@ export class WalletService {
           };
 
           this.dispatchConnecting(walletId, connectionAttemptId);
+          this.markManagerConnectionStarted(connectionAttemptId);
           await this.walletManager.connect(walletId, connectOptions);
           if (!this.isCurrentAttempt(uiAttempt)) return;
           this.component.dispatchEvent(
@@ -237,6 +275,7 @@ export class WalletService {
           });
         }
 
+        this.markManagerConnectionStarted(connectionAttemptId);
         await this.walletManager.connect(walletId, options);
         if (!this.isCurrentAttempt(uiAttempt)) return;
 
@@ -286,6 +325,8 @@ export class WalletService {
         })
       );
       logger.error('Failed to connect:', error);
+    } finally {
+      this.settleConnectionAttempt(connectionAttemptId);
     }
   }
 
@@ -293,7 +334,7 @@ export class WalletService {
     if (!this.walletManager || !this.component.accountSelectionData) return;
 
     const { walletId, walletName, walletIcon } = this.component.accountSelectionData;
-    const uiAttempt = ++this.nextConnectionAttemptId;
+    const uiAttempt = this.beginConnectionAttempt(walletId);
     const connectionAttemptId = uiAttempt;
 
     try {
@@ -310,6 +351,7 @@ export class WalletService {
       this.dispatchConnecting(walletId, connectionAttemptId, { accountIndex });
 
       const ledgerOptions: ConnectOptions<LedgerConnectOptions> = { accountIndex };
+      this.markManagerConnectionStarted(connectionAttemptId);
       await this.walletManager.connect(walletId, ledgerOptions);
       if (!this.isCurrentAttempt(uiAttempt)) return;
 
@@ -341,6 +383,8 @@ export class WalletService {
         })
       );
       logger.error('Failed to connect:', error);
+    } finally {
+      this.settleConnectionAttempt(connectionAttemptId);
     }
   }
 
@@ -348,7 +392,7 @@ export class WalletService {
     if (!this.walletManager || !this.component.accountSelectionData) return;
 
     const { walletId, walletName, walletIcon } = this.component.accountSelectionData;
-    const uiAttempt = ++this.nextConnectionAttemptId;
+    const uiAttempt = this.beginConnectionAttempt(walletId);
     const connectionAttemptId = uiAttempt;
 
     try {
@@ -371,6 +415,7 @@ export class WalletService {
       this.dispatchConnecting(walletId, connectionAttemptId, { derivationPath });
 
       const ledgerOptions: ConnectOptions<LedgerConnectOptions> = { derivationPath };
+      this.markManagerConnectionStarted(connectionAttemptId);
       await this.walletManager.connect(walletId, ledgerOptions);
       if (!this.isCurrentAttempt(uiAttempt)) return;
 
@@ -402,6 +447,8 @@ export class WalletService {
         })
       );
       logger.error('Failed to connect:', error);
+    } finally {
+      this.settleConnectionAttempt(connectionAttemptId);
     }
   }
 }

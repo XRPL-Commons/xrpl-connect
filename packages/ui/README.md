@@ -161,7 +161,8 @@ connector.addEventListener('open', () => {
 });
 ```
 
-**Event Detail**: None
+**Event Detail**: `{ connectionAttemptId: number }` when closing cancels an active connection
+attempt; otherwise no detail.
 
 ---
 
@@ -180,9 +181,34 @@ connector.addEventListener('close', () => {
 
 ---
 
+### `cancelled` Event
+
+Emitted when an in-progress connection flow is cancelled while the modal remains open, such as
+when the user returns to the wallet list.
+
+```typescript
+connector.addEventListener('cancelled', (e) => {
+  console.log('Connection flow cancelled:', e.detail.reason);
+});
+```
+
+**Event Detail**:
+
+```typescript
+{
+  reason: 'wallet-list';
+  connectionAttemptId: number; // The active attempt cancelled by returning to the list
+}
+```
+
+This settles every active connection attempt started by this connector. It does not mean the modal
+closed and does not disconnect an established wallet session.
+
+---
+
 ### `connecting` Event
 
-Emitted when the user clicks on a wallet to initiate connection.
+Emitted immediately before the component hands a connection attempt to the wallet manager.
 
 ```typescript
 connector.addEventListener('connecting', (e) => {
@@ -196,7 +222,9 @@ connector.addEventListener('connecting', (e) => {
 ```typescript
 {
   walletId: string; // ID of the wallet being connected (e.g., 'xaman')
-  connectionAttemptId: number; // Correlates this attempt with connected/error
+  connectionAttemptId?: number; // Correlates this attempt with connected/error when present
+  accountIndex?: number; // Ledger account selection only
+  derivationPath?: string; // Ledger custom derivation path only
 }
 ```
 
@@ -228,7 +256,9 @@ connector.addEventListener('connected', (e) => {
 ```typescript
 {
   walletId: string; // ID of the connected wallet
-  connectionAttemptId: number; // Matches the connecting event
+  connectionAttemptId?: number; // Matches the connecting event when both include an ID
+  accountIndex?: number; // Ledger account selection only
+  derivationPath?: string; // Ledger custom derivation path only
 }
 ```
 
@@ -257,9 +287,18 @@ connector.addEventListener('error', (e) => {
   error: Error | WalletError; // The error object
   walletId: string; // ID of the wallet
   errorType: 'rejected' | 'unavailable' | 'failed';
-  connectionAttemptId?: number; // Present when connection reached the connecting phase
+  connectionAttemptId?: number; // Correlates this failure with its attempt when present
 }
 ```
+
+`connected`, `error`, and `cancelled` settle connection attempts. When `connectionAttemptId` is
+present, use it to correlate a `connecting` event with `connected` or `error`; consumers must also
+tolerate producers that omit the optional ID. `cancelled` identifies the active flow invalidated by
+returning to the list, so consumers can reject a late preflight error even when no `connecting`
+event was emitted first.
+Validation, availability checks, and Ledger account discovery can fail before a `connecting` event
+is emitted. Those preflight `error` events can still include a `connectionAttemptId`, so do not
+require a preceding `connecting` event before handling an error.
 
 ---
 
@@ -852,7 +891,7 @@ Benefits of CSS variables:
 
 3. **Listen to Events Early**: Add event listeners immediately after setting up the component
 
-4. **Handle All Event Types**: Listen to `connected`, `error`, and `connecting` for a complete flow
+4. **Handle All Event Types**: Listen to `connecting`, `connected`, `error`, and `cancelled` for a complete flow
 
 5. **Close Modal on Success**: Use the `close()` method or auto-close on successful connection
 

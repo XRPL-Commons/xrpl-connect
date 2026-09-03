@@ -63,13 +63,17 @@ export const WalletConnector = defineComponent({
     let active = false;
     let registered: WalletConnectorElement | null = null;
     let notifiedAccountKey: string | null = null;
-    let managerListenersAttached = false;
+    let managerConnectListenerAttached = false;
+    let managerDisconnectListenerAttached = false;
     const modalAttempts = new Map<number, symbol>();
     let legacyModalAttempt: symbol | null = null;
     let modalOpen = false;
     let highestCancelledAttemptId = 0;
 
-    const cancelModalAttempts = () => {
+    const cancelModalAttempts = (cancelledThroughAttemptId?: number) => {
+      if (cancelledThroughAttemptId !== undefined) {
+        highestCancelledAttemptId = Math.max(highestCancelledAttemptId, cancelledThroughAttemptId);
+      }
       const attempts = [...modalAttempts.values()];
       for (const connectionAttemptId of modalAttempts.keys()) {
         highestCancelledAttemptId = Math.max(highestCancelledAttemptId, connectionAttemptId);
@@ -82,9 +86,14 @@ export const WalletConnector = defineComponent({
     const onOpen = () => {
       modalOpen = true;
     };
-    const onClose = () => {
+    const onClose = (event: Event) => {
       modalOpen = false;
-      cancelModalAttempts();
+      const detail = (event as CustomEvent<{ connectionAttemptId?: number }>).detail;
+      cancelModalAttempts(detail?.connectionAttemptId);
+    };
+    const onCancelled = (event: Event) => {
+      const detail = (event as CustomEvent<{ connectionAttemptId?: number }>).detail;
+      cancelModalAttempts(detail?.connectionAttemptId);
     };
 
     const onManagerConnect = (account: AccountInfo) => {
@@ -140,17 +149,27 @@ export const WalletConnector = defineComponent({
     };
 
     const attachManagerListeners = () => {
-      if (managerListenersAttached) return;
-      context.manager.on('connect', onManagerConnect);
-      context.manager.on('disconnect', onManagerDisconnect);
-      managerListenersAttached = true;
+      if (!managerConnectListenerAttached) {
+        context.manager.on('connect', onManagerConnect);
+        managerConnectListenerAttached = true;
+      }
+      if (!managerDisconnectListenerAttached) {
+        context.manager.on('disconnect', onManagerDisconnect);
+        managerDisconnectListenerAttached = true;
+      }
+    };
+
+    const detachManagerConnectListener = () => {
+      if (!managerConnectListenerAttached) return;
+      context.manager.off('connect', onManagerConnect);
+      managerConnectListenerAttached = false;
     };
 
     const detachManagerListeners = () => {
-      if (!managerListenersAttached) return;
-      context.manager.off('connect', onManagerConnect);
+      detachManagerConnectListener();
+      if (!managerDisconnectListenerAttached) return;
       context.manager.off('disconnect', onManagerDisconnect);
-      managerListenersAttached = false;
+      managerDisconnectListenerAttached = false;
     };
 
     const activateConnector = () => {
@@ -167,6 +186,7 @@ export const WalletConnector = defineComponent({
         element.value.addEventListener('error', onError);
         element.value.addEventListener('open', onOpen);
         element.value.addEventListener('close', onClose);
+        element.value.addEventListener('cancelled', onCancelled);
         context.registerConnector(element.value);
         registered = element.value;
       });
@@ -175,13 +195,14 @@ export const WalletConnector = defineComponent({
     const deactivateConnector = () => {
       active = false;
       modalOpen = false;
-      detachManagerListeners();
+      detachManagerConnectListener();
       cancelModalAttempts();
       if (!registered) return;
       registered.removeEventListener('connecting', onConnecting);
       registered.removeEventListener('error', onError);
       registered.removeEventListener('open', onOpen);
       registered.removeEventListener('close', onClose);
+      registered.removeEventListener('cancelled', onCancelled);
       context.unregisterConnector(registered);
       registered = null;
     };
@@ -195,6 +216,7 @@ export const WalletConnector = defineComponent({
 
     onBeforeUnmount(() => {
       deactivateConnector();
+      detachManagerListeners();
     });
 
     return () =>

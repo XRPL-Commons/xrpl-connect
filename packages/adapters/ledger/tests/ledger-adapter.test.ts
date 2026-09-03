@@ -649,6 +649,26 @@ describe('LedgerAdapter.fetchAccount', () => {
 });
 
 describe('LedgerAdapter.getAccounts', () => {
+  it('closes an in-flight discovery transport when disconnect is requested', async () => {
+    installNavigator({ hid: {} });
+    let finishDiscovery!: (account: { address: string; publicKey: string }) => void;
+    xrpAppInstance.getAddress.mockReturnValue(
+      new Promise<{ address: string; publicKey: string }>((resolve) => (finishDiscovery = resolve))
+    );
+    const adapter = new LedgerAdapter();
+
+    const discovery = adapter.getAccounts(1);
+    await vi.waitFor(() => expect(xrpAppInstance.getAddress).toHaveBeenCalledOnce());
+    await adapter.disconnect();
+
+    expect(mockTransport.close).toHaveBeenCalledOnce();
+    finishDiscovery({ address: 'rStale', publicKey: 'stale-key' });
+    await expect(discovery).rejects.toMatchObject({
+      code: WalletErrorCode.NOT_CONNECTED,
+    });
+    expect(mockTransport.close).toHaveBeenCalledOnce();
+  });
+
   it('does not close a connection established during temporary account discovery', async () => {
     installNavigator({ hid: {} });
     const temporaryTransport = { close: vi.fn().mockResolvedValue(undefined) };

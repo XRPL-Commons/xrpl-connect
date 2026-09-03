@@ -83,6 +83,8 @@ export class LedgerAdapter
   private timeout: number;
   private preferWebHID: boolean;
   private connectionGeneration = 0;
+  private accountDiscoveryGeneration = 0;
+  private accountDiscoveryTransports = new Set<Transport>();
 
   constructor(options: LedgerAdapterOptions = {}) {
     if (options.derivationPath) {
@@ -235,6 +237,7 @@ export class LedgerAdapter
    */
   async disconnect(): Promise<void> {
     this.connectionGeneration += 1;
+    this.accountDiscoveryGeneration += 1;
     this.currentAccount = null;
     await this.cleanup();
   }
@@ -533,12 +536,17 @@ export class LedgerAdapter
     count: number = 5,
     startIndex: number = 0
   ): Promise<Array<{ address: string; publicKey: string; path: string; index: number }>> {
+    const discoveryAttempt = this.accountDiscoveryGeneration;
     let temporaryTransport: Transport | null = null;
 
     try {
       let xrpApp = this.xrpApp;
       if (!xrpApp) {
         temporaryTransport = await this.createTransport();
+        this.accountDiscoveryTransports.add(temporaryTransport);
+        if (discoveryAttempt !== this.accountDiscoveryGeneration) {
+          throw createWalletError.notConnected();
+        }
         xrpApp = new Xrp(temporaryTransport);
       }
 
@@ -554,6 +562,9 @@ export class LedgerAdapter
             xrpApp.getAddress(path, false, false),
             'Timeout retrieving account information'
           );
+          if (discoveryAttempt !== this.accountDiscoveryGeneration) {
+            throw createWalletError.notConnected();
+          }
 
           accounts.push({
             address: result.address,
@@ -584,7 +595,9 @@ export class LedgerAdapter
       }
       throw createWalletError.unknown(`Failed to retrieve accounts: ${(error as Error).message}`);
     } finally {
-      await this.closeTransport(temporaryTransport);
+      if (temporaryTransport && this.accountDiscoveryTransports.delete(temporaryTransport)) {
+        await this.closeTransport(temporaryTransport);
+      }
     }
   }
 
@@ -642,10 +655,12 @@ export class LedgerAdapter
    * Clean up transport connection
    */
   private async cleanup(): Promise<void> {
-    const transport = this.transport;
+    const transports = new Set(this.accountDiscoveryTransports);
+    if (this.transport) transports.add(this.transport);
+    this.accountDiscoveryTransports.clear();
     this.transport = null;
     this.xrpApp = null;
-    await this.closeTransport(transport);
+    await Promise.all([...transports].map((transport) => this.closeTransport(transport)));
   }
 
   private async closeTransport(transport: Transport | null): Promise<void> {

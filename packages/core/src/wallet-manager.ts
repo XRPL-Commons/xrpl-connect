@@ -61,6 +61,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   private stateRevision = 0;
   private storageTail: Promise<void> = Promise.resolve();
   private adapterTeardowns = new Map<WalletAdapter, Promise<void>>();
+  private disconnectOperations = new Map<WalletAdapter, Promise<void>>();
 
   constructor(options: WalletManagerOptions) {
     super();
@@ -357,8 +358,31 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    */
   async disconnect(): Promise<void> {
     this.reconnectGeneration += 1;
+    let signalFailed = false;
+    let signalError: unknown;
+    try {
+      this.emit('disconnecting');
+    } catch (error) {
+      signalFailed = true;
+      signalError = error;
+    }
 
-    if (!this.currentAdapter) {
+    let disconnectFailed = false;
+    let disconnectError: unknown;
+    try {
+      await this.disconnectCurrentState();
+    } catch (error) {
+      disconnectFailed = true;
+      disconnectError = error;
+    }
+
+    if (disconnectFailed) throw disconnectError;
+    if (signalFailed) throw signalError;
+  }
+
+  private async disconnectCurrentState(): Promise<void> {
+    const adapter = this.currentAdapter;
+    if (!adapter) {
       const connectingAdapter = this.connectingAdapter;
       if (connectingAdapter) {
         this.connectionAttemptGeneration += 1;
@@ -370,6 +394,13 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         } catch (error) {
           this.logger.warn(`Failed to cancel connection to ${connectingAdapter.name}:`, error);
         }
+        if (this.disconnectOperations.size > 0) {
+          await this.awaitDisconnectOperations();
+        }
+        return;
+      }
+      if (this.disconnectOperations.size > 0) {
+        await this.awaitDisconnectOperations();
         return;
       }
       if (this.pendingReconnects > 0) {
@@ -378,8 +409,37 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       return;
     }
 
-    const adapter = this.currentAdapter;
-    const generation = this.sessionGeneration;
+    this.startDisconnect(adapter, this.sessionGeneration);
+    await this.awaitDisconnectOperations();
+  }
+
+  /** Start or join the teardown for the active adapter session. */
+  private startDisconnect(adapter: WalletAdapter, generation: number): Promise<void> {
+    const existing = this.disconnectOperations.get(adapter);
+    if (existing) return existing;
+
+    const operation = this.performDisconnect(adapter, generation);
+    this.disconnectOperations.set(adapter, operation);
+    void operation
+      .finally(() => {
+        if (this.disconnectOperations.get(adapter) === operation) {
+          this.disconnectOperations.delete(adapter);
+        }
+      })
+      .catch(() => undefined);
+    return operation;
+  }
+
+  /** Join every provider teardown that was active when disconnect was requested. */
+  private async awaitDisconnectOperations(): Promise<void> {
+    const results = await Promise.allSettled([...this.disconnectOperations.values()]);
+    const failure = results.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected'
+    );
+    if (failure) throw failure.reason;
+  }
+
+  private async performDisconnect(adapter: WalletAdapter, generation: number): Promise<void> {
     const walletName = adapter.name;
     this.logger.info(`Disconnecting from ${walletName}`);
 
@@ -401,7 +461,11 @@ export class WalletManager extends EventEmitter<WalletEvent> {
 
     let eventFailed = false;
     let eventError: unknown;
-    if (cleaned) {
+    // A newer session may have committed while the provider teardown was in
+    // flight. Only emit the disconnect event for the session this operation
+    // actually cleaned up; a late teardown must never look like a disconnect
+    // from the newer active wallet.
+    if (cleaned && this.currentAdapter === null && this.sessionGeneration === generation + 1) {
       try {
         this.emit('disconnect');
       } catch (error) {
@@ -712,6 +776,11 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    */
   get wallet(): WalletAdapter | null {
     return this.currentAdapter;
+  }
+
+  /** The adapter whose connection attempt currently owns the manager, if any. */
+  get connectingWallet(): WalletAdapter | null {
+    return this.connectingAdapter;
   }
 
   /**

@@ -148,10 +148,16 @@ async function sendPayment() {
 
 ## Signing Messages
 
-Sign messages with the connected wallet:
+Message signing is an optional wallet capability. Hide or disable the action unless
+the connected adapter supports it, and keep a defensive check at the call site:
 
 ```javascript
 async function signMessage() {
+  if (!walletManager.supports('signMessage')) {
+    console.info('The connected wallet does not support message signing');
+    return;
+  }
+
   try {
     const result = await walletManager.signMessage('Hello XRPL');
 

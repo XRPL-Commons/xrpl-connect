@@ -37,7 +37,7 @@ import {
   renderAccountModal,
 } from './views';
 import { replaceViewChildren } from './views/dom';
-import { WalletService, EventHandler } from './services';
+import { WalletService, EventHandler, type CancelledConnectionAttempt } from './services';
 import {
   isXamanStateAdapter,
   type AccountSelectionData,
@@ -125,6 +125,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private preGeneratedQRCode: QRCodeStyling | null = null;
     private preGeneratedURI: string | null = null;
     private preInitializationAdapter: WalletAdapter | null = null;
+    private preInitializationManager: WalletManager | null = null;
     private availableWallets: WalletAdapter[] = [];
     // Specified wallets that are NOT installed/available — shown with an
     // "Install" affordance only when the `show-unavailable` attribute is set.
@@ -144,6 +145,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private bodyScrollLocked = false;
     private walletManagerHandlers: {
       connect: (account: AccountInfo) => void;
+      disconnecting: () => void;
       disconnect: () => void;
       accountChanged: () => void;
     } | null = null;
@@ -184,14 +186,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     disconnectedCallback() {
-      this.walletService?.cancelPendingWork();
-      this.cancelPendingConnection();
+      const cancelledAttempt = this.cancelPendingConnection();
       this.openGeneration += 1;
       this.managerGeneration += 1;
       this.xamanProbeGeneration += 1;
       this.isOpen = false;
       this.accountModalOpen = false;
-      this.invalidateWalletConnectPreInitialization(true);
+      this.invalidateWalletConnectPreInitialization(
+        !this.managerOwnsPreInitializationTeardown(cancelledAttempt)
+      );
       this.rejectConnectionWaiters(
         new Error('Wallet connector was disconnected before a wallet was connected.')
       );
@@ -324,11 +327,18 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       const previousManager = this.walletManager;
-      this.walletService?.cancelPendingWork();
+      const cancelledAttempt = this.walletService?.cancelPendingWork() ?? null;
       this.managerGeneration += 1;
       this.xamanProbeGeneration += 1;
-      this.invalidateWalletConnectPreInitialization(true);
+      this.invalidateWalletConnectPreInitialization(
+        !this.managerOwnsPreInitializationTeardown(cancelledAttempt)
+      );
       this.detachWalletManagerHandlers();
+      if (previousManager && cancelledAttempt?.managerConnectionStarted) {
+        void previousManager.disconnect().catch((error) => {
+          logger.warn('Failed to cancel connector-owned connection on replaced manager:', error);
+        });
+      }
       this.walletManager = manager;
       this.resetWalletAvailability();
       this.walletService = new WalletService(this.walletManager, this);
@@ -350,12 +360,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.render();
       }
 
-      if (previousManager) {
-        void previousManager.disconnect().catch((error) => {
-          logger.warn('Failed to disconnect replaced WalletManager:', error);
-        });
-      }
-
       void this.checkXamanStateOnInit();
     }
 
@@ -366,14 +370,29 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.walletManagerHandlers = {
         connect: (account: AccountInfo) => {
           if (manager !== this.walletManager) return;
-          this.invalidateWalletConnectPreInitialization(false);
+          // Preserve a WalletConnect session only when it is the adapter that
+          // just connected. A different wallet completing first must release
+          // this connector's unused pre-initialization resources.
+          this.invalidateWalletConnectPreInitialization(
+            manager.wallet !== this.preInitializationAdapter
+          );
           this.resolveConnectionWaiters(account);
           const connectedId = manager.wallet?.id;
           if (connectedId) this.recordMruId(connectedId);
           this.close();
         },
+        disconnecting: () => {
+          if (manager !== this.walletManager) return;
+          // Explicit disconnect cancels silent restoration even when there is
+          // no committed session and no later disconnect event to observe.
+          this.xamanProbeGeneration += 1;
+        },
         disconnect: () => {
           if (manager !== this.walletManager) return;
+          // A manager disconnect can complete while the silent Xaman probe is
+          // awaiting the adapter. Invalidate that probe before it can restore
+          // the session that the caller explicitly disconnected.
+          this.xamanProbeGeneration += 1;
           if (this.accountModalOpen) this.closeAccountModal();
           else this.render();
         },
@@ -383,6 +402,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       };
 
       manager.on('connect', this.walletManagerHandlers.connect);
+      manager.on('disconnecting', this.walletManagerHandlers.disconnecting);
       manager.on('disconnect', this.walletManagerHandlers.disconnect);
       manager.on('accountChanged', this.walletManagerHandlers.accountChanged);
     }
@@ -390,6 +410,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private detachWalletManagerHandlers(): void {
       if (!this.walletManager || !this.walletManagerHandlers) return;
       this.walletManager.off('connect', this.walletManagerHandlers.connect);
+      this.walletManager.off('disconnecting', this.walletManagerHandlers.disconnecting);
       this.walletManager.off('disconnect', this.walletManagerHandlers.disconnect);
       this.walletManager.off('accountChanged', this.walletManagerHandlers.accountChanged);
       this.walletManagerHandlers = null;
@@ -413,6 +434,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private async checkXamanStateOnInit() {
       const manager = this.walletManager;
       if (!manager) return;
+      // There is no session to restore while this manager is already connected.
+      // More importantly, this prevents a probe started during an existing
+      // session from racing an explicit disconnect before its event arrives.
+      if (manager.connected) return;
       const managerGeneration = this.managerGeneration;
       const probeGeneration = ++this.xamanProbeGeneration;
       try {
@@ -720,10 +745,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     close() {
       const wasOpen = this.isOpen;
-      this.cancelPendingConnection();
+      const cancelledAttempt = this.cancelPendingConnection();
       this.openGeneration += 1;
       this.isOpen = false;
-      this.invalidateWalletConnectPreInitialization(true);
+      this.invalidateWalletConnectPreInitialization(
+        !this.managerOwnsPreInitializationTeardown(cancelledAttempt)
+      );
       this.rejectConnectionWaiters(new Error('Modal closed before a wallet was connected.'));
 
       this.clearQRRenderTimer();
@@ -740,7 +767,13 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.restoreFocus(this.walletDialogOpener);
         this.walletDialogOpener = null;
       }
-      this.dispatchEvent(new CustomEvent('close'));
+      this.dispatchEvent(
+        new CustomEvent('close', {
+          detail: cancelledAttempt
+            ? { connectionAttemptId: cancelledAttempt.connectionAttemptId }
+            : undefined,
+        })
+      );
     }
 
     /**
@@ -828,7 +861,17 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       )
         return;
 
+      // Never pre-initialize an adapter that already owns the manager's live
+      // session. Closing the UI should only clean up resources initialized by
+      // this connector, not an application-owned WalletConnect session.
+      if (
+        manager.wallet === walletConnectAdapter ||
+        manager.connectingWallet === walletConnectAdapter
+      )
+        return;
+
       this.preInitializationAdapter = walletConnectAdapter;
+      this.preInitializationManager = manager;
 
       try {
         logger.debug('Pre-initializing WalletConnect...');
@@ -861,8 +904,16 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.preGeneratedURI = null;
       this.preGeneratedQRCode = null;
       const adapter = this.preInitializationAdapter;
+      const manager = this.preInitializationManager;
       this.preInitializationAdapter = null;
-      if (disconnectAdapter && adapter) {
+      this.preInitializationManager = null;
+      if (
+        disconnectAdapter &&
+        adapter &&
+        manager &&
+        manager.wallet !== adapter &&
+        manager.connectingWallet !== adapter
+      ) {
         void adapter.disconnect().catch((error) => {
           logger.warn('Failed to cancel WalletConnect pre-initialization:', error);
         });
@@ -958,23 +1009,53 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     public showWalletList() {
       this.clearQRRenderTimer();
-      this.cancelPendingConnection();
-      this.invalidateWalletConnectPreInitialization(true);
+      const cancelledAttempt = this.cancelPendingConnection();
+      this.invalidateWalletConnectPreInitialization(
+        !this.managerOwnsPreInitializationTeardown(cancelledAttempt)
+      );
       this.viewState = 'list';
       this.qrCodeData = null;
       this.loadingData = null;
       this.errorData = null;
       this.accountSelectionData = null;
       this.render();
+
+      // Returning to the wallet list cancels the current connection flow while
+      // keeping the modal open. Emit a distinct public settlement event so
+      // framework integrations can clear their attempt state without treating
+      // the still-open modal as closed.
+      if (cancelledAttempt) {
+        this.dispatchEvent(
+          new CustomEvent('cancelled', {
+            detail: {
+              reason: 'wallet-list',
+              connectionAttemptId: cancelledAttempt.connectionAttemptId,
+            },
+          })
+        );
+      }
     }
 
-    private cancelPendingConnection(): void {
-      if (!this.walletManager || this.walletManager.connected) return;
+    private cancelPendingConnection(): CancelledConnectionAttempt | null {
+      const cancelledAttempt = this.walletService?.cancelPendingWork() ?? null;
+      if (!this.walletManager || this.walletManager.connected) return cancelledAttempt;
 
-      this.walletService?.cancelPendingWork();
       void this.walletManager.disconnect().catch((error) => {
         logger.warn('Failed to cancel pending wallet connection:', error);
       });
+      return cancelledAttempt;
+    }
+
+    private managerOwnsPreInitializationTeardown(
+      cancelledAttempt: CancelledConnectionAttempt | null
+    ): boolean {
+      return Boolean(
+        (cancelledAttempt?.managerConnectionStarted &&
+          cancelledAttempt.walletId === this.preInitializationAdapter?.id) ||
+        (this.preInitializationManager &&
+          (this.preInitializationManager.wallet === this.preInitializationAdapter ||
+            this.preInitializationManager.connectingWallet === this.preInitializationAdapter))
+      );
     }
 
     /**

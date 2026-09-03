@@ -128,8 +128,9 @@ Disconnects from the currently connected wallet and clears stored connection sta
 Local manager state is cleared before the wallet provider is asked to tear down its
 session. If provider teardown fails, the promise rejects with that error while the
 manager remains locally disconnected and safe to reconnect with another adapter.
-The `disconnect` event is emitted after the provider teardown attempt, including
-when that attempt fails.
+The synchronous `disconnecting` event is emitted whenever a disconnect is requested,
+including while the manager is idle. The `disconnect` event is emitted after the
+provider teardown attempt for an active session, including when that attempt fails.
 
 **Example**:
 
@@ -138,7 +139,7 @@ await walletManager.disconnect();
 console.log('Disconnected');
 ```
 
-**Events Triggered**: `disconnect` event
+**Events Triggered**: `disconnecting`, then `disconnect` when an active session is cleared
 
 ---
 
@@ -390,6 +391,13 @@ if (walletManager.wallet) {
 
 ---
 
+#### `connectingWallet: WalletAdapter | null`
+
+The adapter currently attempting to connect, or `null` when no connection attempt owns the
+manager. This is distinct from `wallet`, which only exposes a committed session.
+
+---
+
 #### `wallets: WalletAdapter[]`
 
 All registered adapters (both available and unavailable).
@@ -428,6 +436,20 @@ Emitted when a wallet disconnects.
 ```typescript
 walletManager.on('disconnect', () => {
   console.log('Wallet disconnected');
+});
+```
+
+**Event Data**: None
+
+### `disconnecting` Event
+
+Emitted synchronously whenever `disconnect()` is requested, before connection cancellation,
+local cleanup, or provider teardown. Unlike `disconnect`, it is also emitted when no session is
+currently committed, allowing consumers to invalidate pending restoration work.
+
+```typescript
+walletManager.on('disconnecting', () => {
+  cancelPendingSessionRestoration();
 });
 ```
 
