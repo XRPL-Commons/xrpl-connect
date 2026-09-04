@@ -1,177 +1,166 @@
-# XRPL Connect
+# xrpl-connect (internal fork)
 
-> A framework-agnostic wallet connection toolkit for the XRP Ledger
+> Private fork of [XRPL-Commons/xrpl-connect](https://github.com/XRPL-Commons/xrpl-connect),
+> repurposed as an internal facade for direct XRPL address/key management, balances,
+> payments, and trust lines — not the original wallet-connection toolkit.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![npm version](https://img.shields.io/npm/v/xrpl-connect.svg)](https://www.npmjs.com/package/xrpl-connect)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue)](https://www.typescriptlang.org/)
 
-## ✨ Features
+## What this repo is
 
-- **Framework Agnostic** - Works with Vanilla JS, React, Vue, and any other framework
-- **Multiple Wallets** - Support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap
-- **Modular Architecture** - Install only what you need
-- **Type Safe** - Full TypeScript support with comprehensive type definitions
-- **Event Driven** - Reactive architecture for connection state changes
-- **Persistent Sessions** - Auto-reconnect with localStorage support
-- **Developer Friendly** - Simple API, extensive documentation, great DX
+Upstream `xrpl-connect` is a wallet-*connection* toolkit: connect to a user's browser
+extension or mobile wallet (Xaman, Crossmark, GemWallet, ...) and ask it to sign. This
+fork keeps that machinery in the tree as internal implementation detail, but the
+package that's actually meant to be imported from outside this workspace —
+**[`packages/xrpl-connect`](packages/xrpl-connect)** — is a different thing: a facade
+for code that already holds a seed/private key (generated or imported) and wants to
+derive addresses, read balances, and sign+submit transactions directly, with no browser
+wallet in the loop.
 
-## 📦 What's Included
+## Install / connect
 
-The `xrpl-connect` package includes everything you need:
+Within this workspace, add it as a `workspace:*` dependency and import from the package
+name — there's no client to construct, no connection to open yourself:
 
-- **Core**: Wallet management, event system, and state persistence
-- **UI**: Beautiful pre-built web component with QR codes and wallet selection
-- **Adapters**: All eight XRPL wallet adapters (Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap)
-
-## Documentation
-
-Please read the documentation here [DOCS](https://xrpl-commons.github.io/xrpl-connect/) as it is way more detailed than the README.
-
-## 🚀 Quick Start
-
-### Installation
-
-```bash
-npm install xrpl-connect@rc xrpl@^4
+```json
+{ "dependencies": { "xrpl-connect": "workspace:*" } }
 ```
-
-That's it! Everything you need in one package.
-
-### Basic Usage
-
-The easiest way to use XRPL Connect is with the plug-and-play web component:
-
-**HTML:**
-
-```html
-<!-- Add the web component to your HTML -->
-<button id="connect-btn">Connect Wallet</button>
-
-<xrpl-wallet-connector id="wallet-connector" background-color="#1a202c" primary-wallet="xaman">
-</xrpl-wallet-connector>
-```
-
-**JavaScript:**
-
-Create a Xaman application at [apps.xumm.dev](https://apps.xumm.dev/) and replace the placeholder
-below with its API key.
-
-```javascript
-import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
-
-// Initialize wallet manager
-const walletManager = new WalletManager({
-  adapters: [new XamanAdapter({ apiKey: 'YOUR_XAMAN_API_KEY' }), new CrossmarkAdapter()],
-  network: 'testnet',
-  // When true, the WalletManager attempts to restore the previous session
-  // from localStorage on page load (the user is not prompted again). Set to
-  // false if you want users to explicitly reconnect every time.
-  autoConnect: true,
-});
-
-// Connect the UI component to the wallet manager
-const connector = document.getElementById('wallet-connector');
-connector.setWalletManager(walletManager);
-
-// Open the modal when button is clicked
-document.getElementById('connect-btn').addEventListener('click', () => {
-  connector.open();
-});
-
-// Listen to connection events
-walletManager.on('connect', (account) => {
-  console.log('Connected:', account.address);
-});
-
-// Always handle disconnects so your UI can reset
-walletManager.on('disconnect', () => {
-  console.log('Disconnected');
-});
-
-// Surface connection/adapter errors (wallet not installed, network issues, etc.)
-walletManager.on('error', (error) => {
-  console.error('Wallet error:', error.code, error.message);
-});
-
-// Sign transactions after connection. Always wrap in try/catch — the promise
-// rejects when the user cancels the request in their wallet (SIGN_REJECTED).
-try {
-  const signed = await walletManager.sign({
-    TransactionType: 'Payment',
-    Account: walletManager.account.address,
-    Destination: 'rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT',
-    Amount: '1000000',
-  });
-} catch (error) {
-  if (error.code === 'SIGN_REJECTED') {
-    console.log('User rejected the transaction');
-  } else {
-    console.error('Sign failed:', error);
-  }
-}
-```
-
-That's it! The web component provides a beautiful, pre-built UI for wallet selection, QR codes, and connection states.
-
-> **Heads up on `autoConnect`:** with `autoConnect: true`, the WalletManager silently restores the previous session from `localStorage` when your page loads and emits a `connect` event before any user interaction. Register your `connect` / `disconnect` / `error` listeners **immediately** after constructing the manager so you don't miss that initial event.
-
-### Direct wallet SDK access
-
-The meta-package also exposes the complete upstream wallet APIs under namespaces,
-so applications do not need to add the transitive SDKs as direct dependencies:
 
 ```typescript
-import { CrossmarkSDK, GemWalletAPI, XamanOAuth2, XamanSDK } from 'xrpl-connect';
-
-const xaman = new XamanSDK.Xumm('YOUR_API_KEY');
-const oauth = new XamanOAuth2.XummPkce('YOUR_API_KEY');
-const installed = CrossmarkSDK.default.sync.isInstalled();
-const address = await GemWalletAPI.getAddress();
+import { Address, Accounts, Payments, TrustLines } from 'xrpl-connect';
 ```
 
-## 📚 Documentation
+Every method that talks to the network (`Accounts.*`, `Payments.*`, `TrustLines.*`)
+opens its own connection and closes it when it resolves or rejects, defaulting to
+**testnet** unless you pass `network: 'mainnet' | 'testnet' | 'devnet'` (or a custom
+`NetworkInfo` with your own `wss` endpoint) as the last argument / a `network` field.
 
-- **[Getting Started Guide](./docs/guide/getting-started.md)** - Complete introduction to XRPL Connect
-- **[Vanilla JS Integration](./docs/guide/frameworks/vanilla-js.md)** - Using XRPL Connect with vanilla JavaScript
-- **[React Integration](./docs/guide/frameworks/react.md)** - React integration patterns and best practices
-- **[Vue Integration](./docs/guide/frameworks/vue.md)** - Vue 3 integration guide
+**→ [`examples/facade`](examples/facade)** is a working Vite app wiring every method
+below to a UI form — clone it for a starting point, or `pnpm --filter facade-example run dev`
+to click through them live.
 
-## 🏗️ Architecture
+## Usage examples
 
-XRPL Connect is built with a modular, adapter-based architecture:
+### `Address` — keys, no network
 
-```
-┌─────────────────────────────────────────┐
-│         Your Application                │
-└─────────────────┬───────────────────────┘
-                  │
-┌─────────────────▼───────────────────────┐
-│      @xrpl-connect/core                 │
-│  ┌─────────────────────────────────┐   │
-│  │     WalletManager               │   │
-│  │  - Event system                 │   │
-│  │  - State management             │   │
-│  │  - Storage layer                │   │
-│  └─────────────────────────────────┘   │
-└─────────────────┬───────────────────────┘
-                  │
-        ┌─────────┴─────────┬─────────┬─────────┐
-        │                   │         │         │
-┌───────▼────────┐  ┌──────▼──────┐  │         │
-│ Xaman Adapter  │  │  Crossmark  │  │   ...   │
-└────────────────┘  └─────────────┘  │         │
-                                     │         │
-                              ┌──────▼──────┐  │
-                              │ GemWallet   │  │
-                              └─────────────┘  │
-                                               │
-                                        ┌──────▼──────┐
-                                        │WalletConnect│
-                                        └─────────────┘
+```typescript
+// Generate a brand-new wallet (ed25519 by default)
+const { address, publicKey, privateKey, seed } = Address.generate();
+const secp = Address.generate('ecdsa-secp256k1');
+
+// Restore a wallet you already have a secret for
+Address.importBySeed('sEdT6jVBw43pnH3K49zWzKmUr3S21oj');
+Address.importByHex('ED8AF704F03460A711BB62F16ED1699030CEA95627FC428348C16C222062D2CD33');
+Address.importByMnemonic('bronze elite hammer first zone okay shrimp height injury vendor arrow omit');
+Address.importByMnemonic(['bronze', 'elite', /* ...12/15/18/21/24 words */ 'omit']);
+Address.importByXaman(['996118', '085046', '840948', '900303', '734410', '553242', '187768', '077910']);
+
+// Validate before you import/sign — same rules the import methods themselves enforce
+Address.isValidSeed('sEdT6jVBw43pnH3K49zWzKmUr3S21oj'); // true
+Address.isValidHex('not-hex'); // false
+Address.isValidMnemonic(someUserInput); // true/false, string or string[]
+Address.isValidClassicAddress('rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT'); // true
+Address.isValidXamanGroup('996118', 0); // one group, at its 0-indexed position
+Address.isValidXamanSecretNumbers(['996118', '085046', /* ... all 8 */]);
+
+// Generate demo/placeholder input for a form's "generate" button
+Address.generateMnemonic(); // fresh random 12-word BIP-39 mnemonic
+Address.generateXamanSecretNumbers(); // fresh random 8-group backup, checksums valid
 ```
 
-## 🛠️ Development
+### `Accounts` — read-only balance lookups
+
+```typescript
+const { drops, xrp } = await Accounts.getXrpBalance(address, 'testnet');
+
+const tokens = await Accounts.getTokenBalances(address, 'testnet');
+// [{ currency: 'FOO', issuer: 'rIssuer...', balance: '42' }, ...]
+
+const mpts = await Accounts.getMptBalances(address, 'testnet');
+// [{ mptIssuanceId: '0138...', value: '500', locked?: '0' }, ...]
+```
+
+### `Payments` — sign and submit
+
+```typescript
+const credential = { seed }; // or { publicKey, privateKey } — whatever Address.* gave you
+
+await Payments.sendXrp({
+  credential,
+  destination: 'rDestinationAddress...',
+  amountXrp: '10', // XRP, not drops
+  destinationTag: 12345, // optional
+  network: 'testnet',
+});
+
+await Payments.sendToken({
+  credential,
+  destination: 'rDestinationAddress...',
+  currency: 'FOO',
+  issuer: 'rIssuerAddress...',
+  value: '42',
+  network: 'testnet',
+});
+
+await Payments.sendMpt({
+  credential,
+  destination: 'rDestinationAddress...', // must already hold an authorized MPToken — see TrustLines.setMptTrustLine()
+  mptIssuanceId: '013801153F91B797EB5824286DD7C258FAF11CCEF58177E5',
+  value: '500',
+  network: 'testnet',
+});
+// All three resolve to { hash, engineResult, validated } — engineResult is 'tesSUCCESS'
+// on success; an on-ledger failure (tecUNFUNDED_PAYMENT, tecNO_LINE, ...) is returned
+// here, not thrown.
+```
+
+### `TrustLines` — issued-currency trust lines and the MPT equivalent
+
+```typescript
+const lines = await TrustLines.getTrustLines(address, 'testnet');
+// [{ currency: 'FOO', issuer: 'rIssuer...', balance: '42', limit: '1000', limitPeer: '0' }, ...]
+
+await TrustLines.setTokenTrustLine({
+  credential,
+  currency: 'FOO',
+  issuer: 'rIssuerAddress...',
+  limit: '1000', // '0' resizes the line down to removed
+  network: 'testnet',
+});
+
+await TrustLines.setMptTrustLine({
+  credential,
+  mptIssuanceId: '013801153F91B797EB5824286DD7C258FAF11CCEF58177E5',
+  authorize: true, // default; pass false to opt back out
+  network: 'testnet',
+});
+```
+
+**→ [Full API reference](packages/xrpl-connect/README.md)** — every method's exact
+signature, the `SigningCredential`/network types, and the error-handling model.
+
+## Repo layout
+
+```
+packages/
+  xrpl-connect/         ← the facade — the only package meant to be imported externally
+  core/                 ← internal: WalletManager, wallet-connection types (only
+                           STANDARD_NETWORKS/resolveNetwork are reused by the facade)
+  ui/                   ← internal: <xrpl-wallet-connector> web component
+  react/, vue/           internal: framework bindings for the web component — these
+                          still import the pre-facade API from 'xrpl-connect' and
+                          currently fail to build; nothing in this repo depends on them
+  adapters/*/            internal: Xaman/Crossmark/GemWallet/WalletConnect/Ledger/
+                          Xyra/Otsu/MetaMask Snap wallet-connection adapters
+examples/
+  facade/                live demo of the facade (see above) — the only example in
+                          this fork that reflects packages/xrpl-connect's current API
+docs/                    original wallet-connection toolkit docs (WalletManager,
+                          adapters, framework guides) — describes APIs that are no
+                          longer part of packages/xrpl-connect's public surface
+```
+
+## Development
 
 ```bash
 # Install dependencies
@@ -193,22 +182,16 @@ pnpm exec vp fmt
 pnpm exec vp run dev
 ```
 
-## 🤝 Contributing
+Needs Node **`^20.19.0 || ^22.18.0 || >=24.11.0`** — `vp` fails on older Node 20.x
+patch versions with an `ERR_UNKNOWN_FILE_EXTENSION` error. Check `node -v`; if you're on
+`nvm`, `nvm use 20.19.5` (or newer) before running any `vp` command.
 
-Contributions are welcome! Please read our [Contributing Guide](./CONTRIBUTING.md) for development setup, branch/PR conventions, and the release process. To author a new wallet adapter specifically, see the [Adapter Integration Guide](./docs/guide/adapter-integration.md).
+## License
 
-A summary of notable changes in each release lives in [`CHANGELOG.md`](./CHANGELOG.md).
+MIT License — see the [LICENSE](./LICENSE) file for details.
 
-## 📄 License
+## Acknowledgments
 
-MIT License - see the [LICENSE](./LICENSE) file for details
-
-## 🙏 Acknowledgments
-
-Inspired by:
-
-- [RainbowKit](https://www.rainbowkit.com/) - Ethereum wallet connection
-- [ConnectKit](https://github.com/family/connectkit) - Ethereum wallet connection kit
-- [Solana Wallet Adapter](https://github.com/solana-labs/wallet-adapter) - Solana wallet standard
-
-Built for the XRPL community with ❤️
+Fork of [XRPL-Commons/xrpl-connect](https://github.com/XRPL-Commons/xrpl-connect), itself
+inspired by [RainbowKit](https://www.rainbowkit.com/), [ConnectKit](https://github.com/family/connectkit),
+and [Solana Wallet Adapter](https://github.com/solana-labs/wallet-adapter).

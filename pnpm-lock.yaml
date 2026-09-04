@@ -77,6 +77,22 @@ importers:
         specifier: ^3.5.22
         version: 3.5.24(typescript@5.9.3)
 
+  examples/facade:
+    dependencies:
+      xrpl-connect:
+        specifier: workspace:*
+        version: link:../../packages/xrpl-connect
+    devDependencies:
+      buffer:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vite:
+        specifier: npm:@voidzero-dev/vite-plus-core@0.2.5
+        version: '@voidzero-dev/vite-plus-core@0.2.5(@types/node@20.19.21)(esbuild@0.28.1)(typescript@5.9.3)'
+      vite-plugin-node-polyfills:
+        specifier: ^0.24.0
+        version: 0.24.0(@voidzero-dev/vite-plus-core@0.2.5(@types/node@20.19.21)(esbuild@0.28.1)(typescript@5.9.3))(rollup@4.62.2)
+
   examples/react:
     dependencies:
       '@xrpl-commons/xrpl-connect-react':
@@ -358,6 +374,15 @@ importers:
         specifier: ^5.5.0
         version: 5.9.3
 
+  packages/facade:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.21
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+
   packages/react:
     dependencies:
       xrpl:
@@ -468,6 +493,15 @@ importers:
       '@xrpl-connect/ui':
         specifier: workspace:*
         version: link:../ui
+      bip39:
+        specifier: ^3.1.0
+        version: 3.1.0
+      buffer:
+        specifier: ^6.0.3
+        version: 6.0.3
+      elliptic:
+        specifier: ^6.6.1
+        version: 6.6.1
       xrpl:
         specifier: ^3.0.0 || ^4.0.0
         version: 4.4.2(bufferutil@4.0.9)(utf-8-validate@5.0.10)
@@ -478,12 +512,12 @@ importers:
       '@rollup/plugin-inject':
         specifier: ^5.0.5
         version: 5.0.5(rollup@4.62.2)
+      '@types/elliptic':
+        specifier: ^6.4.18
+        version: 6.4.18
       '@types/node':
         specifier: ^20.14.0
         version: 20.19.21
-      buffer:
-        specifier: ^6.0.3
-        version: 6.0.3
       cross-spawn:
         specifier: ^7.0.6
         version: 7.0.6
@@ -1471,6 +1505,9 @@ packages:
   '@types/babel__traverse@7.28.0':
     resolution: {integrity: sha512-8PvcXf70gTDZBgt9ptxJ8elBeBjcLOAcOtoO/mPJjtji1+CdGbHgm77om1GrsPxsiE+uXIpNSK64UYaIwQXd4Q==}
 
+  '@types/bn.js@5.2.0':
+    resolution: {integrity: sha512-DLbJ1BPqxvQhIGbeu8VbUC1DiAiahHtAYvA0ZEAa4P31F7IaArc8z3C3BRQdWX4mtLQuABG4yzp76ZrS02Ui1Q==}
+
   '@types/brorand@1.0.33':
     resolution: {integrity: sha512-KmNsWYtzKXpmxjecvYWUEGK5biJB/1kpHRObHZD8eme1tz/TvbESbZeNAHPRNd5qyCJiHk2ztbNzKbPC6TuPFg==}
 
@@ -1485,6 +1522,9 @@ packages:
 
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
+
+  '@types/elliptic@6.4.18':
+    resolution: {integrity: sha512-UseG6H5vjRiNpQvrhy4VF/JXdA3V/Fp5amvveaL+fs28BZ6xIKJBPnUPRlEaZpysD9MbpfaLi8lbl7PGUAkpWw==}
 
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
@@ -5047,6 +5087,10 @@ snapshots:
     dependencies:
       '@babel/types': 7.28.5
 
+  '@types/bn.js@5.2.0':
+    dependencies:
+      '@types/node': 20.19.21
+
   '@types/brorand@1.0.33':
     dependencies:
       '@types/node': 20.19.21
@@ -5066,6 +5110,10 @@ snapshots:
       '@types/ms': 2.1.0
 
   '@types/deep-eql@4.0.2': {}
+
+  '@types/elliptic@6.4.18':
+    dependencies:
+      '@types/bn.js': 5.2.0
 
   '@types/estree@1.0.8': {}
 

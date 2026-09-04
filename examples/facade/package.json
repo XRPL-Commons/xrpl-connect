@@ -1,0 +1,19 @@
+{
+  "name": "facade-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "preview": "vp preview"
+  },
+  "dependencies": {
+    "xrpl-connect": "workspace:*"
+  },
+  "devDependencies": {
+    "buffer": "^6.0.3",
+    "vite": "catalog:",
+    "vite-plugin-node-polyfills": "^0.24.0"
+  }
+}

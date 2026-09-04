@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>xrpl-connect facade</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f6f8;
+        --card-bg: #ffffff;
+        --border: #e2e4e9;
+        --text: #1a1d23;
+        --text-muted: #62666f;
+        --accent: #2563eb;
+        --accent-disabled: #b9c6e6;
+        --mono-bg: #0f1115;
+        --mono-text: #d7ecc9;
+        --radius: 10px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 40px 20px 80px;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      }
+
+      .layout {
+        max-width: 900px;
+        margin: 0 auto;
+        display: flex;
+        align-items: flex-start;
+        gap: 24px;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 40px;
+        flex: 0 0 180px;
+        max-height: calc(100vh - 80px);
+        overflow-y: auto;
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .sidebar-title {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+        margin: 18px 0 6px 8px;
+      }
+
+      .sidebar-title:first-child {
+        margin-top: 0;
+      }
+
+      .sidebar a {
+        display: block;
+        padding: 7px 8px;
+        border-radius: 6px;
+        color: var(--text);
+        text-decoration: none;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      .sidebar a:hover {
+        background: #eef0f4;
+      }
+
+      main {
+        flex: 1 1 auto;
+        min-width: 0;
+        max-width: 640px;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+
+      section {
+        scroll-margin-top: 20px;
+      }
+
+      h1 {
+        font-size: 22px;
+        margin: 0 0 4px;
+      }
+
+      h1 code {
+        background: none;
+        padding: 0;
+        font-size: inherit;
+      }
+
+      .subtitle {
+        color: var(--text-muted);
+        margin: 0 0 8px;
+        font-size: 14px;
+      }
+
+      section {
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px 24px;
+      }
+
+      section h2 {
+        margin: 0 0 6px;
+        font-size: 16px;
+      }
+
+      section p {
+        margin: 0 0 14px;
+        color: var(--text-muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      code {
+        background: #eef0f4;
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-size: 12px;
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .row + .row {
+        margin-top: 10px;
+      }
+
+      input[type='text'] {
+        font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+        font-size: 13px;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: #fafbfc;
+        color: var(--text);
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
+      input[type='text']:focus {
+        outline: none;
+        border-color: var(--accent);
+        background: #fff;
+      }
+
+      select {
+        font-family: inherit;
+        font-size: 13px;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: #fafbfc;
+        color: var(--text);
+      }
+
+      section h3 {
+        margin: 16px 0 0;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--text-muted);
+      }
+
+      section h3:first-of-type {
+        margin-top: 4px;
+      }
+
+      .xaman-group {
+        flex: 0 0 64px;
+        text-align: center;
+      }
+
+      button {
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 500;
+        padding: 8px 14px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: #fff;
+        color: var(--text);
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      button:hover:not(:disabled) {
+        border-color: #c7cbd3;
+        background: #f6f7f9;
+      }
+
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+
+      button.primary:hover:not(:disabled) {
+        background: #1d4fd1;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+
+      pre {
+        margin: 14px 0 0;
+        padding: 12px 14px;
+        background: var(--mono-bg);
+        color: var(--mono-text);
+        border-radius: 8px;
+        font-size: 12px;
+        line-height: 1.5;
+        overflow-x: auto;
+        min-height: 0;
+      }
+
+      pre:empty {
+        display: none;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      .field-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-muted);
+        flex: 0 0 90px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <nav class="sidebar">
+        <div class="sidebar-title">Accounts</div>
+        <a href="#section-generate">Generate</a>
+        <a href="#section-seed">Seed import</a>
+        <a href="#section-hex">Hex import</a>
+        <a href="#section-mnemonic">Mnemonic import</a>
+        <a href="#section-xaman">Xaman import</a>
+        <div class="sidebar-title">Balances</div>
+        <a href="#section-balances">Account balances</a>
+        <div class="sidebar-title">Transactions</div>
+        <a href="#section-send">Send payment</a>
+        <a href="#section-trustline">Trust line</a>
+      </nav>
+
+      <main>
+        <div>
+          <h1>xrpl-connect facade</h1>
+          <p class="subtitle">
+            Demo of <code>Address</code>, imported from the <code>xrpl-connect</code> package.
+          </p>
+        </div>
+
+        <section id="section-generate">
+          <h2>Generate</h2>
+        <p>Creates a brand-new XRPL address via <code>Address.generate()</code>.</p>
+        <div class="row">
+          <button id="run-address" class="primary">Generate</button>
+        </div>
+        <pre id="address-output"></pre>
+      </section>
+
+      <section id="section-seed">
+        <h2>Seed import</h2>
+        <p>
+          Type or generate a seed. "Import" only enables once the field holds a value that passes
+          the same validation <code>Address.importBySeed()</code> itself enforces.
+        </p>
+        <div class="row">
+          <input type="text" id="seed-field" placeholder="sEd... / s..." />
+          <button id="seed-generate">Generate</button>
+          <button id="seed-import" class="primary" disabled>Import</button>
+        </div>
+        <pre id="seed-ui-output"></pre>
+      </section>
+
+      <section id="section-hex">
+        <h2>Hex import</h2>
+        <p>
+          Type or generate a raw ed25519 private key. "Import" only enables once the field holds a
+          value that passes the same validation <code>Address.importByHex()</code> itself
+          enforces.
+        </p>
+        <div class="row">
+          <input type="text" id="hex-field" placeholder="ED... (64 hex chars)" />
+          <button id="hex-generate">Generate</button>
+          <button id="hex-import" class="primary" disabled>Import</button>
+        </div>
+        <pre id="hex-ui-output"></pre>
+      </section>
+
+      <section id="section-mnemonic">
+        <h2>Mnemonic import</h2>
+        <p>
+          Type or generate a BIP-39 mnemonic. "Import" only enables once the field holds a value
+          that passes the same validation <code>Address.importByMnemonic()</code> itself
+          enforces.
+        </p>
+        <div class="row">
+          <input type="text" id="mnemonic-field" placeholder="12/15/18/21/24 words" />
+          <button id="mnemonic-generate">Generate</button>
+          <button id="mnemonic-import" class="primary" disabled>Import</button>
+        </div>
+        <pre id="mnemonic-ui-output"></pre>
+      </section>
+
+      <section id="section-xaman">
+        <h2>Xaman import</h2>
+        <p>
+          Type or generate a Xaman app "Secret Numbers" backup — 8 groups of 6 digits each.
+          "Import" only enables once every group holds a value that passes the same validation
+          <code>Address.importByXaman()</code> itself enforces (shape + per-group checksum digit).
+        </p>
+        <div class="row" id="xaman-fields">
+          <input type="text" class="xaman-group" data-index="0" maxlength="6" />
+          <input type="text" class="xaman-group" data-index="1" maxlength="6" />
+          <input type="text" class="xaman-group" data-index="2" maxlength="6" />
+          <input type="text" class="xaman-group" data-index="3" maxlength="6" />
+          <input type="text" class="xaman-group" data-index="4" maxlength="6" />
+          <input type="text" class="xaman-group" data-index="5" maxlength="6" />
+          <input type="text" class="xaman-group" data-index="6" maxlength="6" />
+          <input type="text" class="xaman-group" data-index="7" maxlength="6" />
+        </div>
+        <div class="row">
+          <button id="xaman-generate">Generate</button>
+          <button id="xaman-import" class="primary" disabled>Import</button>
+        </div>
+        <pre id="xaman-ui-output"></pre>
+      </section>
+
+      <section id="section-balances">
+        <h2>Account balances</h2>
+        <p>
+          Reads an address's XRP, issued-token, and MPT balances live from the network via
+          <code>Accounts.getXrpBalance()</code>, <code>Accounts.getTokenBalances()</code>, and
+          <code>Accounts.getMptBalances()</code>.
+        </p>
+        <div class="row">
+          <input type="text" id="balances-address-field" placeholder="r..." />
+          <select id="balances-network-field">
+            <option value="testnet" selected>testnet</option>
+            <option value="mainnet">mainnet</option>
+            <option value="devnet">devnet</option>
+          </select>
+          <button id="balances-fetch" class="primary" disabled>Fetch</button>
+        </div>
+
+        <h3>XRP</h3>
+        <pre id="balances-xrp-output"></pre>
+
+        <h3>Tokens</h3>
+        <pre id="balances-tokens-output"></pre>
+
+        <h3>MPT</h3>
+        <pre id="balances-mpt-output"></pre>
+      </section>
+
+      <section id="section-send">
+        <h2>Send payment</h2>
+        <p>
+          Signs and submits a <code>Payment</code> via <code>Payments.sendXrp()</code>,
+          <code>Payments.sendToken()</code>, or <code>Payments.sendMpt()</code>, depending on the
+          asset picked below. The destination doesn't need to exist yet for an XRP payment — it
+          gets activated by it.
+        </p>
+
+        <div class="row">
+          <span class="field-label">Asset</span>
+          <select id="send-asset-field">
+            <option value="xrp" selected>XRP</option>
+            <option value="token">Token (IOU)</option>
+            <option value="mpt">MPT</option>
+          </select>
+        </div>
+        <div class="row">
+          <span class="field-label">Sender seed</span>
+          <input type="text" id="send-seed-field" placeholder="sEd... / s..." />
+        </div>
+        <div class="row">
+          <span class="field-label">Destination</span>
+          <input type="text" id="send-destination-field" placeholder="r..." />
+        </div>
+        <div class="row">
+          <span class="field-label">Amount</span>
+          <input type="text" id="send-amount-field" placeholder="e.g. 10" />
+        </div>
+        <div class="row" id="send-token-fields" hidden>
+          <span class="field-label">Currency</span>
+          <input type="text" id="send-currency-field" placeholder="e.g. FOO" />
+          <input type="text" id="send-issuer-field" placeholder="Issuer address r..." />
+        </div>
+        <div class="row" id="send-mpt-fields" hidden>
+          <span class="field-label">MPT ID</span>
+          <input type="text" id="send-mpt-issuance-field" placeholder="MPTokenIssuanceID" />
+        </div>
+        <div class="row">
+          <select id="send-network-field">
+            <option value="testnet" selected>testnet</option>
+            <option value="mainnet">mainnet</option>
+            <option value="devnet">devnet</option>
+          </select>
+          <button id="send-submit" class="primary" disabled>Send</button>
+        </div>
+        <pre id="send-output"></pre>
+      </section>
+
+      <section id="section-trustline">
+        <h2>Trust line</h2>
+        <p>
+          Opens a trust line for an issued currency via <code>TrustLines.setTokenTrustLine()</code>
+          (<code>TrustSet</code>), or authorizes holding an MPT via
+          <code>TrustLines.setMptTrustLine()</code> (<code>MPTokenAuthorize</code>) — the MPT
+          equivalent of a trust line. Run this from the <em>holder's</em> seed before sending them
+          a token/MPT above.
+        </p>
+
+        <div class="row">
+          <span class="field-label">Asset</span>
+          <select id="trust-asset-field">
+            <option value="token" selected>Token (IOU)</option>
+            <option value="mpt">MPT</option>
+          </select>
+        </div>
+        <div class="row">
+          <span class="field-label">Holder seed</span>
+          <input type="text" id="trust-seed-field" placeholder="sEd... / s..." />
+        </div>
+        <div class="row" id="trust-token-fields">
+          <span class="field-label">Currency</span>
+          <input type="text" id="trust-currency-field" placeholder="e.g. FOO" />
+          <input type="text" id="trust-issuer-field" placeholder="Issuer address r..." />
+          <input type="text" id="trust-limit-field" placeholder="Limit" value="1000000000" />
+        </div>
+        <div class="row" id="trust-mpt-fields" hidden>
+          <span class="field-label">MPT ID</span>
+          <input type="text" id="trust-mpt-issuance-field" placeholder="MPTokenIssuanceID" />
+          <label style="font-size: 13px">
+            <input type="checkbox" id="trust-authorize-field" checked />
+            Authorize (uncheck to remove)
+          </label>
+        </div>
+        <div class="row">
+          <select id="trust-network-field">
+            <option value="testnet" selected>testnet</option>
+            <option value="mainnet">mainnet</option>
+            <option value="devnet">devnet</option>
+          </select>
+          <button id="trust-submit" class="primary" disabled>Submit</button>
+        </div>
+        <pre id="trust-output"></pre>
+
+        <h3>Current trust lines</h3>
+        <p>
+          Lists an account's issued-currency trust lines via
+          <code>TrustLines.getTrustLines()</code> (<code>account_lines</code>) — currency, issuer,
+          balance, and the limit this account has set on the line.
+        </p>
+        <div class="row">
+          <input type="text" id="trustlines-address-field" placeholder="r..." />
+          <select id="trustlines-network-field">
+            <option value="testnet" selected>testnet</option>
+            <option value="mainnet">mainnet</option>
+            <option value="devnet">devnet</option>
+          </select>
+          <button id="trustlines-fetch" class="primary" disabled>Fetch</button>
+        </div>
+        <pre id="trustlines-output"></pre>
+      </section>
+      </main>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

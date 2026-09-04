@@ -80,15 +80,18 @@
     "@xrpl-connect/adapter-otsu": "workspace:*",
     "@xrpl-connect/adapter-xyra": "workspace:*",
     "@xrpl-connect/core": "workspace:*",
-    "@xrpl-connect/ui": "workspace:*"
+    "@xrpl-connect/ui": "workspace:*",
+    "bip39": "^3.1.0",
+    "buffer": "^6.0.3",
+    "elliptic": "^6.6.1"
   },
   "peerDependencies": {
     "xrpl": "^3.0.0 || ^4.0.0"
   },
   "devDependencies": {
     "@rollup/plugin-inject": "^5.0.5",
+    "@types/elliptic": "^6.4.18",
     "@types/node": "^20.14.0",
-    "buffer": "^6.0.3",
     "cross-spawn": "^7.0.6",
     "global": "^4.4.0",
     "process": "^0.11.10",

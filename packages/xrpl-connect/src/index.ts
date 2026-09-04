@@ -1,39 +1,37 @@
 /**
- * XRPL Connect - The easiest way to connect XRPL wallets to your app
+ * xrpl-connect - internal facade
  *
- * This package bundles everything you need for XRPL wallet connections:
- * - Core wallet management
- * - Pre-built UI web component
- * - All eight wallet adapters (Xaman, Crossmark, GemWallet, WalletConnect,
- *   Ledger, Xyra, Otsu, and MetaMask Snap)
+ * This is the only entry point meant to be imported from outside this
+ * workspace. @xrpl-connect/core, @xrpl-connect/ui and the adapter packages
+ * are implementation details reached only through what's exported here.
  *
  * @example
  * ```typescript
- * import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
- * const walletManager = new WalletManager({
- *   adapters: [
- *     new XamanAdapter({ apiKey: 'YOUR_XAMAN_API_KEY' }),
- *     new CrossmarkAdapter(),
- *   ],
- *   network: 'testnet',
- * });
+ * import { Address } from 'xrpl-connect';
+ * const { address, seed, publicKey, privateKey } = Address.generate();
  * ```
+ *
+ * `Address.importByMnemonic()`/`importByXaman()` pull in `bip39`, which needs Node's
+ * `Buffer`/`crypto` polyfilled in a browser build (e.g. `vite-plugin-node-polyfills`) —
+ * without it, checksum validation silently computes the wrong result instead of
+ * throwing. See `examples/facade` for a working Vite config.
  */
 
-export * from '@xrpl-connect/core';
-export * from '@xrpl-connect/ui';
+export { Address } from './address';
+export type { AddressAlgorithm, GeneratedAddress, ImportedAddress } from './address';
 
-// Re-export each adapter's full public surface — adapter classes, option types,
-// helpers, network maps, and collision-safe namespaces for the underlying wallet
-// SDKs. Consumers can access every adapter and upstream API from this package.
-// Adapter exports are uniquely named, so these `export *` re-exports do not collide
-// with each other or with the core/ui surfaces above.
-export * from '@xrpl-connect/adapter-xaman';
-export * from '@xrpl-connect/adapter-crossmark';
-export * from '@xrpl-connect/adapter-gemwallet';
-export * from '@xrpl-connect/adapter-walletconnect';
-export * from '@xrpl-connect/adapter-ledger';
-export * from '@xrpl-connect/adapter-xyra';
-export * from '@xrpl-connect/adapter-otsu';
-export * from '@xrpl-connect/adapter-metamask-snap';
-export * from './adapters';
+export { Accounts } from './accounts';
+export type { XrpBalance, TokenBalance, MptBalance } from './accounts';
+
+export type { SigningCredential } from './credential';
+export type { TxResult } from './tx-result';
+
+// Every network-taking method below accepts this — re-exported so consumers can
+// reference the type without reaching into @xrpl-connect/core themselves.
+export type { NetworkConfig, NetworkInfo, StandardNetworkId } from '@xrpl-connect/core';
+
+export { Payments } from './payments';
+export type { SendXrpParams, SendTokenParams, SendMptParams } from './payments';
+
+export { TrustLines } from './trustlines';
+export type { SetTokenTrustLineParams, SetMptTrustLineParams, TrustLine } from './trustlines';

@@ -1,719 +1,171 @@
-# @xrpl-connect/xrpl-connect - Code Documentation
-
-## Overview
-
-`@xrpl-connect/xrpl-connect` (often referred to as the "meta-package") is a convenience package that bundles all the XRPL Connect functionality into a single entry point. Instead of importing from multiple packages, developers can import everything they need from a single `xrpl-connect` module.
-
-**Key Responsibility**: Provide a simplified developer experience by re-exporting core functionality, UI components, and all adapters in one convenient location.
-
----
-
-## What This Package Does
-
-This package acts as a facade or umbrella package that:
-
-1. **Re-exports core functionality** from `@xrpl-connect/core`
-2. **Re-exports UI components** from `@xrpl-connect/ui`
-3. **Re-exports all wallet adapters** from `@xrpl-connect/adapter-*` packages
-4. **Provides a convenience `Adapters` object** for easier access
-
-This eliminates the need to juggle multiple imports in your application code.
-
----
-
-## Package Structure
-
-```
-packages/xrpl-connect/
-├── src/
-│   └── index.ts              # Central export point
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-├── scripts/
-│   └── build-webcomp.ts      # Build scripts
-└── CODE_DOC.md               # This file
-```
-
-### Main Export File
-
-**Location**: `src/index.ts`
-
-This file contains all the re-exports that make up the public API:
-
-```typescript
-// Core functionality
-export * from '@xrpl-connect/core';
-
-// UI Web Component
-export * from '@xrpl-connect/ui';
-
-// All adapters
-export { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-export { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
-export { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
-export { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
-export { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
-export { XyraAdapter } from '@xrpl-connect/adapter-xyra';
-export { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
-export { MetaMaskSnapAdapter } from '@xrpl-connect/adapter-metamask-snap';
-
-// Convenience object
-export const Adapters = {
-  Xaman: XamanAdapter,
-  Crossmark: CrossmarkAdapter,
-  GemWallet: GemWalletAdapter,
-  WalletConnect: WalletConnectAdapter,
-  Ledger: LedgerAdapter,
-  Xyra: XyraAdapter,
-  Otsu: OtsuAdapter,
-  MetaMaskSnap: MetaMaskSnapAdapter,
-};
-```
-
----
-
-## Single Entry Point Usage
-
-Instead of multiple imports, developers use just one:
-
-### ❌ Without This Package
-
-Multiple imports scattered throughout:
-
-```typescript
-import { WalletManager, STANDARD_NETWORKS } from '@xrpl-connect/core';
-import { WalletConnectorElement } from '@xrpl-connect/ui';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
-import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
-import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
-import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
-```
-
-### ✅ With This Package
-
-Single, clean import:
-
-```typescript
-import {
-  WalletManager,
-  STANDARD_NETWORKS,
-  WalletConnectorElement,
-  XamanAdapter,
-  CrossmarkAdapter,
-  GemWalletAdapter,
-  WalletConnectAdapter,
-  XyraAdapter,
-  Adapters,
-} from 'xrpl-connect';
-```
-
----
-
-## Complete API Reference
-
-Everything exported from `xrpl-connect` comes from its dependencies:
-
-### From @xrpl-connect/core
-
-```typescript
-export {
-  // Classes
-  WalletManager,
-  WalletError,
-  LocalStorageAdapter,
-  MemoryStorageAdapter,
-  Logger,
-
-  // Types
-  WalletAdapter,
-  AccountInfo,
-  NetworkInfo,
-  SignedTransaction,
-  ManagedSignedTransaction,
-  SubmittedTransaction,
-  SignedMessage,
-  ManagedSignedMessage,
-  WalletCapabilities,
-  SupportsFetchAccount,
-  WalletEvent,
-  WalletAdapterEvent,
-  ConnectOptions,
-  WalletManagerOptions,
-  LoggerOptions,
-  StorageAdapter,
-
-  // Enums
-  WalletErrorCode,
-
-  // Constants
-  STANDARD_NETWORKS,
-  CAPABILITY_DEFAULTS,
-
-  // Capability helpers
-  adapterSupports,
-  supportsFetchAccount,
-};
-```
-
-### From @xrpl-connect/ui
-
-```typescript
-export {
-  // Web Component (auto-registers as custom element)
-  WalletConnectorElement,
-
-  // Types
-  WalletConnectorElementOptions,
-};
-```
-
-### From Adapter Packages
-
-```typescript
-export {
-  // Adapters
-  XamanAdapter,
-  CrossmarkAdapter,
-  GemWalletAdapter,
-  WalletConnectAdapter,
-  LedgerAdapter,
-  XyraAdapter,
-  OtsuAdapter,
-
-  // Types
-  XamanAdapterOptions,
-  XamanConnectOptions,
-  CrossmarkAdapterOptions,
-  GemWalletAdapterOptions,
-  WalletConnectAdapterOptions,
-  WalletConnectConnectOptions,
-  LedgerAdapterOptions,
-  LedgerConnectOptions,
-  XyraAdapterOptions,
-  XyraConnectOptions,
-
-  // Enums, constants, and complete upstream APIs
-  XRPLMethod, // from WalletConnect adapter
-  LedgerDeviceState,
-  LEDGER_STATE_MESSAGES,
-  OTSU_NETWORK_MAP,
-  XamanSDK,
-  XamanOAuth2,
-  CrossmarkSDK,
-  GemWalletAPI,
-};
-
-export const Adapters = {
-  Xaman: XamanAdapter,
-  Crossmark: CrossmarkAdapter,
-  GemWallet: GemWalletAdapter,
-  WalletConnect: WalletConnectAdapter,
-  Ledger: LedgerAdapter,
-  Xyra: XyraAdapter,
-  Otsu: OtsuAdapter,
-};
-```
-
----
-
-## Quick Start Examples
-
-### Minimal Setup
-
-```typescript
-import { WalletManager, Adapters, STANDARD_NETWORKS } from 'xrpl-connect';
-
-const walletManager = new WalletManager({
-  adapters: [new Adapters.Xaman({ apiKey: 'YOUR_API_KEY' }), new Adapters.Crossmark()],
-  network: STANDARD_NETWORKS.mainnet,
-});
-
-// Use wallet manager...
-const account = await walletManager.connect('xaman', {
-  apiKey: 'YOUR_API_KEY',
-});
-```
-
-### With UI Component
-
-```typescript
-import { WalletManager, Adapters, STANDARD_NETWORKS } from 'xrpl-connect';
-
-// Initialize wallet manager
-const walletManager = new WalletManager({
-  adapters: [
-    new Adapters.Xaman({ apiKey: process.env.XUMM_API_KEY }),
-    new Adapters.Crossmark(),
-    new Adapters.WalletConnect({ projectId: process.env.WALLETCONNECT_ID }),
-    new Adapters(),
-    Xyra(),
-  ],
-  network: STANDARD_NETWORKS.mainnet,
-  autoConnect: true,
-});
-
-// Connect UI component
-const connector = document.querySelector('xrpl-wallet-connector');
-connector.setWalletManager(walletManager);
-
-// Listen to events
-connector.addEventListener('connected', (e) => {
-  console.log('Connected to:', e.detail.walletId);
-  console.log('Address:', walletManager.account.address);
-  connector.close();
-});
-
-connector.addEventListener('error', (e) => {
-  console.error('Connection failed:', e.detail.error.message);
-});
-```
-
-### All Available Adapters
-
-```typescript
-import { WalletManager, Adapters } from 'xrpl-connect';
-
-const walletManager = new WalletManager({
-  adapters: [
-    new Adapters.Xaman({
-      apiKey: process.env.XUMM_API_KEY,
-    }),
-    new Adapters.Crossmark(),
-    new Adapters.GemWallet(),
-    new Adapters.WalletConnect({
-      projectId: process.env.WALLETCONNECT_ID,
-    }),
-    new Adapters.Xyra(),
-  ],
-});
-
-// List all available wallets
-const available = await walletManager.getAvailableWallets();
-available.forEach((wallet) => {
-  console.log(`${wallet.name} (${wallet.id})`);
-});
-```
-
----
-
-## Use Cases for This Package
-
-### 1. **Single File Bundle**
-
-For simple applications, import everything from one place:
-
-```typescript
-// app.ts
-import { WalletManager, Adapters } from 'xrpl-connect';
-
-export const initializeWallet = () => {
-  return new WalletManager({
-    adapters: [new Adapters.Xaman({ apiKey: 'key' })],
-  });
-};
-```
-
----
-
-### 2. **Web Component Integration**
-
-Include the web component easily:
-
-```html
-<!DOCTYPE html>
-<html>
-  <script type="module">
-    import { WalletManager, Adapters } from 'xrpl-connect';
-
-    const walletManager = new WalletManager({
-      adapters: [new Adapters.Crossmark()],
-    });
-
-    document.querySelector('xrpl-wallet-connector').setWalletManager(walletManager);
-  </script>
-
-  <body>
-    <xrpl-wallet-connector primary-wallet="crossmark"></xrpl-wallet-connector>
-  </body>
-</html>
-```
-
----
-
-### 3. **Framework Integration**
-
-Works seamlessly in React, Vue, Angular, etc.:
-
-```typescript
-// React example
-import { useEffect, useState } from 'react';
-import { WalletManager, Adapters } from 'xrpl-connect';
-
-export function useWalletConnect() {
-  const [walletManager] = useState(
-    () =>
-      new WalletManager({
-        adapters: [new Adapters.Xaman({ apiKey: 'YOUR_KEY' }), new Adapters.Crossmark()],
-      })
-  );
-
-  return walletManager;
-}
-```
-
----
-
-### 4. **TypeScript Projects**
-
-Full TypeScript support with proper types:
-
-```typescript
-import {
-  WalletManager,
-  Adapters,
-  AccountInfo,
-  WalletError,
-  WalletErrorCode,
-  SignedTransaction,
-} from 'xrpl-connect';
-
-async function handleWalletConnection(): Promise<AccountInfo> {
-  const walletManager = new WalletManager({
-    adapters: [new Adapters.Xaman({ apiKey: 'key' })],
-  });
-
-  try {
-    const account: AccountInfo = await walletManager.connect('xaman', {
-      apiKey: 'key',
-    });
-    return account;
-  } catch (error) {
-    if (error instanceof WalletError) {
-      switch (error.code) {
-        case WalletErrorCode.CONNECTION_REJECTED:
-          console.log('User rejected');
-          break;
-        // ... more cases
-      }
-    }
-    throw error;
-  }
-}
-```
-
----
-
-## Package Dependencies
-
-The meta-package depends on:
+# xrpl-connect
+
+Internal facade over XRPL address/key management, balances, payments, and trust lines.
+This is the **only** entry point meant to be imported from outside this workspace —
+`@xrpl-connect/core`, `@xrpl-connect/ui`, and the `@xrpl-connect/adapter-*` packages are
+implementation details of the wider monorepo and are not part of this package's API.
+
+> If you're looking for the wallet-*connection* toolkit (`WalletManager`, browser wallet
+> adapters like Xaman/Crossmark/GemWallet, the `<xrpl-wallet-connector>` UI component),
+> that's a different concern — this package doesn't touch it. `xrpl-connect` here is for
+> code that already holds a seed/private key (generated or imported) and wants to derive
+> addresses, read balances, and sign+submit transactions directly, without a browser
+> extension or mobile wallet in the loop.
+
+## Install
+
+Within this workspace, add it as a dependency via the `workspace:*` protocol:
 
 ```json
 {
   "dependencies": {
-    "@xrpl-connect/core": "workspace:*",
-    "@xrpl-connect/ui": "workspace:*",
-    "@xrpl-connect/adapter-xaman": "workspace:*",
-    "@xrpl-connect/adapter-crossmark": "workspace:*",
-    "@xrpl-connect/adapter-gemwallet": "workspace:*",
-    "@xrpl-connect/adapter-walletconnect": "workspace:*",
-    "@xrpl-connect/adapter-xyra": "workspace:*"
+    "xrpl-connect": "workspace:*"
   }
 }
 ```
 
-This is a monorepo structure where all packages are workspaces, so they're always in sync.
-
----
-
-## File Organization
-
-The main export consolidates code from multiple packages:
-
-```
-xrpl-connect (this package)
-  ↓
-  Exports from:
-  ├── @xrpl-connect/core/
-  │   ├── WalletManager
-  │   ├── WalletError
-  │   ├── Types (AccountInfo, NetworkInfo, etc.)
-  │   └── Constants (STANDARD_NETWORKS)
-  ├── @xrpl-connect/ui/
-  │   └── WalletConnectorElement (web component)
-  └── @xrpl-connect/adapter-*/
-      ├── XamanAdapter
-      ├── CrossmarkAdapter
-      ├── GemWalletAdapter
-      ├── WalletConnectAdapter
-      └── XyraAdapter
-```
-
----
-
-## Development Patterns
-
-### Pattern 1: Using the Convenience Object
-
-The `Adapters` object provides cleaner syntax:
+## Quick start
 
 ```typescript
-// Without Adapters object
-import { XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
+import { Address, Accounts, Payments } from 'xrpl-connect';
 
-const adapters = [new XamanAdapter({ apiKey: 'key' }), new CrossmarkAdapter()];
+// 1. Generate a wallet
+const { address, seed } = Address.generate();
 
-// With Adapters object
-import { Adapters } from 'xrpl-connect';
+// 2. Read its balance
+const { xrp } = await Accounts.getXrpBalance(address, 'testnet');
+console.log(`${address} holds ${xrp} XRP`);
 
-const adapters = [new Adapters.Xaman({ apiKey: 'key' }), new Adapters.Crossmark()];
-```
-
----
-
-### Pattern 2: Selective Imports
-
-You don't have to import everything; import only what you need:
-
-```typescript
-// Only import what you use
-import { WalletManager, Adapters } from 'xrpl-connect';
-
-// Tree-shaking will remove unused code from your bundle
-```
-
----
-
-### Pattern 3: Re-exporting for Your App
-
-In large applications, create your own wrapper:
-
-```typescript
-// src/wallet/index.ts
-export {
-  WalletManager,
-  Adapters,
-  STANDARD_NETWORKS,
-  type AccountInfo,
-  type WalletError,
-} from 'xrpl-connect';
-
-export * from './custom-adapter.ts';
-export * from './wallet-hooks.ts';
-```
-
-Then import from your local module:
-
-```typescript
-import { WalletManager, Adapters } from '@/wallet';
-```
-
----
-
-## Comparison with Individual Imports
-
-### Scenario: Building a Wallet Connection Feature
-
-**Without meta-package** (multiple imports):
-
-```typescript
-import { WalletManager, STANDARD_NETWORKS } from '@xrpl-connect/core';
-import { WalletConnectorElement } from '@xrpl-connect/ui';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
-import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
-import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
-import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
-
-// 7 lines just to import!
-```
-
-**With meta-package** (single import):
-
-```typescript
-import { WalletManager, STANDARD_NETWORKS, WalletConnectorElement, Adapters } from 'xrpl-connect';
-
-// 1 import, cleaner and easier to maintain
-```
-
----
-
-## Extending the Meta-Package
-
-If you need custom functionality, you can:
-
-1. **Create a wrapper package** that re-exports from xrpl-connect
-2. **Add custom adapters** and export them alongside the originals
-3. **Create custom hooks** (for React) or composables (for Vue)
-
-Example:
-
-```typescript
-// src/wallet-integration.ts
-export { WalletManager, Adapters, STANDARD_NETWORKS } from 'xrpl-connect';
-
-export { CustomWalletAdapter } from './adapters/custom.js';
-
-export { useWallet, useWalletConnect } from './hooks.js';
-```
-
----
-
-## Best Practices
-
-1. **Use Named Imports**: Be explicit about what you're importing
-
-   ```typescript
-   // Good
-   import { WalletManager, Adapters } from 'xrpl-connect';
-
-   // Avoid
-   import * as xrplConnect from 'xrpl-connect';
-   ```
-
-2. **Leverage the Adapters Object**: Use `Adapters.Xaman` instead of importing `XamanAdapter`
-
-   ```typescript
-   // Good
-   const adapter = new Adapters.Xaman({ apiKey });
-
-   // Also good
-   import { XamanAdapter } from 'xrpl-connect';
-   const adapter = new XamanAdapter({ apiKey });
-   ```
-
-3. **Type-Only Imports**: In TypeScript, use `type` imports for types to reduce bundle size
-
-   ```typescript
-   import type { AccountInfo, NetworkInfo } from 'xrpl-connect';
-   import { WalletManager } from 'xrpl-connect';
-   ```
-
-4. **Document Your Own Wrappers**: If you create framework-specific wrappers, document them clearly
-
----
-
-## Troubleshooting
-
-### Issue: Large Bundle Size
-
-**Problem**: The meta-package includes all adapters, but your app only needs one.
-
-**Solution**: Use tree-shaking by importing specific adapters:
-
-```typescript
-// Instead of importing everything
-import { WalletManager, Adapters } from 'xrpl-connect';
-const manager = new WalletManager({
-  adapters: [new Adapters.Xaman({ apiKey })], // Only includes Xaman
+// 3. Send a payment
+const result = await Payments.sendXrp({
+  credential: { seed },
+  destination: 'rDestinationAddress...',
+  amountXrp: '10',
+  network: 'testnet',
 });
+console.log(result.engineResult); // e.g. 'tesSUCCESS'
 ```
 
-Or import from the specific adapter package:
+Every method that talks to the network is `async`, opens its own connection, and closes
+it when it resolves or rejects — there's no client to manage yourself. Everything
+defaults to **testnet** unless you pass `network: 'mainnet' | 'testnet' | 'devnet'`
+(or a custom `NetworkInfo` object with your own `wss` endpoint).
+
+## `Address` — keys, no network
+
+Pure local cryptography — nothing here touches the network. `generate()` makes a brand
+new wallet; the four `import*` methods recover one from a secret you already have, each
+validating its input the way the real thing is actually formatted.
 
 ```typescript
-import { WalletManager } from '@xrpl-connect/core';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+Address.generate(algorithm?: 'ed25519' | 'ecdsa-secp256k1'): GeneratedAddress
+// { address, publicKey, privateKey, seed }
 
-const manager = new WalletManager({
-  adapters: [new XamanAdapter({ apiKey })],
-});
+Address.importBySeed(seed: string): ImportedAddress
+Address.importByMnemonic(mnemonic: string | string[]): ImportedAddress // BIP-39, 12/15/18/21/24 words
+Address.importByHex(privateKeyHex: string): ImportedAddress            // 'ED' + 64 hex chars
+Address.importByXaman(secretNumbers: string[]): ImportedAddress        // 8 groups of 6 digits
+// ImportedAddress = { address, publicKey, privateKey, seed? }
 ```
 
----
+- `importByHex()` has no `seed` in its result — a raw ed25519 private key can't be
+  derived back into an XRPL family seed.
+- `importBySeed()` auto-detects `ed25519` vs `ecdsa-secp256k1` from the seed's own
+  encoded version byte — you never need to pass the algorithm yourself.
+- Every method throws a plain `Error` with a human-readable `message` when the input is
+  malformed (wrong shape, bad BIP-39 checksum, bad Xaman checksum digit, etc.) — nothing
+  is silently coerced.
 
-### Issue: Type Conflicts
-
-**Problem**: Types from different adapters conflict.
-
-**Solution**: Use qualified names or type guards:
+## `Accounts` — read-only balance lookups
 
 ```typescript
-import type { XamanAdapterOptions, CrossmarkAdapterOptions } from 'xrpl-connect';
+Accounts.getXrpBalance(address: string, network?: NetworkConfig): Promise<XrpBalance>
+// { drops, xrp }
 
-function createAdapter(type: 'xaman' | 'crossmark', opts: any) {
-  if (type === 'xaman') {
-    return new Adapters.Xaman(opts as XamanAdapterOptions);
-  }
-  return new Adapters.Crossmark(opts as CrossmarkAdapterOptions);
-}
+Accounts.getTokenBalances(address: string, network?: NetworkConfig): Promise<TokenBalance[]>
+// { currency, issuer, balance }[]
+
+Accounts.getMptBalances(address: string, network?: NetworkConfig): Promise<MptBalance[]>
+// { mptIssuanceId, value, locked? }[]
 ```
 
----
+An account that doesn't exist on the ledger yet (never received a funding payment)
+rejects with the ledger's own `actNotFound` error for `getXrpBalance()` — it isn't
+special-cased into a zero balance.
 
-## Common Patterns
+## `Payments` — sign and submit
 
-### Initialize with All Adapters
+All three take a `credential` (see below), wait for the transaction to validate, and
+resolve to the same `TxResult` shape — they never throw for an on-ledger failure (an
+insufficient balance, a missing trust line, ...); check `engineResult` for that.
 
 ```typescript
-import {
-  ADAPTER_DESCRIPTORS,
-  STANDARD_NETWORKS,
-  WalletManager,
-  createAdapters,
-  type WalletId,
-} from 'xrpl-connect';
-
-const allAdapters = createAdapters({
-  xaman: { apiKey: process.env.XUMM_API_KEY },
-  walletconnect: { projectId: process.env.WALLETCONNECT_ID },
-});
-
-const walletManager = new WalletManager({
-  adapters: allAdapters,
-  network: STANDARD_NETWORKS.mainnet,
-});
-
-// Canonical display order, IDs, constructors, and setup requirements are
-// available without maintaining a parallel application registry.
-const walletChoices: Array<{ id: WalletId; name: string }> = ADAPTER_DESCRIPTORS.map(
-  ({ id, name }) => ({ id, name })
-);
+Payments.sendXrp({ credential, destination, amountXrp, destinationTag?, network? }): Promise<TxResult>
+Payments.sendToken({ credential, destination, currency, issuer, value, destinationTag?, network? }): Promise<TxResult>
+Payments.sendMpt({ credential, destination, mptIssuanceId, value, destinationTag?, network? }): Promise<TxResult>
+// TxResult = { hash, engineResult, validated }
 ```
 
-Xaman and WalletConnect need constructor credentials to appear in wallet
-discovery. Direct flows may defer a credential with typed wallet-specific
-options, for example `walletManager.connect('xaman', { apiKey })` or
-`walletManager.connect('walletconnect', { projectId })`. Deferred credentials
-apply only to that call and are not persisted, so configure constructors when
-using automatic reconnection.
+`amountXrp` is in XRP, not drops (`Payments.sendXrp` converts it for you). `sendMpt()`
+requires the destination to already hold an authorized `MPToken` for that issuance — see
+`TrustLines.setMptTrustLine()`.
 
-### Conditional Adapter Loading
+## `TrustLines` — issued-currency trust lines and the MPT equivalent
 
 ```typescript
-import { WalletManager, Adapters } from 'xrpl-connect';
+TrustLines.getTrustLines(address: string, network?: NetworkConfig): Promise<TrustLine[]>
+// { currency, issuer, balance, limit, limitPeer, noRipple?, frozen? }[]
 
-function getAdapters() {
-  const adapters = [];
+TrustLines.setTokenTrustLine({ credential, currency, issuer, limit, network? }): Promise<TxResult>
+// TrustSet — limit: '0' resizes the line down to removed
 
-  if (process.env.XUMM_API_KEY) {
-    adapters.push(new Adapters.Xaman({ apiKey: process.env.XUMM_API_KEY }));
-  }
-
-  adapters.push(new Adapters.Crossmark());
-
-  if (process.env.WALLETCONNECT_ID) {
-    adapters.push(new Adapters.WalletConnect({ projectId: process.env.WALLETCONNECT_ID }));
-  }
-
-  return adapters;
-}
-
-const walletManager = new WalletManager({
-  adapters: getAdapters(),
-});
+TrustLines.setMptTrustLine({ credential, mptIssuanceId, authorize?, network? }): Promise<TxResult>
+// MPTokenAuthorize — authorize defaults to true; pass false to opt back out
 ```
 
----
+MPTs don't use `TrustSet` — `MPTokenAuthorize` is the equivalent "I'm willing to hold
+this" opt-in, required once before an account can be the destination of `sendMpt()`.
 
-## Summary
+## Signing credentials
 
-The `@xrpl-connect/xrpl-connect` meta-package:
+`Payments` and `TrustLines` sign with whatever `Address` gave you — pass it straight
+through, no reshaping needed:
 
-- ✅ Provides a single import point for all XRPL Connect functionality
-- ✅ Re-exports core, UI, and all adapters
-- ✅ Includes a convenient `Adapters` object for cleaner code
-- ✅ Simplifies developer experience
-- ✅ Enables framework integration and rapid prototyping
-- ✅ Maintains full type safety with TypeScript
+```typescript
+type SigningCredential = { seed: string } | { publicKey: string; privateKey: string };
+```
+
+- `Address.generate()` / `importBySeed()` / `importByMnemonic()` / `importByXaman()` →
+  `{ seed: result.seed }`
+- `Address.importByHex()` (no seed) → `{ publicKey: result.publicKey, privateKey: result.privateKey }`
+
+## Networks
+
+Every network-touching method takes an optional last `network` argument (or a `network`
+field in its params object), defaulting to **`'testnet'`**:
+
+```typescript
+type NetworkConfig = 'mainnet' | 'testnet' | 'devnet' | NetworkInfo; // NetworkInfo from '@xrpl-connect/core'
+```
+
+Pass a custom `NetworkInfo` (`{ id, name, wss, ... }`) to point at your own rippled
+node instead of the standard public endpoints. An unrecognized network name string
+rejects with a `WalletError` (from `@xrpl-connect/core`'s own `resolveNetwork()` —
+still a plain `Error` under the hood, with `.message`, plus `.code`/`.category`).
+
+## Handling private keys/seeds
+
+Every `Address` result and every `SigningCredential` carries a private key or seed in
+plain text. That's fine for scripts, tests, and this package's own demo — never log,
+store unencrypted, or display these in a real product without thinking through where
+they end up.
+
+## Browser bundling
+
+`Address.importByMnemonic()` and `Address.importByXaman()` pull in `bip39`, which needs
+Node's `Buffer`/`crypto` polyfilled in a browser build — without it, checksum validation
+silently computes the **wrong** result instead of throwing. Add
+[`vite-plugin-node-polyfills`](https://www.npmjs.com/package/vite-plugin-node-polyfills)
+(or your bundler's equivalent) if you hit this. See [`examples/facade`](../../examples/facade)
+for a working Vite config and a live demo of every method in this package, including a
+UI form for each one.
