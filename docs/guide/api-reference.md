@@ -30,13 +30,14 @@ const walletManager = new WalletManager(options: WalletManagerOptions)
 
 ### Properties
 
-| Property    | Type                         | Description                             |
-| ----------- | ---------------------------- | --------------------------------------- |
-| `connected` | `boolean`                    | Whether a wallet is currently connected |
-| `account`   | `AccountInfo \| null`        | Currently connected account             |
-| `wallet`    | `WalletAdapter \| null`      | Currently connected wallet adapter      |
-| `wallets`   | `WalletAdapter[]`            | Registered adapters as an array         |
-| `adapters`  | `Map<string, WalletAdapter>` | Registered adapters keyed by id         |
+| Property           | Type                         | Description                             |
+| ------------------ | ---------------------------- | --------------------------------------- |
+| `connected`        | `boolean`                    | Whether a wallet is currently connected |
+| `account`          | `AccountInfo \| null`        | Currently connected account             |
+| `wallet`           | `WalletAdapter \| null`      | Currently connected wallet adapter      |
+| `connectingWallet` | `WalletAdapter \| null`      | Adapter currently attempting to connect |
+| `wallets`          | `WalletAdapter[]`            | Registered adapters as an array         |
+| `adapters`         | `Map<string, WalletAdapter>` | Registered adapters keyed by id         |
 
 ### Methods
 
@@ -290,13 +291,26 @@ connector.addEventListener('error', (e) => {
 });
 ```
 
-Event details are typed as follows:
+Event details follow this public contract:
 
-| Event        | `detail` payload                                                    |
-| ------------ | ------------------------------------------------------------------- |
-| `connecting` | `{ walletId: string }`                                              |
-| `connected`  | `{ walletId: string }` plus Ledger account metadata when applicable |
-| `error`      | `{ error: WalletError, walletId: string, errorType: string }`       |
+| Event        | `detail` payload                                                                                                                      |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `connecting` | `{ walletId: string, connectionAttemptId?: number, accountIndex?: number, derivationPath?: string }`                                  |
+| `connected`  | `{ walletId: string, connectionAttemptId?: number, accountIndex?: number, derivationPath?: string }`                                  |
+| `error`      | `{ error: Error \| WalletError, walletId: string, errorType: 'rejected' \| 'unavailable' \| 'failed', connectionAttemptId?: number }` |
+| `cancelled`  | `{ reason: 'wallet-list', connectionAttemptId: number }`                                                                              |
+
+`accountIndex` and `derivationPath` are present only for the applicable Ledger account-selection
+flow. `connected`, `error`, and `cancelled` settle connection attempts. When
+`connectionAttemptId` is present, use it to correlate `connecting` with `connected` or `error`,
+while remaining compatible with producers that omit the optional ID. `cancelled` identifies the
+active attempt invalidated when the user returns to the wallet list; its ID also lets consumers
+discard a late preflight error. The modal remains open and any established wallet session remains
+connected. A validation, availability, or Ledger account-discovery failure can emit `error` before
+`connecting`; that preflight error can still carry a `connectionAttemptId`, so consumers must not
+require a preceding `connecting` event. A `close` event carries
+`{ connectionAttemptId: number }` when closing cancels an active attempt, and otherwise has no
+detail.
 
 ## Wallet Adapters
 
@@ -335,8 +349,9 @@ import { CrossmarkAdapter } from 'xrpl-connect';
 const adapter = new CrossmarkAdapter();
 ```
 
-**Supported Features:** Transaction signing, message signing, live account
-refresh
+**Supported Features:** Transaction signing and live account refresh. Arbitrary
+message signing is not supported because Crossmark exposes a sign-in challenge,
+not a documented general-purpose message-signing protocol.
 
 **Website:** [https://crossmark.io/](https://crossmark.io/)
 
@@ -388,9 +403,10 @@ const adapter = new LedgerAdapter({
 });
 ```
 
-**Supported Features:** On-device transaction confirmation, message signing,
-live account refresh, multiple derivation paths, and signer-bound parallel
+**Supported Features:** On-device transaction confirmation, live account refresh,
+multiple derivation paths, and signer-bound parallel
 multisign contributions. Requires Chrome / Edge / Opera with WebHID or WebUSB.
+Arbitrary message signing is not supported by the Ledger XRP application API.
 
 For Ledger multisigning, pass `sign()` one fully prepared transaction with an
 explicit source `Account`, `Fee`, `Sequence`, `SigningPubKey: ''`, and no existing
@@ -583,8 +599,8 @@ function adapterSupports(adapter: WalletAdapter, capability: keyof WalletCapabil
 
 Adapters use the optional `capabilities` property to declare operations that
 cannot succeed. Missing declarations fall back to `CAPABILITY_DEFAULTS`, so
-existing custom adapters retain support for all signing operations. Xaman and
-WalletConnect declare `signMessage: false`.
+existing custom adapters retain support for all signing operations. Crossmark,
+Ledger, WalletConnect, and Xaman declare `signMessage: false`.
 
 ### SupportsFetchAccount
 
@@ -737,13 +753,14 @@ walletManager.on('disconnect', () => {
 });
 ```
 
-#### error
+#### disconnecting
 
-Emitted when an error occurs.
+Emitted synchronously whenever `disconnect()` is requested, including when no session has been
+committed. Use it to invalidate pending session-restoration work before asynchronous teardown.
 
 ```javascript
-walletManager.on('error', (error: WalletError) => {
-  console.error('Error:', error.message);
+walletManager.on('disconnecting', () => {
+  cancelPendingSessionRestoration();
 });
 ```
 

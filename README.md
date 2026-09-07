@@ -89,11 +89,6 @@ walletManager.on('disconnect', () => {
   console.log('Disconnected');
 });
 
-// Surface connection/adapter errors (wallet not installed, network issues, etc.)
-walletManager.on('error', (error) => {
-  console.error('Wallet error:', error.code, error.message);
-});
-
 // Sign transactions after connection. Always wrap in try/catch — the promise
 // rejects when the user cancels the request in their wallet (SIGN_REJECTED).
 try {
@@ -114,7 +109,7 @@ try {
 
 That's it! The web component provides a beautiful, pre-built UI for wallet selection, QR codes, and connection states.
 
-> **Heads up on `autoConnect`:** with `autoConnect: true`, the WalletManager silently restores the previous session from `localStorage` when your page loads and emits a `connect` event before any user interaction. Register your `connect` / `disconnect` / `error` listeners **immediately** after constructing the manager so you don't miss that initial event.
+> **Heads up on `autoConnect`:** with `autoConnect: true`, the WalletManager silently restores the previous session from `localStorage` when your page loads and emits a `connect` event before any user interaction. Register your `connect` and `disconnect` listeners **immediately** after constructing the manager so you don't miss that initial event. Handle operation failures through their rejected promises or the web component's `error` event.
 
 ### Direct wallet SDK access
 

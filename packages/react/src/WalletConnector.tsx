@@ -97,9 +97,20 @@ export const WalletConnector = forwardRef<WalletConnectorElement, WalletConnecto
       let notifiedAccountKey: string | null = null;
       const modalAttempts = new Map<number, symbol>();
       let legacyModalAttempt: symbol | null = null;
+      let modalOpen = false;
+      let highestCancelledAttemptId = 0;
 
-      const cancelModalAttempts = () => {
+      const cancelModalAttempts = (cancelledThroughAttemptId?: number) => {
+        if (cancelledThroughAttemptId !== undefined) {
+          highestCancelledAttemptId = Math.max(
+            highestCancelledAttemptId,
+            cancelledThroughAttemptId
+          );
+        }
         const attempts = [...modalAttempts.values()];
+        for (const connectionAttemptId of modalAttempts.keys()) {
+          highestCancelledAttemptId = Math.max(highestCancelledAttemptId, connectionAttemptId);
+        }
         if (legacyModalAttempt) attempts.push(legacyModalAttempt);
         modalAttempts.clear();
         legacyModalAttempt = null;
@@ -160,23 +171,43 @@ export const WalletConnector = forwardRef<WalletConnectorElement, WalletConnecto
           if (detail?.connectionAttemptId === undefined) {
             attempt = legacyModalAttempt;
             legacyModalAttempt = null;
+            if (attempt === null) return;
           } else {
             attempt = modalAttempts.get(detail.connectionAttemptId) ?? null;
-            if (attempt === null) return;
-            modalAttempts.delete(detail.connectionAttemptId);
+            if (attempt === null) {
+              if (!modalOpen || detail.connectionAttemptId <= highestCancelledAttemptId) return;
+            } else {
+              modalAttempts.delete(detail.connectionAttemptId);
+            }
           }
           if (reportModalError(attempt, error)) callbacksRef.current.onError?.(error);
         };
-        const onWcClose = () => cancelModalAttempts();
+        const onWcOpen = () => {
+          modalOpen = true;
+        };
+        const onWcClose = (event: Event) => {
+          modalOpen = false;
+          const detail = (event as CustomEvent<{ connectionAttemptId?: number }>).detail;
+          cancelModalAttempts(detail?.connectionAttemptId);
+        };
+        const onWcCancelled = (event: Event) => {
+          const detail = (event as CustomEvent<{ connectionAttemptId?: number }>).detail;
+          cancelModalAttempts(detail?.connectionAttemptId);
+        };
 
         el.addEventListener('connecting', onWcConnecting);
         el.addEventListener('error', onWcError);
+        el.addEventListener('open', onWcOpen);
         el.addEventListener('close', onWcClose);
+        el.addEventListener('cancelled', onWcCancelled);
 
         detach = () => {
+          modalOpen = false;
           el.removeEventListener('connecting', onWcConnecting);
           el.removeEventListener('error', onWcError);
+          el.removeEventListener('open', onWcOpen);
           el.removeEventListener('close', onWcClose);
+          el.removeEventListener('cancelled', onWcCancelled);
           cancelModalAttempts();
         };
       });

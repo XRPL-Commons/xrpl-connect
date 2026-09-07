@@ -2,6 +2,8 @@
 
 Audit date: 2026-08-17
 
+Last reverified: 2026-09-02
+
 This audit covers the production dependency graph reported by:
 
 ```sh

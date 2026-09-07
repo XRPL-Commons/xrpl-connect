@@ -14,7 +14,7 @@ The **WalletManager** is the central orchestrator of XRPL-Connect. It manages wa
 
 - **Manages adapters** - Holds and coordinates multiple wallet adapters
 - **Maintains state** - Tracks current connection status, account info, and network
-- **Event system** - Emits events when connections change, errors occur, etc.
+- **Event system** - Emits connection, account, and network lifecycle events
 - **Session persistence** - Automatically saves and restores wallet sessions
 - **Transaction signing** - Provides unified API for signing and submitting transactions
 
@@ -121,7 +121,7 @@ import { CrossmarkAdapter } from 'xrpl-connect';
 const adapter = new CrossmarkAdapter();
 ```
 
-**Features:** Transaction signing, message signing, no API keys required
+**Features:** Transaction signing and no API keys required. Arbitrary message signing is not supported.
 
 #### MetaMask Snap Adapter
 
@@ -177,7 +177,7 @@ const adapter = new LedgerAdapter({
 });
 ```
 
-**Features:** On-device transaction confirmation, message signing, multiple derivation paths
+**Features:** On-device transaction confirmation and multiple derivation paths. Arbitrary message signing is not supported.
 
 #### Xyra Adapter
 
@@ -355,7 +355,9 @@ Both WalletManager and the Web Component emit events that you can listen to:
 - **disconnect** - User disconnected a wallet
 - **accountChanged** - User switched accounts
 - **networkChanged** - User switched networks
-- **error** - An error occurred
+
+Wallet operations report failures through rejected promises. The web component
+separately emits an `error` event for connection failures initiated from its UI.
 
 ### Web Component Events
 

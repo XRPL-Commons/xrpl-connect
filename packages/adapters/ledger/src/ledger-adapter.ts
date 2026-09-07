@@ -22,6 +22,7 @@ import type {
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
+  WalletCapabilities,
   SupportsFetchAccount,
   SupportsReconnectOptions,
   ReconnectOptions,
@@ -73,6 +74,7 @@ export class LedgerAdapter
   readonly name = 'Ledger';
   readonly icon = ICON_DATA_URL;
   readonly url = 'https://www.ledger.com';
+  readonly capabilities: WalletCapabilities = { signMessage: false };
 
   private transport: Transport | null = null;
   private xrpApp: Xrp | null = null;
@@ -80,6 +82,9 @@ export class LedgerAdapter
   private derivationPath: string;
   private timeout: number;
   private preferWebHID: boolean;
+  private connectionGeneration = 0;
+  private accountDiscoveryGeneration = 0;
+  private accountDiscoveryTransports = new Set<Transport>();
 
   constructor(options: LedgerAdapterOptions = {}) {
     if (options.derivationPath) {
@@ -109,15 +114,17 @@ export class LedgerAdapter
    * Get the current device state
    */
   async getDeviceState(): Promise<LedgerDeviceState> {
+    let transport: Transport | null = null;
     try {
-      const transport = await this.createTransport();
+      transport = await this.createTransport();
       const xrpApp = new Xrp(transport);
       await xrpApp.getAddress(this.derivationPath, false, false);
-      await transport.close();
       return LedgerDeviceState.READY;
     } catch (error) {
       const { state } = parseLedgerError(error);
       return state;
+    } finally {
+      await this.closeTransport(transport);
     }
   }
 
@@ -125,6 +132,8 @@ export class LedgerAdapter
    * Connect to Ledger device
    */
   async connect(options?: ConnectOptions<LedgerConnectOptions>): Promise<AccountInfo> {
+    const connectionAttempt = ++this.connectionGeneration;
+    let attemptTransport: Transport | null = null;
     try {
       const browserSupport = isBrowserSupported();
       if (!browserSupport.supported) {
@@ -133,23 +142,30 @@ export class LedgerAdapter
         );
       }
 
+      let derivationPath = this.derivationPath;
       if (options?.derivationPath && typeof options.derivationPath === 'string') {
-        this.derivationPath = options.derivationPath;
+        derivationPath = options.derivationPath;
       } else if (options?.accountIndex !== undefined && typeof options.accountIndex === 'number') {
-        this.derivationPath = `44'/144'/${options.accountIndex}'/0/0`;
+        derivationPath = `44'/144'/${options.accountIndex}'/0/0`;
       }
 
       if (typeof options?.network === 'string' && !isStandardNetworkId(options.network)) {
         throw createWalletError.networkNotSupported(options.network, this.name);
       }
       const network = resolveNetwork(options?.network);
-      this.transport = await this.createTransport();
-      this.xrpApp = new Xrp(this.transport);
+      attemptTransport = await this.createTransport();
+      if (connectionAttempt !== this.connectionGeneration) {
+        throw createWalletError.notConnected();
+      }
+      const attemptApp = new Xrp(attemptTransport);
 
       const result = await this.withTimeout(
-        this.xrpApp.getAddress(this.derivationPath, false, false),
+        attemptApp.getAddress(derivationPath, false, false),
         'Connection timeout. Please check your Ledger device.'
       );
+      if (connectionAttempt !== this.connectionGeneration) {
+        throw createWalletError.notConnected();
+      }
 
       if (!result || !result.address) {
         throw new Error('Failed to get address from Ledger device');
@@ -157,6 +173,21 @@ export class LedgerAdapter
 
       const { address, publicKey } = result;
 
+      const previousTransport = this.transport;
+      if (previousTransport && previousTransport !== attemptTransport) {
+        this.transport = null;
+        this.xrpApp = null;
+        this.currentAccount = null;
+        await this.closeTransport(previousTransport);
+        if (connectionAttempt !== this.connectionGeneration) {
+          throw createWalletError.notConnected();
+        }
+      }
+
+      this.transport = attemptTransport;
+      this.xrpApp = attemptApp;
+      this.derivationPath = derivationPath;
+      attemptTransport = null;
       this.currentAccount = {
         address,
         publicKey,
@@ -165,7 +196,10 @@ export class LedgerAdapter
 
       return this.currentAccount;
     } catch (error) {
-      await this.cleanup();
+      await this.closeTransport(attemptTransport);
+      if (connectionAttempt !== this.connectionGeneration) {
+        throw createWalletError.notConnected();
+      }
       if (isWalletError(error)) throw error;
 
       const { state, message } = parseLedgerError(error);
@@ -202,6 +236,8 @@ export class LedgerAdapter
    * Disconnect from Ledger
    */
   async disconnect(): Promise<void> {
+    this.connectionGeneration += 1;
+    this.accountDiscoveryGeneration += 1;
     this.currentAccount = null;
     await this.cleanup();
   }
@@ -476,49 +512,10 @@ export class LedgerAdapter
    * Sign a message
    */
   async signMessage(message: string | Uint8Array): Promise<SignedMessage> {
-    if (!this.currentAccount) {
-      throw createWalletError.notConnected();
-    }
-
-    if (!this.xrpApp) {
-      throw createWalletError.unknown('Ledger XRP app not initialized');
-    }
-
-    try {
-      const messageStr = typeof message === 'string' ? message : new TextDecoder().decode(message);
-
-      const messageHex = Array.from(new TextEncoder().encode(messageStr))
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('');
-
-      const signature = await this.withTimeout(
-        this.xrpApp.signTransaction(this.derivationPath, messageHex),
-        'Signing timeout. Please confirm the message on your Ledger device.'
-      );
-
-      if (!signature) {
-        throw new Error('Failed to sign message with Ledger');
-      }
-
-      return {
-        message: messageStr,
-        signature,
-        publicKey: this.currentAccount.publicKey || '',
-      };
-    } catch (error) {
-      if (isWalletError(error)) throw error;
-
-      const { state, message } = parseLedgerError(error);
-      if (
-        isLedgerUserCancelled(error) ||
-        (state === LedgerDeviceState.READY && message.includes('rejected'))
-      ) {
-        throw createWalletError.signRejected(
-          error instanceof Error ? error : formattedLedgerError(error)
-        );
-      }
-      throw createWalletError.signFailed(formattedLedgerError(error));
-    }
+    void message;
+    throw createWalletError.unsupportedMethod(
+      'Ledger XRP does not expose a documented arbitrary-message signing protocol'
+    );
   }
 
   /**
@@ -539,16 +536,18 @@ export class LedgerAdapter
     count: number = 5,
     startIndex: number = 0
   ): Promise<Array<{ address: string; publicKey: string; path: string; index: number }>> {
-    const needsCleanup = !this.transport;
+    const discoveryAttempt = this.accountDiscoveryGeneration;
+    let temporaryTransport: Transport | null = null;
 
     try {
-      if (!this.transport) {
-        this.transport = await this.createTransport();
-        this.xrpApp = new Xrp(this.transport);
-      }
-
-      if (!this.xrpApp) {
-        throw new Error('Failed to initialize Ledger XRP app');
+      let xrpApp = this.xrpApp;
+      if (!xrpApp) {
+        temporaryTransport = await this.createTransport();
+        this.accountDiscoveryTransports.add(temporaryTransport);
+        if (discoveryAttempt !== this.accountDiscoveryGeneration) {
+          throw createWalletError.notConnected();
+        }
+        xrpApp = new Xrp(temporaryTransport);
       }
 
       const accounts = [];
@@ -560,9 +559,12 @@ export class LedgerAdapter
 
         try {
           const result = await this.withTimeout(
-            this.xrpApp.getAddress(path, false, false),
+            xrpApp.getAddress(path, false, false),
             'Timeout retrieving account information'
           );
+          if (discoveryAttempt !== this.accountDiscoveryGeneration) {
+            throw createWalletError.notConnected();
+          }
 
           accounts.push({
             address: result.address,
@@ -593,7 +595,9 @@ export class LedgerAdapter
       }
       throw createWalletError.unknown(`Failed to retrieve accounts: ${(error as Error).message}`);
     } finally {
-      if (needsCleanup) await this.cleanup();
+      if (temporaryTransport && this.accountDiscoveryTransports.delete(temporaryTransport)) {
+        await this.closeTransport(temporaryTransport);
+      }
     }
   }
 
@@ -651,15 +655,20 @@ export class LedgerAdapter
    * Clean up transport connection
    */
   private async cleanup(): Promise<void> {
-    const transport = this.transport;
+    const transports = new Set(this.accountDiscoveryTransports);
+    if (this.transport) transports.add(this.transport);
+    this.accountDiscoveryTransports.clear();
     this.transport = null;
     this.xrpApp = null;
-    if (transport) {
-      try {
-        await transport.close();
-      } catch (error) {
-        console.warn('Error closing Ledger transport:', error);
-      }
+    await Promise.all([...transports].map((transport) => this.closeTransport(transport)));
+  }
+
+  private async closeTransport(transport: Transport | null): Promise<void> {
+    if (!transport) return;
+    try {
+      await transport.close();
+    } catch (error) {
+      console.warn('Error closing Ledger transport:', error);
     }
   }
 

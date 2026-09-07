@@ -12,6 +12,7 @@ import type {
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
+  WalletCapabilities,
 } from '@xrpl-connect/core';
 
 import {
@@ -64,6 +65,7 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
   readonly name = 'Crossmark';
   readonly icon = ICON_DATA_URL;
   readonly url = 'https://crossmark.io';
+  readonly capabilities: WalletCapabilities = { signMessage: false };
 
   private currentAccount: AccountInfo | null = null;
   private connectionGeneration = 0;
@@ -363,34 +365,10 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
    * Sign a message
    */
   async signMessage(message: string | Uint8Array): Promise<SignedMessage> {
-    if (!this.currentAccount) {
-      throw createWalletError.notConnected();
-    }
-
-    try {
-      const messageStr = typeof message === 'string' ? message : new TextDecoder().decode(message);
-
-      // Crossmark doesn't have a dedicated signMessage method
-      // We can use signInAndWait with the message as the hash
-      const signResponse = await sdk.methods.signInAndWait(messageStr);
-
-      if (isRejectedResponse(signResponse)) throw createWalletError.signRejected();
-      if (!signResponse || !signResponse.response || !signResponse.response.data) {
-        throw new Error('Failed to sign message with Crossmark');
-      }
-
-      const { signature, publicKey } = signResponse.response.data;
-
-      return {
-        message: messageStr,
-        signature: signature || '',
-        publicKey: publicKey || this.currentAccount.publicKey || '',
-      };
-    } catch (error) {
-      if (isWalletError(error)) throw error;
-      if (isUserRejection(error)) throw createWalletError.signRejected(error);
-      throw createWalletError.signFailed(error as Error);
-    }
+    void message;
+    throw createWalletError.unsupportedMethod(
+      'Crossmark does not expose a documented arbitrary-message signing protocol'
+    );
   }
 
   /**

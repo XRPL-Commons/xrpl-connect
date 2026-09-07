@@ -81,6 +81,7 @@ export class XyraAdapter implements WalletAdapter {
   private readonly sdkConfig: XyraSDKConfig;
   private currentAccount: AccountInfo | null = null;
   private currentXyraNetwork: Network | null = null;
+  private connectionGeneration = 0;
   private listeners: Map<WalletAdapterEvent, Set<(data?: unknown) => void>> = new Map();
 
   // ==================== Constructor ====================
@@ -131,6 +132,7 @@ export class XyraAdapter implements WalletAdapter {
    * @returns Account info with address, public key, and network
    */
   async connect(options?: ConnectOptions<XyraConnectOptions>): Promise<AccountInfo> {
+    const generation = ++this.connectionGeneration;
     try {
       // Resolve the target Xyra network from the xrpl-connect network config
       const xyraNetwork = this.resolveXyraNetwork(options?.network);
@@ -139,9 +141,11 @@ export class XyraAdapter implements WalletAdapter {
 
       // Call the Xyra SDK connect flow (opens popup)
       const sdk = await this.getSdk();
+      if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
       const response: ConnectResponse = await sdk.connect({
         network: xyraNetwork,
       });
+      if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
 
       logger.debug('Connected to Xyra', {
         address: response.address,
@@ -169,6 +173,7 @@ export class XyraAdapter implements WalletAdapter {
 
       return this.currentAccount;
     } catch (error) {
+      if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
       logger.error('Connection failed', error);
 
       const walletError = this.mapError(error, 'connect');
@@ -186,6 +191,7 @@ export class XyraAdapter implements WalletAdapter {
   async disconnect(): Promise<void> {
     logger.debug('Disconnecting from Xyra');
 
+    this.connectionGeneration += 1;
     this.currentAccount = null;
     this.currentXyraNetwork = null;
 
@@ -345,6 +351,7 @@ export class XyraAdapter implements WalletAdapter {
         message: response.message,
         signature: response.signature,
         publicKey: response.publicKey,
+        signerAddress: response.address,
       };
     } catch (error) {
       logger.error('Sign message failed', error);
@@ -383,6 +390,7 @@ export class XyraAdapter implements WalletAdapter {
    * Destroy the adapter and clean up SDK resources.
    */
   destroy(): void {
+    this.connectionGeneration += 1;
     this.sdk?.destroy();
     this.sdk = null;
     this.sdkPromise = null;

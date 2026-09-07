@@ -356,3 +356,57 @@
 - Crossmark formatting, lint, dependency-inclusive build, runtime smoke, and public-type checks pass. `pnpm exec vp check`, `pnpm test`, `pnpm --filter xrpl-connect test:publish`, `pnpm docs:snapshot:check`, and `git diff --check` also pass.
 - Independent security/test review found no remaining correctness, compatibility, isolation, or scope issues in the cumulative diff against `origin/develop`.
 - PR #138's refreshed CI is green for documentation and the complete test/build matrix on Node 20.19, 22.18, and 24.11.
+
+---
+
+# v1 package readiness hardening
+
+## Scope
+
+- Correct signing capability and signer-identity contracts across Xyra, WalletConnect, Crossmark, and Ledger.
+- Make adapter and manager connection lifecycles generation-safe so stale async work cannot revive, replace, or tear down a newer session.
+- Make UI and Vue modal lifecycles attempt-safe, including delayed open/close, QR, account enumeration, and state-probe paths.
+- Correct published package documentation and remove avoidable runtime dependency, storage, logging, and scroll-lock hazards.
+
+## Plan
+
+- [x] Add focused fail-before regressions for every confirmed signing, lifecycle, UI, framework, documentation, and hardening defect.
+- [x] Fix adapter signing contracts and expose only capabilities that each wallet protocol actually supports.
+- [x] Add explicit attempt ownership to Ledger, Xyra, Otsu, core manager, web-component, and Vue async lifecycle paths.
+- [x] Harden storage access, account snapshot ownership, logger delegation, and modal body-scroll restoration.
+- [x] Correct published import examples and dependency metadata, including the Crossmark type-only dependency path where feasible.
+- [x] Run focused adapter/core/UI/Vue checks, then repository lint, formatting, docs snapshots, full tests, browser tests, packed-consumer tests, and production audit.
+- [x] Review the cumulative diff for minimality, public API compatibility, and release risk; record results below.
+- [x] Commit intentional changes, push the branch, open a PR against `develop`, and verify the remote head and CI state.
+
+## Review
+
+- Corrected adapter capability contracts and made Ledger, Otsu, Xyra, WalletConnect, and manager connection ownership resilient to overlapping connect, reconnect, disconnect, and teardown work.
+- Made the web component and Vue wrapper invalidate stale manager, Xaman, WalletConnect, QR, account-enumeration, modal-error, and KeepAlive work; document scrolling is reference-counted across wallet and account dialogs.
+- Corrected current documentation for package imports, supported wallet capabilities, promise-based error handling, storage behavior, and browser-safe component initialization.
+- Verified focused core (90), UI (164), Vue (25), Ledger (48), Otsu (41), and WalletConnect (66) tests; the full monorepo build/test, lint, formatting, docs snapshot, Chromium (9), and packed ESM/CJS/React 18/React 19/Vue/Nuxt consumer checks pass.
+- `pnpm audit --prod` reports no critical, high, or moderate advisories. The sole low-severity `elliptic` advisory is declarations-only through `@crossmarkio/typings`, has no patched release, is absent from runtime bundles, and remains documented in `docs/security/dependency-audit.md`.
+- Opened pull request [#187](https://github.com/XRPL-Commons/xrpl-connect/pull/187) from `fix/v1-package-readiness` into `develop`.
+
+## Fix PR #187 review findings
+
+- [x] Make manager teardown ownership-safe so an old teardown cannot emit for a newer session and concurrent disconnect callers join the same result.
+- [x] Invalidate pending Xaman probes on manager disconnect and prevent modal cleanup from bypassing manager-owned WalletConnect state.
+- [x] Treat injected managers as externally owned and settle framework connection attempts when returning to the wallet list.
+- [x] Track and close in-flight Ledger discovery resources when disconnect is requested.
+- [x] Resynchronize Vue KeepAlive connection notification state after inactive disconnect/reconnect cycles.
+- [x] Gate message-signing demos by the connected adapter capability and align every public event schema description.
+- [x] Add fail-before regression coverage for all ten reviewed defects and exercise overlapping lifecycle paths.
+- [x] Run focused suites, repository checks, full tests, browser tests, packed-consumer verification, docs checks, and the production audit.
+- [x] Review the cumulative PR diff for lifecycle ownership, API compatibility, documentation accuracy, and minimality.
+- [x] Sign and push the corrective commit, verify the remote PR head and signatures, and wait for required CI.
+
+### Review-fix results
+
+- Added ownership- and generation-aware teardown handling across the core manager, UI connector, and Ledger discovery flow, with deterministic regressions for every reported race.
+- Added a public wallet-list cancellation settlement consumed by React and Vue, and fixed Vue KeepAlive notification resynchronization.
+- Capability-gated bundled message-signing examples and aligned the UI event documentation, including preflight attempt identifiers.
+- Focused core (97), UI (179), Ledger (49), React (35), and Vue (28) suites passed; the full monorepo suite, browser suite (9), docs snapshot/build, and packed-consumer matrix also passed.
+- Repeated adversarial review of teardown ordering, shared-manager ownership, cancellation boundaries, and framework lifecycle behavior found no remaining correctness issue.
+- Production audit reports only the known low-severity `elliptic` advisory inherited through Crossmark typings; no patched dependency version is available.
+- Corrective commit `7468f6c` is GPG-verified by GitHub and is the remote PR head; documentation and the Node 20.19, 22.18, and 24.11 test/build jobs all passed.

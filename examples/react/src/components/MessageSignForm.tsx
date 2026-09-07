@@ -3,7 +3,7 @@ import { useWallet, useSigner } from '@xrpl-commons/xrpl-connect-react';
 import { useDemo } from '../context/DemoContext';
 
 export function MessageSignForm() {
-  const { connected } = useWallet();
+  const { connected, manager } = useWallet();
   const { signMessage } = useSigner();
   const { addEvent } = useDemo();
   const [message, setMessage] = useState('');
@@ -11,6 +11,11 @@ export function MessageSignForm() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
+    if (!manager.supports('signMessage')) {
+      setResult('<div class="error">This wallet does not support message signing.</div>');
+      return;
+    }
 
     try {
       setResult('<div class="loading">Signing message...</div>');
@@ -35,6 +40,17 @@ export function MessageSignForm() {
 
   if (!connected) {
     return null;
+  }
+
+  if (!manager.supports('signMessage')) {
+    return (
+      <section id="message-section">
+        <h2>Sign Message</h2>
+        <div className="result">
+          <div className="error">The connected wallet does not support message signing.</div>
+        </div>
+      </section>
+    );
   }
 
   return (

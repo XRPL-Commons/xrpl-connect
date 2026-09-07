@@ -1,15 +1,18 @@
-import { ref, computed } from 'vue';
+import { computed, shallowRef } from 'vue';
 
 let walletManagerInstance: any = null;
 let initializationPromise: Promise<any> | null = null;
+const account = shallowRef<any>(null);
+const connected = shallowRef(false);
+const loading = shallowRef(false);
+const error = shallowRef<string | null>(null);
 
 export const useWallet = () => {
-  const account = ref<any>(null);
-  const connected = ref(false);
-  const loading = ref(false);
-  const error = ref<string | null>(null);
-
   const initializeWalletManager = async () => {
+    if (typeof window === 'undefined') {
+      throw new Error('WalletManager can only be initialized in the browser');
+    }
+
     // Return cached instance if already initialized
     if (walletManagerInstance) {
       return walletManagerInstance;
@@ -86,22 +89,26 @@ export const useWallet = () => {
           console.warn('Failed to create MetaMaskSnapAdapter:', err);
         }
 
-        try {
-          const walletConnect = new WalletConnectAdapter({
-            projectId: '32798b46e13dfb0049706a524cf132d6',
-          });
-          adapters.push(walletConnect);
-        } catch (err) {
-          console.warn('Failed to create WalletConnectAdapter:', err);
+        const walletConnectProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
+        if (walletConnectProjectId) {
+          try {
+            const walletConnect = new WalletConnectAdapter({
+              projectId: walletConnectProjectId,
+            });
+            adapters.push(walletConnect);
+          } catch (err) {
+            console.warn('Failed to create WalletConnectAdapter:', err);
+          }
         }
 
-        try {
-          const xaman = new XamanAdapter({
-            apiKey: '15ba80a8-cba2-4789-a45b-c6a850d9d91b',
-          });
-          adapters.push(xaman);
-        } catch (err) {
-          console.warn('Failed to create XamanAdapter:', err);
+        const xamanApiKey = import.meta.env.VITE_XAMAN_API_KEY;
+        if (xamanApiKey) {
+          try {
+            const xaman = new XamanAdapter({ apiKey: xamanApiKey });
+            adapters.push(xaman);
+          } catch (err) {
+            console.warn('Failed to create XamanAdapter:', err);
+          }
         }
 
         if (adapters.length === 0) {
@@ -125,12 +132,10 @@ export const useWallet = () => {
           connected.value = false;
         });
 
-        walletManagerInstance.on('error', (err: any) => {
-          error.value = err.message;
-        });
-
         return walletManagerInstance;
       } catch (err) {
+        walletManagerInstance = null;
+        initializationPromise = null;
         const message = err instanceof Error ? err.message : 'Failed to initialize WalletManager';
         error.value = message;
         console.error('Wallet initialization error:', err);

@@ -82,15 +82,13 @@ Here's a complete example with a single HTML file:
         accountInfo.style.display = 'none';
       });
 
-      // Handle errors
-      walletManager.on('error', (error) => {
-        console.error('Error:', error.message);
-        alert('Connection error: ' + error.message);
-      });
-
       // Disconnect button
       disconnectBtn.addEventListener('click', async () => {
-        await walletManager.disconnect();
+        try {
+          await walletManager.disconnect();
+        } catch (error) {
+          console.error('Disconnect failed:', error);
+        }
       });
     </script>
   </body>
@@ -111,12 +109,6 @@ walletManager.on('connect', (account) => {
 // Disconnection event
 walletManager.on('disconnect', () => {
   console.log('Disconnected');
-});
-
-// Error event
-walletManager.on('error', (error) => {
-  console.error('Error code:', error.code);
-  console.error('Error message:', error.message);
 });
 
 // Account change (user switched accounts)
@@ -156,10 +148,16 @@ async function sendPayment() {
 
 ## Signing Messages
 
-Sign messages with the connected wallet:
+Message signing is an optional wallet capability. Hide or disable the action unless
+the connected adapter supports it, and keep a defensive check at the call site:
 
 ```javascript
 async function signMessage() {
+  if (!walletManager.supports('signMessage')) {
+    console.info('The connected wallet does not support message signing');
+    return;
+  }
+
   try {
     const result = await walletManager.signMessage('Hello XRPL');
 
@@ -218,32 +216,8 @@ Now users will see all four wallets in the connection modal!
 
 ## Error Handling
 
-Always handle errors gracefully:
-
-```javascript
-walletManager.on('error', (error) => {
-  console.error('Error code:', error.code);
-  console.error('Error message:', error.message);
-  console.error('Original error:', error.originalError);
-
-  // Handle specific errors
-  switch (error.code) {
-    case 'WALLET_NOT_INSTALLED':
-      alert('Please install a wallet to continue');
-      break;
-    case 'CONNECTION_FAILED':
-      alert('Failed to connect. Please try again.');
-      break;
-    case 'SIGN_REJECTED':
-      alert('You rejected the transaction');
-      break;
-    default:
-      alert('An error occurred: ' + error.message);
-  }
-});
-```
-
-Or use try-catch with promise-based methods:
+Wallet operations report failures through rejected promises. Handle them at the
+call site:
 
 ```javascript
 try {
@@ -332,7 +306,10 @@ walletManager.on('connect', (account: AccountInfo) => {
   console.log('Connected:', account.address);
 });
 
-walletManager.on('error', (error: WalletError) => {
-  console.error('Error:', error.message);
-});
+try {
+  await walletManager.connect('xaman');
+} catch (error) {
+  const walletError = error as WalletError;
+  console.error('Connection failed:', walletError.message);
+}
 ```

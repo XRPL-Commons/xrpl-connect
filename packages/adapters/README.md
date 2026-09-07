@@ -275,7 +275,7 @@ if (available) {
 - **connect()**: Requests authorization, then queries and returns Crossmark's active network
 - **sign()**: Uses extension's `signAndWait` method to return signed blob
 - **signAndSubmit()**: Uses extension's `signAndSubmitAndWait` method
-- **signMessage()**: Uses extension's `signMessage` method
+- **signMessage()**: Unsupported; Crossmark exposes a sign-in challenge, not a documented arbitrary-message protocol
 - **Event Handling**: Listens to extension-emitted events
 
 ---
@@ -563,6 +563,9 @@ if (state === LedgerDeviceState.READY) {
 ```
 
 Ledger access requires HTTPS (localhost is allowed), a compatible Chromium browser, a user gesture, and the XRP app open on an unlocked device. `LedgerAdapterOptions`, `LedgerConnectOptions`, `LedgerDeviceState`, and `LEDGER_STATE_MESSAGES` are public exports.
+
+Ledger supports transaction signing but not arbitrary message signing; the XRP
+application's transaction parser is not a general-purpose message-signing API.
 
 For multisigning, prepare one identical transaction for every signer with an
 explicit source `Account`, `Fee`, `Sequence`, and `SigningPubKey: ''`, then call

@@ -109,6 +109,34 @@ describe('WalletConnectAdapter.connect', () => {
 
     expect(account.address).toBe(MAINNET_ADDRESS);
     expect(account.network.id).toBe('mainnet');
+    expect(mockClient.connect).toHaveBeenCalledWith({
+      requiredNamespaces: {
+        xrpl: {
+          chains: ['xrpl:0'],
+          methods: ['xrpl_signTransaction', 'xrpl_signTransactionFor'],
+          events: expect.any(Array),
+        },
+      },
+    });
+  });
+
+  it('requests only implemented transaction methods during pre-initialization', async () => {
+    mockClient.connect.mockResolvedValue({
+      uri: walletConnectUri(PAIRING_TOPIC),
+      approval: vi.fn().mockRejectedValue(new Error('Proposal cancelled')),
+    });
+
+    await new WalletConnectAdapter({ projectId: 'proj-id' }).preInitialize('mainnet');
+
+    expect(mockClient.connect).toHaveBeenCalledWith({
+      requiredNamespaces: {
+        xrpl: {
+          chains: ['xrpl:0'],
+          methods: ['xrpl_signTransaction', 'xrpl_signTransactionFor'],
+          events: expect.any(Array),
+        },
+      },
+    });
   });
 
   it('selects the account whose CAIP-10 chain matches the requested network', async () => {
@@ -403,6 +431,30 @@ describe('WalletConnectAdapter.connect', () => {
     expect(mockClient.core.pairing.disconnect).toHaveBeenCalledWith(
       expect.objectContaining({ topic: PAIRING_TOPIC })
     );
+  });
+
+  it('notifies both configured and per-connection QR code callbacks', async () => {
+    const uri = walletConnectUri(PAIRING_TOPIC);
+    mockClient.connect.mockResolvedValue({
+      uri,
+      approval: vi.fn().mockResolvedValue({
+        topic: 'topic-connected',
+        namespaces: { xrpl: { accounts: [`xrpl:0:${MAINNET_ADDRESS}`] } },
+      }),
+    });
+    const configuredCallback = vi.fn();
+    const connectionCallback = vi.fn();
+    const adapter = new WalletConnectAdapter({
+      projectId: 'proj-id',
+      onQRCode: configuredCallback,
+    });
+
+    await adapter.connect({ onQRCode: connectionCallback });
+
+    expect(configuredCallback).toHaveBeenCalledOnce();
+    expect(configuredCallback).toHaveBeenCalledWith(uri);
+    expect(connectionCallback).toHaveBeenCalledOnce();
+    expect(connectionCallback).toHaveBeenCalledWith(uri);
   });
 
   it('cancels a connection while SignClient initialization is still pending', async () => {

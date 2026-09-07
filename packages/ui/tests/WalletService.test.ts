@@ -129,8 +129,85 @@ describe('WalletService', () => {
     );
     expect(mockComponent.dispatchEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        detail: expect.objectContaining({ walletId: 'ledger', errorType: 'unavailable' }),
+        detail: expect.objectContaining({
+          walletId: 'ledger',
+          errorType: 'unavailable',
+          connectionAttemptId: expect.any(Number),
+        }),
       })
     );
+  });
+
+  it('does not start a delayed connection after pending work is cancelled', async () => {
+    vi.useFakeTimers();
+    const connect = vi.fn();
+    const mockWalletManager = {
+      wallets: [{ id: 'mockWallet', name: 'Mock Wallet' }],
+      connect,
+    };
+    const mockComponent = {
+      showLoadingView: vi.fn(),
+      showQRCodeView: vi.fn(),
+      showAccountSelectionView: vi.fn(),
+      showErrorView: vi.fn(),
+      dispatchEvent: vi.fn(),
+      setQRCode: vi.fn(),
+      close: vi.fn(),
+    };
+    const walletService = new WalletService(mockWalletManager as any, mockComponent as any);
+
+    const connection = walletService.connectWallet('mockWallet');
+    walletService.cancelPendingWork();
+    await vi.runAllTimersAsync();
+    await connection;
+
+    expect(connect).not.toHaveBeenCalled();
+    expect(mockComponent.showErrorView).not.toHaveBeenCalled();
+    expect(
+      mockComponent.dispatchEvent.mock.calls.some(([event]) => (event as Event).type === 'error')
+    ).toBe(false);
+  });
+
+  it('does not show stale Ledger accounts after pending work is cancelled', async () => {
+    vi.useFakeTimers();
+    let resolveAccounts!: (accounts: { address: string; index: number }[]) => void;
+    const getAccounts = vi.fn(
+      () =>
+        new Promise<{ address: string; index: number }[]>((resolve) => {
+          resolveAccounts = resolve;
+        })
+    );
+    const mockWalletManager = {
+      wallets: [
+        {
+          id: 'ledger',
+          name: 'Ledger',
+          isAvailable: vi.fn(async () => true),
+          getAccounts,
+        },
+      ],
+      connect: vi.fn(),
+    };
+    const mockComponent = {
+      showLoadingView: vi.fn(),
+      showQRCodeView: vi.fn(),
+      showAccountSelectionView: vi.fn(),
+      showErrorView: vi.fn(),
+      dispatchEvent: vi.fn(),
+      setQRCode: vi.fn(),
+      close: vi.fn(),
+    };
+    const walletService = new WalletService(mockWalletManager as any, mockComponent as any);
+
+    const connection = walletService.connectWallet('ledger');
+    await vi.runAllTimersAsync();
+    expect(getAccounts).toHaveBeenCalledOnce();
+
+    walletService.cancelPendingWork();
+    resolveAccounts([{ address: 'rLedger', index: 0 }]);
+    await connection;
+
+    expect(mockComponent.showAccountSelectionView).not.toHaveBeenCalled();
+    expect(mockComponent.showErrorView).not.toHaveBeenCalled();
   });
 });

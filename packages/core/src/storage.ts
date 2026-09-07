@@ -153,11 +153,7 @@ export class Storage {
     const options = normalizeOptions(adapterOrOptions);
 
     // Default to localStorage if available, otherwise use memory storage
-    this.adapter =
-      options.adapter ||
-      (typeof window !== 'undefined' && window.localStorage
-        ? new LocalStorageAdapter()
-        : new MemoryStorageAdapter());
+    this.adapter = options.adapter || createDefaultStorageAdapter();
     this.version = options.version ?? STORED_STATE_VERSION;
     this.migrations = options.migrations ?? STATE_MIGRATIONS;
   }
@@ -271,6 +267,16 @@ export class Storage {
     } catch (error) {
       logger.warn('Failed to remove invalid stored state:', error);
     }
+  }
+}
+
+function createDefaultStorageAdapter(): StorageAdapter {
+  if (typeof window === 'undefined') return new MemoryStorageAdapter();
+
+  try {
+    return window.localStorage ? new LocalStorageAdapter() : new MemoryStorageAdapter();
+  } catch {
+    return new MemoryStorageAdapter();
   }
 }
 

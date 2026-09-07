@@ -350,7 +350,13 @@ export function supportsReconnectOptions(
 /**
  * Events emitted by WalletManager
  */
-export type WalletEvent = 'connect' | 'disconnect' | 'accountChanged' | 'networkChanged' | 'error';
+export type WalletEvent =
+  | 'connect'
+  | 'disconnecting'
+  | 'disconnect'
+  | 'accountChanged'
+  | 'networkChanged'
+  | 'error';
 
 /**
  * Wallet manager configuration options

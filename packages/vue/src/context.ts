@@ -45,8 +45,9 @@ interface InternalContext extends XrplConnectContextValue {
   ready: Readonly<Ref<boolean>>;
   registerConnector(element: WalletConnectorElement): void;
   unregisterConnector(element: WalletConnectorElement): void;
-  reportModalConnecting(): void;
-  reportModalError(error: WalletError): void;
+  reportModalConnecting(): symbol;
+  reportModalError(attempt: symbol | null, error: WalletError): boolean;
+  reportModalClosed(attempts: readonly symbol[]): void;
   openModal(): Promise<void>;
   openAndWaitModal(): Promise<AccountInfo>;
   closeModal(): void;
@@ -66,11 +67,11 @@ export function createXrplConnect(config: XrplConnectConfig): Plugin {
       const ready = shallowRef(false);
       const connectors = new Set<WalletConnectorElement>();
       const connectionAttempts = new Set<symbol>();
-      let modalConnecting = false;
+      const modalConnectionAttempts = new Set<symbol>();
       let active = true;
 
       const syncConnecting = () => {
-        connecting.value = connectionAttempts.size > 0 || modalConnecting;
+        connecting.value = connectionAttempts.size > 0 || modalConnectionAttempts.size > 0;
       };
       const beginConnectionAttempt = () => {
         const attempt = Symbol('connectionAttempt');
@@ -86,7 +87,7 @@ export function createXrplConnect(config: XrplConnectConfig): Plugin {
       };
       const cancelConnectionState = () => {
         connectionAttempts.clear();
-        modalConnecting = false;
+        modalConnectionAttempts.clear();
         error.value = null;
         syncConnecting();
       };
@@ -115,7 +116,7 @@ export function createXrplConnect(config: XrplConnectConfig): Plugin {
       };
       const onConnect = () => {
         error.value = null;
-        modalConnecting = false;
+        modalConnectionAttempts.clear();
         syncConnecting();
         sync();
       };
@@ -123,7 +124,7 @@ export function createXrplConnect(config: XrplConnectConfig): Plugin {
       const onAccountChanged = () => sync();
       const onNetworkChanged = () => sync();
       const onError = (value: unknown) => {
-        modalConnecting = false;
+        modalConnectionAttempts.clear();
         syncConnecting();
         if (isWalletError(value)) error.value = value;
       };
@@ -173,13 +174,24 @@ export function createXrplConnect(config: XrplConnectConfig): Plugin {
           ready.value = connectors.size > 0;
         },
         reportModalConnecting() {
-          modalConnecting = true;
+          const attempt = Symbol('modalConnectionAttempt');
+          modalConnectionAttempts.add(attempt);
           error.value = null;
           syncConnecting();
+          return attempt;
         },
-        reportModalError(value) {
-          modalConnecting = false;
+        reportModalError(attempt, value) {
+          if (attempt !== null && !modalConnectionAttempts.delete(attempt)) return false;
+          if (!active || manager.connected) {
+            syncConnecting();
+            return false;
+          }
           error.value = value;
+          syncConnecting();
+          return true;
+        },
+        reportModalClosed(attempts) {
+          for (const attempt of attempts) modalConnectionAttempts.delete(attempt);
           syncConnecting();
         },
         openModal() {

@@ -510,7 +510,7 @@ describe('CrossmarkAdapter.sign', () => {
     });
   });
 
-  it('maps Crossmark rejection metadata from every signing method to sign-rejected', async () => {
+  it('maps Crossmark rejection metadata from transaction signing methods to sign-rejected', async () => {
     const adapter = await connected();
     sdk.methods.signAndWait.mockResolvedValue({
       response: {
@@ -525,40 +525,32 @@ describe('CrossmarkAdapter.sign', () => {
         },
       },
     });
-    sdk.methods.signInAndWait.mockResolvedValue({
-      response: {
-        data: {
-          address: '',
-          publicKey: '',
-          meta: { isRejected: true },
-        },
-      },
-    });
-
     await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_REJECTED,
     });
     await expect(
       adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
     ).rejects.toMatchObject({ code: WalletErrorCode.SIGN_REJECTED });
-
-    await expect(adapter.signMessage('hello')).rejects.toMatchObject({
-      code: WalletErrorCode.SIGN_REJECTED,
-    });
   });
 
-  it('maps thrown cancellation errors from submit and message signing to sign-rejected', async () => {
+  it('maps thrown cancellation errors from submit to sign-rejected', async () => {
     const adapter = await connected();
     sdk.methods.signAndSubmitAndWait.mockRejectedValue(new Error('User cancelled'));
 
     await expect(
       adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
     ).rejects.toMatchObject({ code: WalletErrorCode.SIGN_REJECTED });
+  });
 
-    sdk.methods.signInAndWait.mockRejectedValue(new Error('User cancelled'));
+  it('advertises message signing as unsupported without invoking the sign-in challenge', async () => {
+    const adapter = await connected();
+    const signInCalls = sdk.methods.signInAndWait.mock.calls.length;
+
+    expect(adapter.capabilities.signMessage).toBe(false);
     await expect(adapter.signMessage('hello')).rejects.toMatchObject({
-      code: WalletErrorCode.SIGN_REJECTED,
+      code: WalletErrorCode.UNSUPPORTED_METHOD,
     });
+    expect(sdk.methods.signInAndWait).toHaveBeenCalledTimes(signInCalls);
   });
 });
 
