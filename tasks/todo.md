@@ -429,6 +429,7 @@
 - Chromium verifies inline, failed, and stalled logos in both paths under enforced `img-src`/`connect-src` CSP, decodes the displayed pairing URI, and checks late logo completions cannot replace a fallback or newer QR. All six original regression cases fail against the original connector.
 - All 179 UI unit tests, UI public/source type checks, repository formatting/lint (`pnpm exec vp check`), all 16 browser tests, the full monorepo build/test pipeline (`pnpm test`), and `git diff --check` pass.
 - Independent source/dependency and final-diff review found no blocking findings. The intentional maximum logo wait is three seconds; consumers need no CSP relaxation.
+
 # Issue #191
 
 - [x] Inspect issue, repository guidance, and create isolated worktree.
@@ -446,3 +447,10 @@ The initial regression run failed 95 cases against the original implementation. 
 Installed upstream source review confirmed that OAuth userinfo, the user facade, and ping forward raw metadata. Signed-payload network IDs retain their separate numeric-or-null contract and strict validation. Independent review found no missed metadata consumer or material implementation issue.
 
 Opened [PR #192](https://github.com/XRPL-Commons/xrpl-connect/pull/192) against `develop`.
+
+## PR #193 CI correction
+
+- [x] Inspect every failed job and synchronize the clean worktree with the remote PR head.
+- [x] Identify merged task-log formatting failures on Node 22/24 and an npm download `ECONNRESET` on Node 20.
+- [x] Format the merged log and run repository checks.
+- [x] Prepare the formatting correction for push; require all remote CI jobs to pass before reporting completion.
