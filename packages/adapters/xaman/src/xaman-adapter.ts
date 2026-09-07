@@ -109,6 +109,14 @@ interface ActivePayloadOperation {
   resolveDone: () => void;
 }
 
+// OAuth userinfo can return decimal strings despite the upstream numeric declaration.
+function normalizeNetworkId(value: unknown): number | undefined {
+  if (typeof value === 'string' && /^(0|[1-9]\d*)$/.test(value)) {
+    value = Number(value);
+  }
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((resolvePromise) => {
@@ -562,12 +570,12 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
       }
 
       const endpoint = jwtData?.network_endpoint;
-      const networkId = jwtData?.network_id;
+      const networkId = normalizeNetworkId(jwtData?.network_id);
       let network = this.currentAccount.network;
-      if (typeof endpoint === 'string' && typeof networkId === 'number') {
+      if (typeof endpoint === 'string' && endpoint.length > 0 && networkId !== undefined) {
         network = this.parseNetwork(endpoint, networkId);
-      } else if (endpoint !== undefined || networkId !== undefined) {
-        throw new Error('Xaman ping returned incomplete network information');
+      } else if (endpoint !== undefined || jwtData?.network_id !== undefined) {
+        throw new Error('Xaman ping returned missing or invalid network metadata');
       }
 
       this.currentAccount = {
@@ -911,12 +919,9 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
         : typeof userEndpoint === 'string' && userEndpoint.length > 0
           ? userEndpoint
           : undefined;
-    const networkId =
-      typeof authorizedMe?.networkId === 'number'
-        ? authorizedMe.networkId
-        : typeof userNetworkId === 'number'
-          ? userNetworkId
-          : undefined;
+    const networkId = normalizeNetworkId(
+      authorizedMe?.networkId !== undefined ? authorizedMe.networkId : userNetworkId
+    );
     const networkType =
       typeof authorizedMe?.networkType === 'string'
         ? authorizedMe.networkType
@@ -926,7 +931,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
 
     if (!endpoint || networkId === undefined) {
       throw new Error(
-        'Unable to determine network from Xaman. Make sure the API key and network are correct.'
+        'Xaman returned missing or invalid network metadata. Expected a network endpoint and a non-negative safe integer network ID.'
       );
     }
 
