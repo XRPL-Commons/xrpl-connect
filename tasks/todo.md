@@ -417,7 +417,7 @@
 - [x] Inspect upstream metadata contracts and normalize canonical decimal IDs across authentication, restoration, and refresh.
 - [x] Add regressions for valid, invalid, unsupported, and mismatched network metadata.
 - [x] Verify regression failure before the fix; run package tests, build, formatting, and lint.
-- [ ] Review final diff, commit, push, and open PR against develop.
+- [x] Review final diff, commit, push, and open PR against develop.
 
 ## Review
 
@@ -426,3 +426,5 @@ Canonical decimal strings and non-negative safe integer IDs now share strict nor
 The initial regression run failed 95 cases against the original implementation. All 205 final Xaman tests and 97 core tests pass, along with core/Xaman builds, Xaman TypeScript checks, repository formatting/lint (`pnpm exec vp check`), and `git diff --check`.
 
 Installed upstream source review confirmed that OAuth userinfo, the user facade, and ping forward raw metadata. Signed-payload network IDs retain their separate numeric-or-null contract and strict validation. Independent review found no missed metadata consumer or material implementation issue.
+
+Opened [PR #192](https://github.com/XRPL-Commons/xrpl-connect/pull/192) against `develop`.
