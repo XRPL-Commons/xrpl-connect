@@ -429,3 +429,20 @@
 - Chromium verifies inline, failed, and stalled logos in both paths under enforced `img-src`/`connect-src` CSP, decodes the displayed pairing URI, and checks late logo completions cannot replace a fallback or newer QR. All six original regression cases fail against the original connector.
 - All 179 UI unit tests, UI public/source type checks, repository formatting/lint (`pnpm exec vp check`), all 16 browser tests, the full monorepo build/test pipeline (`pnpm test`), and `git diff --check` pass.
 - Independent source/dependency and final-diff review found no blocking findings. The intentional maximum logo wait is three seconds; consumers need no CSP relaxation.
+# Issue #191
+
+- [x] Inspect issue, repository guidance, and create isolated worktree.
+- [x] Inspect upstream metadata contracts and normalize canonical decimal IDs across authentication, restoration, and refresh.
+- [x] Add regressions for valid, invalid, unsupported, and mismatched network metadata.
+- [x] Verify regression failure before the fix; run package tests, build, formatting, and lint.
+- [x] Review final diff, commit, push, and open PR against develop.
+
+## Review
+
+Canonical decimal strings and non-negative safe integer IDs now share strict normalization in OAuth/user metadata and live ping refresh. Explicitly invalid OAuth IDs are rejected rather than replaced by facade values; supported-network and mismatch checks remain intact. Missing/invalid metadata errors no longer suggest an API-key problem.
+
+The initial regression run failed 95 cases against the original implementation. All 205 final Xaman tests and 97 core tests pass, along with core/Xaman builds, Xaman TypeScript checks, repository formatting/lint (`pnpm exec vp check`), and `git diff --check`.
+
+Installed upstream source review confirmed that OAuth userinfo, the user facade, and ping forward raw metadata. Signed-payload network IDs retain their separate numeric-or-null contract and strict validation. Independent review found no missed metadata consumer or material implementation issue.
+
+Opened [PR #192](https://github.com/XRPL-Commons/xrpl-connect/pull/192) against `develop`.

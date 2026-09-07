@@ -9,7 +9,7 @@ const mockXummInstance = {
   user: {
     account: Promise.resolve<string | undefined>(undefined),
     networkEndpoint: Promise.resolve<string | undefined>(undefined),
-    networkId: Promise.resolve<number | undefined>(undefined),
+    networkId: Promise.resolve<unknown>(undefined),
     networkType: Promise.resolve<string | undefined>(undefined),
   },
   payload: {
@@ -222,6 +222,100 @@ async function signedAdapter(network: NetworkConfig = 'mainnet') {
 
   return { adapter, subscription: createSubscriptionHarness() };
 }
+
+const INVALID_NETWORK_IDS = [
+  undefined,
+  null,
+  '',
+  ' ',
+  '01',
+  '+1',
+  '-1',
+  '1.0',
+  '1.5',
+  '1e0',
+  '0x1',
+  '1junk',
+  '1\n',
+  ' 1',
+  '1 ',
+  'NaN',
+  'Infinity',
+  '9007199254740992',
+  -1,
+  1.5,
+  NaN,
+  Infinity,
+  -Infinity,
+  Number.MAX_SAFE_INTEGER + 1,
+  true,
+  {},
+  [],
+];
+
+describe.each(['authorization', 'restoration'] as const)(
+  'Xaman network metadata from %s',
+  (source) => {
+    async function connectWithId(networkId: unknown, requested: NetworkConfig = 'testnet') {
+      const adapter = new XamanAdapter({ apiKey: 'test-key' });
+      if (source === 'authorization') {
+        mockXummInstance.authorize.mockResolvedValue({
+          me: {
+            account: CONNECTED_ACCOUNT,
+            networkType: undefined,
+            networkEndpoint: 'wss://testnet.xrpl-labs.com',
+            networkId,
+          },
+        });
+        // An explicitly invalid OAuth ID must not fall back to the facade's valid ID.
+        mockXummInstance.user.networkId = Promise.resolve(networkId === undefined ? undefined : 1);
+        return { adapter, result: adapter.connect({ network: requested }) };
+      }
+      mockXummInstance.user.account = Promise.resolve(CONNECTED_ACCOUNT);
+      mockXummInstance.user.networkEndpoint = Promise.resolve('wss://testnet.xrpl-labs.com');
+      mockXummInstance.user.networkId = Promise.resolve(networkId);
+      return { adapter, result: adapter.checkXamanState({ network: requested }) };
+    }
+
+    it.each([0, '0', 1, '1', 2, '2'])('accepts network ID %s', async (networkId) => {
+      const network = (['mainnet', 'testnet', 'devnet'] as const)[Number(networkId)];
+      const { result } = await connectWithId(networkId, network);
+      await expect(result).resolves.toMatchObject({
+        network: { id: network, walletConnectId: `xrpl:${networkId}` },
+      });
+    });
+
+    it.each(INVALID_NETWORK_IDS)('rejects invalid network ID %j', async (networkId) => {
+      const { adapter, result } = await connectWithId(networkId);
+      await expect(result).rejects.toMatchObject({
+        code: WalletErrorCode.CONNECTION_FAILED,
+        message: expect.stringContaining('missing or invalid network metadata'),
+      });
+      await expect(adapter.getAccount()).resolves.toBeNull();
+    });
+
+    it.each([999, '999', Number.MAX_SAFE_INTEGER, String(Number.MAX_SAFE_INTEGER)])(
+      'rejects unsupported network ID %s',
+      async (networkId) => {
+        const { result } = await connectWithId(networkId);
+        await expect(result).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_NOT_SUPPORTED });
+      }
+    );
+
+    it('rejects a network type that contradicts a string ID', async () => {
+      mockXummInstance.user.networkType = Promise.resolve('MAINNET');
+      const { adapter, result } = await connectWithId('1');
+      await expect(result).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_MISMATCH });
+      await expect(adapter.getAccount()).resolves.toBeNull();
+    });
+
+    it('preserves requested-network mismatch validation for string IDs', async () => {
+      const { adapter, result } = await connectWithId('1', 'mainnet');
+      await expect(result).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_MISMATCH });
+      await expect(adapter.getAccount()).resolves.toBeNull();
+    });
+  }
+);
 
 describe('XamanAdapter.isAvailable', () => {
   it('is always available regardless of options', async () => {
@@ -457,24 +551,27 @@ describe('XamanAdapter.connect', () => {
     expect(account.network).toMatchObject({ id: 'testnet', walletConnectId: 'xrpl:1' });
   });
 
-  it('uses network metadata returned by authorization when the user facade is incomplete', async () => {
-    mockXummInstance.user.networkEndpoint = Promise.resolve(undefined);
-    mockXummInstance.user.networkId = Promise.resolve(undefined);
-    mockXummInstance.user.networkType = Promise.resolve(undefined);
-    mockXummInstance.authorize.mockResolvedValue({
-      me: {
-        account: CONNECTED_ACCOUNT,
-        networkEndpoint: 'wss://s.altnet.rippletest.net:51233/',
-        networkId: 1,
-        networkType: 'TESTNET',
-      },
-    });
-    const adapter = new XamanAdapter({ apiKey: 'test-key' });
+  it.each([1, '1'])(
+    'uses authorization network ID %s when the user facade is incomplete',
+    async (networkId) => {
+      mockXummInstance.user.networkEndpoint = Promise.resolve(undefined);
+      mockXummInstance.user.networkId = Promise.resolve(undefined);
+      mockXummInstance.user.networkType = Promise.resolve(undefined);
+      mockXummInstance.authorize.mockResolvedValue({
+        me: {
+          account: CONNECTED_ACCOUNT,
+          networkEndpoint: 'wss://testnet.xrpl-labs.com',
+          networkId,
+          networkType: 'TESTNET',
+        },
+      });
+      const adapter = new XamanAdapter({ apiKey: 'test-key' });
 
-    const account = await adapter.connect({ network: 'testnet' });
+      const account = await adapter.connect({ network: 'testnet' });
 
-    expect(account.network).toMatchObject({ id: 'testnet', walletConnectId: 'xrpl:1' });
-  });
+      expect(account.network).toMatchObject({ id: 'testnet', walletConnectId: 'xrpl:1' });
+    }
+  );
 
   it('rejects an explicit network that differs from Xaman live metadata before caching', async () => {
     setLiveXamanNetwork('testnet');
@@ -1591,6 +1688,60 @@ describe('XamanAdapter.fetchAccount', () => {
     });
     expect(mockXummInstance.ping).toHaveBeenCalledTimes(1);
     await expect(adapter.getAccount()).resolves.toMatchObject({ address: changedAccount });
+  });
+
+  it.each([0, '0', 1, '1'])('refreshes network ID %s', async (networkId) => {
+    const adapter = await connected();
+    mockXummInstance.ping.mockResolvedValue({
+      jwtData: {
+        sub: CONNECTED_ACCOUNT,
+        network_endpoint: 'wss://testnet.xrpl-labs.com',
+        network_id: networkId,
+      },
+    });
+    await expect(adapter.fetchAccount()).resolves.toMatchObject({
+      network: {
+        id: Number(networkId) === 0 ? 'mainnet' : 'testnet',
+        walletConnectId: `xrpl:${networkId}`,
+      },
+    });
+  });
+
+  it.each(INVALID_NETWORK_IDS)(
+    'rejects invalid ping network ID %j without changing the account',
+    async (networkId) => {
+      const adapter = await connected();
+      mockXummInstance.ping.mockResolvedValue({
+        jwtData: {
+          sub: 'changed-account',
+          network_endpoint: 'wss://testnet.xrpl-labs.com',
+          network_id: networkId,
+        },
+      });
+      await expect(adapter.fetchAccount()).rejects.toMatchObject({
+        code: WalletErrorCode.CONNECTION_FAILED,
+        message: expect.stringContaining('missing or invalid network metadata'),
+      });
+      await expect(adapter.getAccount()).resolves.toMatchObject({
+        address: CONNECTED_ACCOUNT,
+        network: { id: 'mainnet' },
+      });
+    }
+  );
+
+  it.each([999, '999'])('rejects unsupported ping network ID %s', async (networkId) => {
+    const adapter = await connected();
+    mockXummInstance.ping.mockResolvedValue({
+      jwtData: {
+        sub: CONNECTED_ACCOUNT,
+        network_endpoint: 'wss://testnet.xrpl-labs.com',
+        network_id: networkId,
+      },
+    });
+    await expect(adapter.fetchAccount()).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_NOT_SUPPORTED,
+    });
+    await expect(adapter.getNetwork()).resolves.toMatchObject({ id: 'mainnet' });
   });
 
   it('clears stale account state when ping has no authenticated subject', async () => {
