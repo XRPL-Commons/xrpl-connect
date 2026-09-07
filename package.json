@@ -34,6 +34,9 @@
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@types/node": "^20.14.0",
+    "@types/pngjs": "^6.0.5",
+    "jsqr": "^1.4.0",
+    "pngjs": "^7.0.0",
     "typescript": "^5.5.0",
     "vite": "catalog:",
     "vite-plus": "catalog:",

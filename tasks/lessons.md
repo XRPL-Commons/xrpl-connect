@@ -6,3 +6,4 @@
 - When review findings become implementation work, move immediately to the branch-attached worktree and complete the commit/push loop there; detached review worktrees are only for read-only verification.
 - A parser regression fixture must be proven against the known-bad artifact before being accepted; pin the complete consumer toolchain when floating transitive versions can make the failure disappear.
 - After rewriting a PR branch, verify every commit both locally with Git's signature status and remotely through GitHub's verification result; a locally valid GPG signature is not enough when GitHub persisted a verifier-service error.
+- After integrating a base-branch update, rerun formatting on merged task logs and verify CI on the resulting PR head; successful checks on the pre-merge head do not validate the merged tree.
