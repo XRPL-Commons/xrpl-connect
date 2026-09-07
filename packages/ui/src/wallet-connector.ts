@@ -123,6 +123,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     public accountSelectionData: AccountSelectionData | null = null;
     private previousModalHeight: number = 0;
     private preGeneratedQRCode: QRCodeStyling | null = null;
+    private qrRenderGeneration = 0;
     private preGeneratedURI: string | null = null;
     private preInitializationAdapter: WalletAdapter | null = null;
     private preInitializationManager: WalletManager | null = null;
@@ -926,42 +927,62 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private async preGenerateQRCode(uri: string) {
       try {
         this.preGeneratedURI = uri;
+        this.preGeneratedQRCode = null;
 
         // Get wallet icon for embedding
         const wallet = this.walletManager?.wallets.find((w) => w.id === 'walletconnect');
 
-        // Create QR code instance
-        const qrCode = new QRCodeStyling({
-          width: QR_CONFIG.SIZE,
-          height: QR_CONFIG.SIZE,
-          type: 'svg',
-          data: uri,
-          image: getSafeImageUrl(wallet?.icon) ?? undefined,
-          margin: QR_CONFIG.MARGIN,
-          qrOptions: {
-            errorCorrectionLevel: QR_CONFIG.ERROR_CORRECTION_LEVEL,
-          },
-          dotsOptions: {
-            type: QR_CONFIG.DOT_TYPE,
-            color: QR_CONFIG.DOT_COLOR,
-          },
-          backgroundOptions: {
-            color: QR_CONFIG.BACKGROUND_COLOR,
-          },
-          imageOptions: {
-            crossOrigin: 'anonymous',
-            margin: QR_CONFIG.IMAGE_MARGIN,
-            imageSize: QR_CONFIG.IMAGE_SIZE,
-          },
-        });
-
-        // Store the pre-generated QR code
+        const generation = this.preInitializationGeneration;
+        const qrCode = await this.createQRCode(uri, wallet?.icon);
+        if (generation !== this.preInitializationGeneration || this.preGeneratedURI !== uri) return;
         this.preGeneratedQRCode = qrCode;
         logger.debug('QR code pre-generated successfully');
       } catch (error) {
         logger.warn('Failed to pre-generate QR code:', error);
         // Silent failure - QR will be generated on demand if this fails
       }
+    }
+
+    private async createQRCode(uri: string, icon?: string): Promise<QRCodeStyling> {
+      const image = getSafeImageUrl(icon) ?? undefined;
+      const qrCode = new QRCodeStyling({
+        width: QR_CONFIG.SIZE,
+        height: QR_CONFIG.SIZE,
+        type: 'svg',
+        data: uri,
+        image,
+        margin: QR_CONFIG.MARGIN,
+        qrOptions: {
+          errorCorrectionLevel: QR_CONFIG.ERROR_CORRECTION_LEVEL,
+        },
+        dotsOptions: {
+          type: QR_CONFIG.DOT_TYPE,
+          color: QR_CONFIG.DOT_COLOR,
+        },
+        backgroundOptions: {
+          color: QR_CONFIG.BACKGROUND_COLOR,
+        },
+        imageOptions: {
+          crossOrigin: 'anonymous',
+          saveAsBlob: false,
+          margin: QR_CONFIG.IMAGE_MARGIN,
+          imageSize: QR_CONFIG.IMAGE_SIZE,
+        },
+      });
+      if (image) {
+        const ready = await withTimeout(
+          async () => !!(await qrCode.getRawData('svg')),
+          TIMINGS.QR_LOGO_TIMEOUT,
+          false
+        );
+        if (!ready) {
+          // A stalled image must not hold up pairing. Rebuild all modules without a logo.
+          return this.createQRCode(uri);
+        }
+      } else {
+        await qrCode.getRawData('svg');
+      }
+      return qrCode;
     }
 
     private walletService: WalletService | undefined;
@@ -1151,12 +1172,22 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Supports both URI strings and direct image URLs (for Xaman)
      */
     private async renderQRCode(uri: string) {
+      const generation = ++this.qrRenderGeneration;
+      const openGeneration = this.openGeneration;
+      const managerGeneration = this.managerGeneration;
       logger.debug('renderQRCode called with URI:', uri.substring(0, 60) + '...');
       const container = this.overlayPortal?.shadowRoot?.querySelector('#qr-container');
       if (!container || !uri) {
         logger.warn('No container or URI for QR code rendering');
         return;
       }
+
+      const isCurrent = () =>
+        generation === this.qrRenderGeneration &&
+        openGeneration === this.openGeneration &&
+        managerGeneration === this.managerGeneration &&
+        container === this.overlayPortal?.shadowRoot?.querySelector('#qr-container') &&
+        this.qrCodeData?.uri === uri;
 
       try {
         // Check if URI is already a QR code image URL (Xaman provides PNG directly)
@@ -1185,35 +1216,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         logger.debug('Generating modern QR code from URI');
         const wallet = this.walletManager?.wallets.find((w) => w.id === this.qrCodeData?.walletId);
 
-        const qrCode = new QRCodeStyling({
-          width: QR_CONFIG.SIZE,
-          height: QR_CONFIG.SIZE,
-          type: 'svg',
-          data: uri,
-          image: getSafeImageUrl(wallet?.icon) ?? undefined,
-          margin: QR_CONFIG.MARGIN,
-          qrOptions: {
-            errorCorrectionLevel: QR_CONFIG.ERROR_CORRECTION_LEVEL,
-          },
-          dotsOptions: {
-            type: QR_CONFIG.DOT_TYPE,
-            color: QR_CONFIG.DOT_COLOR,
-          },
-          backgroundOptions: {
-            color: QR_CONFIG.BACKGROUND_COLOR,
-          },
-          imageOptions: {
-            crossOrigin: 'anonymous',
-            margin: QR_CONFIG.IMAGE_MARGIN,
-            imageSize: QR_CONFIG.IMAGE_SIZE,
-          },
-        });
+        const qrCode = await this.createQRCode(uri, wallet?.icon);
+        if (!isCurrent()) return;
 
         // Clear container and append QR code
         replaceViewChildren(container);
         qrCode.append(container as HTMLElement);
         logger.debug('Modern QR code generated successfully');
       } catch (error) {
+        if (!isCurrent()) return;
         logger.error('Failed to generate QR code:', error);
         const message = document.createElement('div');
         message.className = 'qr-loading';
@@ -1383,9 +1394,13 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       if (this.isOpen) this.ensureDialogFocus('wallet');
       if (this.accountModalOpen) this.ensureDialogFocus('account');
 
-      // Update modal height smoothly after render
+      // Only measure the modal produced by this render; older callbacks can measure
+      // a height that a newer transition has temporarily pinned to the previous view.
+      const renderedModal = this.overlayPortal?.shadowRoot?.querySelector('.modal');
       requestAnimationFrame(() => {
-        this.updateModalHeight();
+        if (renderedModal === this.overlayPortal?.shadowRoot?.querySelector('.modal')) {
+          this.updateModalHeight();
+        }
       });
     }
 

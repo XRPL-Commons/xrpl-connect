@@ -410,3 +410,22 @@
 - Repeated adversarial review of teardown ordering, shared-manager ownership, cancellation boundaries, and framework lifecycle behavior found no remaining correctness issue.
 - Production audit reports only the known low-severity `elliptic` advisory inherited through Crossmark typings; no patched dependency version is available.
 - Corrective commit `7468f6c` is GPG-verified by GitHub and is the remote PR head; documentation and the Node 20.19, 22.18, and 24.11 test/build jobs all passed.
+
+# Issue #190
+
+## Plan
+
+- [x] Inspect issue, comments, linked PRs, and create an isolated worktree.
+- [x] Trace both QR paths and implement CSP-compatible logo rendering with bounded failure fallback.
+- [x] Add real-browser enforced-CSP regressions proving successful decoding for inline, failed, and stalled logos in both paths.
+- [x] Run focused and repository checks; review lifecycle safety and acceptance criteria.
+- [x] Commit, push, open PR, and verify remote metadata.
+
+## Review
+
+- Both QR paths now share SVG construction with `saveAsBlob: false`, avoiding the dependency's inline-logo XHR under enforced CSP.
+- Drawing must complete before a QR is cached or appended. Failed or stalled logos fall back after a three-second deadline to a freshly drawn logo-free code, with stale pre-generation and rendering results guarded by lifecycle identity.
+- Browser decoding exposed a stale animation-frame height measurement that clipped immediately displayed QR codes; modal identity now guards that callback.
+- Chromium verifies inline, failed, and stalled logos in both paths under enforced `img-src`/`connect-src` CSP, decodes the displayed pairing URI, and checks late logo completions cannot replace a fallback or newer QR. All six original regression cases fail against the original connector.
+- All 179 UI unit tests, UI public/source type checks, repository formatting/lint (`pnpm exec vp check`), all 16 browser tests, the full monorepo build/test pipeline (`pnpm test`), and `git diff --check` pass.
+- Independent source/dependency and final-diff review found no blocking findings. The intentional maximum logo wait is three seconds; consumers need no CSP relaxation.
