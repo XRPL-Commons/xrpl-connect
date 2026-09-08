@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-rc.2] - 2026-09-08
+
 ### Fixed
+
+- Xaman: accept valid numeric-string network IDs from OAuth and live network metadata while preserving strict network validation (#191).
+- UI: render WalletConnect QR codes under strict CSP without fetching inline logos, and recover from logo-rendering failures (#190).
+- Documentation: clarify Xaman OAuth popup headers, custom signing presentation and cleanup, and RC-to-stable installation guidance.
 
 - Core/adapters: enforce requested-versus-wallet network consistency before session persistence, use authoritative live networks during initial connection, reject unsupported substitutions with typed errors, and prevent signing after a connected wallet changes ledgers (#179).
 - Core/adapters: align message-signing capabilities with documented wallet protocols and make connection replacement, cancellation, teardown, storage, and account snapshots race-safe.
@@ -202,7 +208,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Switch the build to Vite for the meta package.
 - Crossmark adapter: use `signAndSubmitAndWait` and improve `isAvailable`.
 
-[Unreleased]: https://github.com/XRPL-Commons/xrpl-connect/compare/v1.0.0-rc.1...HEAD
+[Unreleased]: https://github.com/XRPL-Commons/xrpl-connect/compare/v1.0.0-rc.2...HEAD
+[1.0.0-rc.2]: https://github.com/XRPL-Commons/xrpl-connect/compare/v1.0.0-rc.1...v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/XRPL-Commons/xrpl-connect/compare/v1.0.0-rc.0...v1.0.0-rc.1
 [1.0.0-rc.0]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.8.2...v1.0.0-rc.0
 [0.8.2]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.8.1...v0.8.2
