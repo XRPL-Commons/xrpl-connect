@@ -55,8 +55,9 @@ import { isXamanQRImage, adjustColorBrightness, orderWalletsByMru } from './util
 const logger = createLogger('[WalletConnector]');
 const AVAILABILITY_TIMED_OUT = Symbol('availability-timed-out');
 
-function createMainStyleElement(): HTMLStyleElement {
+function createMainStyleElement(nonce: string | undefined): HTMLStyleElement {
   const style = document.createElement('style');
+  if (nonce) style.nonce = nonce;
   style.textContent = mainStyles;
   return style;
 }
@@ -1353,7 +1354,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       connectButton.id = 'connect-wallet-button';
       connectButton.setAttribute('part', WALLET_CONNECTOR_PARTS.connector.connectButton);
       connectButton.textContent = buttonText;
-      replaceViewChildren(this.shadow, createMainStyleElement(), connectButton);
+      replaceViewChildren(this.shadow, createMainStyleElement(this.nonce), connectButton);
 
       // Wallet connection overlay — rendered in a portal on document.body to guarantee
       // position: fixed is always relative to the viewport (not a transformed ancestor)
@@ -1371,7 +1372,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         modal.tabIndex = -1;
         modal.append(content);
         overlay.append(modal);
-        replaceViewChildren(overlayRoot, createMainStyleElement(), overlay);
+        replaceViewChildren(overlayRoot, createMainStyleElement(this.nonce), overlay);
       } else if (this.overlayPortal) {
         replaceViewChildren(this.overlayPortal.shadowRoot!);
       }
@@ -1385,7 +1386,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           this.truncateAddress.bind(this),
           this.generateGradientFromAddress.bind(this)
         );
-        replaceViewChildren(accountRoot, createMainStyleElement(), accountModal);
+        replaceViewChildren(accountRoot, createMainStyleElement(this.nonce), accountModal);
       } else if (this.accountModalPortal) {
         replaceViewChildren(this.accountModalPortal.shadowRoot!);
       }

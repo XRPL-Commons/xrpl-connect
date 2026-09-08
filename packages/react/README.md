@@ -78,6 +78,14 @@ export function App() {
 }
 ```
 
+## Strict CSP
+
+After RC2 (unreleased), pass the current response's server-generated style nonce before
+mounting: `<WalletConnector nonce={responseNonce} className="wallet-theme" />`.
+The native attribute authorizes all connector/portal styles; no Google Fonts are loaded.
+Use an allowed external stylesheet for static themes and keep `style-src-attr 'none'`.
+See the [CSP policy, nonce lifecycle, and wallet-specific limits](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/docs/guide/production.md#strict-content-security-policy).
+
 ## API
 
 ### `<XrplConnectProvider config={...}>`

@@ -6,6 +6,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@xrpl-connect/core': path.resolve(__dirname, '../../../core/src'),
+      react: path.resolve(__dirname, '../../../react/node_modules/react'),
+      'react-dom': path.resolve(__dirname, '../../../react/node_modules/react-dom'),
     },
   },
 });

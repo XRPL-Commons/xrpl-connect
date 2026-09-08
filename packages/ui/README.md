@@ -67,6 +67,9 @@ A Web Component is a reusable, encapsulated HTML element built using the Web Com
 
 All attributes are optional and control the behavior of the component:
 
+The native `nonce` attribute authorizes connector styles under CSP (unreleased after RC2).
+Set it before mounting; see [Strict CSP](#strict-csp).
+
 | Attribute          | Type    | Default | Description                                                                               |
 | ------------------ | ------- | ------- | ----------------------------------------------------------------------------------------- |
 | `primary-wallet`   | string  | -       | Wallet ID to display first (e.g., `'xaman'`)                                              |
@@ -75,6 +78,21 @@ All attributes are optional and control the behavior of the component:
 
 Use the supported CSS variables and stable shadow parts documented in the
 [Customization Guide](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/docs/guide/customization.md).
+
+### Strict CSP
+
+After RC2 (unreleased), set the native `nonce` attribute to the server-generated style
+nonce **before** mounting the connector. It is copied to every internal stylesheet,
+including the wallet and account portals. No Google Fonts are loaded.
+
+```html
+<xrpl-wallet-connector nonce="RESPONSE_NONCE" class="wallet-theme"></xrpl-wallet-connector>
+```
+
+Allow that nonce in `style-src` (and `style-src-elem` if specified), keep
+`style-src-attr 'none'`, and put static theme overrides in an allowed external stylesheet.
+Use `element.nonce` when reading it; browsers hide `getAttribute('nonce')`.
+See the [complete CSP setup and limitations](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/docs/guide/production.md#strict-content-security-policy).
 
 ### JavaScript API
 

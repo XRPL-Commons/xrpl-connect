@@ -596,6 +596,15 @@ export { useWallet, useWalletConnect } from './hooks.js';
 
 ## Troubleshooting
 
+### Strict CSP
+
+Nonce support is an unreleased change after RC2. Set
+`<xrpl-wallet-connector nonce="RESPONSE_NONCE">` before mounting, using the server-generated
+style nonce for that HTML response. React/Vue forward the same native attribute. All
+connector and portal styles use it, and the UI no longer loads Google Fonts. Keep
+`style-src-attr 'none'` and use an allowed external stylesheet for static theme overrides.
+See the [complete policy setup and limitations](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/docs/guide/production.md#strict-content-security-policy).
+
 ### Issue: Large Bundle Size
 
 **Problem**: The meta-package includes all adapters, but your app only needs one.

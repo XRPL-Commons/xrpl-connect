@@ -185,6 +185,9 @@ Beautiful UI component for wallet connection.
 
 ### Attributes
 
+The native `nonce` attribute supplies the response's style nonce before mount (unreleased
+after RC2). React and Vue forward it unchanged. See [strict CSP setup](/guide/production#strict-content-security-policy).
+
 | Attribute          | Type      | Description                                                        |
 | ------------------ | --------- | ------------------------------------------------------------------ |
 | `primary-wallet`   | `string`  | Wallet ID to feature/highlight                                     |

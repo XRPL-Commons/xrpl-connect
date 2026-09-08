@@ -721,6 +721,7 @@ describe('<WalletConnector>', () => {
                 '--xc-account-address-button-hover-color': '#334455',
               },
               class: 'connector',
+              nonce: 'test-style-nonce',
               onConnecting,
               onConnect,
               onError,
@@ -738,6 +739,7 @@ describe('<WalletConnector>', () => {
     expect(element.getAttribute('primary-wallet')).toBe('fake');
     expect(element.getAttribute('wallets')).toBe('fake');
     expect(element.className).toBe('connector');
+    expect(element.nonce).toBe('test-style-nonce');
     expect(element.style.getPropertyValue('--xc-primary-color')).toBe('#a78bfa');
     expect(element.style.getPropertyValue('--xc-primary-button-hover-background')).toBe('#112233');
     expect(element.style.getPropertyValue('--xc-connect-button-hover-background')).toBe('#223344');

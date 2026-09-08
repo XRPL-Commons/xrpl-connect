@@ -454,3 +454,33 @@ Opened [PR #192](https://github.com/XRPL-Commons/xrpl-connect/pull/192) against 
 - [x] Identify merged task-log formatting failures on Node 22/24 and an npm download `ECONNRESET` on Node 20.
 - [x] Format the merged log and run repository checks.
 - [x] Prepare the formatting correction for push; require all remote CI jobs to pass before reporting completion.
+
+## Strict CSP support
+
+- [x] Audit style injection, font loading, and framework attribute forwarding.
+- [x] Support the native per-response `nonce` on all connector style elements; remove remote font imports and template style attributes.
+- [x] Verify enforced CSP in a real browser, including portals, rerenders, loading, and framework wrappers.
+- [x] Document vanilla/React/Vue setup, external theming, and wallet-specific network policy boundaries.
+- [x] Run focused regressions, formatting, and type/build checks; review the final diff.
+
+## Review
+
+Implemented native per-response nonce propagation for all three shadow-root stylesheets,
+removed the unused Google Fonts import, and moved loading markup styles into the stylesheet.
+React/Vue need no new runtime configuration; their existing native attribute forwarding works.
+
+Verification passed:
+
+- Full workspace build and final documentation build.
+- UI, React, and Vue test scripts, including public type tests and SSR smoke checks.
+- All 20 Chromium browser tests: enforced CSP, missing/wrong nonce controls, HTML/JS-created
+  elements, both modal portals and reopening, loading CSS, React/Vue first render and client
+  theme overrides, QR decoding with inline/failed/stalled logos, and existing dialog behavior.
+- Local tarball manifest, dry-run publish, strict-peer install, ESM/CommonJS runtime/types,
+  React 18/19 and Vue consumer checks, plus Nuxt production build.
+- Workspace formatting/lint (`vp check`) and `git diff --check`.
+
+The policy tests require nonce-authorized styles, `style-src-attr 'none'`, and `font-src 'none'`.
+No live wallet authentication, other browser engines, or Trusted Types support is claimed.
+This work does not change RC2 or publish packages. Changes remain in the dedicated
+`fix/strict-csp-support` worktree for review.
