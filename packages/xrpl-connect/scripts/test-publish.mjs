@@ -16,6 +16,10 @@ import { readLocalReleaseConfig } from './publish-release.mjs';
 import { run } from './run-command.mjs';
 
 const cliArgs = process.argv.slice(2);
+const xrplVersionIndex = cliArgs.indexOf('--xrpl-version');
+const xrplVersion = xrplVersionIndex === -1 ? '^4' : cliArgs[xrplVersionIndex + 1];
+assert(['^4', '5.0.0', '^5'].includes(xrplVersion), 'Unsupported xrpl compatibility version');
+if (xrplVersionIndex !== -1) cliArgs.splice(xrplVersionIndex, 2);
 const channelIndex = cliArgs.indexOf('--channel');
 const requestedChannel =
   channelIndex === -1 ? process.env.XRPL_RELEASE_CHANNEL : cliArgs[channelIndex + 1];
@@ -181,6 +185,7 @@ function resolveCandidateSpecs(dependencies, tarballsByName) {
 
 function resolveReactCandidateSpecs(dependencies, tarballsByName, reactMajor) {
   return resolveCandidateSpecs(dependencies, tarballsByName).map((dependency) => {
+    if (dependency === DOCUMENTED_XRPL_SPEC) return `xrpl@${xrplVersion}`;
     for (const packageName of ['react', 'react-dom']) {
       if (dependency === packageName || dependency.startsWith(`${packageName}@`)) {
         return `${packageName}@${reactMajor}`;
@@ -210,6 +215,15 @@ function verifyInstalledReactMajor(consumerFolder, reactMajor) {
     );
   }
   console.log(`✓ React ${reactMajor} consumer uses matching runtime and type-package majors`);
+}
+
+function verifyInstalledXrpl(consumerFolder) {
+  const { version } = JSON.parse(
+    readFileSync(path.join(consumerFolder, 'node_modules', 'xrpl', 'package.json'), 'utf-8')
+  );
+  if (xrplVersion === '5.0.0') assert.equal(version, '5.0.0');
+  else assert.equal(version.split('.')[0], xrplVersion.slice(1));
+  console.log(`✓ Consumer resolved xrpl@${version} for ${xrplVersion}`);
 }
 
 function copyReactFixtures(consumerFolder) {
@@ -376,6 +390,7 @@ try {
     [
       'install',
       '--strict-peer-deps',
+      '--legacy-peer-deps=false',
       '--ignore-scripts',
       '--no-audit',
       '--no-fund',
@@ -394,6 +409,7 @@ try {
     { ...runOptions, cwd: consumerFolder }
   );
   console.log('✓ Candidate install completed with strict peer dependency checks');
+  verifyInstalledXrpl(consumerFolder);
   verifyInstalledReactMajor(consumerFolder, 18);
 
   const installedManifests = Object.fromEntries(
@@ -524,17 +540,17 @@ try {
     FRAMEWORK_PEER_RANGE
   );
   assert.deepEqual(installedManifests['xrpl-connect'].peerDependencies, {
-    xrpl: '^3.0.0 || ^4.0.0',
+    xrpl: '^3.0.0 || ^4.0.0 || ^5.0.0',
   });
   assert.deepEqual(installedManifests['@xrpl-commons/xrpl-connect-react'].peerDependencies, {
     react: '^18.0.0 || ^19.0.0',
     'react-dom': '^18.0.0 || ^19.0.0',
-    xrpl: '^3.0.0 || ^4.0.0',
+    xrpl: '^3.0.0 || ^4.0.0 || ^5.0.0',
     'xrpl-connect': FRAMEWORK_PEER_RANGE,
   });
   assert.deepEqual(installedManifests['@xrpl-commons/xrpl-connect-vue'].peerDependencies, {
     vue: '^3.5.0',
-    xrpl: '^3.0.0 || ^4.0.0',
+    xrpl: '^3.0.0 || ^4.0.0 || ^5.0.0',
     'xrpl-connect': FRAMEWORK_PEER_RANGE,
   });
 
@@ -572,6 +588,7 @@ try {
     'runtime-env.cjs',
     'runtime-esm.mjs',
     'runtime-cjs.cjs',
+    'runtime-xrpl-compat.mjs',
     'runtime-ssr-esm.mjs',
     'runtime-ssr-cjs.cjs',
     'types-esm.mts',
@@ -615,6 +632,7 @@ try {
     [
       'install',
       '--strict-peer-deps',
+      '--legacy-peer-deps=false',
       '--ignore-scripts',
       '--no-audit',
       '--no-fund',
@@ -627,6 +645,7 @@ try {
     { ...runOptions, cwd: react19ConsumerFolder }
   );
   verifyInstalledReactMajor(react19ConsumerFolder, 19);
+  verifyInstalledXrpl(react19ConsumerFolder);
   copyReactFixtures(react19ConsumerFolder);
   verifyPackedReactConsumer(react19ConsumerFolder, 19, tscPath, runOptions);
 
@@ -643,6 +662,12 @@ try {
   run(process.execPath, ['runtime-esm.mjs'], { ...runOptions, cwd: consumerFolder });
   console.log('→ Loading packed CommonJS runtime');
   run(process.execPath, ['runtime-cjs.cjs'], { ...runOptions, cwd: consumerFolder });
+  for (const format of ['esm', 'cjs']) {
+    run(process.execPath, ['runtime-xrpl-compat.mjs', format], {
+      ...runOptions,
+      cwd: consumerFolder,
+    });
+  }
   console.log('→ Loading packed Vue ESM and CommonJS entries in SSR');
   run(process.execPath, ['vue-runtime-ssr.mjs'], { ...runOptions, cwd: consumerFolder });
   console.log('→ Building packed umbrella ESM with Nuxt and Vite');
@@ -661,4 +686,21 @@ try {
   );
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true });
+}
+
+// Reuse all consumer checks for the v5 floor and current v5 release, not just imports.
+if (xrplVersionIndex === -1) {
+  for (const version of ['5.0.0', '^5']) {
+    run(
+      process.execPath,
+      [
+        fileURLToPath(import.meta.url),
+        '--channel',
+        releaseConfig.channel,
+        '--xrpl-version',
+        version,
+      ],
+      registryRunOptions
+    );
+  }
 }

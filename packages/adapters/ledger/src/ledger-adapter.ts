@@ -411,8 +411,8 @@ export class LedgerAdapter
     operation: (client: Client) => Promise<T>
   ): Promise<T> {
     const client = new Client(network.wss);
-    await client.connect();
     try {
+      await client.connect();
       return await operation(client);
     } finally {
       await client.disconnect();
