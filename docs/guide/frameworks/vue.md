@@ -16,6 +16,9 @@ npm install @xrpl-commons/xrpl-connect-vue@rc xrpl-connect@rc xrpl@^4 vue
 
 ## Configure the plugin
 
+The install command selects the prerelease channel; see
+[release-channel guidance](/guide/getting-started#release-channel) for stable v1 migration.
+
 Import adapters from `xrpl-connect` in the browser entry point. Evaluating that package entry
 also registers the wallet connector custom element. Then install the Vue plugin before mounting
 the application:
@@ -100,6 +103,13 @@ const { ready, open } = useWalletModal();
 ## Signing
 
 Signing actions are bound to the injected manager and reject with typed `WalletError` values.
+
+For Xaman, the connection modal does not provide a signing dialog. Configure the adapter's
+`onQRCode` callback to present explicit signing-page and mobile deep-link actions when
+asynchronous popups are unsuitable. The [Nuxt example](./nuxt#xaman-signing-presentation)
+shows the callback and cleanup lifecycle; in plain Vue, use an app-owned shared `ref` supplied
+through `provide`/`inject` instead of Nuxt's `useState`. Keep that state scoped to the app.
+OAuth login separately needs [compatible popup headers](/guide/production#xaman-oauth-popups-and-security-headers).
 
 ```vue
 <script setup lang="ts">

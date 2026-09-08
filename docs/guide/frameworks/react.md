@@ -8,6 +8,10 @@ Use the official React bindings instead of building a custom context around the 
 
 ## Install
 
+These commands select the prerelease channel. See
+[release-channel guidance](/guide/getting-started#release-channel) for switching the SDK
+and React binding to stable v1 after publication.
+
 ```bash
 pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-react@rc xrpl@^4 react react-dom
 ```

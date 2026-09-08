@@ -44,6 +44,35 @@ Supply a custom `StorageAdapter` when local storage is inappropriate, or `Memory
 - WalletConnect and Xaman provide QR/deep-link flows for mobile use.
 - Test popup and deep-link behavior without inserting delays between a user click and wallet authorization.
 
+## Xaman OAuth popups and security headers
+
+Xaman browser sign-in uses an OAuth popup that communicates with its opener. If your
+application sends `Cross-Origin-Opener-Policy: same-origin`, that relationship is severed:
+authorization can finish in the popup while the original page remains disconnected.
+For pages using this flow, configure the server or proxy to send:
+
+```http
+Cross-Origin-Opener-Policy: same-origin-allow-popups
+```
+
+This is a deliberate security tradeoff: it permits opener relationships with cross-origin
+popups and does not provide the cross-origin isolation required by features such as
+`SharedArrayBuffer`. Do not replace an application's isolation policy blindly. If strict
+isolation is required, design a separately scoped authentication flow instead. See
+[MDN's COOP reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cross-Origin-Opener-Policy).
+
+With `nuxt-security`, set `security.headers.crossOriginOpenerPolicy` to
+`'same-origin-allow-popups'`. This option belongs to that module, not Nuxt core. With other
+deployments, configure the equivalent response header in your server/proxy. Verify the
+actual HTML response, including production proxy headers; changing client code is insufficient.
+Close old OAuth popups and fully reload the original page before retrying.
+
+Keep CSP enabled. Permit the wallet services your deployment uses in the appropriate
+directives. WalletConnect's built-in inline QR logo does not require adding `data:` to
+`connect-src`; displaying inline images still requires `data:` in `img-src`. A report-only
+CSP warning does not block a request, but a separate enforced policy can. Never log or share
+WalletConnect pairing URIs: they contain a pairing secret.
+
 ## Error UX
 
 Branch on `WalletError.category` for broad UX and `WalletError.code` for specific recovery. Render wallet/provider messages as text, never unsanitized HTML.
