@@ -14,10 +14,9 @@ The commands below explicitly select the `rc` prerelease channel. An RC install 
 automatically switch to stable v1. Once stable v1 is published, replace `@rc` with `@^1`
 for `xrpl-connect` and your framework binding, and update their lockfile entries together:
 
-```bash
-# Use only after stable v1 is published (Vue/Nuxt example).
-npm install xrpl-connect@^1 @xrpl-commons/xrpl-connect-vue@^1 xrpl@^4 vue
-```
+For Vue/Nuxt, the future stable package specifications are `xrpl-connect@^1` and
+`@xrpl-commons/xrpl-connect-vue@^1`, alongside the existing `xrpl@^4` and Vue dependencies.
+Keep using the RC installation commands below until stable v1 is published.
 
 For React, use `@xrpl-commons/xrpl-connect-react@^1` with React and React DOM instead.
 Do not assume the untagged npm default is v1 during the release transition. A local
