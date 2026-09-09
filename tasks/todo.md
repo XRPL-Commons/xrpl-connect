@@ -1,3 +1,15 @@
+# Xaman sign-only expiry policy
+
+- [x] Add a constructor-configurable maximum LastLedgerSequence extension, default 50; 0 preserves strict matching.
+- [x] Bound only supplied absolute expiry values in sign-only results; snapshot the request and keep all other supplied-field comparisons strict.
+- [x] Keep wallet-owned signAndSubmit, removing post-submit request equality checks while retaining integrity/network/submission validation.
+- [x] Add real-signature regressions for limits, malformed input, mutation, and submission semantics.
+- [x] Document absolute-expiry requirements, omitted/relative expiry behavior, multisigning, and release availability; verify builds/types/tests.
+
+## Review
+
+Separate from PR #197; no network-refresh changes or package publication. The Xaman suite passes all 246 tests and its TypeScript check. Packed-candidate consumer checks (including constructor/factory option types, React/Vue, SSR, and Nuxt builds), the documentation build, formatting, lint, and diff whitespace checks pass. Fixtures use real local signatures and mocked Xaman responses; no live wallet signing or submission was exercised. Prepared for review on `fix/xaman-sign-expiry`.
+
 # Issue #180
 
 ## Issue summary

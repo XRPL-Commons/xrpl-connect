@@ -1,5 +1,7 @@
 # Lessons
 
+- Keep wallet-owned submission separate from sign-only validation. Do not expand a wallet-specific expiry policy into centralized broadcasting without explicit agreement; post-submission request comparison cannot prevent submission.
+
 - A lifecycle-readiness review must exercise ownership boundaries under adversarial interleavings: late teardown after replacement, concurrent teardown callers, explicit disconnect during probes, externally shared managers, connector-owned versus pre-existing sessions, and framework deactivate/reactivate cycles. Passing isolated adapter and wrapper suites is not sufficient evidence without those cross-boundary regressions.
 - Cancellation intent must remain observable even when there is no committed session, and ownership must distinguish an accepted connector-started operation from a rejected attempt against external committed or in-flight state before any teardown is authorized.
 - When a branch already has a dedicated local worktree, locate and use that branch-attached worktree for fixes, verification, commits, and pushes instead of creating a detached review worktree.

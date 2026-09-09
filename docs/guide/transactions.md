@@ -61,6 +61,59 @@ Submit a multisigned artifact only after the adapter-specific flow has combined
 all required contributions. The generic result does not contain the account's
 signer-list quorum, so it cannot determine submission readiness by itself.
 
+### Xaman expiry policy
+
+::: warning Release availability
+This policy is an unreleased change after `1.0.0-rc.2`. RC2 requires exact matching
+of supplied expiry values even when Xaman adjusts them.
+:::
+
+For `sign()` only, Xaman may increase a supplied absolute `LastLedgerSequence` by
+**up to 50 ledgers by default**. This is an extension beyond the requested expiry,
+not a 50-ledger deadline measured from signing time. Configure it on the adapter:
+
+```ts
+const xaman = new XamanAdapter({
+  apiKey: 'YOUR_KEY',
+  maxLastLedgerSequenceExtension: 50, // Default; use 0 for exact expiry matching
+});
+```
+
+For a requested expiry of `10_000_020`, the default accepts an actual signed expiry
+from `10_000_020` through `10_000_070`, inclusive. A decrease, missing expiry, or a
+larger extension fails with `SIGN_FAILED`. The limit must be an integer from `0`
+through `4_294_967_295`; invalid configuration throws `RangeError` at construction.
+
+The adapter checks the expiry in both the resolved request and the decoded,
+cryptographically verified signed blob. Other supplied transaction fields remain
+strictly compared. The original caller object is not modified. Use the returned
+`signed.tx_json.LastLedgerSequence` (or decode `signed.tx_blob`) when recording
+the actual deadline; do not record the originally requested expiry as the signed one.
+
+Supply an **absolute** expiry to get this bound, for example by preparing the
+transaction with your XRPL client's `autofill()` before calling `sign()`:
+
+```ts
+const prepared = await xrplClient.autofill(transaction);
+const signed = await manager.sign(prepared);
+```
+
+Supplied values must be integers between `32570` and `4_294_967_295`.
+Xaman treats smaller values as relative offsets; `sign()` rejects those before
+opening a signing request because their absolute deadline cannot be bounded from
+the request alone. If you **omit** expiry, wallet autofill remains supported, but
+there is no requested absolute deadline to enforce this extension limit against.
+The setting does not introduce an RPC lookup or guarantee that a deadline is still
+in the future. Multisigning and Batch require exact matching of supplied expiry
+even when the configured allowance is nonzero.
+
+`signAndSubmit()` remains wallet-owned: Xaman signs and broadcasts. It does not
+apply this allowance or compare the result with the original request after
+submission. Signature, signer, hash, network, and dispatch-result checks remain.
+Use `sign()` followed by application submission when you need the expiry policy
+enforced before broadcasting. A `signAndSubmit()` error is not proof that nothing
+was submitted; reconcile the outcome before asking the user to sign again.
+
 ### Ledger multisign contributions
 
 Ledger supports parallel multisigning through `sign()`. Prepare the transaction
