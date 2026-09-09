@@ -108,7 +108,7 @@ if (manager.supports('signMessage')) {
 }
 ```
 
-Use `manager.fetchAccount()` when the application needs current wallet-owned account or network data rather than the cached `manager.account`. Adapters without a reliable live query reject with `UNSUPPORTED_METHOD`; `null` means a supported query found no active account and the manager cleared the session. Account and network events remain the preferred way to keep reactive UI synchronized.
+Use `manager.fetchAccount()` to query account information through the adapter rather than merely reading cached `manager.account`. Freshness depends on the adapter: Xaman refreshes its OAuth subject and retains the session network context, not the mobile app's current selection. Successful refresh does not prove the wallet's current network. Adapters without a supported query reject with `UNSUPPORTED_METHOD`; `null` means the query found no active account and the manager cleared the session. Account and network events remain the preferred way to keep reactive UI synchronized. See [Xaman network evidence](/guide/production#xaman-session-refresh-and-network-evidence).
 
 ## Persistence and reconnection
 

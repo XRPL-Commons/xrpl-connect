@@ -77,7 +77,7 @@ export function isStandardNetworkId(networkId: string): networkId is StandardNet
 export interface AccountInfo {
   address: string; // XRPL address (r...)
   publicKey?: string; // Public key (optional)
-  network: NetworkInfo; // Network the account is connected to
+  network: NetworkInfo; // Adapter's network context; may come from a saved session
 }
 
 /**
@@ -306,8 +306,10 @@ export interface SupportsDeepLink {
 }
 
 /**
- * Capability: adapter can query its wallet, provider, or device for the current
- * authorized account without opening a new connection flow.
+ * Capability: adapter can query its wallet, provider, device, or authenticated
+ * session for account information without opening a new connection flow.
+ * This does not guarantee a live network query. Xaman refreshes its OAuth subject
+ * and retains session network context, not the mobile app's current selection.
  */
 export interface SupportsFetchAccount {
   fetchAccount(): Promise<AccountInfo | null>;

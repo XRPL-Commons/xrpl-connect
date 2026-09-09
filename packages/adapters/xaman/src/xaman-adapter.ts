@@ -266,7 +266,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
         return null;
       }
 
-      const resolvedNetwork = await this.getAuthoritativeNetwork(client);
+      const resolvedNetwork = await this.getSessionNetwork(client);
       const resolvedXamanNetwork = this.resolveXamanNetwork(resolvedNetwork);
       if (requestedXamanNetwork) {
         this.validateXamanNetwork(
@@ -439,7 +439,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
       logger.info('Connection phase: authorization successful');
 
       const account = authResult.me.account;
-      const network = await this.getAuthoritativeNetwork(client, authResult.me);
+      const network = await this.getSessionNetwork(client, authResult.me);
       if (generation !== this.connectionGeneration || this.client !== client) {
         throw new Error('Xaman connection attempt was superseded or disconnected');
       }
@@ -540,7 +540,8 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
   }
 
   /**
-   * Refresh the authenticated account and network from Xaman's live ping endpoint.
+   * Refresh the OAuth session subject, retaining its established network context.
+   * Ping does not report the mobile app's current account/network selection.
    */
   async fetchAccount(): Promise<AccountInfo | null> {
     const client = this.client;
@@ -556,32 +557,19 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
       if (refreshRevision !== this.accountRefreshRevision) return this.currentAccount;
       if (!this.currentAccount) return null;
 
-      const jwtData = pong?.jwtData as
-        | {
-            sub?: unknown;
-            network_endpoint?: unknown;
-            network_id?: unknown;
-          }
-        | undefined;
+      const jwtData = pong?.jwtData as { sub?: unknown } | undefined;
       const address = typeof jwtData?.sub === 'string' ? jwtData.sub : '';
       if (!address) {
         this.currentAccount = null;
         return null;
       }
 
-      const endpoint = jwtData?.network_endpoint;
-      const networkId = normalizeNetworkId(jwtData?.network_id);
-      let network = this.currentAccount.network;
-      if (typeof endpoint === 'string' && endpoint.length > 0 && networkId !== undefined) {
-        network = this.parseNetwork(endpoint, networkId);
-      } else if (endpoint !== undefined || jwtData?.network_id !== undefined) {
-        throw new Error('Xaman ping returned missing or invalid network metadata');
-      }
-
+      // OAuth ping has no supported network fields. Signing independently forces
+      // this session's target network and validates the resolved payload network.
       this.currentAccount = {
         address,
         publicKey: undefined,
-        network,
+        network: this.currentAccount.network,
       };
       return this.currentAccount;
     } catch (error) {
@@ -591,7 +579,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
   }
 
   /**
-   * Get current network
+   * Get the session network context, not the mobile app's current selection.
    */
   async getNetwork(): Promise<NetworkInfo> {
     if (!this.currentAccount) {
@@ -895,7 +883,9 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
     }
   }
 
-  private async getAuthoritativeNetwork(
+  // OAuth user information can be restored from a saved session. It establishes
+  // signing context, not a live observation of the mobile app's network.
+  private async getSessionNetwork(
     client: Xumm,
     authorizedMe?: {
       networkEndpoint?: unknown;
