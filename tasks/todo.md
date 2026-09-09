@@ -10,6 +10,30 @@
 
 Separate from PR #197; no network-refresh changes or package publication. The Xaman suite passes all 246 tests and its TypeScript check. Packed-candidate consumer checks (including constructor/factory option types, React/Vue, SSR, and Nuxt builds), the documentation build, formatting, lint, and diff whitespace checks pass. Fixtures use real local signatures and mocked Xaman responses; no live wallet signing or submission was exercised. Prepared for review on `fix/xaman-sign-expiry`.
 
+# Xaman session refresh contract
+
+- [x] Verify the upstream expiry adjustment and explain its rationale without changing signing policy.
+- [x] Reproduce refresh failures and false network updates from unsupported ping metadata.
+- [x] Restrict Xaman refresh to documented authenticated-session fields; retain network context and lifecycle guards.
+- [x] Verify signing still forces and validates the target network after refresh.
+- [x] Correct API documentation, run focused tests/build/types, and review the diff.
+
+## Refresh review
+
+The old implementation failed 32 targeted refresh regressions before the fix. Xaman now
+refreshes the OAuth subject without treating undocumented ping network fields as current
+mobile selection. Session network context is retained; signing still enforces and validates
+the target. Documentation no longer promises universal live account/network freshness.
+
+Verified Xaman app commit `01e2538b08efa2c960233911fad02633f31ce6cd`: expiry is populated
+near signing and clamped to a minimum window (normally 20 ledgers, 150 for Tangem).
+Upstream commit `716ebf5` explains increasing the default window because signing takes time.
+No expiry-policy change, publication, or live-wallet verification is included.
+
+Verification: core tests (97), Xaman type check and regressions, full workspace/docs build,
+workspace formatting/lint, and diff whitespace checks passed. Changes remain local in
+`fix/xaman-network-refresh` for review.
+
 # Issue #180
 
 ## Issue summary
@@ -492,4 +516,4 @@ existing RC2 metadata is unchanged and a new release is required.
 
 ## Review
 
-Merged `origin/develop` while preserving XRPL transaction compatibility assertions and Xaman expiry-option assertions in both packed-consumer module formats. All 246 Xaman tests, Xaman TypeScript checks, repository formatting/lint, whitespace checks, and packed-consumer checks for XRPL v4 and v5.0.0 pass. Remote CI verification follows the push.
+Merged `origin/develop` while preserving XRPL transaction compatibility assertions and Xaman expiry-option assertions in both packed-consumer module formats. All 246 Xaman tests, Xaman TypeScript checks, repository formatting/lint, whitespace checks, and packed-consumer checks for XRPL v4 and v5.0.0 pass. A concurrent develop update added the Xaman session-refresh contract; retained both task-log entries and verified the automatically merged Xaman changes with 252 Xaman tests, 97 core tests, TypeScript checks, core/Xaman builds, and formatting/lint. Remote CI verification follows the push.

@@ -92,6 +92,35 @@ directives. WalletConnect's built-in inline QR logo does not require adding `dat
 CSP warning does not block a request, but a separate enforced policy can. Never log or share
 WalletConnect pairing URIs: they contain a pairing secret.
 
+## Xaman session refresh and network evidence
+
+`XamanAdapter.fetchAccount()` checks the OAuth session with `ping()` and refreshes its
+authenticated subject. It is not a live query of the mobile app's selected account/network.
+The returned `account.network` and `getNetwork()` retain the network context established
+from OAuth user information at connection or restoration. That information may itself
+come from a saved session. Reconnecting is therefore not proof of the current selection.
+
+The OAuth ping schema does not declare `network_endpoint` or `network_id`. The adapter
+ignores these extensions rather than changing its signing target or failing on partial
+metadata. **This behavior is unreleased after RC2**: RC2 attempted to parse those fields,
+which could cause spurious refresh failures or misleading network updates.
+
+- A valid session subject refreshes the account while retaining the session network.
+- No authenticated subject returns `null`; the manager clears the session.
+- A transport failure rejects and keeps the cached state. It is not a successful refresh.
+- Late responses cannot overwrite a disconnected or replaced session.
+
+Do not treat `fetchAccount()` success, the application's profile, or an RPC query as proof
+of the mobile wallet's current network. Application/RPC checks establish the **target**
+network. For Xaman signing, XRPL Connect sends `force_network` and validates the resolved
+payload's `environment_networkid` and node type against that target. Missing IDs or
+contradictory signing network information remain errors, even after successful refresh.
+These are transaction-specific checks, not a general network-verification flag.
+
+Display the session/target network accurately, handle signing-network mismatches, and verify
+the actual signed transaction before application submission. Do not disable signing checks
+to work around refresh metadata. Test with a real Xaman session as well as mocked responses.
+
 ## Error UX
 
 Branch on `WalletError.category` for broad UX and `WalletError.code` for specific recovery. Render wallet/provider messages as text, never unsanitized HTML.

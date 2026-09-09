@@ -1,5 +1,11 @@
 import { describe, it, expect, expectTypeOf, vi, beforeEach } from 'vite-plus/test';
-import { WalletErrorCode, type NetworkConfig, type Transaction } from '@xrpl-connect/core';
+import {
+  MemoryStorageAdapter,
+  WalletManager,
+  WalletErrorCode,
+  type NetworkConfig,
+  type Transaction,
+} from '@xrpl-connect/core';
 import { decode, encode, hashes, Wallet } from 'xrpl';
 
 const mockXummInstance = {
@@ -2085,81 +2091,41 @@ describe('XamanAdapter.fetchAccount', () => {
     return adapter;
   }
 
-  it('uses a fresh ping to replace changed account and network data', async () => {
-    const adapter = await connected();
-    const changedAccount = Wallet.generate().address;
-    mockXummInstance.ping.mockResolvedValue({
-      jwtData: {
-        sub: changedAccount,
-        network_endpoint: 'wss://s.altnet.rippletest.net:51233',
-        network_id: 1,
-      },
-    });
-
-    await expect(adapter.fetchAccount()).resolves.toMatchObject({
-      address: changedAccount,
-      network: {
-        id: 'testnet',
-        wss: 'wss://s.altnet.rippletest.net:51233',
-      },
-    });
-    expect(mockXummInstance.ping).toHaveBeenCalledTimes(1);
-    await expect(adapter.getAccount()).resolves.toMatchObject({ address: changedAccount });
-  });
-
-  it.each([0, '0', 1, '1'])('refreshes network ID %s', async (networkId) => {
-    const adapter = await connected();
-    mockXummInstance.ping.mockResolvedValue({
-      jwtData: {
-        sub: CONNECTED_ACCOUNT,
-        network_endpoint: 'wss://testnet.xrpl-labs.com',
-        network_id: networkId,
-      },
-    });
-    await expect(adapter.fetchAccount()).resolves.toMatchObject({
-      network: {
-        id: Number(networkId) === 0 ? 'mainnet' : 'testnet',
-        walletConnectId: `xrpl:${networkId}`,
-      },
-    });
-  });
-
-  it.each(INVALID_NETWORK_IDS)(
-    'rejects invalid ping network ID %j without changing the account',
-    async (networkId) => {
+  it.each([
+    {},
+    { network_endpoint: 'wss://testnet.xrpl-labs.com' },
+    { network_id: 1 },
+    { network_endpoint: 'wss://testnet.xrpl-labs.com', network_id: 1 },
+    { network_endpoint: null, network_id: 'invalid' },
+    { network_endpoint: '', network_id: 999 },
+    ...INVALID_NETWORK_IDS.map((network_id) => ({
+      network_endpoint: 'wss://testnet.xrpl-labs.com',
+      network_id,
+    })),
+  ])(
+    'refreshes the session subject without trusting undocumented network fields %j',
+    async (metadata) => {
       const adapter = await connected();
+      const network = await adapter.getNetwork();
+      const changedAccount = Wallet.generate().address;
       mockXummInstance.ping.mockResolvedValue({
-        jwtData: {
-          sub: 'changed-account',
-          network_endpoint: 'wss://testnet.xrpl-labs.com',
-          network_id: networkId,
-        },
+        jwtData: { sub: changedAccount, ...metadata },
       });
-      await expect(adapter.fetchAccount()).rejects.toMatchObject({
-        code: WalletErrorCode.CONNECTION_FAILED,
-        message: expect.stringContaining('missing or invalid network metadata'),
-      });
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await expect(adapter.fetchAccount()).resolves.toMatchObject({
+          address: changedAccount,
+          network,
+        });
+      }
+      expect(mockXummInstance.ping).toHaveBeenCalledTimes(2);
       await expect(adapter.getAccount()).resolves.toMatchObject({
-        address: CONNECTED_ACCOUNT,
-        network: { id: 'mainnet' },
+        address: changedAccount,
+        network,
       });
+      await expect(adapter.getNetwork()).resolves.toEqual(network);
     }
   );
-
-  it.each([999, '999'])('rejects unsupported ping network ID %s', async (networkId) => {
-    const adapter = await connected();
-    mockXummInstance.ping.mockResolvedValue({
-      jwtData: {
-        sub: CONNECTED_ACCOUNT,
-        network_endpoint: 'wss://testnet.xrpl-labs.com',
-        network_id: networkId,
-      },
-    });
-    await expect(adapter.fetchAccount()).rejects.toMatchObject({
-      code: WalletErrorCode.NETWORK_NOT_SUPPORTED,
-    });
-    await expect(adapter.getNetwork()).resolves.toMatchObject({ id: 'mainnet' });
-  });
 
   it('clears stale account state when ping has no authenticated subject', async () => {
     const adapter = await connected();
@@ -2168,6 +2134,104 @@ describe('XamanAdapter.fetchAccount', () => {
     await expect(adapter.fetchAccount()).resolves.toBeNull();
     await expect(adapter.getAccount()).resolves.toBeNull();
   });
+
+  it('does not emit a manager network change from OAuth ping extensions', async () => {
+    mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
+    const adapter = new XamanAdapter({ apiKey: 'test-key' });
+    const manager = new WalletManager({ adapters: [adapter], storage: new MemoryStorageAdapter() });
+    const networkChanged = vi.fn();
+    manager.on('networkChanged', networkChanged);
+    await manager.connect('xaman', { network: 'mainnet' });
+    mockXummInstance.ping.mockResolvedValue({
+      jwtData: {
+        sub: CONNECTED_ACCOUNT,
+        network_endpoint: 'wss://testnet.xrpl-labs.com',
+        network_id: 1,
+      },
+    });
+    await manager.fetchAccount();
+    await manager.fetchAccount();
+    expect(manager.account?.network.id).toBe('mainnet');
+    expect(networkChanged).not.toHaveBeenCalled();
+    await manager.disconnect();
+  });
+
+  it('does not retarget signing from undocumented ping network fields', async () => {
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.ping.mockResolvedValue({
+      jwtData: {
+        sub: CONNECTED_ACCOUNT,
+        network_endpoint: 'wss://testnet.xrpl-labs.com',
+        network_id: 1,
+      },
+    });
+    await adapter.fetchAccount();
+    mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false));
+    const signing = adapter.sign(REQUESTED_TRANSACTION);
+    const result = expect(signing).resolves.toMatchObject({ tx_blob: SIGNED_TX_HEX });
+    await subscription.emit({ signed: true });
+    await result;
+    expect(mockXummInstance.payload.createAndSubscribe).toHaveBeenCalledWith(
+      expect.objectContaining({ options: expect.objectContaining({ force_network: 'MAINNET' }) }),
+      expect.any(Function)
+    );
+    await adapter.disconnect();
+  });
+
+  it('does not apply a pending refresh to a replacement session', async () => {
+    const adapter = await connected();
+    let resolvePing!: (value: unknown) => void;
+    mockXummInstance.ping.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePing = resolve;
+        })
+    );
+    const refresh = adapter.fetchAccount();
+    const rejection = expect(refresh).rejects.toMatchObject({
+      code: WalletErrorCode.NOT_CONNECTED,
+    });
+    await adapter.disconnect();
+    await adapter.connect({ network: 'mainnet' });
+    resolvePing({ jwtData: { sub: Wallet.generate().address } });
+    await rejection;
+    await expect(adapter.getAccount()).resolves.toMatchObject({
+      address: CONNECTED_ACCOUNT,
+      network: { id: 'mainnet' },
+    });
+    await adapter.disconnect();
+  });
+
+  it.each([
+    { id: 0, type: 'MAINNET', accepted: true },
+    { id: 1, type: 'TESTNET', accepted: false },
+    { id: null, type: null, accepted: false },
+    { id: 0, type: 'TESTNET', accepted: false },
+  ])(
+    'still forces and verifies signing network after a metadata-free refresh: %j',
+    async ({ id, type, accepted }) => {
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.ping.mockResolvedValue({ jwtData: { sub: CONNECTED_ACCOUNT } });
+      await adapter.fetchAccount();
+      mockXummInstance.payload.get.mockResolvedValue(
+        resolvedPayload(false, {
+          environment_networkid: id,
+          environment_nodetype: type,
+        })
+      );
+      const signing = adapter.sign(REQUESTED_TRANSACTION);
+      const result = accepted
+        ? expect(signing).resolves.toMatchObject({ tx_blob: SIGNED_TX_HEX })
+        : expect(signing).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_MISMATCH });
+      await subscription.emit({ signed: true });
+      await result;
+      expect(mockXummInstance.payload.createAndSubscribe).toHaveBeenCalledWith(
+        expect.objectContaining({ options: expect.objectContaining({ force_network: 'MAINNET' }) }),
+        expect.any(Function)
+      );
+      await adapter.disconnect();
+    }
+  );
 
   it('returns null without pinging when disconnected', async () => {
     const adapter = new XamanAdapter({ apiKey: 'test-key' });
