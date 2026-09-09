@@ -25,6 +25,12 @@ commit and integrity hash rather than treating the version label as proof of its
 
 ### Using npm
 
+The upcoming release expands the `xrpl` peer range to v3, v4, and v5. Published
+`1.0.0-rc.2` artifacts still declare v3/v4 only, so the installation commands below
+remain pinned to v4 until the updated SDK and framework bindings are published.
+With the updated artifacts, applications already using v5 can retain it without
+pnpm compatibility overrides. Upgrade the SDK and framework binding together.
+
 ```bash
 npm install xrpl-connect@rc xrpl@^4
 ```

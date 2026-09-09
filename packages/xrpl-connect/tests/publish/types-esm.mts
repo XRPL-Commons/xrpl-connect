@@ -59,6 +59,9 @@ const packagedAdapters = createAdapters({
   ledger: { accountIndex: 1 },
 });
 const manager = new WalletManager({ adapters: packagedAdapters });
+declare const preparedTransaction: import('xrpl').SubmittableTransaction;
+void manager.sign(preparedTransaction);
+void manager.signAndSubmit(preparedTransaction);
 const configuredXaman = new XamanAdapter({ apiKey: 'api-key', maxLastLedgerSequenceExtension: 0 });
 // @ts-expect-error The expiry extension is a numeric ledger count.
 new XamanAdapter({ maxLastLedgerSequenceExtension: '50' });
