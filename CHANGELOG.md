@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Expand the `xrpl` peer range to v3/v4/v5 across core, adapters, and framework bindings, with strict packed-consumer compatibility checks for v5. This does not change the peer metadata of already-published RC2 artifacts.
+
+### Fixed
+
+- Ledger: close the XRPL client when connection-time network discovery fails, including the stricter `server_info` validation introduced in xrpl.js v5.
+
 ## [1.0.0-rc.2] - 2026-09-08
 
 ### Fixed

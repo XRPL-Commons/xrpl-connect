@@ -51,7 +51,7 @@
     "xumm-oauth2-pkce": "^2.6.0"
   },
   "peerDependencies": {
-    "xrpl": "^3.0.0 || ^4.0.0"
+    "xrpl": "^3.0.0 || ^4.0.0 || ^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
