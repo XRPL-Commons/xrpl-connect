@@ -596,6 +596,19 @@ export { useWallet, useWalletConnect } from './hooks.js';
 
 ## Troubleshooting
 
+### Xaman signing expiry
+
+Unreleased after RC2: Xaman `sign()` accepts up to 50 additional ledgers beyond a
+supplied absolute `LastLedgerSequence`. Configure
+`new XamanAdapter({ apiKey, maxLastLedgerSequenceExtension: 50 })`; use `0` for
+strict matching. Omitted expiry remains wallet-chosen and has no extension bound;
+relative offsets are rejected in sign-only requests. Other supplied fields remain
+strictly compared. Record the actual expiry returned in `tx_json` or the decoded blob.
+
+Xaman `signAndSubmit()` remains wallet-owned and does not perform original-request
+comparison after submission. Signature, signer, hash, network, and dispatch checks
+remain. See the [full policy and multisign limitations](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/docs/guide/transactions.md#xaman-expiry-policy).
+
 ### Issue: Large Bundle Size
 
 **Problem**: The meta-package includes all adapters, but your app only needs one.

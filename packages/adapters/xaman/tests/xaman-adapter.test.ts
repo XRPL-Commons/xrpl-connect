@@ -32,7 +32,7 @@ vi.mock('xumm', () => ({
   }),
 }));
 
-import { XamanAdapter } from '../src/xaman-adapter';
+import { XamanAdapter, type XamanAdapterOptions } from '../src/xaman-adapter';
 
 const SIGNING_WALLET = Wallet.fromSeed('snoPBrXtMeMyMHUVTgbuqAfg1SUTb');
 const CONNECTED_ACCOUNT = SIGNING_WALLET.address;
@@ -57,6 +57,23 @@ const REQUESTED_TRANSACTION = {
   Sequence: 1,
   Flags: 0,
 } as Transaction;
+const MIN_ABSOLUTE_LEDGER_SEQUENCE = 32570;
+const MAX_LEDGER_SEQUENCE = 0xffffffff;
+
+function signedExpiryFixture(lastLedgerSequence: number, overrides: Record<string, unknown> = {}) {
+  const input = {
+    ...REQUESTED_TRANSACTION,
+    ...overrides,
+    LastLedgerSequence: lastLedgerSequence,
+  } as Transaction;
+  const signed = SIGNING_WALLET.sign(input);
+  return {
+    input,
+    blob: signed.tx_blob,
+    hash: hashes.hashSignedTx(signed.tx_blob),
+    tx_json: decode(signed.tx_blob) as Transaction,
+  };
+}
 const MULTISIGN_SOURCE = Wallet.generate();
 const MULTISIGN_INPUT = {
   TransactionType: 'Payment',
@@ -74,6 +91,37 @@ const EXISTING_MULTISIGNER = Wallet.generate();
 const PARTIALLY_SIGNED_INPUT = decode(
   EXISTING_MULTISIGNER.sign(MULTISIGN_INPUT, true).tx_blob
 ) as Transaction;
+
+function multisignedExpiryFixture(lastLedgerSequence: number) {
+  const input = { ...MULTISIGN_INPUT, LastLedgerSequence: lastLedgerSequence } as Transaction;
+  const signed = SIGNING_WALLET.sign(input, true);
+  return {
+    input,
+    blob: signed.tx_blob,
+    hash: hashes.hashSignedTx(signed.tx_blob),
+    tx_json: decode(signed.tx_blob) as Transaction,
+  };
+}
+
+function batchExpiryFixture(lastLedgerSequence: number) {
+  return signedExpiryFixture(lastLedgerSequence, {
+    TransactionType: 'Batch',
+    RawTransactions: [
+      {
+        RawTransaction: {
+          TransactionType: 'Payment',
+          Account: CONNECTED_ACCOUNT,
+          Destination: 'rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe',
+          Amount: '1',
+          Fee: '0',
+          Sequence: 2,
+          Flags: 0x40000000,
+          SigningPubKey: '',
+        },
+      },
+    ],
+  });
+}
 
 function signedFixture(networkId = 0) {
   const input = {
@@ -99,7 +147,9 @@ type PayloadEventCallback = (event: {
   payload: { meta: { app_opened: boolean } };
 }) => unknown | Promise<unknown>;
 
-function createSubscriptionHarness() {
+type PayloadBody = { txjson: Transaction; options: Record<string, unknown> };
+
+function createSubscriptionHarness(onCreate?: (body: PayloadBody) => void) {
   let callback: PayloadEventCallback | undefined;
   let resolveOutcome: ((outcome: unknown) => void) | undefined;
   let markReady: (() => void) | undefined;
@@ -113,6 +163,7 @@ function createSubscriptionHarness() {
   const close = vi.fn(() => resolveOutcome?.(undefined));
 
   mockXummInstance.payload.createAndSubscribe.mockImplementation(async (_body, onEvent) => {
+    onCreate?.(_body as PayloadBody);
     callback = onEvent as PayloadEventCallback;
     markReady?.();
     return {
@@ -141,7 +192,7 @@ function resolvedPayload(
   submit: boolean,
   responseOverrides: Record<string, unknown> = {},
   metaOverrides: Record<string, unknown> = {},
-  requestJson: Transaction = REQUESTED_TRANSACTION
+  requestJson: Record<string, unknown> = REQUESTED_TRANSACTION
 ) {
   return {
     meta: {
@@ -217,16 +268,20 @@ beforeEach(() => {
   mockXummInstance.user.networkType = Promise.resolve(undefined);
 });
 
-async function signedAdapter(network: NetworkConfig = 'mainnet') {
+async function signedAdapter(
+  network: NetworkConfig = 'mainnet',
+  options: Omit<XamanAdapterOptions, 'apiKey'> = {},
+  onCreate?: (body: PayloadBody) => void
+) {
   setLiveXamanNetwork(network);
   mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
-  const adapter = new XamanAdapter({ apiKey: 'test-key' });
+  const adapter = new XamanAdapter({ apiKey: 'test-key', ...options });
   // Without an onQRCode callback, openSignWindow() falls back to window.open(),
   // which doesn't exist in this (Node) test environment — supply a no-op so
   // signing proceeds straight to the subscription wait, same as a headless caller.
   await adapter.connect({ network, onQRCode: () => {} });
 
-  return { adapter, subscription: createSubscriptionHarness() };
+  return { adapter, subscription: createSubscriptionHarness(onCreate) };
 }
 
 const INVALID_NETWORK_IDS = [
@@ -334,6 +389,23 @@ describe('XamanAdapter configuration', () => {
   it('accepts constructor or deferred API keys', () => {
     expect(new XamanAdapter({ apiKey: 'constructor-key' }).getMissingConfiguration()).toEqual([]);
     expect(new XamanAdapter().getMissingConfiguration({ apiKey: 'deferred-key' })).toEqual([]);
+  });
+
+  it.each([NaN, Infinity, -Infinity, -1, 0.5, MAX_LEDGER_SEQUENCE + 1, null])(
+    'rejects invalid maxLastLedgerSequenceExtension %p',
+    (maxLastLedgerSequenceExtension) => {
+      expect(
+        () =>
+          new XamanAdapter({
+            maxLastLedgerSequenceExtension: maxLastLedgerSequenceExtension as never,
+          })
+      ).toThrow(RangeError);
+    }
+  );
+
+  it('accepts zero and a custom maxLastLedgerSequenceExtension', () => {
+    expect(() => new XamanAdapter({ maxLastLedgerSequenceExtension: 0 })).not.toThrow();
+    expect(() => new XamanAdapter({ maxLastLedgerSequenceExtension: 7 })).not.toThrow();
   });
 
   it('identifies a missing API key before connection work begins', async () => {
@@ -843,6 +915,303 @@ describe('XamanAdapter.sign', () => {
     expectTypeOf(result.tx_json).toEqualTypeOf<Transaction | undefined>();
   });
 
+  it('accepts the default 50-ledger expiry extension in request JSON and the signed blob', async () => {
+    const requested = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10);
+    const resolved = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 60);
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(
+      resolvedPayload(false, { hex: resolved.blob, txid: resolved.hash }, {}, resolved.input)
+    );
+
+    const signPromise = adapter.sign(requested.input);
+    await subscription.emit({ signed: true });
+
+    await expect(signPromise).resolves.toMatchObject({
+      hash: resolved.hash,
+      tx_json: { LastLedgerSequence: MIN_ABSOLUTE_LEDGER_SEQUENCE + 60 },
+    });
+  });
+
+  it('rejects a request JSON expiry extended beyond the default limit', async () => {
+    const requested = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10);
+    const resolved = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 61);
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(
+      resolvedPayload(false, { hex: resolved.blob, txid: resolved.hash }, {}, resolved.input)
+    );
+
+    const signPromise = adapter.sign(requested.input);
+    const rejection = expect(signPromise).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    await subscription.emit({ signed: true });
+
+    await rejection;
+  });
+
+  it('rejects a signed blob expiry extended beyond the default limit', async () => {
+    const requested = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10);
+    const resolved = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 61);
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(
+      resolvedPayload(false, { hex: resolved.blob, txid: resolved.hash }, {}, requested.input)
+    );
+
+    const signPromise = adapter.sign(requested.input);
+    const rejection = expect(signPromise).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    await subscription.emit({ signed: true });
+
+    await rejection;
+  });
+
+  it('clamps the expiry extension at the uint32 maximum', async () => {
+    const requested = signedExpiryFixture(MAX_LEDGER_SEQUENCE - 10);
+    const resolved = signedExpiryFixture(MAX_LEDGER_SEQUENCE);
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(
+      resolvedPayload(false, { hex: resolved.blob, txid: resolved.hash }, {}, resolved.input)
+    );
+
+    const signPromise = adapter.sign(requested.input);
+    await subscription.emit({ signed: true });
+
+    await expect(signPromise).resolves.toMatchObject({ hash: resolved.hash });
+  });
+
+  it.each([0, 7])('accepts expiry at the configured limit %s', async (limit) => {
+    const requested = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10);
+    const resolved = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10 + limit);
+    const { adapter, subscription } = await signedAdapter('mainnet', {
+      maxLastLedgerSequenceExtension: limit,
+    });
+    mockXummInstance.payload.get.mockResolvedValue(
+      resolvedPayload(false, { hex: resolved.blob, txid: resolved.hash }, {}, resolved.input)
+    );
+
+    const signPromise = adapter.sign(requested.input);
+    await subscription.emit({ signed: true });
+
+    await expect(signPromise).resolves.toMatchObject({ hash: resolved.hash });
+  });
+
+  it.each([0, 7])('rejects expiry above the configured limit %s', async (limit) => {
+    const requested = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10);
+    const resolved = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 11 + limit);
+    const { adapter, subscription } = await signedAdapter('mainnet', {
+      maxLastLedgerSequenceExtension: limit,
+    });
+    mockXummInstance.payload.get.mockResolvedValue(
+      resolvedPayload(false, { hex: resolved.blob, txid: resolved.hash }, {}, resolved.input)
+    );
+
+    const signPromise = adapter.sign(requested.input);
+    const rejection = expect(signPromise).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    await subscription.emit({ signed: true });
+
+    await rejection;
+  });
+
+  it.each([
+    [
+      'missing',
+      {
+        ...signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10).input,
+        LastLedgerSequence: undefined,
+      },
+    ],
+    [
+      'null',
+      { ...signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10).input, LastLedgerSequence: null },
+    ],
+    [
+      'string',
+      {
+        ...signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10).input,
+        LastLedgerSequence: '32580',
+      },
+    ],
+    [
+      'fractional',
+      {
+        ...signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10).input,
+        LastLedgerSequence: 32580.5,
+      },
+    ],
+    [
+      'too early',
+      {
+        ...signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10).input,
+        LastLedgerSequence: MIN_ABSOLUTE_LEDGER_SEQUENCE - 1,
+      },
+    ],
+    [
+      'too late',
+      {
+        ...signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10).input,
+        LastLedgerSequence: MAX_LEDGER_SEQUENCE + 1,
+      },
+    ],
+  ])('rejects a malformed %s response expiry', async (_description, responseRequest) => {
+    const requested = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10);
+    const resolved = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10);
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(
+      resolvedPayload(false, { hex: resolved.blob, txid: resolved.hash }, {}, responseRequest)
+    );
+
+    const signPromise = adapter.sign(requested.input);
+    const rejection = expect(signPromise).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    await subscription.emit({ signed: true });
+
+    await rejection;
+  });
+
+  it.each([
+    ['omitted', signedFixture().blob, signedFixture().hash],
+    [
+      'earlier',
+      signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 9).blob,
+      signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 9).hash,
+    ],
+    [
+      'too late',
+      signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 61).blob,
+      signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 61).hash,
+    ],
+  ])(
+    'rejects a signed blob whose expiry is %s or outside the limit',
+    async (_description, hex, txid) => {
+      const requested = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10);
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.payload.get.mockResolvedValue(
+        resolvedPayload(false, { hex, txid }, {}, requested.input)
+      );
+
+      const signPromise = adapter.sign(requested.input);
+      const rejection = expect(signPromise).rejects.toMatchObject({
+        code: WalletErrorCode.SIGN_FAILED,
+      });
+      await subscription.emit({ signed: true });
+
+      await rejection;
+    }
+  );
+
+  it.each([
+    MIN_ABSOLUTE_LEDGER_SEQUENCE - 1,
+    0,
+    -1,
+    MIN_ABSOLUTE_LEDGER_SEQUENCE + 0.5,
+    MAX_LEDGER_SEQUENCE + 1,
+    NaN,
+    Infinity,
+    null,
+    '32580',
+  ])('rejects invalid supplied LastLedgerSequence %p before creating a payload', async (expiry) => {
+    const { adapter } = await signedAdapter();
+    const transaction = {
+      ...REQUESTED_TRANSACTION,
+      LastLedgerSequence: expiry,
+    } as unknown as Transaction;
+
+    await expect(adapter.sign(transaction)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    expect(mockXummInstance.payload.createAndSubscribe).not.toHaveBeenCalled();
+  });
+
+  it('keeps other supplied fields strict while allowing only the expiry extension', async () => {
+    const requested = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10);
+    const resolved = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 11, {
+      Amount: '5000000',
+    });
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(
+      resolvedPayload(false, { hex: resolved.blob, txid: resolved.hash }, {}, resolved.input)
+    );
+
+    const signPromise = adapter.sign(requested.input);
+    const rejection = expect(signPromise).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    await subscription.emit({ signed: true });
+
+    await rejection;
+  });
+
+  it('does not apply an expiry bound when the wallet chooses LastLedgerSequence', async () => {
+    const resolved = signedExpiryFixture(MAX_LEDGER_SEQUENCE);
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(
+      resolvedPayload(false, { hex: resolved.blob, txid: resolved.hash }, {}, resolved.input)
+    );
+
+    const signPromise = adapter.sign(REQUESTED_TRANSACTION);
+    await subscription.emit({ signed: true });
+
+    await expect(signPromise).resolves.toMatchObject({ hash: resolved.hash });
+  });
+
+  it('snapshots the caller transaction and SDK payload before approval-time mutation', async () => {
+    const requested = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10);
+    const responseRequest = { ...requested.input };
+    const { adapter, subscription } = await signedAdapter('mainnet', {}, (body) => {
+      body.txjson.LastLedgerSequence = MIN_ABSOLUTE_LEDGER_SEQUENCE + 61;
+    });
+    mockXummInstance.payload.get.mockResolvedValue(
+      resolvedPayload(false, { hex: requested.blob, txid: requested.hash }, {}, responseRequest)
+    );
+
+    const signPromise = adapter.sign(requested.input);
+    requested.input.LastLedgerSequence = MIN_ABSOLUTE_LEDGER_SEQUENCE + 61;
+    await subscription.emit({ signed: true });
+
+    await expect(signPromise).resolves.toMatchObject({ hash: requested.hash });
+  });
+
+  it('requires exact expiry for multisigning and Batch transactions', async () => {
+    const cases = [
+      {
+        requested: multisignedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10),
+        resolved: multisignedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 11),
+        response: { account: MULTISIGN_SOURCE.address, multisign_account: CONNECTED_ACCOUNT },
+        meta: { multisign: true },
+      },
+      {
+        requested: batchExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10),
+        resolved: batchExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 11),
+        response: { account: CONNECTED_ACCOUNT, multisign_account: null },
+        meta: { multisign: false },
+      },
+    ];
+
+    for (const testCase of cases) {
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.payload.get.mockResolvedValue(
+        resolvedPayload(
+          false,
+          { hex: testCase.resolved.blob, txid: testCase.resolved.hash, ...testCase.response },
+          testCase.meta,
+          testCase.resolved.input
+        )
+      );
+
+      const signPromise = adapter.sign(testCase.requested.input);
+      const rejection = expect(signPromise).rejects.toMatchObject({
+        code: WalletErrorCode.SIGN_FAILED,
+      });
+      await subscription.emit({ signed: true });
+
+      await rejection;
+    }
+  });
+
   it('rejects a resolved payload from a different network', async () => {
     const { adapter, subscription } = await signedAdapter();
     mockXummInstance.payload.get.mockResolvedValue(
@@ -1303,6 +1672,54 @@ describe('XamanAdapter.signMessage', () => {
 });
 
 describe('XamanAdapter.signAndSubmit', () => {
+  it.each([undefined, 0])(
+    'does not compare submitted fields or apply expiry allowance %s',
+    async (limit) => {
+      const requested = signedExpiryFixture(100_000);
+      const resolved = signedExpiryFixture(100_150, { Amount: '5000000' });
+      const { adapter, subscription } = await signedAdapter('mainnet', {
+        maxLastLedgerSequenceExtension: limit,
+      });
+      mockXummInstance.payload.get.mockResolvedValue(
+        resolvedPayload(true, { hex: resolved.blob, txid: resolved.hash }, {}, resolved.input)
+      );
+      const submitted = adapter.signAndSubmit(requested.input);
+      await subscription.emit({ signed: true });
+      await expect(submitted).resolves.toMatchObject({
+        hash: resolved.hash,
+        tx_json: { Amount: '5000000', LastLedgerSequence: 100_150 },
+      });
+      expect(mockXummInstance.payload.createAndSubscribe).toHaveBeenCalledWith(
+        expect.objectContaining({ options: expect.objectContaining({ submit: true }) }),
+        expect.any(Function)
+      );
+    }
+  );
+
+  it('still rejects an invalid signature after wallet-owned submission', async () => {
+    const requested = signedExpiryFixture(100_000);
+    const changed = signedExpiryFixture(100_150);
+    const invalidBlob = encode({ ...changed.tx_json, Amount: '2' } as Transaction);
+    const { adapter, subscription } = await signedAdapter();
+    mockXummInstance.payload.get.mockResolvedValue(
+      resolvedPayload(
+        true,
+        {
+          hex: invalidBlob,
+          txid: hashes.hashSignedTx(invalidBlob),
+        },
+        {},
+        changed.input
+      )
+    );
+    const submitted = adapter.signAndSubmit(requested.input);
+    const rejection = expect(submitted).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    await subscription.emit({ signed: true });
+    await rejection;
+  });
+
   it('returns signed data only after Xaman reports a successful node dispatch', async () => {
     const { adapter, subscription } = await signedAdapter();
     mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(true));

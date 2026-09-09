@@ -1,3 +1,15 @@
+# Xaman sign-only expiry policy
+
+- [x] Add a constructor-configurable maximum LastLedgerSequence extension, default 50; 0 preserves strict matching.
+- [x] Bound only supplied absolute expiry values in sign-only results; snapshot the request and keep all other supplied-field comparisons strict.
+- [x] Keep wallet-owned signAndSubmit, removing post-submit request equality checks while retaining integrity/network/submission validation.
+- [x] Add real-signature regressions for limits, malformed input, mutation, and submission semantics.
+- [x] Document absolute-expiry requirements, omitted/relative expiry behavior, multisigning, and release availability; verify builds/types/tests.
+
+## Review
+
+Separate from PR #197; no network-refresh changes or package publication. The Xaman suite passes all 246 tests and its TypeScript check. Packed-candidate consumer checks (including constructor/factory option types, React/Vue, SSR, and Nuxt builds), the documentation build, formatting, lint, and diff whitespace checks pass. Fixtures use real local signatures and mocked Xaman responses; no live wallet signing or submission was exercised. Prepared for review on `fix/xaman-sign-expiry`.
+
 # Xaman session refresh contract
 
 - [x] Verify the upstream expiry adjustment and explain its rationale without changing signing policy.
@@ -494,3 +506,14 @@ peers (legacy-peer overrides disabled), transaction type interoperability, React
 Formatting/lint, docs build, frozen lockfile validation, and diff checks pass.
 No live wallet or ledger submission is claimed. No artifacts were published;
 existing RC2 metadata is unchanged and a new release is required.
+
+# PR #198 conflict resolution
+
+- [x] Inspect PR branches and preserve the existing local review note.
+- [x] Resolve publish-consumer type conflicts while retaining both branches’ assertions.
+- [x] Run Xaman, consumer, formatting, and lint checks.
+- [ ] Commit and push the merge resolution; verify GitHub mergeability and CI.
+
+## Review
+
+Merged `origin/develop` while preserving XRPL transaction compatibility assertions and Xaman expiry-option assertions in both packed-consumer module formats. All 246 Xaman tests, Xaman TypeScript checks, repository formatting/lint, whitespace checks, and packed-consumer checks for XRPL v4 and v5.0.0 pass. A concurrent develop update added the Xaman session-refresh contract; retained both task-log entries and verified the automatically merged Xaman changes with 252 Xaman tests, 97 core tests, TypeScript checks, core/Xaman builds, and formatting/lint. Remote CI verification follows the push.

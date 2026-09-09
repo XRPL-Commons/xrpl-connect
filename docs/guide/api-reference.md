@@ -106,6 +106,13 @@ flags use `CAPABILITY_DEFAULTS`, where each signing operation defaults to
 `true`. A manager signing method rejects with `UNSUPPORTED_METHOD` before
 calling an adapter that explicitly declares the operation unsupported.
 
+#### Xaman signing expiry
+
+For Xaman `sign()`, the adapter option `maxLastLedgerSequenceExtension` defaults to
+50 additional ledgers beyond a supplied absolute expiry (`0` for strict matching).
+This is unreleased after RC2 and does not apply to wallet-owned `signAndSubmit()`;
+see [expiry policy and limits](/guide/transactions#xaman-expiry-policy).
+
 #### fetchAccount()
 
 ```typescript

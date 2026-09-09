@@ -50,14 +50,16 @@ const invalidCssVars: WalletConnectorCssVars = {
 const invalidStandardWalletId: WalletId = 'custom-wallet';
 const descriptorWalletId: WalletId = ADAPTER_DESCRIPTORS[0].id;
 const packagedAdapters = createAdapters({
-  xaman: { apiKey: 'api-key' },
+  xaman: { apiKey: 'api-key', maxLastLedgerSequenceExtension: 50 },
   walletconnect: { projectId: 'project-id' },
 });
 const manager = new WalletManager({ adapters: packagedAdapters });
 declare const preparedTransaction: import('xrpl').SubmittableTransaction;
 void manager.sign(preparedTransaction);
 void manager.signAndSubmit(preparedTransaction);
-const configuredXaman = new XamanAdapter({ apiKey: 'api-key' });
+const configuredXaman = new XamanAdapter({ apiKey: 'api-key', maxLastLedgerSequenceExtension: 0 });
+// @ts-expect-error The expiry extension is a numeric ledger count.
+new XamanAdapter({ maxLastLedgerSequenceExtension: '50' });
 const deferredXaman = new XamanAdapter();
 const configuredWalletConnect = new WalletConnectAdapter({ projectId: 'project-id' });
 const deferredWalletConnect = new WalletConnectAdapter();

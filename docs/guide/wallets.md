@@ -54,7 +54,7 @@ Xaman API keys and WalletConnect project IDs are browser identifiers, not server
 
 ## Adapter options
 
-- `XamanAdapter`: `apiKey`, QR callback, deep-link transformation, and post-signing return URLs.
+- `XamanAdapter`: `apiKey`, QR callback, deep-link transformation, post-signing return URLs, and `maxLastLedgerSequenceExtension` (unreleased after RC2; default 50, sign-only). See [expiry policy](/guide/transactions#xaman-expiry-policy).
 - `WalletConnectAdapter`: `projectId`, metadata, QR/deep-link callbacks, modal mode, and theme.
 - `LedgerAdapter`: derivation path, operation timeout, and WebHID preference. Ledger requires HTTPS outside localhost.
 - `MetaMaskSnapAdapter`: optional `snapId`; use the default published Snap unless developing a local Snap.
