@@ -454,3 +454,19 @@ Opened [PR #192](https://github.com/XRPL-Commons/xrpl-connect/pull/192) against 
 - [x] Identify merged task-log formatting failures on Node 22/24 and an npm download `ECONNRESET` on Node 20.
 - [x] Format the merged log and run repository checks.
 - [x] Prepare the formatting correction for push; require all remote CI jobs to pass before reporting completion.
+
+# xrpl v5 compatibility
+
+- [x] Review upstream v5 changes and runtime/type usage.
+- [x] Add strict packed-consumer v4/v5 coverage without weakening existing checks.
+- [x] Widen supported peer ranges and refresh the lockfile after compatibility checks.
+- [x] Verify builds, adapter tests, packed consumers, and docs; record limitations.
+
+Review: full existing build/unit suite passes on the workspace v4 graph. Ledger's
+51 tests include connect-time discovery cleanup for both signing methods. The
+expanded packed-consumer suite passes with xrpl 4.6.0, 5.0.0, and 5.1.0: strict
+peers (legacy-peer overrides disabled), transaction type interoperability, React
+18/19, Vue, ESM/CommonJS, SSR, offline signing/codec verification, and Nuxt builds.
+Formatting/lint, docs build, frozen lockfile validation, and diff checks pass.
+No live wallet or ledger submission is claimed. No artifacts were published;
+existing RC2 metadata is unchanged and a new release is required.

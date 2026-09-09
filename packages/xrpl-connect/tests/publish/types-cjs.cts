@@ -54,6 +54,9 @@ const packagedAdapters = createAdapters({
   walletconnect: { projectId: 'project-id' },
 });
 const manager = new WalletManager({ adapters: packagedAdapters });
+declare const preparedTransaction: import('xrpl').SubmittableTransaction;
+void manager.sign(preparedTransaction);
+void manager.signAndSubmit(preparedTransaction);
 const configuredXaman = new XamanAdapter({ apiKey: 'api-key' });
 const deferredXaman = new XamanAdapter();
 const configuredWalletConnect = new WalletConnectAdapter({ projectId: 'project-id' });

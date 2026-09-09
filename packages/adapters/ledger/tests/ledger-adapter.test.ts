@@ -370,6 +370,22 @@ describe('LedgerAdapter.sign', () => {
     expect(client.disconnect).toHaveBeenCalledTimes(1);
   });
 
+  it.each(['sign', 'signAndSubmit'] as const)(
+    'closes the XRPL client when network discovery fails during %s',
+    async (method) => {
+      const adapter = await connected();
+      client.connect.mockRejectedValue(new Error('server_info response is missing network_id'));
+
+      await expect(adapter[method](SINGLE_TRANSACTION)).rejects.toMatchObject({
+        message: expect.stringContaining('server_info response is missing network_id'),
+      });
+      expect(client.disconnect).toHaveBeenCalledTimes(1);
+      expect(client.autofill).not.toHaveBeenCalled();
+      expect(xrpAppInstance.signTransaction).not.toHaveBeenCalled();
+      expect(client.submitAndWait).not.toHaveBeenCalled();
+    }
+  );
+
   it('returns an authoritative signer-bound multisign contribution', async () => {
     const adapter = await connected(LEDGER_SIGNER.Account, LEDGER_SIGNER.SigningPubKey);
     xrpAppInstance.signTransaction.mockResolvedValue(LEDGER_SIGNER.TxnSignature);

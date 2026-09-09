@@ -36,6 +36,25 @@ template does not stop that component's setup function from running during SSR. 
 
 Supply a custom `StorageAdapter` when local storage is inappropriate, or `MemoryStorageAdapter` for non-persistent/test environments.
 
+## xrpl.js compatibility
+
+The upcoming SDK release accepts `xrpl` v3, v4, and v5; RC2 published before this
+change accepts v3/v4. V5 requires Node.js 20.19 or newer, consistent with this
+repository's supported Node release lines. The supported peer range does not make
+the upstream major versions interchangeable for application-owned code: v5 changes
+seed/mnemonic key derivation defaults and client network discovery error handling.
+Review the [upstream v5 release notes](https://github.com/XRPLF/xrpl.js/releases/tag/xrpl%405.0.0)
+when upgrading an existing application. XRPL Connect does not derive users' wallets
+from seeds or mnemonics.
+
+Packed-consumer verification covers the documented v4 dependency, the v5.0.0
+minimum, and the current v5 release with strict peers, transaction types,
+ESM/CommonJS, React/Vue, SSR, offline signing/codec checks, and a Nuxt build.
+This does not replace live-wallet acceptance tests. Upgrading the upstream
+dependency can also change browser assets: the tested v5.1.0 Nuxt build emits an
+additional WebAssembly asset, so review your application's bundle and deployment
+policies when upgrading.
+
 ## Browser support
 
 - Serve production applications over HTTPS.
