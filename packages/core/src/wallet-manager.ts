@@ -689,10 +689,10 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
-   * Re-fetch the account live from the connected wallet and refresh the cached
-   * value, emitting `accountChanged` if it changed. Use this when you need the
-   * current on-wallet account rather than the cached `account` getter (e.g. the
-   * user may have switched accounts in the wallet).
+   * Query the connected adapter and refresh cached account information, emitting
+   * account/network change events for differences. Freshness is adapter-specific:
+   * Xaman queries its OAuth subject and retains the session network context.
+   * Success does not universally verify the wallet's current network selection.
    */
   async fetchAccount(): Promise<AccountInfo | null> {
     if (!this.currentAdapter || !this.currentAccount) {

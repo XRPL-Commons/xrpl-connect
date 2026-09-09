@@ -289,13 +289,16 @@ if (walletManager.supports('signMessage')) {
 
 #### `fetchAccount(): Promise<AccountInfo | null>`
 
-Requests fresh account and network data from the connected wallet, updates the
+Queries account information through the connected adapter, updates the
 manager cache and persisted session, and emits `accountChanged` and/or
 `networkChanged` when those values differ. This is distinct from the `account`
 getter, which only returns cached state.
 
-Live refresh is currently implemented by the Crossmark, GemWallet, Ledger,
-Otsu, and Xaman adapters. WalletConnect, Xyra, and custom adapters without
+Account refresh is currently implemented by the Crossmark, GemWallet, Ledger,
+Otsu, and Xaman adapters. Freshness is adapter-specific: Xaman checks its OAuth
+session subject and retains the session network, not the mobile app's current
+account or network selection. A successful refresh is not proof of the wallet's
+current network. WalletConnect, Xyra, and custom adapters without
 `SupportsFetchAccount` reject with `WalletErrorCode.UNSUPPORTED_METHOD`; an
 unsupported adapter is never queried through its cached `getAccount()` method.
 Calling `fetchAccount()` without an active connection rejects with
@@ -303,9 +306,9 @@ Calling `fetchAccount()` without an active connection rejects with
 manager clears the session, emits `disconnect`, and returns `null`.
 
 ```typescript
-const freshAccount = await walletManager.fetchAccount();
-if (freshAccount) {
-  console.log('Current wallet account:', freshAccount.address);
+const account = await walletManager.fetchAccount();
+if (account) {
+  console.log('Authorized account:', account.address);
 }
 ```
 

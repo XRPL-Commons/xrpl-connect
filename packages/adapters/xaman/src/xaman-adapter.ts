@@ -38,6 +38,8 @@ const SIGNING_TIMEOUT_MS = 5 * 60 * 1000;
 const RESOLVED_PAYLOAD_RETRY_MAX_MS = 5_000;
 const RESOLVED_PAYLOAD_RETRY_TIMEOUT_MS = 30_000;
 const SIGNING_OUTPUT_FIELDS = new Set(['TxnSignature']);
+const MAX_LEDGER_SEQUENCE = 0xffffffff;
+const MIN_ABSOLUTE_LEDGER_SEQUENCE = 32570;
 
 const XAMAN_NETWORKS_BY_ID = new Map<number, XamanNetwork>([
   [0, { forceNetwork: 'MAINNET', networkId: 0, id: 'mainnet', name: 'Mainnet' }],
@@ -146,6 +148,12 @@ export interface XamanAdapterOptions {
   onDeepLink?: (uri: string) => string; // Transform URI for deep linking
   /** Optional navigation destinations offered after a signing request is resolved */
   returnUrl?: XamanReturnUrl;
+  /**
+   * Maximum increase to a supplied absolute LastLedgerSequence in sign() results.
+   * Defaults to 50 ledgers; 0 requires exact matching. Does not apply to
+   * signAndSubmit(), multisigning, Batch, or wallet-chosen (omitted) expiry.
+   */
+  maxLastLedgerSequenceExtension?: number;
 }
 
 export type XamanConnectOptions = WalletConnectionOptionsById['xaman'];
@@ -167,6 +175,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
   private sdkApiKey: string | null = null;
   private currentAccount: AccountInfo | null = null;
   private options: XamanAdapterOptions;
+  private readonly maxLastLedgerSequenceExtension: number;
   private activePayloadOperations = new Set<ActivePayloadOperation>();
   private connectionGeneration = 0;
   private supersededRestorationGeneration: number | null = null;
@@ -185,6 +194,16 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
   } = {};
 
   constructor(options: XamanAdapterOptions = {}) {
+    const extension =
+      options.maxLastLedgerSequenceExtension === undefined
+        ? 50
+        : options.maxLastLedgerSequenceExtension;
+    if (!Number.isSafeInteger(extension) || extension < 0 || extension > MAX_LEDGER_SEQUENCE) {
+      throw new RangeError(
+        'maxLastLedgerSequenceExtension must be an integer between 0 and 4294967295'
+      );
+    }
+    this.maxLastLedgerSequenceExtension = extension;
     this.options = options;
   }
 
@@ -266,7 +285,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
         return null;
       }
 
-      const resolvedNetwork = await this.getAuthoritativeNetwork(client);
+      const resolvedNetwork = await this.getSessionNetwork(client);
       const resolvedXamanNetwork = this.resolveXamanNetwork(resolvedNetwork);
       if (requestedXamanNetwork) {
         this.validateXamanNetwork(
@@ -439,7 +458,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
       logger.info('Connection phase: authorization successful');
 
       const account = authResult.me.account;
-      const network = await this.getAuthoritativeNetwork(client, authResult.me);
+      const network = await this.getSessionNetwork(client, authResult.me);
       if (generation !== this.connectionGeneration || this.client !== client) {
         throw new Error('Xaman connection attempt was superseded or disconnected');
       }
@@ -540,7 +559,8 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
   }
 
   /**
-   * Refresh the authenticated account and network from Xaman's live ping endpoint.
+   * Refresh the OAuth session subject, retaining its established network context.
+   * Ping does not report the mobile app's current account/network selection.
    */
   async fetchAccount(): Promise<AccountInfo | null> {
     const client = this.client;
@@ -556,32 +576,19 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
       if (refreshRevision !== this.accountRefreshRevision) return this.currentAccount;
       if (!this.currentAccount) return null;
 
-      const jwtData = pong?.jwtData as
-        | {
-            sub?: unknown;
-            network_endpoint?: unknown;
-            network_id?: unknown;
-          }
-        | undefined;
+      const jwtData = pong?.jwtData as { sub?: unknown } | undefined;
       const address = typeof jwtData?.sub === 'string' ? jwtData.sub : '';
       if (!address) {
         this.currentAccount = null;
         return null;
       }
 
-      const endpoint = jwtData?.network_endpoint;
-      const networkId = normalizeNetworkId(jwtData?.network_id);
-      let network = this.currentAccount.network;
-      if (typeof endpoint === 'string' && endpoint.length > 0 && networkId !== undefined) {
-        network = this.parseNetwork(endpoint, networkId);
-      } else if (endpoint !== undefined || jwtData?.network_id !== undefined) {
-        throw new Error('Xaman ping returned missing or invalid network metadata');
-      }
-
+      // OAuth ping has no supported network fields. Signing independently forces
+      // this session's target network and validates the resolved payload network.
       this.currentAccount = {
         address,
         publicKey: undefined,
-        network,
+        network: this.currentAccount.network,
       };
       return this.currentAccount;
     } catch (error) {
@@ -591,7 +598,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
   }
 
   /**
-   * Get current network
+   * Get the session network context, not the mobile app's current selection.
    */
   async getNetwork(): Promise<NetworkInfo> {
     if (!this.currentAccount) {
@@ -613,7 +620,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
    * actual signed data and dispatch result come from `payload.get()`.
    */
   private async createAndWaitForPayload(
-    transaction: Transaction,
+    inputTransaction: Transaction,
     submit: boolean
   ): Promise<{
     txid: string;
@@ -623,6 +630,22 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
   }> {
     if (!this.client || !this.currentAccount) {
       throw createWalletError.notConnected();
+    }
+
+    // Compare against a snapshot of the serialized request, independent of both
+    // caller mutations during approval and mutations by the wallet SDK.
+    const transaction = JSON.parse(JSON.stringify(inputTransaction)) as Transaction;
+    if (!submit && transaction.LastLedgerSequence !== undefined) {
+      const expiry = transaction.LastLedgerSequence;
+      if (
+        !Number.isSafeInteger(expiry) ||
+        expiry < MIN_ABSOLUTE_LEDGER_SEQUENCE ||
+        expiry > MAX_LEDGER_SEQUENCE
+      ) {
+        throw new Error(
+          'Xaman sign() requires an absolute LastLedgerSequence between 32570 and 4294967295; relative expiry offsets are not supported'
+        );
+      }
     }
 
     const client = this.client;
@@ -639,7 +662,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
 
     // oxlint-disable-next-line typescript/no-explicit-any
     const payloadBody: any = {
-      txjson: transaction,
+      txjson: JSON.parse(JSON.stringify(transaction)) as Transaction,
       options: {
         submit,
         force_network: xamanNetwork.forceNetwork,
@@ -742,7 +765,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
         throw new Error('Xaman payload signer did not match the connected account');
       }
 
-      this.validateRequestedTransaction(transaction, resolved.payload?.request_json);
+      if (!submit) this.validateRequestedTransaction(transaction, resolved.payload?.request_json);
 
       const { response } = resolved;
       if (typeof response.hex !== 'string' || response.hex.length === 0) {
@@ -788,7 +811,7 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
           response.multisign_account,
           xamanNetwork
         );
-        this.validateRequestedTransaction(transaction, tx_json);
+        if (!submit) this.validateRequestedTransaction(transaction, tx_json);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(`Xaman returned an invalid signed transaction blob: ${message}`);
@@ -895,7 +918,9 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
     }
   }
 
-  private async getAuthoritativeNetwork(
+  // OAuth user information can be restored from a saved session. It establishes
+  // signing context, not a live observation of the mobile app's network.
+  private async getSessionNetwork(
     client: Xumm,
     authorizedMe?: {
       networkEndpoint?: unknown;
@@ -1128,7 +1153,31 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
     requested: Transaction,
     actual: Record<string, unknown> | undefined
   ): void {
-    if (!actual || !this.containsRequestedValue(requested, actual)) {
+    if (!actual) {
+      throw new Error('Xaman returned a transaction that did not match the signing request');
+    }
+    let expected = requested;
+    const requestedExpiry = requested.LastLedgerSequence;
+    if (requestedExpiry !== undefined) {
+      const actualExpiry = actual.LastLedgerSequence;
+      const maxExtension =
+        requested.SigningPubKey === '' || requested.TransactionType === 'Batch'
+          ? 0
+          : this.maxLastLedgerSequenceExtension;
+      if (
+        typeof actualExpiry !== 'number' ||
+        !Number.isSafeInteger(actualExpiry) ||
+        actualExpiry > MAX_LEDGER_SEQUENCE ||
+        actualExpiry < requestedExpiry ||
+        actualExpiry - requestedExpiry > maxExtension
+      ) {
+        throw new Error(
+          'Xaman returned LastLedgerSequence outside the permitted signing expiry range'
+        );
+      }
+      expected = { ...requested, LastLedgerSequence: actualExpiry };
+    }
+    if (!this.containsRequestedValue(expected, actual)) {
       throw new Error('Xaman returned a transaction that did not match the signing request');
     }
   }

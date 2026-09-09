@@ -106,18 +106,29 @@ flags use `CAPABILITY_DEFAULTS`, where each signing operation defaults to
 `true`. A manager signing method rejects with `UNSUPPORTED_METHOD` before
 calling an adapter that explicitly declares the operation unsupported.
 
+#### Xaman signing expiry
+
+For Xaman `sign()`, the adapter option `maxLastLedgerSequenceExtension` defaults to
+50 additional ledgers beyond a supplied absolute expiry (`0` for strict matching).
+This is unreleased after RC2 and does not apply to wallet-owned `signAndSubmit()`;
+see [expiry policy and limits](/guide/transactions#xaman-expiry-policy).
+
 #### fetchAccount()
 
 ```typescript
 async fetchAccount(): Promise<AccountInfo | null>
 ```
 
-Ask the connected adapter for fresh wallet account and network data, update the
+Query the connected adapter for account information, update the
 manager cache and persisted session, and emit `accountChanged` and/or
 `networkChanged` for differences. The `account` property remains the cached,
 synchronous counterpart.
 
-Crossmark, GemWallet, Ledger, Otsu, and Xaman support live refresh.
+Crossmark, GemWallet, Ledger, Otsu, and Xaman support account refresh, but its
+freshness is adapter-specific. Xaman queries the authenticated OAuth subject and
+retains its session network context; it does not query the mobile app's current
+account or network selection. A successful refresh is not proof of the current
+wallet network. See [Xaman network evidence](/guide/production#xaman-session-refresh-and-network-evidence).
 WalletConnect, Xyra, and custom adapters without `SupportsFetchAccount` reject
 with `UNSUPPORTED_METHOD`; the manager does not silently substitute cached
 `getAccount()` data. Calling without a connection rejects with `NOT_CONNECTED`.
