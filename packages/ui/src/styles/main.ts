@@ -1,7 +1,6 @@
 import { SIZES, TIMINGS, Z_INDEX, FONT_WEIGHTS } from '../constants';
 
 export const mainStyles = `
-  @import url('https://fonts.googleapis.com/css2?family=Karla:wght@300;400;600&display=swap');
 
   * {
     box-sizing: border-box;
@@ -508,6 +507,12 @@ export const mainStyles = `
     font-size: 16px;
     font-weight: ${FONT_WEIGHTS.LIGHT};
     opacity: 0.9;
+  }
+
+  .loading-wallet-message {
+    margin-top: 8px;
+    font-size: 14px;
+    opacity: 0.7;
   }
 
   /* Error View */

@@ -534,6 +534,7 @@ describe('<WalletConnector>', () => {
         <WalletConnector
           {...conflictingHostAttributes}
           id="wallet-modal"
+          nonce="test-style-nonce"
           title="Choose a wallet"
           data-testid="wallet-connector"
           aria-label="Wallet connector"
@@ -555,6 +556,7 @@ describe('<WalletConnector>', () => {
     };
     await waitFor(() => expect(element.manager).not.toBeNull());
     expect(element.getAttribute('id')).toBe('wallet-modal');
+    expect(element.nonce).toBe('test-style-nonce');
     expect(element.getAttribute('title')).toBe('Choose a wallet');
     expect(element.getAttribute('data-testid')).toBe('wallet-connector');
     expect(element.getAttribute('aria-label')).toBe('Wallet connector');

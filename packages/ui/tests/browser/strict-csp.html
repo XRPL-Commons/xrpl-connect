@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XRPL Connect strict CSP regression</title>
+  </head>
+  <body>
+    <button id="open-wallet-dialog" type="button">Open wallet dialog</button>
+    <xrpl-wallet-connector
+      id="html-connector"
+      nonce="strict-csp-test-nonce"
+    ></xrpl-wallet-connector>
+    <script type="module" src="./strict-csp-fixture.ts"></script>
+  </body>
+</html>

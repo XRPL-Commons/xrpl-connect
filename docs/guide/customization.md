@@ -16,6 +16,10 @@ The `<xrpl-wallet-connector>` web component exposes a stable customization contr
 
 ## CSS Variable Customization
 
+For strict CSP deployments, see the [nonce setup and external CSS guidance](/guide/production#strict-content-security-policy).
+The inline examples below require permission for inline styles; a style nonce alone does
+not authorize `style` attributes. The connector uses system fonts without loading Google Fonts.
+
 The component supports the exact CSS custom properties listed below. They are exported as
 `WALLET_CONNECTOR_CSS_VARIABLES`; TypeScript consumers can use
 `WalletConnectorCssVariable` and `WalletConnectorCssVars` from `xrpl-connect` or

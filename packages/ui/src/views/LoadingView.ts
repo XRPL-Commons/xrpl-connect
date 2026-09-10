@@ -18,7 +18,7 @@ export function renderLoadingView(walletName: string, walletIcon?: string): Docu
           </div>
           <div class="loading-text">
             <p>Requesting connection...</p>
-            <p class="loading-wallet-message" style="margin-top: 8px; font-size: 14px; opacity: 0.7;"></p>
+            <p class="loading-wallet-message"></p>
           </div>
         </div>
       </div>

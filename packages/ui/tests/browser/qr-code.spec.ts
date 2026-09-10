@@ -3,6 +3,7 @@ import jsQR from 'jsqr';
 import { PNG } from 'pngjs';
 
 const uri = 'wc:0123456789abcdef0123456789abcdef@2?relay-protocol=irn&symKey=' + 'ab'.repeat(32);
+const strictCspNonce = 'strict-csp-test-nonce';
 
 for (const path of ['pre-generated', 'on-demand']) {
   for (const logo of ['inline', 'failed', 'stalled']) {
@@ -15,7 +16,17 @@ for (const path of ['pre-generated', 'on-demand']) {
           response,
           headers: {
             ...response.headers(),
-            'content-security-policy': "img-src 'self' data:; connect-src 'self' ws:;",
+            'content-security-policy': [
+              "default-src 'self'",
+              "base-uri 'none'",
+              "object-src 'none'",
+              "script-src 'self'",
+              "connect-src 'self' ws:",
+              `style-src 'nonce-${strictCspNonce}'`,
+              "style-src-attr 'none'",
+              "font-src 'none'",
+              "img-src 'self' data:",
+            ].join('; '),
           },
         });
       });
@@ -76,7 +87,7 @@ for (const path of ['pre-generated', 'on-demand']) {
           await page.evaluate(
             () => (window as unknown as { cspViolations: string[] }).cspViolations
           )
-        ).not.toContain('connect-src');
+        ).toEqual([]);
       } finally {
         releaseLogo?.();
       }

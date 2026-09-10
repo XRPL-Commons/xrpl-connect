@@ -10,6 +10,7 @@ import {
 } from '../src/customization';
 import { mainStyles } from '../src/styles/main';
 import { renderAccountModal } from '../src/views/AccountModal';
+import { renderLoadingView } from '../src/views/LoadingView';
 import '../src/wallet-connector';
 
 function partNames(root: ParentNode): string[] {
@@ -23,6 +24,59 @@ function escapeRegExp(value: string): string {
 }
 
 describe('wallet connector customization contract', () => {
+  it('does not load remote fonts or include literal inline loading styles', () => {
+    expect(mainStyles).not.toMatch(/@import|fonts\.googleapis|fonts\.gstatic/);
+    const view = renderLoadingView('Test Wallet');
+    expect(view.querySelector('[style]')).toBeNull();
+    expect(view.querySelector('.loading-wallet-message')?.textContent).toBe(
+      'Check your Test Wallet'
+    );
+  });
+
+  it.each(['', 'response-style-nonce'])(
+    'uses the host nonce %j on every rendered stylesheet',
+    async (nonce) => {
+      const connector = document.createElement('xrpl-wallet-connector') as HTMLElement & {
+        setWalletManager(manager: WalletManager): void;
+        open(): Promise<void>;
+        close(): void;
+        openAccountModal(): void;
+        closeAccountModal(): void;
+        getOverlayRoot(): ShadowRoot | null;
+        getAccountModalRoot(): ShadowRoot | null;
+      };
+      connector.nonce = nonce;
+      connector.setWalletManager(new WalletManager({ adapters: [] }));
+      document.body.append(connector);
+      const assertStyles = () => {
+        for (const root of [
+          connector.shadowRoot,
+          connector.getOverlayRoot(),
+          connector.getAccountModalRoot(),
+        ]) {
+          const style = root?.querySelector('style');
+          expect(style).not.toBeNull();
+          expect(style?.nonce).toBe(nonce);
+          expect(style?.textContent).toBe(mainStyles);
+        }
+      };
+      try {
+        await connector.open();
+        connector.openAccountModal();
+        assertStyles();
+        connector.setAttribute('show-unavailable', '');
+        assertStyles();
+        connector.close();
+        connector.closeAccountModal();
+        await connector.open();
+        connector.openAccountModal();
+        assertStyles();
+      } finally {
+        connector.remove();
+      }
+    }
+  );
+
   it('keeps the public variable list aligned with stylesheet defaults and consumers', () => {
     const declaredVariables = [...mainStyles.matchAll(/^\s+(--xc-[\w-]+):/gm)].map(
       ([, variable]) => variable

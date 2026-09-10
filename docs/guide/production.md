@@ -92,6 +92,100 @@ directives. WalletConnect's built-in inline QR logo does not require adding `dat
 CSP warning does not block a request, but a separate enforced policy can. Never log or share
 WalletConnect pairing URIs: they contain a pairing secret.
 
+## Strict Content Security Policy
+
+::: warning Release availability
+Nonce support is an unreleased change after `1.0.0-rc.2`. RC2's official UI does not
+support this setup; use the headless API there or test a build containing this change.
+:::
+
+The official connector supports nonce-authorized styles without `unsafe-inline` or
+Google Fonts. It uses the system font stack by default and makes no font requests.
+Pass the **server-generated style nonce for the current HTML response** to the connector
+before it mounts. The same value authorizes its shadow-root stylesheet and both body-level
+modal portal stylesheets, including subsequent renders and reopenings.
+
+### Server policy and client setup
+
+Generate an unpredictable nonce for each HTML response (for example,
+`randomBytes(16).toString('base64')` with Node's `node:crypto`). Use the same value in
+the response policy and the rendered component. Do not hard-code a production nonce,
+generate an unrelated one in the browser, or reuse a cached HTML nonce across responses.
+Your server/framework must safely serialize the value into the page's client props.
+
+These are the **style directives**, not a complete wallet/application policy:
+
+```http
+Content-Security-Policy: style-src 'self' 'nonce-RESPONSE_NONCE'; style-src-attr 'none'
+```
+
+Replace `RESPONSE_NONCE` on the server. If you separately set `style-src-elem`, include
+the nonce there too: that directive overrides `style-src` for style elements. Keep your
+application's other directives, including its script policy. A nonce on the connector
+does not authorize scripts, style attributes, or third-party network requests.
+
+Vanilla (server-rendered markup, before importing/registering the component):
+
+```html
+<xrpl-wallet-connector nonce="RESPONSE_NONCE" class="wallet-theme"></xrpl-wallet-connector>
+```
+
+For programmatic creation, set `connector.nonce = responseNonce` **before** appending
+the element or binding its manager. Read an existing nonce through the `.nonce` property,
+not `getAttribute('nonce')`: browsers hide the attribute value.
+
+React, inside the existing client provider:
+
+```tsx
+<WalletConnector nonce={responseNonce} className="wallet-theme" />
+```
+
+Vue, inside the existing client app/plugin boundary:
+
+```vue
+<WalletConnector :nonce="responseNonce" class="wallet-theme" />
+```
+
+The wrappers forward the native `nonce` attribute; no global configuration or separate
+framework CSP API is needed. Keep it stable for the document lifetime. In Nuxt, pass the
+response's style nonce from your security middleware through to the client-only connector;
+the SDK does not generate nonces or configure response headers.
+
+### Theming and scope
+
+Put static overrides in a stylesheet allowed by your policy, targeting the connector
+directly. It forwards supported CSS variables into its modal portals:
+
+```css
+/* In your application's allowed external CSS file */
+xrpl-wallet-connector.wallet-theme {
+  --xc-primary-color: #2563eb;
+  --xc-font-family: system-ui, sans-serif;
+}
+```
+
+Client-side `theme` and object-valued `cssVars`/`style` props use CSSOM property updates,
+which `style-src-attr 'none'` permits. The connector also uses these updates for layout,
+avatar colors, and portal variables. Style attributes may therefore appear in DevTools;
+this is different from injecting literal `style="..."` markup. Avoid literal style
+attributes and server-rendered inline theme/style props under this policy; a nonce does
+not authorize those. External CSS is the simplest consistent option. See
+[MDN's style-src-attr reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/style-src-attr)
+and [nonce guidance](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/nonce).
+
+Self-host any custom font and permit its origin in `font-src`; otherwise no font allowance
+is needed for the connector. Wallet icons and inline QR logos may need `img-src 'self' data:`
+plus any explicitly configured image origins. Add wallet/RPC HTTPS and WebSocket endpoints
+to `connect-src` according to the adapters you enable; external wallet pages have their own
+policies. This style support is not a blanket guarantee for every wallet SDK or for
+`require-trusted-types-for 'script'` (Trusted Types is not supported by the UI).
+
+If your policy forbids all generated style elements, including nonced ones, use the
+headless manager/hooks/composables with your own UI. The built-in shadow styles do not have
+an external-stylesheet mode. Verify the production HTML response with an **enforced** CSP,
+and exercise the wallet picker, QR/loading/error views, account dialog, and real wallets;
+a report-only policy cannot prove compatibility.
+
 ## Xaman session refresh and network evidence
 
 `XamanAdapter.fetchAccount()` checks the OAuth session with `ping()` and refreshes its
