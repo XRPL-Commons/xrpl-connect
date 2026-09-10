@@ -1,0 +1,57 @@
+{
+  "name": "@xrpl-connect/adapter-ghostsig",
+  "version": "1.0.0",
+  "description": "GHOSTSIG wallet adapter for XRPL Connect - hosted passkey wallet in a popup",
+  "author": "GHOSTSIG",
+  "license": "MIT",
+  "homepage": "https://ghostsig.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/XRPL-Commons/xrpl-connect",
+    "directory": "packages/adapters/ghostsig"
+  },
+  "bugs": {
+    "url": "https://github.com/XRPL-Commons/xrpl-connect/issues"
+  },
+  "keywords": [
+    "xrpl",
+    "ghostsig",
+    "wallet",
+    "adapter",
+    "web3",
+    "passkey",
+    "popup"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test run",
+    "test:watch": "vp test",
+    "lint": "vp lint src",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@xrpl-connect/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "xrpl": "^3.0.0 || ^4.0.0 || ^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0"
+  }
+}

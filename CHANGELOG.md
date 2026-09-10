@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New adapter `@xrpl-connect/adapter-ghostsig`: sign with GHOSTSIG, a hosted passkey wallet opened in a popup on ghostsig.dev with no extension and no dependency. Wired into the `xrpl-connect` meta-package (`GhostsigAdapter`, `Adapters.Ghostsig`).
+
 ### Changed
 
 - Expand the `xrpl` peer range to v3/v4/v5 across core, adapters, and framework bindings, with strict packed-consumer compatibility checks for v5. This does not change the peer metadata of already-published RC2 artifacts.

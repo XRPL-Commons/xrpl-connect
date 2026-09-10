@@ -4,7 +4,7 @@ description: Choose and configure the wallet adapters included with XRPL Connect
 
 # Wallets and capabilities
 
-XRPL Connect v1.0 ships eight adapters behind one `WalletManager` API. Register only the wallets your application intends to support; the connector checks availability before presenting them.
+XRPL Connect v1.0 ships nine adapters behind one `WalletManager` API. Register only the wallets your application intends to support; the connector checks availability before presenting them.
 
 | Adapter ID      | Wallet        | Requirement                     | Sign | Submit | Messages | Live account refresh |
 | --------------- | ------------- | ------------------------------- | :--: | :----: | :------: | :------------------: |
@@ -14,6 +14,7 @@ XRPL Connect v1.0 ships eight adapters behind one `WalletManager` API. Register 
 | `walletconnect` | WalletConnect | Project ID                      | Yes  |  Yes   |    No    |          No          |
 | `ledger`        | Ledger        | XRP app and WebHID/WebUSB       | Yes  |  Yes   |    No    |         Yes          |
 | `xyra`          | Xyra          | Browser wallet                  | Yes  |  Yes   |   Yes    |          No          |
+| `ghostsig`      | GHOSTSIG      | Browser wallet (popup)          | Yes  |  Yes   |    No    |          No          |
 | `otsu`          | Otsu          | Browser wallet                  | Yes  |  Yes   |   Yes    |         Yes          |
 | `metamask-snap` | MetaMask Snap | MetaMask with XRPL Snap support | Yes  |  Yes   |   Yes    |          No          |
 
@@ -63,7 +64,7 @@ does not initiate recovery.
 - `WalletConnectAdapter`: `projectId`, metadata, QR/deep-link callbacks, modal mode, and theme.
 - `LedgerAdapter`: derivation path, operation timeout, and WebHID preference. Ledger requires HTTPS outside localhost.
 - `MetaMaskSnapAdapter`: optional `snapId`; use the default published Snap unless developing a local Snap.
-- Xyra, Otsu, Crossmark, and GemWallet work without application credentials.
+- Xyra, Otsu, Crossmark, GemWallet, and GHOSTSIG work without application credentials.
 
 Xaman and WalletConnect need constructor credentials to appear in wallet discovery and to support automatic reconnection. Direct calls can defer a credential for one session with `manager.connect('xaman', { apiKey })` or `manager.connect('walletconnect', { projectId })`; these options are selected from the wallet ID at compile time and are not persisted. Missing credentials fail early with `CONFIGURATION_REQUIRED`. Other connect-time options can override supported adapter settings. Configure Xaman return URLs on the adapter constructor when connecting through `WalletManager`; direct `XamanAdapter.connect()` calls can override them for one session. Return navigation may open another browser tab, so restore application state and use the signing result—not navigation—as confirmation. Keep the Xaman API key stable for the lifetime of the page because its browser SDK owns page-global OAuth state.
 

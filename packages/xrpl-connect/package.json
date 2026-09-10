@@ -30,6 +30,7 @@
     "walletconnect",
     "ledger",
     "xyra",
+    "ghostsig",
     "otsu",
     "metamask-snap",
     "wallet-adapter",
@@ -73,6 +74,7 @@
   "dependencies": {
     "@xrpl-connect/adapter-crossmark": "workspace:*",
     "@xrpl-connect/adapter-gemwallet": "workspace:*",
+    "@xrpl-connect/adapter-ghostsig": "workspace:*",
     "@xrpl-connect/adapter-ledger": "workspace:*",
     "@xrpl-connect/adapter-metamask-snap": "workspace:*",
     "@xrpl-connect/adapter-walletconnect": "workspace:*",

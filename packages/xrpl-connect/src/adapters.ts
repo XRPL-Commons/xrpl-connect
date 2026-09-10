@@ -5,6 +5,7 @@ import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
 import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
 import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
+import { GhostsigAdapter } from '@xrpl-connect/adapter-ghostsig';
 import { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
 import { MetaMaskSnapAdapter } from '@xrpl-connect/adapter-metamask-snap';
 
@@ -16,6 +17,7 @@ export const Adapters = {
   WalletConnect: WalletConnectAdapter,
   Ledger: LedgerAdapter,
   Xyra: XyraAdapter,
+  Ghostsig: GhostsigAdapter,
   Otsu: OtsuAdapter,
   MetaMaskSnap: MetaMaskSnapAdapter,
 } as const;
@@ -101,6 +103,14 @@ export const ADAPTER_DESCRIPTORS = [
     id: 'xyra',
     name: 'Xyra',
     Adapter: Adapters.Xyra,
+    availability: 'browser',
+    configuration: { requiredOptions: [], supportsDeferredConnection: false },
+  },
+  {
+    exportKey: 'Ghostsig',
+    id: 'ghostsig',
+    name: 'GHOSTSIG',
+    Adapter: Adapters.Ghostsig,
     availability: 'browser',
     configuration: { requiredOptions: [], supportsDeferredConnection: false },
   },

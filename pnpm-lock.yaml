@@ -128,6 +128,9 @@ importers:
       '@xrpl-connect/adapter-gemwallet':
         specifier: workspace:*
         version: link:../../packages/adapters/gemwallet
+      '@xrpl-connect/adapter-ghostsig':
+        specifier: workspace:*
+        version: link:../../packages/adapters/ghostsig
       '@xrpl-connect/adapter-ledger':
         specifier: workspace:*
         version: link:../../packages/adapters/ledger
@@ -199,6 +202,22 @@ importers:
       '@gemwallet/api':
         specifier: ^3.7.0
         version: 3.8.0
+      '@xrpl-connect/core':
+        specifier: workspace:*
+        version: link:../../core
+      xrpl:
+        specifier: ^3.0.0 || ^4.0.0 || ^5.0.0
+        version: 4.4.2(bufferutil@4.0.9)(utf-8-validate@5.0.10)
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.21
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+
+  packages/adapters/ghostsig:
+    dependencies:
       '@xrpl-connect/core':
         specifier: workspace:*
         version: link:../../core
@@ -453,6 +472,9 @@ importers:
       '@xrpl-connect/adapter-gemwallet':
         specifier: workspace:*
         version: link:../adapters/gemwallet
+      '@xrpl-connect/adapter-ghostsig':
+        specifier: workspace:*
+        version: link:../adapters/ghostsig
       '@xrpl-connect/adapter-ledger':
         specifier: workspace:*
         version: link:../adapters/ledger
