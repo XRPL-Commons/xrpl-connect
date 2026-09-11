@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { MemoryStorageAdapter, TIME, WalletManager } from '@xrpl-connect/core';
+import { MemoryStorageAdapter, Storage, TIME, WalletManager } from '@xrpl-connect/core';
 import type { NetworkInfo, WalletAdapter } from '@xrpl-connect/core';
 import '../src/wallet-connector';
 import { COLOR_ADJUSTMENT, TIMINGS } from '../src/constants';
@@ -54,6 +54,20 @@ function createAdapter(
   };
 }
 
+function createConfiguredXamanAdapter(address = 'rXamanSession') {
+  const account = { address, network: NETWORK };
+  return {
+    ...createAdapter(
+      'xaman',
+      'Xaman',
+      vi.fn(async () => true)
+    ),
+    getMissingConfiguration: vi.fn(() => []),
+    checkXamanState: vi.fn(async () => account),
+    connect: vi.fn(async () => account),
+  };
+}
+
 function createElement(manager: WalletManager) {
   const element = document.createElement('xrpl-wallet-connector') as HTMLElement & {
     setWalletManager(manager: WalletManager): void;
@@ -87,22 +101,33 @@ describe('WalletConnector wallet availability', () => {
     vi.useRealTimers();
   });
 
-  it('does not probe Xaman session state without constructor configuration', async () => {
-    const xaman = {
-      ...createAdapter(
-        'xaman',
-        'Xaman',
-        vi.fn(async () => true)
-      ),
-      getMissingConfiguration: vi.fn(() => ['apiKey']),
-      checkXamanState: vi.fn(async () => null),
-    };
+  it.each([
+    ['omitted', {}],
+    ['false', { autoConnect: false }],
+  ] as const)('does not restore Xaman on mount when autoConnect is %s', async (_label, options) => {
+    const xaman = createConfiguredXamanAdapter();
+    const manager = new WalletManager({ adapters: [xaman], ...options });
+    element = createElement(manager);
+    document.body.appendChild(element);
 
-    element = createElement(new WalletManager({ adapters: [xaman] }));
+    await vi.advanceTimersByTimeAsync(0);
     await Promise.resolve();
 
-    expect(xaman.getMissingConfiguration).toHaveBeenCalledWith(undefined);
     expect(xaman.checkXamanState).not.toHaveBeenCalled();
+    expect(xaman.connect).not.toHaveBeenCalled();
+    expect(manager.connected).toBe(false);
+  });
+
+  it('keeps explicit Xaman connect functional when autoConnect is disabled', async () => {
+    const xaman = createConfiguredXamanAdapter();
+    const manager = new WalletManager({ adapters: [xaman], autoConnect: false });
+    element = createElement(manager);
+    document.body.appendChild(element);
+
+    await expect(manager.connect('xaman')).resolves.toMatchObject({ address: 'rXamanSession' });
+
+    expect(xaman.checkXamanState).not.toHaveBeenCalled();
+    expect(xaman.connect).toHaveBeenCalledOnce();
   });
 
   it('cancels a pending wallet selection before returning to the wallet list', async () => {
@@ -410,84 +435,61 @@ describe('WalletConnector wallet availability', () => {
     }
   });
 
-  it('ignores a Xaman state probe after the wallet manager is replaced', async () => {
-    let resolveState!: (account: { address: string; network: NetworkInfo }) => void;
-    const state = new Promise<{ address: string; network: NetworkInfo }>((resolve) => {
-      resolveState = resolve;
-    });
-    const xaman = {
-      ...createAdapter(
-        'xaman',
-        'Xaman',
-        vi.fn(async () => true)
-      ),
-      getMissingConfiguration: vi.fn(() => []),
-      checkXamanState: vi.fn(() => state),
-    };
-    const firstManager = new WalletManager({ adapters: [xaman] });
-    const replacementManager = new WalletManager({ adapters: [] });
+  it('does not restore Xaman when the wallet manager is replaced', async () => {
+    const firstXaman = createConfiguredXamanAdapter('rFirstXaman');
+    const secondXaman = createConfiguredXamanAdapter('rSecondXaman');
+    const firstManager = new WalletManager({ adapters: [firstXaman], autoConnect: false });
+    const replacementManager = new WalletManager({ adapters: [secondXaman], autoConnect: false });
     element = createElement(firstManager);
     document.body.appendChild(element);
-    element.setWalletManager(firstManager);
-    await vi.waitFor(() => expect(xaman.checkXamanState).toHaveBeenCalled());
-
     element.setWalletManager(replacementManager);
-    resolveState({ address: 'rStaleXaman', network: NETWORK });
-    await vi.advanceTimersByTimeAsync(0);
 
-    expect(xaman.connect).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(0);
+    await Promise.resolve();
+
+    expect(firstXaman.checkXamanState).not.toHaveBeenCalled();
+    expect(secondXaman.checkXamanState).not.toHaveBeenCalled();
+    expect(firstXaman.connect).not.toHaveBeenCalled();
+    expect(secondXaman.connect).not.toHaveBeenCalled();
     expect(replacementManager.connected).toBe(false);
   });
 
-  it('retries a detached Xaman state probe when the element is connected', async () => {
-    const xaman = {
-      ...createAdapter(
-        'xaman',
-        'Xaman',
-        vi.fn(async () => true)
-      ),
-      connect: vi.fn(async () => ({ address: 'rXamanSession', network: NETWORK })),
-      getMissingConfiguration: vi.fn(() => []),
-      checkXamanState: vi.fn(async () => ({ address: 'rXamanSession', network: NETWORK })),
-    };
-    const manager = new WalletManager({ adapters: [xaman] });
+  it('restores a persisted Xaman session only through explicit manager.reconnect', async () => {
+    const storage = new MemoryStorageAdapter();
+    await new Storage(storage).saveState({
+      walletId: 'xaman',
+      account: { address: 'rStoredXaman', network: NETWORK },
+      network: NETWORK,
+      timestamp: Date.now(),
+    });
+    const xaman = createConfiguredXamanAdapter('rStoredXaman');
+    const manager = new WalletManager({ adapters: [xaman], autoConnect: false, storage });
     element = createElement(manager);
-
-    await vi.advanceTimersByTimeAsync(0);
-    expect(manager.connected).toBe(false);
     document.body.appendChild(element);
-    await vi.waitFor(() => expect(manager.connected).toBe(true));
 
-    expect(xaman.checkXamanState).toHaveBeenCalledTimes(2);
+    await expect(manager.reconnect()).resolves.toMatchObject({ address: 'rStoredXaman' });
+
+    expect(xaman.checkXamanState).not.toHaveBeenCalled();
     expect(xaman.connect).toHaveBeenCalledOnce();
   });
 
-  it('does not reconnect Xaman after the manager is explicitly disconnected', async () => {
-    let resolveState!: (account: { address: string; network: NetworkInfo }) => void;
-    const state = new Promise<{ address: string; network: NetworkInfo }>((resolve) => {
-      resolveState = resolve;
+  it('preserves manager autoConnect restoration for Xaman without a UI probe', async () => {
+    const storage = new MemoryStorageAdapter();
+    await new Storage(storage).saveState({
+      walletId: 'xaman',
+      account: { address: 'rAutoXaman', network: NETWORK },
+      network: NETWORK,
+      timestamp: Date.now(),
     });
-    const xaman = {
-      ...createAdapter(
-        'xaman',
-        'Xaman',
-        vi.fn(async () => true)
-      ),
-      getMissingConfiguration: vi.fn(() => []),
-      checkXamanState: vi.fn(() => state),
-    };
-    const manager = new WalletManager({ adapters: [xaman] });
+    const xaman = createConfiguredXamanAdapter('rAutoXaman');
+    const manager = new WalletManager({ adapters: [xaman], autoConnect: true, storage });
     element = createElement(manager);
     document.body.appendChild(element);
 
-    await vi.waitFor(() => expect(xaman.checkXamanState).toHaveBeenCalled());
-    await manager.disconnect();
+    await vi.waitFor(() => expect(manager.connected).toBe(true));
 
-    resolveState({ address: 'rStaleXaman', network: NETWORK });
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(xaman.connect).not.toHaveBeenCalled();
-    expect(manager.connected).toBe(false);
+    expect(xaman.checkXamanState).not.toHaveBeenCalled();
+    expect(xaman.connect).toHaveBeenCalledOnce();
   });
 
   it('does not disconnect a manager-owned WalletConnect session when closing the modal', async () => {

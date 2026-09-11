@@ -39,7 +39,6 @@ import {
 import { replaceViewChildren } from './views/dom';
 import { WalletService, EventHandler, type CancelledConnectionAttempt } from './services';
 import {
-  isXamanStateAdapter,
   type AccountSelectionData,
   type ErrorData,
   type LedgerAccount,
@@ -113,7 +112,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private isOpen = false;
     private openGeneration = 0;
     private managerGeneration = 0;
-    private xamanProbeGeneration = 0;
     private preInitializationGeneration = 0;
     private isFirstOpen = true;
     private primaryWalletId: string | null = null;
@@ -147,7 +145,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private bodyScrollLocked = false;
     private walletManagerHandlers: {
       connect: (account: AccountInfo) => void;
-      disconnecting: () => void;
       disconnect: () => void;
       accountChanged: () => void;
     } | null = null;
@@ -170,7 +167,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     connectedCallback() {
       this.attachWalletManagerHandlers();
       this.render();
-      void this.checkXamanStateOnInit();
 
       // Update derived colors on initial load
       requestAnimationFrame(() => this.updateDerivedColors());
@@ -191,7 +187,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       const cancelledAttempt = this.cancelPendingConnection();
       this.openGeneration += 1;
       this.managerGeneration += 1;
-      this.xamanProbeGeneration += 1;
       this.isOpen = false;
       this.accountModalOpen = false;
       this.invalidateWalletConnectPreInitialization(
@@ -324,14 +319,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       if (manager === this.walletManager) {
         this.attachWalletManagerHandlers();
         this.render();
-        void this.checkXamanStateOnInit();
         return;
       }
 
       const previousManager = this.walletManager;
       const cancelledAttempt = this.walletService?.cancelPendingWork() ?? null;
       this.managerGeneration += 1;
-      this.xamanProbeGeneration += 1;
       this.invalidateWalletConnectPreInitialization(
         !this.managerOwnsPreInitializationTeardown(cancelledAttempt)
       );
@@ -361,8 +354,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       } else {
         this.render();
       }
-
-      void this.checkXamanStateOnInit();
     }
 
     private attachWalletManagerHandlers(): void {
@@ -383,18 +374,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           if (connectedId) this.recordMruId(connectedId);
           this.close();
         },
-        disconnecting: () => {
-          if (manager !== this.walletManager) return;
-          // Explicit disconnect cancels silent restoration even when there is
-          // no committed session and no later disconnect event to observe.
-          this.xamanProbeGeneration += 1;
-        },
         disconnect: () => {
           if (manager !== this.walletManager) return;
-          // A manager disconnect can complete while the silent Xaman probe is
-          // awaiting the adapter. Invalidate that probe before it can restore
-          // the session that the caller explicitly disconnected.
-          this.xamanProbeGeneration += 1;
           if (this.accountModalOpen) this.closeAccountModal();
           else this.render();
         },
@@ -404,7 +385,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       };
 
       manager.on('connect', this.walletManagerHandlers.connect);
-      manager.on('disconnecting', this.walletManagerHandlers.disconnecting);
       manager.on('disconnect', this.walletManagerHandlers.disconnect);
       manager.on('accountChanged', this.walletManagerHandlers.accountChanged);
     }
@@ -412,7 +392,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private detachWalletManagerHandlers(): void {
       if (!this.walletManager || !this.walletManagerHandlers) return;
       this.walletManager.off('connect', this.walletManagerHandlers.connect);
-      this.walletManager.off('disconnecting', this.walletManagerHandlers.disconnecting);
       this.walletManager.off('disconnect', this.walletManagerHandlers.disconnect);
       this.walletManager.off('accountChanged', this.walletManagerHandlers.accountChanged);
       this.walletManagerHandlers = null;
@@ -428,51 +407,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       const waiters = Array.from(this.connectionWaiters);
       this.connectionWaiters.clear();
       for (const waiter of waiters) waiter.reject(error);
-    }
-
-    /**
-     * Check for existing Xaman authentication on page load
-     */
-    private async checkXamanStateOnInit() {
-      const manager = this.walletManager;
-      if (!manager) return;
-      // There is no session to restore while this manager is already connected.
-      // More importantly, this prevents a probe started during an existing
-      // session from racing an explicit disconnect before its event arrives.
-      if (manager.connected) return;
-      const managerGeneration = this.managerGeneration;
-      const probeGeneration = ++this.xamanProbeGeneration;
-      try {
-        const xamanAdapter = manager.adapters.get('xaman');
-        if (
-          !xamanAdapter ||
-          !isXamanStateAdapter(xamanAdapter) ||
-          !isAdapterConfigured(xamanAdapter)
-        ) {
-          return;
-        }
-
-        const account = await xamanAdapter.checkXamanState();
-        if (
-          account &&
-          this.isConnected &&
-          probeGeneration === this.xamanProbeGeneration &&
-          managerGeneration === this.managerGeneration &&
-          manager === this.walletManager &&
-          manager.adapters.get('xaman') === xamanAdapter &&
-          !manager.connected
-        ) {
-          await manager.connect('xaman');
-        }
-      } catch (err) {
-        if (
-          probeGeneration === this.xamanProbeGeneration &&
-          managerGeneration === this.managerGeneration &&
-          manager === this.walletManager
-        ) {
-          console.error('Failed to check Xaman state:', err);
-        }
-      }
     }
 
     /**

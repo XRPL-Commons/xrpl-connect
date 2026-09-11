@@ -4,12 +4,12 @@
  * Defines a typed surface for the host web component (`WalletConnectorContext`)
  * so services can depend on a stable interface instead of casting through `any`,
  * plus UI-specific capability interfaces for optional adapter methods
- * (`checkXamanState`, `getAccounts`) that aren't part of the base
- * `WalletAdapter` contract. Generic capabilities (`SupportsPreInitialize`,
+ * (`getAccounts`) that aren't part of the base `WalletAdapter` contract.
+ * Generic capabilities (`SupportsPreInitialize`,
  * `SupportsDeepLink`) live in `@xrpl-connect/core`.
  */
 
-import type { AccountInfo, WalletAdapter, WalletManager } from '@xrpl-connect/core';
+import type { WalletAdapter, WalletManager } from '@xrpl-connect/core';
 
 /**
  * A single derived account returned by Ledger's `getAccounts`.
@@ -115,13 +115,6 @@ export interface WalletConnectAdapterLikeOptions {
 }
 
 /**
- * Adapter capability: Xaman-style session state probe used for silent reconnect.
- */
-export interface XamanStateAdapter {
-  checkXamanState(): Promise<AccountInfo | null>;
-}
-
-/**
  * Adapter capability: Ledger-style multi-account enumeration.
  */
 export interface MultiAccountAdapter {
@@ -134,12 +127,6 @@ export interface MultiAccountAdapter {
  */
 export interface ModalConfigurableAdapter {
   options?: WalletConnectAdapterLikeOptions;
-}
-
-export function isXamanStateAdapter(
-  adapter: WalletAdapter
-): adapter is WalletAdapter & XamanStateAdapter {
-  return typeof (adapter as Partial<XamanStateAdapter>).checkXamanState === 'function';
 }
 
 export function isMultiAccountAdapter(
