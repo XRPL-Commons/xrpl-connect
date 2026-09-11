@@ -59,7 +59,9 @@ whose provider APIs do not support silent access may ignore it.
 async reconnect(): Promise<AccountInfo | null>
 ```
 
-Reconnect to the previously connected wallet using stored state. Returns `null` when no valid stored session is found.
+Reconnect to the previously connected wallet using stored state. When storage is empty,
+configured adapters can also complete an authorization returned to this page, such as
+Xaman's first mobile OAuth login. Returns `null` when neither can be restored.
 
 #### sign()
 
@@ -631,6 +633,25 @@ function supportsFetchAccount(
 Use this type guard before calling an adapter's live-refresh method directly.
 Crossmark, GemWallet, Ledger, Otsu, and Xaman implement it. WalletConnect and
 Xyra do not.
+
+### SupportsPendingConnection
+
+```typescript
+interface SupportsPendingConnection {
+  hasPendingConnection(): boolean;
+}
+
+function supportsPendingConnection(
+  adapter: WalletAdapter
+): adapter is WalletAdapter & SupportsPendingConnection;
+```
+
+Detection must be synchronous and side-effect free. It identifies a returned wallet
+authorization that `connect()` can complete without starting a new authorization.
+Xaman implements it for successful OAuth callback parameters; rejected-return URLs
+are ignored. With empty storage, `reconnect()` attempts the first configured candidate
+in registration order through the normal connection validation and persistence path.
+Automatic recovery requires `autoConnect: true`; callers may also reconnect explicitly.
 
 ### ConnectOptions
 

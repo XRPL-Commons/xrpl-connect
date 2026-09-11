@@ -130,6 +130,34 @@ describe('WalletConnector wallet availability', () => {
     expect(xaman.connect).toHaveBeenCalledOnce();
   });
 
+  it.each([undefined, false, true])(
+    'honors autoConnect=%s for an OAuth return without manager storage',
+    async (autoConnect) => {
+      const xaman = {
+        ...createConfiguredXamanAdapter(),
+        hasPendingConnection: vi.fn(() => true),
+      };
+      const manager = new WalletManager({
+        adapters: [xaman],
+        autoConnect,
+        storage: new MemoryStorageAdapter(),
+      });
+      element = createElement(manager);
+      document.body.appendChild(element);
+
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(manager.connected).toBe(autoConnect === true);
+      expect(xaman.connect).toHaveBeenCalledTimes(autoConnect ? 1 : 0);
+      expect(xaman.checkXamanState).not.toHaveBeenCalled();
+      if (!autoConnect) {
+        expect(xaman.hasPendingConnection).not.toHaveBeenCalled();
+        await expect(manager.reconnect()).resolves.toMatchObject({ address: 'rXamanSession' });
+        expect(xaman.connect).toHaveBeenCalledOnce();
+      }
+    }
+  );
+
   it('cancels a pending wallet selection before returning to the wallet list', async () => {
     const walletConnect = createAdapter(
       'walletconnect',

@@ -38,6 +38,7 @@ export type {
   SupportsFetchAccount,
   WalletCapabilities,
   SupportsReconnectOptions,
+  SupportsPendingConnection,
 } from './types';
 
 export {
@@ -52,6 +53,7 @@ export {
   adapterSupports,
   CAPABILITY_DEFAULTS,
   supportsReconnectOptions,
+  supportsPendingConnection,
   getMissingAdapterConfiguration,
   isAdapterConfigured,
 } from './types';

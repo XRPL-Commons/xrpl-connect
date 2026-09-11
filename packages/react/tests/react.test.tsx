@@ -4,6 +4,7 @@ import { createRef, StrictMode, useRef } from 'react';
 import { renderToString } from 'react-dom/server';
 import {
   WalletManager,
+  MemoryStorageAdapter,
   STANDARD_NETWORKS,
   createWalletError,
   type WalletAdapter,
@@ -122,6 +123,42 @@ describe('XrplConnectProvider + hooks', () => {
 
     await waitFor(() => expect(storage.get).toHaveBeenCalledTimes(1));
   });
+
+  it.each([false, true])(
+    'recovers returned authorization only with autoConnect=%s or an explicit call',
+    async (autoConnect) => {
+      const adapter = {
+        ...makeAdapter(),
+        hasPendingConnection: vi.fn(() => true),
+        connect: vi.fn(async () => ACCOUNT),
+      };
+      const { result, unmount } = renderHook(() => useWallet(), {
+        wrapper: ({ children }) => (
+          <StrictMode>
+            <XrplConnectProvider
+              config={{ adapters: [adapter], autoConnect, storage: new MemoryStorageAdapter() }}
+            >
+              {children}
+            </XrplConnectProvider>
+          </StrictMode>
+        ),
+      });
+
+      if (!autoConnect) {
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        expect(result.current.connected).toBe(false);
+        expect(adapter.hasPendingConnection).not.toHaveBeenCalled();
+        await act(async () => {
+          await result.current.manager.reconnect();
+        });
+      }
+      await waitFor(() => expect(result.current.connected).toBe(true));
+      expect(adapter.connect).toHaveBeenCalledOnce();
+      unmount();
+    }
+  );
 
   it('tracks auto-connect without surfacing an expected manual overlap error', async () => {
     const storedState = deferred<string | null>();

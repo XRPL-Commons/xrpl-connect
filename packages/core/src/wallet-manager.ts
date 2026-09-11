@@ -26,7 +26,9 @@ import {
   adapterSupports,
   supportsFetchAccount,
   supportsReconnectOptions,
+  supportsPendingConnection,
   getMissingAdapterConfiguration,
+  isAdapterConfigured,
   isStandardNetworkId,
   STANDARD_NETWORKS,
   WalletErrorCode,
@@ -89,7 +91,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
-   * Attempt to auto-connect from stored state
+   * Restore stored state or complete a returned wallet authorization
    */
   private async autoConnect(): Promise<void> {
     try {
@@ -479,7 +481,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
-   * Reconnect to previously connected wallet
+   * Restore a previous session or complete a returned wallet authorization
    */
   async reconnect(): Promise<AccountInfo | null> {
     if (this.currentAdapter && this.currentAccount) {
@@ -496,7 +498,19 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       const stored = await this.storage.loadState();
       if (reconnectGeneration !== this.reconnectGeneration) return null;
       if (!stored) {
-        this.logger.debug('No stored state found for reconnection');
+        for (const adapter of this.adapters.values()) {
+          let pending = false;
+          try {
+            pending =
+              supportsPendingConnection(adapter) &&
+              isAdapterConfigured(adapter) &&
+              adapter.hasPendingConnection();
+          } catch (error) {
+            this.logger.warn(`Failed to check pending authorization for ${adapter.name}:`, error);
+          }
+          if (reconnectGeneration !== this.reconnectGeneration) return null;
+          if (pending) return await this.connectInternal(adapter.id);
+        }
         return null;
       }
       if (!this.isStateValid(stored)) {

@@ -52,6 +52,11 @@ export const manager = new WalletManager({
 
 Xaman API keys and WalletConnect project IDs are browser identifiers, not server secrets. Restrict them to your production origins in the provider dashboard. Never place private keys, seeds, API secrets, or signing credentials in client code.
 
+On a Xaman mobile OAuth return, `autoConnect: true` completes sign-in even if the
+manager has not saved its first session yet. With auto-connect omitted or disabled,
+call `manager.reconnect()` explicitly on the returned page. Mounting the connector
+does not initiate recovery.
+
 ## Adapter options
 
 - `XamanAdapter`: `apiKey`, QR callback, deep-link transformation, post-signing return URLs, and `maxLastLedgerSequenceExtension` (unreleased after RC2; default 50, sign-only). See [expiry policy](/guide/transactions#xaman-expiry-policy).

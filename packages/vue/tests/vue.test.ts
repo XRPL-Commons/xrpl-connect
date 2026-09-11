@@ -181,6 +181,40 @@ describe('Vue plugin and composables', () => {
     expect(wallet!.manager.listenerCount('connect')).toBe(0);
   });
 
+  it.each([false, true])(
+    'recovers returned authorization only with autoConnect=%s or an explicit call',
+    async (autoConnect) => {
+      const adapter = {
+        ...makeAdapter(),
+        hasPendingConnection: vi.fn(() => true),
+        connect: vi.fn(async () => ACCOUNT),
+      };
+      let wallet!: ReturnType<typeof useWallet>;
+      const app = createApp(
+        defineComponent({
+          setup() {
+            wallet = useWallet();
+            return () => null;
+          },
+        })
+      );
+      app.use(
+        createXrplConnect({ adapters: [adapter], autoConnect, storage: new MemoryStorageAdapter() })
+      );
+      app.mount(document.createElement('div'));
+
+      if (!autoConnect) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(wallet.connected.value).toBe(false);
+        expect(adapter.hasPendingConnection).not.toHaveBeenCalled();
+        await wallet.manager.reconnect();
+      }
+      await vi.waitFor(() => expect(wallet.connected.value).toBe(true));
+      expect(adapter.connect).toHaveBeenCalledOnce();
+      app.unmount();
+    }
+  );
+
   it('disconnects its owned manager when the app unmounts', async () => {
     const disconnect = vi.fn(async () => undefined);
     const mounted = mountWithPlugin(() => useWallet(), [makeAdapter({ disconnect })]);

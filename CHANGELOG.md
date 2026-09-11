@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Ledger: close the XRPL client when connection-time network discovery fails, including the stricter `server_info` validation introduced in xrpl.js v5.
 - UI: honor the `WalletManager` auto-connect policy by leaving Xaman session restoration to the manager and framework lifecycle; mounting or replacing the connector no longer reconnects when `autoConnect` is omitted or `false`.
+- Xaman: complete mobile OAuth returns through manager reconnection even before the first session is persisted, while keeping automatic recovery opt-in.
 
 ## [1.0.0-rc.2] - 2026-09-08
 
