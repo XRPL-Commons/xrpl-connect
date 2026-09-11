@@ -378,10 +378,28 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           this.invalidateWalletConnectPreInitialization(
             manager.wallet !== this.preInitializationAdapter
           );
-          this.resolveConnectionWaiters(account);
+          const connectedOpenGeneration = this.openGeneration;
           const connectedId = manager.wallet?.id;
+          const settledAttempt = connectedId
+            ? this.walletService?.settleManagerConnection(connectedId)
+            : null;
+          this.resolveConnectionWaiters(account);
           if (connectedId) this.recordMruId(connectedId);
-          this.close();
+          if (settledAttempt) {
+            this.dispatchEvent(
+              new CustomEvent('connected', {
+                detail: {
+                  walletId: settledAttempt.walletId,
+                  ...settledAttempt.detail,
+                  connectionAttemptId: settledAttempt.connectionAttemptId,
+                },
+              })
+            );
+          }
+          if (this.openGeneration === connectedOpenGeneration && manager === this.walletManager) {
+            if (this.isOpen) this.close();
+            else this.render();
+          }
         },
         disconnecting: () => {
           if (manager !== this.walletManager) return;

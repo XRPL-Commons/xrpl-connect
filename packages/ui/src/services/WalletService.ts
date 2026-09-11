@@ -71,9 +71,19 @@ export interface CancelledConnectionAttempt {
   managerConnectionStarted: boolean;
 }
 
+export interface SuccessfulConnectionAttempt {
+  connectionAttemptId: number;
+  walletId: string;
+  detail: Record<string, unknown>;
+}
+
+interface ActiveConnectionAttempt extends CancelledConnectionAttempt {
+  detail: Record<string, unknown>;
+}
+
 export class WalletService {
   private nextConnectionAttemptId = 0;
-  private activeConnectionAttempt: CancelledConnectionAttempt | null = null;
+  private activeConnectionAttempt: ActiveConnectionAttempt | null = null;
 
   constructor(
     private walletManager: WalletManager,
@@ -93,22 +103,49 @@ export class WalletService {
   }
 
   cancelPendingWork(): CancelledConnectionAttempt | null {
-    const cancelledAttempt = this.activeConnectionAttempt;
+    const activeAttempt = this.activeConnectionAttempt;
     this.activeConnectionAttempt = null;
     this.nextConnectionAttemptId += 1;
-    return cancelledAttempt;
+    return activeAttempt
+      ? {
+          connectionAttemptId: activeAttempt.connectionAttemptId,
+          walletId: activeAttempt.walletId,
+          managerConnectionStarted: activeAttempt.managerConnectionStarted,
+        }
+      : null;
+  }
+
+  settleManagerConnection(walletId: string): SuccessfulConnectionAttempt | null {
+    const activeAttempt = this.activeConnectionAttempt;
+    if (
+      !activeAttempt ||
+      !activeAttempt.managerConnectionStarted ||
+      activeAttempt.walletId !== walletId ||
+      !this.isCurrentAttempt(activeAttempt.connectionAttemptId)
+    ) {
+      return null;
+    }
+
+    this.activeConnectionAttempt = null;
+    this.nextConnectionAttemptId += 1;
+    return {
+      connectionAttemptId: activeAttempt.connectionAttemptId,
+      walletId: activeAttempt.walletId,
+      detail: activeAttempt.detail,
+    };
   }
 
   private isCurrentAttempt(connectionAttemptId: number): boolean {
     return connectionAttemptId === this.nextConnectionAttemptId;
   }
 
-  private beginConnectionAttempt(walletId: string): number {
+  private beginConnectionAttempt(walletId: string, detail: Record<string, unknown> = {}): number {
     const connectionAttemptId = ++this.nextConnectionAttemptId;
     this.activeConnectionAttempt = {
       connectionAttemptId,
       walletId,
       managerConnectionStarted: false,
+      detail,
     };
     return connectionAttemptId;
   }
@@ -334,7 +371,7 @@ export class WalletService {
     if (!this.walletManager || !this.component.accountSelectionData) return;
 
     const { walletId, walletName, walletIcon } = this.component.accountSelectionData;
-    const uiAttempt = this.beginConnectionAttempt(walletId);
+    const uiAttempt = this.beginConnectionAttempt(walletId, { accountIndex });
     const connectionAttemptId = uiAttempt;
 
     try {
@@ -392,7 +429,7 @@ export class WalletService {
     if (!this.walletManager || !this.component.accountSelectionData) return;
 
     const { walletId, walletName, walletIcon } = this.component.accountSelectionData;
-    const uiAttempt = this.beginConnectionAttempt(walletId);
+    const uiAttempt = this.beginConnectionAttempt(walletId, { derivationPath });
     const connectionAttemptId = uiAttempt;
 
     try {

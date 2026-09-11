@@ -288,6 +288,7 @@ connector.addEventListener('connecting', (e) => {
 #### connected
 
 Emitted when successfully connected.
+For UI-owned connections, this event is dispatched before the connector closes the modal.
 
 ```javascript
 connector.addEventListener('connected', (e) => {
