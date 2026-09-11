@@ -62,6 +62,11 @@ See the [CSP policy, nonce lifecycle, and wallet-specific limits](https://github
 ## API
 
 - `createXrplConnect(config)` creates the app plugin and one isolated manager per installation.
+- The plugin owns persisted-session restoration and calls `reconnect()` only when
+  `config.autoConnect` is `true`; mounting `<WalletConnector>` does not restore a session by
+  itself. Use `useWallet().manager.reconnect()` for an explicit restore when automatic restoration
+  is disabled. Reconnection also completes a returned Xaman OAuth login before the first manager
+  session has been saved.
 - `useWallet()` exposes `manager`, readonly `connected`, `account`, `network`, `connecting`,
   and `error` refs, plus `connect` and `disconnect`.
 - `useSigner()` exposes `sign`, `signAndSubmit`, and `signMessage`.

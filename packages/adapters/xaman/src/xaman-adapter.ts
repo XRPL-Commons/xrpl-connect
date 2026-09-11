@@ -21,6 +21,7 @@ import {
   SubmittedTransaction,
   SupportsDeepLink,
   SupportsFetchAccount,
+  SupportsPendingConnection,
   WalletCapabilities,
   WalletConnectionOptionsById,
 } from '@xrpl-connect/core';
@@ -161,7 +162,9 @@ export type XamanConnectOptions = WalletConnectionOptionsById['xaman'];
 /**
  * Xaman wallet adapter implementation
  */
-export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFetchAccount {
+export class XamanAdapter
+  implements WalletAdapter, SupportsDeepLink, SupportsFetchAccount, SupportsPendingConnection
+{
   readonly id = 'xaman';
   readonly name = 'Xaman';
   readonly icon = ICON_DATA_URL;
@@ -216,6 +219,13 @@ export class XamanAdapter implements WalletAdapter, SupportsDeepLink, SupportsFe
    */
   async isAvailable(): Promise<boolean> {
     return true;
+  }
+
+  hasPendingConnection(): boolean {
+    if (typeof document === 'undefined' || !document.location?.search) return false;
+    // Successful OAuth return parameters consumed by the Xumm PKCE SDK.
+    const params = new URLSearchParams(document.location.search);
+    return Boolean(params.get('authorization_code') || params.get('access_token'));
   }
 
   async checkXamanState(

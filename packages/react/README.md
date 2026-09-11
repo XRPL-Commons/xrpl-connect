@@ -93,6 +93,11 @@ See the [CSP policy, nonce lifecycle, and wallet-specific limits](https://github
 Builds **one** `WalletManager` from `config` (the core `WalletManagerOptions`:
 `adapters`, `network`, `autoConnect`, `storage`, `logger`) and shares it with the
 subtree. The manager is created once on mount; pass a React `key` to rebuild it.
+The provider owns persisted-session restoration and calls `reconnect()` only when
+`config.autoConnect` is `true`; mounting `<WalletConnector />` does not restore a session by
+itself. Use `manager.reconnect()` for an explicit restore when automatic restoration is disabled.
+Reconnection also completes a returned Xaman OAuth login before the first manager
+session has been saved.
 
 ### Hooks
 

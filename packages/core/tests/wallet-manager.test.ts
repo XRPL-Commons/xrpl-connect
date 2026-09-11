@@ -1199,6 +1199,174 @@ describe('WalletManager.reconnect()', () => {
     };
   }
 
+  it('completes and persists a pending connection without a stored session', async () => {
+    const storage = new MemoryStorageAdapter();
+    const adapter = { ...createFakeAdapter(), hasPendingConnection: () => true };
+    const manager = new WalletManager({ adapters: [adapter], storage, network: NETWORK });
+    const onConnect = vi.fn();
+    manager.on('connect', onConnect);
+
+    await expect(manager.reconnect()).resolves.toEqual(ACCOUNT);
+
+    expect(adapter.connect).toHaveBeenCalledExactlyOnceWith({ network: NETWORK });
+    expect(onConnect).toHaveBeenCalledExactlyOnceWith(ACCOUNT);
+    expect(await new Storage(storage).loadState()).toMatchObject({
+      walletId: adapter.id,
+      account: ACCOUNT,
+      network: NETWORK,
+    });
+  });
+
+  it('does not start a new authorization flow when no connection is pending', async () => {
+    const adapter = { ...createFakeAdapter(), hasPendingConnection: () => false };
+    const manager = new WalletManager({ adapters: [adapter], storage: new MemoryStorageAdapter() });
+
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    expect(adapter.connect).not.toHaveBeenCalled();
+    await manager.connect(adapter.id);
+    expect(manager.account).toEqual(ACCOUNT);
+  });
+
+  it('skips unconfigured pending adapters and restores the configured one', async () => {
+    const unconfigured = {
+      ...createFakeAdapter(),
+      id: 'unconfigured',
+      getMissingConfiguration: () => ['credential'],
+      hasPendingConnection: vi.fn(() => true),
+    };
+    const pending = { ...createFakeAdapter(), hasPendingConnection: () => true };
+    const manager = new WalletManager({
+      adapters: [unconfigured, pending],
+      storage: new MemoryStorageAdapter(),
+    });
+
+    await expect(manager.reconnect()).resolves.toEqual(ACCOUNT);
+
+    expect(unconfigured.hasPendingConnection).not.toHaveBeenCalled();
+    expect(unconfigured.connect).not.toHaveBeenCalled();
+    expect(manager.wallet).toBe(pending);
+  });
+
+  it('keeps stored sessions authoritative over another pending authorization', async () => {
+    const storage = new MemoryStorageAdapter();
+    const stored = createFakeAdapter();
+    await new WalletManager({ adapters: [stored], storage }).connect(stored.id);
+    const pending = {
+      ...createFakeAdapter(),
+      id: 'pending',
+      hasPendingConnection: vi.fn(() => true),
+    };
+    const manager = new WalletManager({ adapters: [pending, stored], storage });
+
+    await expect(manager.reconnect()).resolves.toEqual(ACCOUNT);
+
+    expect(pending.hasPendingConnection).not.toHaveBeenCalled();
+    expect(pending.connect).not.toHaveBeenCalled();
+    expect(manager.wallet).toBe(stored);
+  });
+
+  it('continues after a failed pending-connection check', async () => {
+    const broken = {
+      ...createFakeAdapter(),
+      id: 'broken',
+      hasPendingConnection: () => {
+        throw new Error('Provider is unavailable');
+      },
+    };
+    const pending = { ...createFakeAdapter(), hasPendingConnection: () => true };
+    const manager = new WalletManager({
+      adapters: [broken, pending],
+      storage: new MemoryStorageAdapter(),
+    });
+
+    await expect(manager.reconnect()).resolves.toEqual(ACCOUNT);
+
+    expect(broken.connect).not.toHaveBeenCalled();
+    expect(manager.wallet).toBe(pending);
+  });
+
+  it('attempts only the first pending authorization even when it fails', async () => {
+    const first = {
+      ...createFakeAdapter(),
+      id: 'first',
+      hasPendingConnection: () => true,
+      connect: vi.fn(async () => {
+        throw new Error('Authorization expired');
+      }),
+    };
+    const second = { ...createFakeAdapter(), hasPendingConnection: vi.fn(() => true) };
+    const manager = new WalletManager({
+      adapters: [first, second],
+      storage: new MemoryStorageAdapter(),
+    });
+
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    expect(first.connect).toHaveBeenCalledOnce();
+    expect(second.hasPendingConnection).not.toHaveBeenCalled();
+    expect(second.connect).not.toHaveBeenCalled();
+  });
+
+  it('does not inspect a returned authorization after disconnect during storage loading', async () => {
+    const storage = new MemoryStorageAdapter();
+    let releaseStorage!: () => void;
+    const loading = new Promise<void>((resolve) => {
+      releaseStorage = resolve;
+    });
+    vi.spyOn(storage, 'get').mockImplementationOnce(async () => {
+      await loading;
+      return null;
+    });
+    const adapter = { ...createFakeAdapter(), hasPendingConnection: vi.fn(() => true) };
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    const reconnecting = manager.reconnect();
+    await manager.disconnect();
+    releaseStorage();
+
+    await expect(reconnecting).resolves.toBeNull();
+    expect(adapter.hasPendingConnection).not.toHaveBeenCalled();
+    expect(adapter.connect).not.toHaveBeenCalled();
+  });
+
+  it('validates the requested network before committing a pending authorization', async () => {
+    const storage = new MemoryStorageAdapter();
+    const adapter = { ...createFakeAdapter(), hasPendingConnection: () => true };
+    const manager = new WalletManager({ adapters: [adapter], storage, network: MAINNET });
+
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    expect(adapter.disconnect).toHaveBeenCalledOnce();
+    expect(manager.connected).toBe(false);
+    expect(await new Storage(storage).loadState()).toBeNull();
+  });
+
+  it('does not commit a cancelled pending authorization over a newer manual session', async () => {
+    const storage = new MemoryStorageAdapter();
+    let resolveAuthorization!: (account: AccountInfo) => void;
+    const pending = {
+      ...createFakeAdapter(),
+      hasPendingConnection: () => true,
+      connect: vi.fn(() => new Promise<AccountInfo>((resolve) => (resolveAuthorization = resolve))),
+    };
+    const manual = { ...createFakeAdapter(), id: 'manual' };
+    const manager = new WalletManager({ adapters: [pending, manual], storage });
+    const onConnect = vi.fn();
+    manager.on('connect', onConnect);
+    const reconnecting = manager.reconnect();
+    await vi.waitFor(() => expect(pending.connect).toHaveBeenCalledOnce());
+
+    await manager.disconnect();
+    await manager.connect(manual.id);
+    resolveAuthorization(ACCOUNT);
+
+    await expect(reconnecting).resolves.toBeNull();
+    expect(manager.wallet).toBe(manual);
+    expect(onConnect).toHaveBeenCalledOnce();
+    expect(await new Storage(storage).loadState()).toMatchObject({ walletId: manual.id });
+  });
+
   it('clears expired state instead of reconnecting it', async () => {
     const storage = new MemoryStorageAdapter();
     await new Storage(storage).saveState({

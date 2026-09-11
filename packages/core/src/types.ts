@@ -323,6 +323,15 @@ export interface SupportsReconnectOptions {
   serializeReconnectOptions(options: ConnectOptions): ReconnectOptions | undefined;
 }
 
+/**
+ * Capability: a wallet authorization has returned to this page before the manager
+ * could persist its session. Detection must be synchronous and side-effect free;
+ * connect() must complete the returned authorization without starting a new one.
+ */
+export interface SupportsPendingConnection {
+  hasPendingConnection(): boolean;
+}
+
 export function supportsPreInitialize(
   adapter: WalletAdapter
 ): adapter is WalletAdapter & SupportsPreInitialize {
@@ -347,6 +356,12 @@ export function supportsReconnectOptions(
   return (
     typeof (adapter as Partial<SupportsReconnectOptions>).serializeReconnectOptions === 'function'
   );
+}
+
+export function supportsPendingConnection(
+  adapter: WalletAdapter
+): adapter is WalletAdapter & SupportsPendingConnection {
+  return typeof (adapter as Partial<SupportsPendingConnection>).hasPendingConnection === 'function';
 }
 
 /**

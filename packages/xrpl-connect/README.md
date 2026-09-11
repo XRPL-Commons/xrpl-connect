@@ -137,6 +137,7 @@ export {
   ManagedSignedMessage,
   WalletCapabilities,
   SupportsFetchAccount,
+  SupportsPendingConnection,
   WalletEvent,
   WalletAdapterEvent,
   ConnectOptions,
@@ -154,6 +155,7 @@ export {
   // Capability helpers
   adapterSupports,
   supportsFetchAccount,
+  supportsPendingConnection,
 };
 ```
 

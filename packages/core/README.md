@@ -145,10 +145,17 @@ console.log('Disconnected');
 
 #### `reconnect(): Promise<AccountInfo | null>`
 
-Reconnects to the previously connected wallet using stored state.
+Reconnects to the previously connected wallet using stored state. When there is no
+stored session, configured adapters implementing `SupportsPendingConnection` can
+complete an authorization returned to the current page, such as Xaman's first
+mobile OAuth login. This uses the normal connection validation and persistence
+path. It does not start a new authorization on pages without a returned result.
+If several adapters report a pending authorization, only the first configured
+candidate in registration order is attempted. Expired stored state is cleared
+without falling back to pending authorization recovery in that attempt.
 
 **Returns**: `AccountInfo` of the reconnected account, or `null` when no valid
-stored session can be restored
+stored session or pending authorization can be restored.
 
 Failed reconnection attempts clear invalid stored state and resolve to `null`.
 

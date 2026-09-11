@@ -914,7 +914,10 @@ Benefits of CSS variables:
 
 5. **Close Modal on Success**: Use the `close()` method or auto-close on successful connection
 
-6. **Persist Connection**: Use `autoConnect: true` in WalletManager to remember the user's wallet
+6. **Persist Connection**: Use `autoConnect: true` in `WalletManager` to remember the user's wallet.
+   The connector follows the manager's policy: with `autoConnect` omitted or `false`, mounting or
+   replacing the element does not restore a session. Call `walletManager.reconnect()` when an
+   explicit restore is needed.
 
 7. **Show Network Info**: Display the connected network to the user from `walletManager.account.network`
 
