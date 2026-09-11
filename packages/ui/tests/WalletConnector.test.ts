@@ -698,6 +698,299 @@ describe('WalletConnector wallet availability', () => {
     await connection;
   });
 
+  it('emits connected before closing a real UI-owned manager connection', async () => {
+    const adapter = createAdapter(
+      'wallet',
+      'Wallet',
+      vi.fn(async () => true)
+    );
+    adapter.connect = vi.fn(async () => ({ address: 'rConnected', network: NETWORK }));
+    const manager = new WalletManager({
+      adapters: [adapter],
+      storage: new MemoryStorageAdapter(),
+    });
+    element = createElement(manager);
+    document.body.appendChild(element);
+
+    const events: string[] = [];
+    let connectedDetail: Record<string, unknown> | undefined;
+    element.addEventListener('connecting', () => events.push('connecting'));
+    element.addEventListener('connected', (event) => {
+      events.push('connected');
+      connectedDetail = (event as CustomEvent<Record<string, unknown>>).detail;
+    });
+    element.addEventListener('close', () => events.push('close'));
+
+    await element.open();
+    const walletButton = element
+      .getOverlayRoot()
+      ?.querySelector<HTMLButtonElement>('[data-wallet-id="wallet"]');
+    expect(walletButton).not.toBeNull();
+    walletButton!.click();
+
+    await vi.advanceTimersByTimeAsync(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+    await vi.waitFor(() => expect(manager.connected).toBe(true));
+
+    expect(events.filter((event) => event === 'connected')).toHaveLength(1);
+    expect(events.indexOf('connected')).toBeLessThan(events.indexOf('close'));
+    expect(connectedDetail).toEqual({
+      walletId: 'wallet',
+      connectionAttemptId: expect.any(Number),
+    });
+  });
+
+  it('resolves openAndWait before a connected listener closes the connector', async () => {
+    const adapter = createAdapter(
+      'wallet',
+      'Wallet',
+      vi.fn(async () => true)
+    );
+    adapter.connect = vi.fn(async () => ({ address: 'rConnected', network: NETWORK }));
+    const manager = new WalletManager({ adapters: [adapter] });
+    element = createElement(manager);
+
+    const events: string[] = [];
+    element.addEventListener('connected', () => {
+      events.push('connected');
+      element!.close();
+    });
+    element.addEventListener('close', () => events.push('close'));
+
+    await element.open();
+    const connection = (
+      element as unknown as {
+        openAndWait(): Promise<{ address: string; network: NetworkInfo }>;
+      }
+    ).openAndWait();
+    await vi.waitFor(() =>
+      expect(
+        element.getOverlayRoot()?.querySelector<HTMLButtonElement>('[data-wallet-id="wallet"]')
+      ).not.toBeNull()
+    );
+    element
+      .getOverlayRoot()
+      ?.querySelector<HTMLButtonElement>('[data-wallet-id="wallet"]')
+      ?.click();
+
+    await vi.advanceTimersByTimeAsync(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+    await vi.waitFor(() => expect(manager.connected).toBe(true));
+    await expect(connection).resolves.toMatchObject({ address: 'rConnected' });
+    expect(events).toEqual(['connected', 'close']);
+  });
+
+  it('does not close a replacement manager after a connected listener rebinds it', async () => {
+    const adapter = createAdapter(
+      'wallet',
+      'Wallet',
+      vi.fn(async () => true)
+    );
+    adapter.connect = vi.fn(async () => ({ address: 'rConnected', network: NETWORK }));
+    const manager = new WalletManager({ adapters: [adapter] });
+    const replacementManager = new WalletManager({ adapters: [] });
+    element = createElement(manager);
+
+    const onClose = vi.fn();
+    element.addEventListener('connected', () => element!.setWalletManager(replacementManager));
+    element.addEventListener('close', onClose);
+
+    await element.open();
+    element
+      .getOverlayRoot()
+      ?.querySelector<HTMLButtonElement>('[data-wallet-id="wallet"]')
+      ?.click();
+    await vi.waitFor(() => expect(manager.connected).toBe(true));
+
+    expect(element.walletManager).toBe(replacementManager);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('refreshes the closed connector after an external manager connection', async () => {
+    const adapter = createAdapter(
+      'wallet',
+      'Wallet',
+      vi.fn(async () => true)
+    );
+    adapter.connect = vi.fn(async () => ({ address: 'rExternal', network: NETWORK }));
+    const manager = new WalletManager({ adapters: [adapter] });
+    element = createElement(manager);
+
+    const onConnected = vi.fn();
+    const onClose = vi.fn();
+    element.addEventListener('connected', onConnected);
+    element.addEventListener('close', onClose);
+    const getConnectButton = () =>
+      element.shadowRoot?.querySelector<HTMLButtonElement>('#connect-wallet-button');
+    expect(getConnectButton()?.textContent).toBe('Connect Wallet');
+
+    await manager.connect('wallet');
+
+    expect(onConnected).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(getConnectButton()?.textContent).toBe('rExt...rnal');
+  });
+
+  it('emits connected before closing a WalletConnect desktop connection', async () => {
+    const walletConnect = {
+      ...createAdapter(
+        'walletconnect',
+        'WalletConnect',
+        vi.fn(async () => true)
+      ),
+      options: { useModal: false, modalMode: 'never' as const },
+      connect: vi.fn(async () => ({ address: 'rWalletConnectDesktop', network: NETWORK })),
+    };
+    const manager = new WalletManager({ adapters: [walletConnect] });
+    element = createElement(manager);
+
+    const events: string[] = [];
+    let connectedDetail: Record<string, unknown> | undefined;
+    element.addEventListener('connected', (event) => {
+      events.push('connected');
+      connectedDetail = (event as CustomEvent<Record<string, unknown>>).detail;
+    });
+    element.addEventListener('close', () => events.push('close'));
+
+    await element.open();
+    element
+      .getOverlayRoot()
+      ?.querySelector<HTMLButtonElement>('[data-wallet-id="walletconnect"]')
+      ?.click();
+    await vi.waitFor(() => expect(manager.connected).toBe(true));
+
+    expect(events).toEqual(['connected', 'close']);
+    expect(connectedDetail).toEqual({
+      walletId: 'walletconnect',
+      connectionAttemptId: expect.any(Number),
+    });
+  });
+
+  it('emits connected before closing a WalletConnect mobile modal connection', async () => {
+    const walletConnect = {
+      ...createAdapter(
+        'walletconnect',
+        'WalletConnect',
+        vi.fn(async () => true)
+      ),
+      options: { useModal: true, modalMode: 'always' as const },
+      connect: vi.fn(async () => ({ address: 'rWalletConnectMobile', network: NETWORK })),
+    };
+    const manager = new WalletManager({ adapters: [walletConnect] });
+    element = createElement(manager);
+
+    const events: string[] = [];
+    let connectedDetail: Record<string, unknown> | undefined;
+    element.addEventListener('connected', (event) => {
+      events.push('connected');
+      connectedDetail = (event as CustomEvent<Record<string, unknown>>).detail;
+    });
+    element.addEventListener('close', () => events.push('close'));
+
+    await element.open();
+    element
+      .getOverlayRoot()
+      ?.querySelector<HTMLButtonElement>('[data-wallet-id="walletconnect"]')
+      ?.click();
+    await vi.advanceTimersByTimeAsync(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+    await vi.waitFor(() => expect(manager.connected).toBe(true));
+
+    expect(events).toEqual(['connected', 'close']);
+    expect(connectedDetail).toEqual({
+      walletId: 'walletconnect',
+      connectionAttemptId: expect.any(Number),
+    });
+  });
+
+  it('emits the account index when a Ledger account connection settles', async () => {
+    const ledger = {
+      ...createAdapter(
+        'ledger',
+        'Ledger',
+        vi.fn(async () => true)
+      ),
+      getAccounts: vi.fn(async () => [
+        { address: 'rLedger0', publicKey: 'ED0', path: "44'/144'/0'/0/0", index: 0 },
+      ]),
+      connect: vi.fn(async () => ({ address: 'rLedger0', network: NETWORK })),
+    };
+    const manager = new WalletManager({ adapters: [ledger] });
+    element = createElement(manager);
+
+    const events: string[] = [];
+    let connectedDetail: Record<string, unknown> | undefined;
+    element.addEventListener('connected', (event) => {
+      events.push('connected');
+      connectedDetail = (event as CustomEvent<Record<string, unknown>>).detail;
+    });
+    element.addEventListener('close', () => events.push('close'));
+
+    await element.open();
+    element
+      .getOverlayRoot()
+      ?.querySelector<HTMLButtonElement>('[data-wallet-id="ledger"]')
+      ?.click();
+    await vi.advanceTimersByTimeAsync(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+    await vi.waitFor(() => expect(ledger.getAccounts).toHaveBeenCalledOnce());
+    element.getOverlayRoot()?.querySelector<HTMLButtonElement>('.account-button')?.click();
+    await vi.advanceTimersByTimeAsync(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+    await vi.waitFor(() => expect(manager.connected).toBe(true));
+
+    expect(events).toEqual(['connected', 'close']);
+    expect(connectedDetail).toEqual({
+      walletId: 'ledger',
+      accountIndex: 0,
+      connectionAttemptId: expect.any(Number),
+    });
+  });
+
+  it('emits the derivation path when a custom Ledger connection settles', async () => {
+    const ledger = {
+      ...createAdapter(
+        'ledger',
+        'Ledger',
+        vi.fn(async () => true)
+      ),
+      getAccounts: vi.fn(async () => []),
+      connect: vi.fn(async () => ({ address: 'rLedgerCustom', network: NETWORK })),
+    };
+    const manager = new WalletManager({ adapters: [ledger] });
+    element = createElement(manager);
+
+    const events: string[] = [];
+    let connectedDetail: Record<string, unknown> | undefined;
+    element.addEventListener('connected', (event) => {
+      events.push('connected');
+      connectedDetail = (event as CustomEvent<Record<string, unknown>>).detail;
+    });
+    element.addEventListener('close', () => events.push('close'));
+
+    await element.open();
+    element
+      .getOverlayRoot()
+      ?.querySelector<HTMLButtonElement>('[data-wallet-id="ledger"]')
+      ?.click();
+    await vi.advanceTimersByTimeAsync(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+    await vi.waitFor(() => expect(ledger.getAccounts).toHaveBeenCalledOnce());
+    const derivationPath = "44'/144'/7'/0/3";
+    const input = element
+      .getOverlayRoot()
+      ?.querySelector<HTMLInputElement>('#custom-derivation-path');
+    expect(input).not.toBeNull();
+    input!.value = derivationPath;
+    element
+      .getOverlayRoot()
+      ?.querySelector<HTMLButtonElement>('#custom-path-connect-button')
+      ?.click();
+    await vi.advanceTimersByTimeAsync(TIMINGS.NON_SAFARI_CONNECT_DELAY);
+    await vi.waitFor(() => expect(manager.connected).toBe(true));
+
+    expect(events).toEqual(['connected', 'close']);
+    expect(connectedDetail).toEqual({
+      walletId: 'ledger',
+      derivationPath,
+      connectionAttemptId: expect.any(Number),
+    });
+  });
+
   it('does not emit cancelled when returning from an already-settled error', async () => {
     const adapter = createAdapter(
       'wallet',

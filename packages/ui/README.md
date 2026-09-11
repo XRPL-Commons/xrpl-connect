@@ -251,6 +251,7 @@ connector.addEventListener('connecting', (e) => {
 ### `connected` Event
 
 Emitted when the user successfully connects to a wallet.
+For UI-owned connections, this event is dispatched before the connector closes the modal.
 
 ```typescript
 connector.addEventListener('connected', (e) => {

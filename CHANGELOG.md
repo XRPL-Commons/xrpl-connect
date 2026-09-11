@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- UI: emit the public `connected` event before closing the connector after a successful wallet, WalletConnect, or Ledger connection.
 - Ledger: close the XRPL client when connection-time network discovery fails, including the stricter `server_info` validation introduced in xrpl.js v5.
 
 ## [1.0.0-rc.2] - 2026-09-08
