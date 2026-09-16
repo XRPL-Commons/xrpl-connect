@@ -62,7 +62,7 @@ export function parseLedgerError(error: unknown): {
 
       if (
         message.includes('no device') ||
-        message.includes('not found') ||
+        message.includes('device not found') ||
         message.includes('cannot open device') ||
         message.includes('disconnected')
       ) {
