@@ -1710,6 +1710,46 @@ describe('XamanAdapter.signMessage', () => {
   });
 });
 
+describe.each(['sign', 'signAndSubmit'] as const)(
+  'XamanAdapter.%s single-signing metadata',
+  (method) => {
+    it.each([null, ''])('accepts multisign_account %j', async (multisignAccount) => {
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.payload.get.mockResolvedValue(
+        resolvedPayload(method === 'signAndSubmit', { multisign_account: multisignAccount })
+      );
+
+      const result = adapter[method](REQUESTED_TRANSACTION);
+      await subscription.emit({ signed: true });
+
+      await expect(result).resolves.toMatchObject({
+        hash: SIGNED_TX_HASH,
+        tx_blob: SIGNED_TX_HEX,
+        signature: SIGNED_TX_JSON.TxnSignature,
+      });
+    });
+
+    it.each([CONNECTED_ACCOUNT, undefined, ' ', false, 0])(
+      'rejects unexpected multisign_account %j',
+      async (multisignAccount) => {
+        const { adapter, subscription } = await signedAdapter();
+        mockXummInstance.payload.get.mockResolvedValue(
+          resolvedPayload(method === 'signAndSubmit', { multisign_account: multisignAccount })
+        );
+
+        const result = adapter[method](REQUESTED_TRANSACTION);
+        const rejection = expect(result).rejects.toMatchObject({
+          code: WalletErrorCode.SIGN_FAILED,
+          message: expect.stringContaining('Xaman returned unexpected multi-signing account data'),
+        });
+        await subscription.emit({ signed: true });
+
+        await rejection;
+      }
+    );
+  }
+);
+
 describe('XamanAdapter.signAndSubmit', () => {
   it.each([undefined, 0])(
     'does not compare submitted fields or apply expiry allowance %s',

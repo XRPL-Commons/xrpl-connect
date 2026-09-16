@@ -1110,7 +1110,7 @@ export class XamanAdapter
       if (transaction.Account !== expectedAccount || responseAccount !== expectedAccount) {
         throw new Error('Xaman signed with an account other than the connected account');
       }
-      if (responseMultisignAccount !== null) {
+      if (responseMultisignAccount !== null && responseMultisignAccount !== '') {
         throw new Error('Xaman returned unexpected multi-signing account data');
       }
       if (!verifySignature(blob)) {
