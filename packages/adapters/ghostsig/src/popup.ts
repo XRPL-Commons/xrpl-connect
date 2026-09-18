@@ -6,7 +6,7 @@
 const GHOSTSIG_PROTOCOL = 1;
 const GHOSTSIG_URL = 'https://ghostsig.dev/?connect';
 /** How long a connect's popup is reused. The page holds it open a little longer than this. */
-const GHOSTSIG_REUSE_MS = 2_000;
+const GHOSTSIG_REUSE_MS = 1_500;
 const GHOSTSIG_READY_MS = 10_000;
 const GHOSTSIG_TIMEOUT_MS = 60_000;
 
