@@ -305,6 +305,72 @@ describe('GhostsigAdapter.sign', () => {
 });
 
 describe('GhostsigAdapter.signAndSubmit', () => {
+  it.each(['offline', 'unsent', 'locked', 'moved', 'handOver'])(
+    'rejects %s when the wallet did not submit the transaction',
+    async (kind) => {
+      const { adapter, page } = await connected();
+      const errors: unknown[] = [];
+      adapter.on('error', (error) => errors.push(error));
+      const p = adapter.signAndSubmit(TX);
+      page.answer({ ...SIGNED, submitted: { kind } });
+      const error = await rejection(p);
+      expect(error.code).toBe(WalletErrorCode.SIGN_FAILED);
+      expect(error.message).toContain('Nothing was submitted');
+      expect(error.message).toContain(kind);
+      expect(error.message).toContain(SIGNED.hash);
+      expect(error).toMatchObject({
+        originalError: {
+          transaction: { hash: SIGNED.hash, tx_blob: SIGNED.blob, submitted: { kind } },
+        },
+      });
+      expect(errors).toEqual([error]);
+    }
+  );
+
+  it('rejects a handed-back signature without a submission result', async () => {
+    const { adapter, page } = await connected();
+    const p = adapter.signAndSubmit(TX);
+    page.answer({ ...SIGNED, handOver: 'below quorum' });
+    const error = await rejection(p);
+    expect(error.code).toBe(WalletErrorCode.SIGN_FAILED);
+    expect(error.message).toContain('Nothing was submitted');
+    expect(error.message).toContain('below quorum');
+  });
+
+  it.each([
+    undefined,
+    null,
+    { kind: 'unknown' },
+    { kind: 'lost', code: 'tesSUCCESS' },
+    { kind: 'validated', ok: null },
+    { kind: 'validated' },
+    { kind: 'validated', ok: 'true' },
+    { kind: 'future-outcome', ok: true },
+  ])('reports uncertain confirmation for %j', async (submitted) => {
+    const { adapter, page } = await connected();
+    const p = adapter.signAndSubmit(TX);
+    page.answer({ ...SIGNED, submitted });
+    const error = await rejection(p);
+    expect(error.code).toBe(WalletErrorCode.SIGN_FAILED);
+    expect(error.message).toContain('Submission could not be confirmed');
+    expect(error.message).toContain('Check the transaction hash before retrying');
+    expect(error.message).toContain(SIGNED.hash);
+    expect(error.message).not.toContain('Nothing was submitted');
+    expect(error).toMatchObject({
+      originalError: { transaction: { hash: SIGNED.hash, tx_blob: SIGNED.blob } },
+    });
+  });
+
+  it('rejects a validated transaction that failed on the ledger', async () => {
+    const { adapter, page } = await connected();
+    const p = adapter.signAndSubmit(TX);
+    page.answer({ ...SIGNED, submitted: { kind: 'validated', code: 'tecPATH_DRY', ok: false } });
+    const error = await rejection(p);
+    expect(error.code).toBe(WalletErrorCode.SIGN_FAILED);
+    expect(error.message).toContain('tecPATH_DRY');
+    expect(error.message).not.toContain('Nothing was submitted');
+  });
+
   it('posts submit true and reports the ledger outcome', async () => {
     const { adapter, page } = await connected();
     const p = adapter.signAndSubmit(TX);

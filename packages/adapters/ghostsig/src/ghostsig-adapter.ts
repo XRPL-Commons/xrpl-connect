@@ -209,16 +209,29 @@ export class GhostsigAdapter implements WalletAdapter, SupportsReconnectOptions 
   async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
     const signed = await this.signRequest(transaction, true);
     const submitted = signed.submitted;
-    if (submitted && submitted.ok === false) {
-      const walletError = createWalletError.signFailed(
-        new Error(`The ledger refused the transaction: ${submitted.code ?? submitted.kind}`)
-      );
-      this.emit('error', walletError);
-      throw walletError;
-    }
     const result: SubmittedTransaction = { ...this.toSignedTransaction(signed) };
     if (submitted) result.submitted = submitted;
-    return result;
+    if (!signed.handOver && submitted?.kind === 'validated' && submitted.ok === true) {
+      return result;
+    }
+
+    let message: string;
+    if (
+      signed.handOver ||
+      ['offline', 'unsent', 'locked', 'moved', 'handOver'].includes(submitted?.kind ?? '')
+    ) {
+      message = `Nothing was submitted: ${signed.handOver || submitted?.kind}`;
+    } else if (submitted?.ok === false) {
+      message = `The transaction failed: ${submitted.code ?? submitted.kind}`;
+    } else {
+      message = 'Submission could not be confirmed. Check the transaction hash before retrying.';
+    }
+    const cause = Object.assign(new Error(`${message} Transaction hash: ${signed.hash}`), {
+      transaction: result,
+    });
+    const walletError = createWalletError.signFailed(cause);
+    this.emit('error', walletError);
+    throw walletError;
   }
 
   /**

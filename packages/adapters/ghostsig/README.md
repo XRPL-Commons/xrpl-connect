@@ -62,6 +62,14 @@ console.log(submitted.hash, submitted.submitted);
 
 Every signing request names the connected address, and a reply for another address is refused.
 
+`signAndSubmit()` resolves only when the wallet confirms successful ledger validation.
+Known non-submission outcomes (including offline, unsent, and handed-back signatures)
+reject with `SIGN_FAILED`. Missing or uncertain confirmation also rejects, but does
+not mean the transaction failed to reach the ledger: check the transaction hash in
+the error message before retrying. The signed transaction and wallet outcome are
+preserved on `error.originalError.transaction`. Use `sign()` when you want a signed
+transaction or a partial signature without requiring submission.
+
 ## Configuration Options
 
 ```typescript
