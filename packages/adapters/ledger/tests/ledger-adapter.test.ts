@@ -1,13 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
-import { createWalletError, WalletErrorCategory, WalletErrorCode } from '@xrpl-connect/core';
+import {
+  createWalletError,
+  WalletErrorCategory,
+  WalletErrorCode,
+  type Transaction,
+} from '@xrpl-connect/core';
 import {
   decode,
   encodeForMultiSigning,
   hashes,
   multisign,
+  RippledError,
   verifyKeypairSignature,
   Wallet,
-  type Transaction,
 } from 'xrpl';
 
 const mocks = vi.hoisted(() => {
@@ -582,6 +587,120 @@ describe('LedgerAdapter.signAndSubmit', () => {
     });
     expect(client.connect).not.toHaveBeenCalled();
     expect(xrpAppInstance.signTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe.each(['sign', 'signAndSubmit'] as const)('LedgerAdapter.%s error boundaries', (method) => {
+  let adapter: LedgerAdapter;
+
+  beforeEach(async () => {
+    installNavigator({ hid: {} });
+    xrpAppInstance.getAddress.mockResolvedValue({
+      address: SINGLE_SIGNER.classicAddress,
+      publicKey: SINGLE_SIGNER.publicKey,
+    });
+    xrpAppInstance.signTransaction.mockImplementation(async (_path, rawTransaction) =>
+      signWithSingleSigner(rawTransaction)
+    );
+    adapter = new LedgerAdapter();
+    await adapter.connect({ network: 'testnet' });
+  });
+
+  it('preserves actNotFound from autofill without asking for a device signature', async () => {
+    const error = new RippledError('Account not found.', { error: 'actNotFound' });
+    client.autofill.mockRejectedValue(error);
+    const { Sequence: _sequence, Fee: _fee, ...transaction } = SINGLE_TRANSACTION;
+
+    const operation = adapter[method](transaction);
+
+    await expect(operation).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+      message: 'Failed to sign transaction. Account not found.',
+    });
+    await expect(operation).rejects.toHaveProperty('originalError', error);
+    expect(xrpAppInstance.signTransaction).not.toHaveBeenCalled();
+    expect(client.submitAndWait).not.toHaveBeenCalled();
+    expect(client.disconnect).toHaveBeenCalledOnce();
+    await expect(adapter.getAccount()).resolves.toMatchObject({
+      address: SINGLE_SIGNER.classicAddress,
+      network: { id: 'testnet' },
+    });
+  });
+
+  it.each([
+    ['connect', 'WebSocket disconnected'],
+    ['autofill', 'Request denied by server'],
+    ['disconnect', 'WebSocket disconnected'],
+    ...(method === 'signAndSubmit'
+      ? [['submitAndWait', 'Transaction rejected by server'] as const]
+      : []),
+  ] as const)(
+    'preserves a %s failure without device advice or user-rejection classification',
+    async (phase, message) => {
+      const error = new Error(message);
+      client[phase].mockRejectedValue(error);
+
+      const operation = adapter[method](SINGLE_TRANSACTION);
+
+      await expect(operation).rejects.toMatchObject({
+        code: WalletErrorCode.SIGN_FAILED,
+        message: `Failed to sign transaction. ${message}`,
+      });
+      await expect(operation).rejects.toHaveProperty('originalError', error);
+      expect(client.disconnect).toHaveBeenCalledOnce();
+    }
+  );
+
+  it.each(['autofill', 'signTransaction'] as const)(
+    'preserves an existing WalletError from %s',
+    async (phase) => {
+      const error = createWalletError.notConnected();
+      const source = phase === 'autofill' ? client.autofill : xrpAppInstance.signTransaction;
+      source.mockRejectedValue(error);
+
+      await expect(adapter[method](SINGLE_TRANSACTION)).rejects.toBe(error);
+      expect(client.disconnect).toHaveBeenCalledOnce();
+    }
+  );
+
+  it('preserves a structural WalletError from another execution context', async () => {
+    const error = {
+      name: 'WalletError',
+      code: WalletErrorCode.CONNECTION_FAILED,
+      category: WalletErrorCategory.NETWORK,
+      message: 'Server disconnected',
+    };
+    client.connect.mockRejectedValue(error);
+
+    await expect(adapter[method](SINGLE_TRANSACTION)).rejects.toBe(error);
+    expect(client.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [{ statusCode: 0x6804 }, 'Please unlock your Ledger device'],
+    [{ statusCode: 0x6e00 }, 'Please open the XRP application'],
+    [new Error('Device not found'), 'Please connect your Ledger device via USB'],
+  ])('retains device instructions for %j', async (error, message) => {
+    xrpAppInstance.signTransaction.mockRejectedValue(error);
+
+    await expect(adapter[method](SINGLE_TRANSACTION)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+      message: expect.stringContaining(message),
+      originalError: expect.objectContaining({ cause: error }),
+    });
+    expect(client.disconnect).toHaveBeenCalledOnce();
+    expect(client.submitAndWait).not.toHaveBeenCalled();
+  });
+
+  it('retains device rejection classification and its cause', async () => {
+    const error = Object.assign(new Error('Rejected on device'), { statusCode: 0x6985 });
+    xrpAppInstance.signTransaction.mockRejectedValue(error);
+
+    const operation = adapter[method](SINGLE_TRANSACTION);
+    await expect(operation).rejects.toMatchObject({ code: WalletErrorCode.SIGN_REJECTED });
+    await expect(operation).rejects.toHaveProperty('originalError', error);
+    expect(client.disconnect).toHaveBeenCalledOnce();
+    expect(client.submitAndWait).not.toHaveBeenCalled();
   });
 });
 

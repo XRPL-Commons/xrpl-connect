@@ -333,10 +333,26 @@ export class LedgerAdapter
     // multisigning prefix and device AccountID itself. It must receive the
     // ordinary unsigned transaction serialization in both signing modes.
     const txBlob = encode(txForSigning).toUpperCase();
-    const signature = await this.withTimeout(
-      xrpApp.signTransaction(this.derivationPath, txBlob),
-      'Signing timeout. Please confirm the transaction on your Ledger device.'
-    );
+    let signature: string;
+    try {
+      signature = await this.withTimeout(
+        xrpApp.signTransaction(this.derivationPath, txBlob),
+        'Signing timeout. Please confirm the transaction on your Ledger device.'
+      );
+    } catch (error) {
+      if (isWalletError(error)) throw error;
+
+      const { state, message } = parseLedgerError(error);
+      if (
+        isLedgerUserCancelled(error) ||
+        (state === LedgerDeviceState.READY && message.includes('rejected'))
+      ) {
+        throw createWalletError.signRejected(
+          error instanceof Error ? error : new Error(formatLedgerError(error))
+        );
+      }
+      throw createWalletError.signFailed(formattedLedgerError(error));
+    }
 
     if (!signature) {
       throw new Error('Failed to sign transaction with Ledger');
@@ -446,19 +462,7 @@ export class LedgerAdapter
       };
     } catch (error) {
       if (isWalletError(error)) throw error;
-
-      const { state, message } = parseLedgerError(error);
-
-      if (
-        isLedgerUserCancelled(error) ||
-        (state === LedgerDeviceState.READY && message.includes('rejected'))
-      ) {
-        throw createWalletError.signRejected(
-          error instanceof Error ? error : new Error(formatLedgerError(error))
-        );
-      }
-
-      throw createWalletError.signFailed(formattedLedgerError(error));
+      throw createWalletError.signFailed(error instanceof Error ? error : new Error(String(error)));
     }
   }
 
@@ -492,19 +496,7 @@ export class LedgerAdapter
       });
     } catch (error) {
       if (isWalletError(error)) throw error;
-
-      const { state, message } = parseLedgerError(error);
-
-      if (
-        isLedgerUserCancelled(error) ||
-        (state === LedgerDeviceState.READY && message.includes('rejected'))
-      ) {
-        throw createWalletError.signRejected(
-          error instanceof Error ? error : new Error(formatLedgerError(error))
-        );
-      }
-
-      throw createWalletError.signFailed(formattedLedgerError(error));
+      throw createWalletError.signFailed(error instanceof Error ? error : new Error(String(error)));
     }
   }
 
