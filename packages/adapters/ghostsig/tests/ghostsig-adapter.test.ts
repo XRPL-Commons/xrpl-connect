@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vite-plus/test';
 import { STANDARD_NETWORKS, WalletErrorCode, isWalletError } from '@xrpl-connect/core';
 import type { NetworkInfo, WalletAdapter } from '@xrpl-connect/core';
 import { GhostsigAdapter } from '../src/index';
+import { ghostsigRequest } from '../src/popup';
 
 interface Message {
   origin: string;
@@ -169,6 +170,34 @@ describe('GhostsigAdapter.connect', () => {
 
     const { adapter } = await connected(STANDARD_NETWORKS.devnet);
     await expect(adapter.getNetwork()).resolves.toBe(STANDARD_NETWORKS.devnet);
+  });
+
+  it.each(['mainnet', 'devnet'])('opens a fresh popup when reconnecting on %s', async (network) => {
+    const { adapter, page, dapp } = await connected('testnet');
+    await adapter.disconnect();
+
+    const pending = adapter.connect({ network });
+    page.answer(ACCOUNT);
+    const account = await pending;
+
+    expect(account.network.id).toBe(network);
+    expect(page.last().network).toBe(network);
+    expect(dapp.opened).toBe(2);
+
+    const signing = adapter.sign(TX);
+    page.answer(SIGNED);
+    await expect(signing).resolves.toMatchObject({ tx_blob: SIGNED.blob });
+    expect(dapp.opened, 'signing on the same network reuses the new popup').toBe(2);
+  });
+
+  it('opens a fresh popup when the chain changes with the same network name', async () => {
+    const { page, dapp } = await connected('testnet');
+    const pending = ghostsigRequest({ chain: 'stellar', network: 'testnet', method: 'connect' });
+    page.answer(ACCOUNT);
+    await pending;
+
+    expect(page.last()).toMatchObject({ chain: 'stellar', network: 'testnet' });
+    expect(dapp.opened).toBe(2);
   });
 
   it('refuses a custom endpoint before opening a popup', async () => {

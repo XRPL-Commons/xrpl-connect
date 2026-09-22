@@ -59,7 +59,10 @@ interface GhostsigRequest {
 }
 
 /** The popup a connect left open, for the signature a login asks for next. */
-const ghostsigHeld = new WeakMap<Window, { popup: Window; origin: string; at: number }>();
+const ghostsigHeld = new WeakMap<
+  Window,
+  { popup: Window; origin: string; chain: string; network: string; at: number }
+>();
 
 /** The pages this client opens: ghostsig.dev, or a copy on localhost, its own passkey relying party. */
 function ghostsigPageUrl(url: string | undefined): URL | GhostsigError {
@@ -149,6 +152,8 @@ function ghostsigRequest<T = unknown>(req: GhostsigRequest): Promise<T> {
     held !== undefined &&
     !held.popup.closed &&
     held.origin === origin &&
+    held.chain === req.chain &&
+    held.network === req.network &&
     Date.now() - held.at < GHOSTSIG_REUSE_MS;
   let popup: Window | null;
   if (reuse) {
@@ -196,7 +201,13 @@ function ghostsigRequest<T = unknown>(req: GhostsigRequest): Promise<T> {
       // A connect leaves the page open. A failure of the client's own closes the popup;
       // a page that refused keeps it, to show why.
       if (!err && req.method === 'connect') {
-        ghostsigHeld.set(win, { popup: opened, origin, at: Date.now() });
+        ghostsigHeld.set(win, {
+          popup: opened,
+          origin,
+          chain: req.chain,
+          network: req.network,
+          at: Date.now(),
+        });
       } else if (err?.ext) {
         try {
           if (!opened.closed) opened.close();
