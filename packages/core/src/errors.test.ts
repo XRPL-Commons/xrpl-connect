@@ -46,4 +46,12 @@ describe('createWalletError failure factories', () => {
       originalError: cause,
     });
   });
+
+  it('identifies timed out operations as retryable network failures', () => {
+    expect(createWalletError.operationTimeout('Xaman signing')).toMatchObject({
+      code: WalletErrorCode.OPERATION_TIMEOUT,
+      category: WalletErrorCategory.NETWORK,
+      message: 'Xaman signing timed out.',
+    });
+  });
 });

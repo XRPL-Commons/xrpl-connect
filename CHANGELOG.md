@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Xaman: complete an explicitly initiated mobile login in both the original and return tabs, isolate concurrent OAuth attempts, and bound cancelled or unanswered connections (#201).
+- Xaman: reconcile signing results after a lost wallet subscription and report uncertain signing timeouts with `OPERATION_TIMEOUT` and the payload UUID, without resubmitting the transaction (#201).
+
 - UI: emit the public `connected` event before closing the connector after a successful wallet, WalletConnect, or Ledger connection.
 - Ledger: close the XRPL client when connection-time network discovery fails, including the stricter `server_info` validation introduced in xrpl.js v5.
 - UI: honor the `WalletManager` auto-connect policy by leaving Xaman session restoration to the manager and framework lifecycle; mounting or replacing the connector no longer reconnects when `autoConnect` is omitted or `false`.

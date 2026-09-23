@@ -57,6 +57,16 @@ manager has not saved its first session yet. With auto-connect omitted or disabl
 call `manager.reconnect()` explicitly on the returned page. Mounting the connector
 does not initiate recovery.
 
+When the return opens another tab on the same origin and browser profile, completing
+that recovery also settles the original tab's pending connection. This requires
+local storage. Each browser login has its own OAuth state; expired or cancelled
+attempts cannot be adopted by a later login. Unanswered connections time out after
+five minutes with `OPERATION_TIMEOUT`. A suspended tab checks its deadline when it
+resumes. Other tabs that did not initiate a connection remain idle.
+
+Persist checkout/order state separately so the return page can resume the payment
+step. Recovering a wallet session does not restore application state.
+
 ## Adapter options
 
 - `XamanAdapter`: `apiKey`, QR callback, deep-link transformation, post-signing return URLs, and `maxLastLedgerSequenceExtension` (unreleased after RC2; default 50, sign-only). See [expiry policy](/guide/transactions#xaman-expiry-policy).
@@ -65,7 +75,7 @@ does not initiate recovery.
 - `MetaMaskSnapAdapter`: optional `snapId`; use the default published Snap unless developing a local Snap.
 - Xyra, Otsu, Crossmark, and GemWallet work without application credentials.
 
-Xaman and WalletConnect need constructor credentials to appear in wallet discovery and to support automatic reconnection. Direct calls can defer a credential for one session with `manager.connect('xaman', { apiKey })` or `manager.connect('walletconnect', { projectId })`; these options are selected from the wallet ID at compile time and are not persisted. Missing credentials fail early with `CONFIGURATION_REQUIRED`. Other connect-time options can override supported adapter settings. Configure Xaman return URLs on the adapter constructor when connecting through `WalletManager`; direct `XamanAdapter.connect()` calls can override them for one session. Return navigation may open another browser tab, so restore application state and use the signing result—not navigation—as confirmation. Keep the Xaman API key stable for the lifetime of the page because its browser SDK owns page-global OAuth state.
+Xaman and WalletConnect need constructor credentials to appear in wallet discovery and to support automatic reconnection. Direct calls can defer a credential for one session with `manager.connect('xaman', { apiKey })` or `manager.connect('walletconnect', { projectId })`; these options are selected from the wallet ID at compile time and are not persisted. Missing credentials fail early with `CONFIGURATION_REQUIRED`. Other connect-time options can override supported adapter settings. Configure Xaman return URLs on the adapter constructor when connecting through `WalletManager`; direct `XamanAdapter.connect()` calls can override them for one session. Return navigation may open another browser tab, so restore application state and use the signing result—not navigation—as confirmation. Keep the Xaman API key stable for the lifetime of an adapter instance.
 
 ## Networks
 

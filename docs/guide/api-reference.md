@@ -649,8 +649,8 @@ function supportsPendingConnection(
 
 Detection must be synchronous and side-effect free. It identifies a returned wallet
 authorization that `connect()` can complete without starting a new authorization.
-Xaman implements it for successful OAuth callback parameters; rejected-return URLs
-are ignored. With empty storage, `reconnect()` attempts the first configured candidate
+Xaman implements it for successful OAuth callback parameters and rejection callbacks
+for its own pending browser attempts. Unrelated rejected-return URLs are ignored. With empty storage, `reconnect()` attempts the first configured candidate
 in registration order through the normal connection validation and persistence path.
 Automatic recovery requires `autoConnect: true`; callers may also reconnect explicitly.
 
@@ -840,21 +840,22 @@ code. Each code maps to exactly one category.
 
 All error codes are exposed by the `WalletErrorCode` enum.
 
-| Code                    | Category             | Description                                   | Handling                               |
-| ----------------------- | -------------------- | --------------------------------------------- | -------------------------------------- |
-| `WALLET_NOT_FOUND`      | `WALLET_UNAVAILABLE` | Adapter not registered with the WalletManager | Check the `adapters` array             |
-| `WALLET_NOT_INSTALLED`  | `WALLET_UNAVAILABLE` | Browser extension / app is not installed      | Prompt the user to install the wallet  |
-| `WALLET_NOT_AVAILABLE`  | `WALLET_UNAVAILABLE` | Wallet present but not currently usable       | Surface a "wallet unavailable" message |
-| `NETWORK_NOT_SUPPORTED` | `WALLET_UNAVAILABLE` | Wallet does not support the requested network | Switch to a supported network          |
-| `NETWORK_MISMATCH`      | `WALLET_UNAVAILABLE` | Wallet is connected to a different network    | Ask the user to switch networks        |
-| `CONNECTION_REJECTED`   | `USER_ACTION`        | User rejected the connection                  | Allow the user to retry                |
-| `SIGN_REJECTED`         | `USER_ACTION`        | User rejected the signing prompt              | Allow the user to retry                |
-| `CONNECTION_FAILED`     | `NETWORK`            | Connection to the wallet failed               | Retry or fall back to another wallet   |
-| `NOT_CONNECTED`         | `INVALID_INPUT`      | A connection is required but none is active   | Connect before calling the method      |
-| `ALREADY_CONNECTED`     | `INVALID_INPUT`      | A wallet is already connected or connecting   | Disconnect first                       |
-| `UNSUPPORTED_METHOD`    | `INVALID_INPUT`      | The wallet does not implement this method     | Use a wallet that supports it          |
-| `SIGN_FAILED`           | `INTERNAL`           | Signing failed for an unspecified reason      | Retry or surface the original error    |
-| `UNKNOWN_ERROR`         | `INTERNAL`           | Unhandled error from the adapter              | Inspect `originalError`                |
+| Code                    | Category             | Description                                                | Handling                                     |
+| ----------------------- | -------------------- | ---------------------------------------------------------- | -------------------------------------------- |
+| `WALLET_NOT_FOUND`      | `WALLET_UNAVAILABLE` | Adapter not registered with the WalletManager              | Check the `adapters` array                   |
+| `WALLET_NOT_INSTALLED`  | `WALLET_UNAVAILABLE` | Browser extension / app is not installed                   | Prompt the user to install the wallet        |
+| `WALLET_NOT_AVAILABLE`  | `WALLET_UNAVAILABLE` | Wallet present but not currently usable                    | Surface a "wallet unavailable" message       |
+| `NETWORK_NOT_SUPPORTED` | `WALLET_UNAVAILABLE` | Wallet does not support the requested network              | Switch to a supported network                |
+| `NETWORK_MISMATCH`      | `WALLET_UNAVAILABLE` | Wallet is connected to a different network                 | Ask the user to switch networks              |
+| `CONNECTION_REJECTED`   | `USER_ACTION`        | User rejected the connection                               | Allow the user to retry                      |
+| `SIGN_REJECTED`         | `USER_ACTION`        | User rejected the signing prompt                           | Allow the user to retry                      |
+| `OPERATION_TIMEOUT`     | `NETWORK`            | The operation did not produce a result before its deadline | Check the existing operation before retrying |
+| `CONNECTION_FAILED`     | `NETWORK`            | Connection to the wallet failed                            | Retry or fall back to another wallet         |
+| `NOT_CONNECTED`         | `INVALID_INPUT`      | A connection is required but none is active                | Connect before calling the method            |
+| `ALREADY_CONNECTED`     | `INVALID_INPUT`      | A wallet is already connected or connecting                | Disconnect first                             |
+| `UNSUPPORTED_METHOD`    | `INVALID_INPUT`      | The wallet does not implement this method                  | Use a wallet that supports it                |
+| `SIGN_FAILED`           | `INTERNAL`           | Signing failed for an unspecified reason                   | Retry or surface the original error          |
+| `UNKNOWN_ERROR`         | `INTERNAL`           | Unhandled error from the adapter                           | Inspect `originalError`                      |
 
 ### Error Example
 
