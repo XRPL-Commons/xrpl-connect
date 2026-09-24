@@ -1456,6 +1456,93 @@ describe('WalletManager.reconnect()', () => {
     });
   });
 
+  it('preserves another manager session when an empty-storage pending reconnect fails', async () => {
+    const storage = new MemoryStorageAdapter();
+    let rejectPending!: (error: Error) => void;
+    const pending = {
+      ...createFakeAdapter(),
+      hasPendingConnection: () => true,
+      connect: vi.fn(
+        () =>
+          new Promise<AccountInfo>((_, reject) => {
+            rejectPending = reject;
+          })
+      ),
+    };
+    const successful = { ...createFakeAdapter(), id: 'successful' };
+    const restoringManager = new WalletManager({ adapters: [pending], storage });
+    const successfulManager = new WalletManager({ adapters: [successful], storage });
+
+    const reconnecting = restoringManager.reconnect();
+    await vi.waitFor(() => expect(pending.connect).toHaveBeenCalledOnce());
+
+    await expect(successfulManager.connect(successful.id)).resolves.toEqual(ACCOUNT);
+    rejectPending(new Error('Authorization expired'));
+
+    await expect(reconnecting).resolves.toBeNull();
+    expect(await new Storage(storage).loadState()).toMatchObject({
+      walletId: successful.id,
+      account: ACCOUNT,
+    });
+  });
+
+  it('preserves a replaced stored session when the original reconnect fails', async () => {
+    const storage = new MemoryStorageAdapter();
+    await new Storage(storage).saveState({
+      walletId: 'fake',
+      account: ACCOUNT,
+      network: NETWORK,
+      timestamp: Date.now(),
+    });
+
+    let rejectRestore!: (error: Error) => void;
+    const restoring = {
+      ...createFakeAdapter(),
+      connect: vi.fn(
+        () =>
+          new Promise<AccountInfo>((_, reject) => {
+            rejectRestore = reject;
+          })
+      ),
+    };
+    const replacement = { ...createFakeAdapter(), id: 'replacement' };
+    const restoringManager = new WalletManager({ adapters: [restoring], storage });
+    const replacementManager = new WalletManager({ adapters: [replacement], storage });
+
+    const reconnecting = restoringManager.reconnect();
+    await vi.waitFor(() => expect(restoring.connect).toHaveBeenCalledOnce());
+
+    await expect(replacementManager.connect(replacement.id)).resolves.toEqual(ACCOUNT);
+    rejectRestore(new Error('Restored wallet is unavailable'));
+
+    await expect(reconnecting).resolves.toBeNull();
+    expect(await new Storage(storage).loadState()).toMatchObject({
+      walletId: replacement.id,
+      account: ACCOUNT,
+    });
+  });
+
+  it('clears the attempted stored session after an ordinary reconnect failure', async () => {
+    const storage = new MemoryStorageAdapter();
+    await new Storage(storage).saveState({
+      walletId: 'fake',
+      account: ACCOUNT,
+      network: NETWORK,
+      timestamp: Date.now(),
+    });
+    const adapter = {
+      ...createFakeAdapter(),
+      connect: vi.fn(async () => {
+        throw new Error('Restored wallet is unavailable');
+      }),
+    };
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    expect(await new Storage(storage).loadState()).toBeNull();
+  });
+
   it('returns the active account without clearing its stored session', async () => {
     const storage = new MemoryStorageAdapter();
     const adapter = createRecordingAdapter([]);

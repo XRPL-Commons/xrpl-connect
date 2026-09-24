@@ -4,6 +4,12 @@
 
 import { Xumm } from 'xumm';
 import {
+  BrowserOAuthClient,
+  usesBrowserOAuth,
+  CONNECTION_TIMEOUT_MS,
+  type XamanClient,
+} from './browser-oauth';
+import {
   decode,
   encodeForMultiSigning,
   hashes,
@@ -36,6 +42,9 @@ import iconSvg from './assets/icon.svg';
 
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
 const SIGNING_TIMEOUT_MS = 5 * 60 * 1000;
+const PAYLOAD_STATUS_POLL_INTERVAL_MS = 5_000;
+const PAYLOAD_CREATION_TIMEOUT_MS = 30_000;
+const PAYLOAD_CANCELLATION_TIMEOUT_MS = 30_000;
 const RESOLVED_PAYLOAD_RETRY_MAX_MS = 5_000;
 const RESOLVED_PAYLOAD_RETRY_TIMEOUT_MS = 30_000;
 const SIGNING_OUTPUT_FIELDS = new Set(['TxnSignature']);
@@ -93,7 +102,7 @@ interface XamanNetwork {
 }
 
 interface ActivePayloadOperation {
-  client: Xumm;
+  client: XamanClient;
   controller: AbortController;
   phase: 'creating' | 'waiting' | 'fetching' | 'done';
   opened: boolean;
@@ -110,6 +119,17 @@ interface ActivePayloadOperation {
   forceOutcome: (outcome: XamanPayloadOutcome) => void;
   done: Promise<void>;
   resolveDone: () => void;
+}
+
+type XamanPayloadTimeoutError = ReturnType<typeof createWalletError.operationTimeout> & {
+  readonly payloadUuid: string;
+};
+
+class XamanRequestTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'XamanRequestTimeoutError';
+  }
 }
 
 // OAuth userinfo can return decimal strings despite the upstream numeric declaration.
@@ -173,7 +193,7 @@ export class XamanAdapter
   // returns an empty signature, so advertise it as unsupported.
   readonly capabilities: WalletCapabilities = { signMessage: false };
 
-  private client: Xumm | null = null;
+  private client: XamanClient | null = null;
   private clientApiKey: string | null = null;
   private sdkApiKey: string | null = null;
   private currentAccount: AccountInfo | null = null;
@@ -187,6 +207,7 @@ export class XamanAdapter
   private restoringState = false;
   private disconnecting = false;
   private connectionAttemptDone: Promise<void> | null = null;
+  private connectionController: AbortController | null = null;
   private disconnectPromise: Promise<void> | null = null;
   // Per-connection option overrides. Populated by connect() and cleared by
   // cleanup(); avoids mutating constructor-supplied options across calls.
@@ -225,7 +246,12 @@ export class XamanAdapter
     if (typeof document === 'undefined' || !document.location?.search) return false;
     // Successful OAuth return parameters consumed by the Xumm PKCE SDK.
     const params = new URLSearchParams(document.location.search);
-    return Boolean(params.get('authorization_code') || params.get('access_token'));
+    return Boolean(
+      params.get('authorization_code') ||
+      params.get('access_token') ||
+      (params.get('state')?.startsWith('xrpl-connect-') &&
+        (params.has('error') || params.has('error_description')))
+    );
   }
 
   async checkXamanState(
@@ -277,14 +303,16 @@ export class XamanAdapter
     this.restoringState = true;
     const attemptDone = deferred<void>();
     this.connectionAttemptDone = attemptDone.promise;
-    let client: Xumm | null = null;
+    const controller = new AbortController();
+    this.connectionController = controller;
+    let client: XamanClient | null = null;
 
     try {
       this.sdkApiKey = apiKey;
-      client = new Xumm(apiKey);
+      client = usesBrowserOAuth() ? new BrowserOAuthClient(apiKey) : new Xumm(apiKey);
       this.client = client;
       this.clientApiKey = apiKey;
-      const address = await client.user.account;
+      const address = await this.waitForConnection(client.user.account, controller.signal);
       if (generation !== this.connectionGeneration || this.client !== client) {
         if (this.supersededRestorationGeneration === generation) return null;
         throw new Error('Xaman state restoration was superseded or disconnected');
@@ -295,7 +323,10 @@ export class XamanAdapter
         return null;
       }
 
-      const resolvedNetwork = await this.getSessionNetwork(client);
+      const resolvedNetwork = await this.waitForConnection(
+        this.getSessionNetwork(client),
+        controller.signal
+      );
       const resolvedXamanNetwork = this.resolveXamanNetwork(resolvedNetwork);
       if (requestedXamanNetwork) {
         this.validateXamanNetwork(
@@ -337,6 +368,7 @@ export class XamanAdapter
         this.connecting = false;
         this.restoringState = false;
         this.connectionAttemptDone = null;
+        this.connectionController = null;
       }
       attemptDone.resolve(undefined);
     }
@@ -379,6 +411,8 @@ export class XamanAdapter
       const restorationGeneration = this.connectionGeneration;
       logger.info('Connection phase: superseding silent session restoration');
       this.supersededRestorationGeneration = restorationGeneration;
+      this.connectionController?.abort();
+      this.client?.cancelAuthorization?.();
       this.connectionGeneration += 1;
       this.client = null;
       this.clientApiKey = null;
@@ -420,6 +454,8 @@ export class XamanAdapter
     this.connecting = true;
     const attemptDone = deferred<void>();
     this.connectionAttemptDone = attemptDone.promise;
+    const controller = new AbortController();
+    this.connectionController = controller;
 
     // Reset any leftover state from a previous connection attempt so a fast
     // disconnect → connect cycle doesn't carry stale client/callbacks forward.
@@ -433,10 +469,10 @@ export class XamanAdapter
       returnUrl: options?.returnUrl,
     };
 
-    let client: Xumm | null = null;
+    let client: XamanClient | null = null;
     try {
       this.sdkApiKey = apiKey;
-      client = new Xumm(apiKey);
+      client = usesBrowserOAuth() ? new BrowserOAuthClient(apiKey) : new Xumm(apiKey);
       this.client = client;
       this.clientApiKey = apiKey;
       logger.info('Connection phase: Xaman SDK initialized', {
@@ -451,7 +487,7 @@ export class XamanAdapter
       });
       logger.info('Connection phase: calling SDK authorize (popup should open now)');
 
-      const authResult = await client.authorize();
+      const authResult = await this.waitForConnection(client.authorize(), controller.signal);
       logger.info('Connection phase: SDK authorize settled', {
         hasResult: !!authResult,
         isError: authResult instanceof Error,
@@ -468,7 +504,10 @@ export class XamanAdapter
       logger.info('Connection phase: authorization successful');
 
       const account = authResult.me.account;
-      const network = await this.getSessionNetwork(client, authResult.me);
+      const network = await this.waitForConnection(
+        this.getSessionNetwork(client, authResult.me),
+        controller.signal
+      );
       if (generation !== this.connectionGeneration || this.client !== client) {
         throw new Error('Xaman connection attempt was superseded or disconnected');
       }
@@ -490,7 +529,8 @@ export class XamanAdapter
       return this.currentAccount;
     } catch (error) {
       logger.error('Connection phase: authorization failed', error);
-      if (client) {
+      if (client && generation === this.connectionGeneration && this.client === client) {
+        client.cancelAuthorization?.();
         try {
           await client.logout();
         } catch (logoutError) {
@@ -506,8 +546,11 @@ export class XamanAdapter
       logger.info('Connection phase: authorization attempt finished', {
         connected: Boolean(this.currentAccount),
       });
-      this.connecting = false;
-      if (this.connectionAttemptDone === attemptDone.promise) this.connectionAttemptDone = null;
+      if (this.connectionAttemptDone === attemptDone.promise) {
+        this.connecting = false;
+        this.connectionAttemptDone = null;
+        this.connectionController = null;
+      }
       attemptDone.resolve(undefined);
     }
   }
@@ -522,6 +565,8 @@ export class XamanAdapter
     }
 
     const client = this.client;
+    this.connectionController?.abort();
+    client.cancelAuthorization?.();
     const connectionAttemptDone = this.connectionAttemptDone;
     const operations = [...this.activePayloadOperations].filter(
       (operation) => operation.client === client
@@ -700,7 +745,28 @@ export class XamanAdapter
         throw new Error('Failed to create payload');
       }
 
-      const payload = await this.waitForOperation(creation, operation.controller.signal);
+      // A request can finish after the caller's deadline; close its late subscription.
+      void Promise.resolve(creation)
+        .then((payload) => {
+          if (operation.phase === 'done') payload.resolve();
+        })
+        .catch(() => {});
+
+      let payload;
+      try {
+        payload = await this.waitForOperationUntil(
+          Promise.resolve(creation),
+          operation.controller.signal,
+          Date.now() + PAYLOAD_CREATION_TIMEOUT_MS,
+          'Timed out creating the Xaman payload'
+        );
+      } catch (error) {
+        if (error instanceof XamanRequestTimeoutError) {
+          operation.stopRequested = true;
+          throw createWalletError.operationTimeout('Xaman payload creation');
+        }
+        throw error;
+      }
 
       if (!payload.resolved) {
         payload.resolve();
@@ -732,8 +798,13 @@ export class XamanAdapter
           this.openSignWindow(payload.created.next.always);
         }
         outcome = await this.waitForPayloadOutcome(
+          client,
+          payload.created.uuid,
           Promise.race([payload.resolved, operation.forcedOutcome]),
-          () => operation.opened,
+          (opened) => {
+            operation.opened ||= opened;
+            return operation.opened;
+          },
           operation.controller.signal
         );
       } finally {
@@ -931,7 +1002,7 @@ export class XamanAdapter
   // OAuth user information can be restored from a saved session. It establishes
   // signing context, not a live observation of the mobile app's network.
   private async getSessionNetwork(
-    client: Xumm,
+    client: XamanClient,
     authorizedMe?: {
       networkEndpoint?: unknown;
       networkId?: unknown;
@@ -1226,7 +1297,7 @@ export class XamanAdapter
     });
   }
 
-  private createPayloadOperation(client: Xumm, submit: boolean): ActivePayloadOperation {
+  private createPayloadOperation(client: XamanClient, submit: boolean): ActivePayloadOperation {
     const ready = deferred<void>();
     const stopDecision = deferred<void>();
     const forcedOutcome = deferred<XamanPayloadOutcome>();
@@ -1283,7 +1354,14 @@ export class XamanAdapter
     if (!operation.opened) {
       try {
         const cancellationRequest = operation.client.payload?.cancel(operation.uuid, true);
-        const cancellation = cancellationRequest ? await cancellationRequest : null;
+        const cancellation = cancellationRequest
+          ? await this.waitForOperationUntil(
+              Promise.resolve(cancellationRequest),
+              operation.controller.signal,
+              Date.now() + PAYLOAD_CANCELLATION_TIMEOUT_MS,
+              'Timed out cancelling the Xaman payload'
+            )
+          : null;
         const reason = cancellation?.result.reason;
         const meta = cancellation?.meta;
         const cancellationConfirmed =
@@ -1338,7 +1416,7 @@ export class XamanAdapter
   }
 
   private async getResolvedPayload(
-    client: Xumm,
+    client: XamanClient,
     uuid: string,
     retryUntilKnown: boolean,
     signal: AbortSignal
@@ -1350,7 +1428,7 @@ export class XamanAdapter
         const request = client.payload?.get(uuid, true);
         if (!request) throw new Error('Failed to retrieve the resolved Xaman payload');
         const resolved = await this.waitForOperationUntil(
-          request,
+          Promise.resolve(request),
           signal,
           retryDeadline,
           'Timed out retrieving the resolved Xaman payload'
@@ -1358,7 +1436,11 @@ export class XamanAdapter
         if (!resolved) throw new Error('Failed to retrieve the resolved Xaman payload');
         return resolved;
       } catch (error) {
-        if (!retryUntilKnown || signal.aborted || Date.now() >= retryDeadline) throw error;
+        if (signal.aborted) throw error;
+        if (error instanceof XamanRequestTimeoutError || Date.now() >= retryDeadline) {
+          throw this.createPayloadTimeoutError(uuid);
+        }
+        if (!retryUntilKnown) throw error;
         logger.debug('Unable to retrieve submitted Xaman payload; retrying', error);
         const delay = Math.min(retryDelay, retryDeadline - Date.now());
         await this.waitForOperation(
@@ -1379,39 +1461,164 @@ export class XamanAdapter
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_resolve, reject) => {
       timeout = setTimeout(
-        () => reject(new Error(timeoutMessage)),
+        () => reject(new XamanRequestTimeoutError(timeoutMessage)),
         Math.max(0, deadline - Date.now())
       );
     });
     try {
       return await this.waitForOperation(Promise.race([promise, timeoutPromise]), signal);
     } finally {
-      if (timeout) clearTimeout(timeout);
+      if (timeout !== undefined) clearTimeout(timeout);
     }
   }
 
   private async waitForPayloadOutcome(
+    client: XamanClient,
+    uuid: string,
     resolved: Promise<unknown>,
-    wasOpened: () => boolean,
+    updateOpened: (opened: boolean) => boolean,
     signal: AbortSignal
-  ): Promise<unknown> {
+  ): Promise<XamanPayloadOutcome> {
     const timedOut = Symbol('timedOut');
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    const timeoutPromise = new Promise<typeof timedOut>((resolve) => {
-      timeout = setTimeout(() => resolve(timedOut), SIGNING_TIMEOUT_MS);
-    });
+    const deadline = Date.now() + SIGNING_TIMEOUT_MS;
+    const pollController = new AbortController();
+    const abortPoll = () => pollController.abort();
+    signal.addEventListener('abort', abortPoll, { once: true });
+    const polled = this.pollPayloadOutcome(
+      client,
+      uuid,
+      updateOpened,
+      deadline,
+      pollController.signal
+    ).then((outcome) => outcome ?? timedOut);
 
     try {
-      const outcome = await this.waitForOperation(Promise.race([resolved, timeoutPromise]), signal);
-      if (outcome !== timedOut) return outcome;
-      if (!wasOpened()) {
-        throw new Error('Signing timeout - user did not respond');
+      const resolvedOutcome = resolved.then((outcome) => {
+        if (outcome === undefined) return new Promise<never>(() => {});
+        return outcome;
+      });
+      const outcome = await this.waitForOperation(Promise.race([resolvedOutcome, polled]), signal);
+      if (outcome === timedOut) {
+        throw this.createPayloadTimeoutError(uuid);
       }
-      // Xaman expiration is an open-before deadline, not a resolve-before deadline.
-      // Once opened, the operation remains active until the wallet resolves it.
-      return await this.waitForOperation(resolved, signal);
+      return outcome as XamanPayloadOutcome;
     } finally {
-      if (timeout) clearTimeout(timeout);
+      signal.removeEventListener('abort', abortPoll);
+      pollController.abort();
+    }
+  }
+
+  private async pollPayloadOutcome(
+    client: XamanClient,
+    uuid: string,
+    updateOpened: (opened: boolean) => boolean,
+    deadline: number,
+    signal: AbortSignal
+  ): Promise<XamanPayloadOutcome | undefined> {
+    while (Date.now() < deadline) {
+      const delay = Math.min(PAYLOAD_STATUS_POLL_INTERVAL_MS, deadline - Date.now());
+      try {
+        await this.waitForPayloadPollDelay(delay, signal);
+      } catch (error) {
+        if (signal.aborted) return undefined;
+        logger.debug('Unable to wait before reconciling Xaman payload status', error);
+        continue;
+      }
+
+      try {
+        const request = client.payload?.get(uuid, true);
+        if (!request) throw new Error('Failed to retrieve the Xaman payload status');
+        const payload = await this.waitForOperationUntil(
+          Promise.resolve(request),
+          signal,
+          Math.min(deadline, Date.now() + RESOLVED_PAYLOAD_RETRY_TIMEOUT_MS),
+          'Timed out retrieving the Xaman payload status'
+        );
+        const meta = payload?.meta;
+        const opened = updateOpened(meta?.app_opened === true);
+        if (meta?.resolved === true && meta.signed === true) return 'signed';
+        if (meta?.resolved === true && meta.signed === false) return 'rejected';
+        if (meta?.cancelled === true || (meta?.expired === true && !opened)) {
+          return 'expired';
+        }
+      } catch (error) {
+        if (signal.aborted) return undefined;
+        logger.debug('Unable to reconcile Xaman payload status; retrying', error);
+      }
+    }
+    return undefined;
+  }
+
+  private async waitForPayloadPollDelay(delay: number, signal: AbortSignal): Promise<void> {
+    if (signal.aborted) {
+      throw new Error('Xaman signing operation was cancelled');
+    }
+
+    const documentTarget = typeof document === 'undefined' ? undefined : document;
+    const windowTarget = typeof window === 'undefined' ? undefined : window;
+
+    await this.waitForOperation(
+      new Promise<void>((resolve) => {
+        let settled = false;
+        let timeout: ReturnType<typeof setTimeout> | undefined;
+
+        const cleanup = () => {
+          if (timeout !== undefined) clearTimeout(timeout);
+          documentTarget?.removeEventListener('visibilitychange', handleVisibilityChange);
+          windowTarget?.removeEventListener('pageshow', handlePageShow);
+          signal.removeEventListener('abort', cleanup);
+        };
+        const settle = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve();
+        };
+        const handleVisibilityChange = () => {
+          if (documentTarget?.visibilityState === 'visible') settle();
+        };
+        const handlePageShow = () => settle();
+
+        timeout = setTimeout(settle, delay);
+        documentTarget?.addEventListener('visibilitychange', handleVisibilityChange);
+        windowTarget?.addEventListener('pageshow', handlePageShow);
+        signal.addEventListener('abort', cleanup, { once: true });
+      }),
+      signal
+    );
+  }
+
+  private createPayloadTimeoutError(uuid: string): XamanPayloadTimeoutError {
+    const error = createWalletError.operationTimeout(
+      'Xaman signing operation'
+    ) as XamanPayloadTimeoutError;
+    error.message = `Xaman signing outcome is unknown for payload "${uuid}". Check the payload status before retrying.`;
+    Object.defineProperty(error, 'payloadUuid', {
+      configurable: false,
+      enumerable: true,
+      value: uuid,
+      writable: false,
+    });
+    return error;
+  }
+
+  private async waitForConnection<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+    if (signal.aborted) throw new Error('Xaman authorization was cancelled');
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let abort: () => void = () => {};
+    const stopped = new Promise<never>((_, reject) => {
+      abort = () => reject(new Error('Xaman authorization was cancelled'));
+      signal.addEventListener('abort', abort, { once: true });
+      timer = setTimeout(
+        () => reject(createWalletError.operationTimeout('Xaman authorization')),
+        CONNECTION_TIMEOUT_MS
+      );
+    });
+    try {
+      return await Promise.race([promise, stopped]);
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', abort);
     }
   }
 

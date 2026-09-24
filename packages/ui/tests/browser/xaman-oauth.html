@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Xaman OAuth test</title>
+  </head>
+  <body>
+    <button id="connect">Connect</button>
+    <button id="reconnect">Recover return</button>
+    <button id="disconnect">Disconnect</button>
+    <button id="refresh">Refresh account</button>
+    <output id="state">disconnected</output>
+    <script type="module">
+      import { WalletManager } from '../../../core/dist/index.mjs';
+      import { XamanAdapter } from '../../../adapters/xaman/dist/index.mjs';
+
+      const manager = new WalletManager({
+        adapters: [new XamanAdapter({ apiKey: '12345678-1234-4234-8234-123456789abc' })],
+        autoConnect: false,
+        network: 'mainnet',
+      });
+      const state = document.querySelector('#state');
+      const run = async (action) => {
+        state.textContent = 'pending';
+        try {
+          const account = await action();
+          state.textContent = account?.address ?? 'disconnected';
+        } catch (error) {
+          state.textContent = error.code ?? error.message;
+        }
+      };
+      document.querySelector('#connect').onclick = () => run(() => manager.connect('xaman'));
+      document.querySelector('#reconnect').onclick = () => run(() => manager.reconnect());
+      document.querySelector('#disconnect').onclick = () => run(() => manager.disconnect());
+      document.querySelector('#refresh').onclick = () => run(() => manager.fetchAccount());
+    </script>
+  </body>
+</html>
