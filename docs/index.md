@@ -18,7 +18,7 @@ XRPL-Connect is a complete solution for integrating wallet functionality into we
 
 - **Web Component UI** - Beautiful, customizable `<xrpl-wallet-connector>` component for wallet selection and account management
 - **Wallet Manager** - Central event-driven system for managing wallet connections and transactions
-- **Multiple Wallet Support** - Built-in adapters for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap
+- **Multiple Wallet Support** - Built-in adapters for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, GHOSTSIG, Otsu, and MetaMask Snap
 - **Official framework bindings** - Providers, composables, hooks, and connector components for React and Vue
 - **Framework Agnostic** - Works seamlessly with Vanilla JS, React, Vue, Next.js, Nuxt, and any modern web framework
 - **TypeScript Ready** - Full type definitions for a great developer experience
@@ -43,7 +43,7 @@ Customize colors, fonts, and styling using CSS variables without touching HTML o
 
 ### 🔌 Multiple Wallets
 
-Support Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap through the same manager API.
+Support Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, GHOSTSIG, Otsu, and MetaMask Snap through the same manager API.
 
 ### ⚡ Framework Agnostic
 
@@ -79,7 +79,7 @@ Application UI / framework bindings
          WalletAdapter API
                 ↓
 Xaman · Crossmark · GemWallet · WalletConnect
-Ledger · Xyra · Otsu · MetaMask Snap
+Ledger · Xyra · GHOSTSIG · Otsu · MetaMask Snap
 ```
 
 ## How It Works

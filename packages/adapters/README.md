@@ -621,6 +621,52 @@ const metaMaskSnapAdapter = new MetaMaskSnapAdapter();
 - **connect()**: Installs/connects the snap (`wallet_requestSnaps`), switches network, then reads the account via `xrpl_getAccount`.
 - **sign() / signAndSubmit() / signMessage()**: Invoke the snap's `xrpl_sign`, `xrpl_signAndSubmit`, `xrpl_signMessage` methods.
 
+### 9. GHOSTSIG Adapter
+
+**Package**: `@xrpl-connect/adapter-ghostsig`
+
+**Export**: `GhostsigAdapter`
+
+#### Overview
+
+Signs with [GHOSTSIG](https://ghostsig.dev), a hosted passkey wallet. The wallet opens in a popup on ghostsig.dev and talks to the app over `postMessage`, pinned to that origin. A passkey's PRF output is expanded into an ed25519 key for one signature and zeroed, and the signing digest is the WebAuthn challenge, so one passkey prompt approves one transaction. The adapter has no dependency beyond `@xrpl-connect/core`.
+
+#### Features
+
+- ✅ Nothing to install: a popup and a passkey
+- ✅ Sign and sign-and-submit, with the wallet filling in a missing Sequence, Fee or LastLedgerSequence
+- ✅ Session restore without a popup; the next signature proves control
+- ❌ Message signing (GHOSTSIG signs transactions only)
+
+#### Constructor
+
+```typescript
+const ghostsigAdapter = new GhostsigAdapter(options?: GhostsigAdapterOptions);
+```
+
+```typescript
+interface GhostsigAdapterOptions {
+  url?: string; // the wallet page, defaults to https://ghostsig.dev/?connect
+  timeoutMs?: number; // how long one request may wait for the user, defaults to 60000
+}
+```
+
+#### Example Usage
+
+```typescript
+import { GhostsigAdapter } from '@xrpl-connect/adapter-ghostsig';
+// or: import { GhostsigAdapter, Adapters } from 'xrpl-connect';
+
+const ghostsigAdapter = new GhostsigAdapter();
+```
+
+#### Implementation Details
+
+- **isAvailable()**: `true` wherever the browser can open a popup.
+- **connect()**: Opens the popup; the user signs in with a passkey and approves sharing the account. A stored account restores without a popup.
+- **sign() / signAndSubmit()**: One request per signature; the popup shows the transaction and the requesting origin. A submission the ledger refused is `SIGN_FAILED`, with the result code in the message.
+- **signMessage()**: Throws `UNSUPPORTED_METHOD`.
+
 ---
 
 ## Creating a Custom Adapter

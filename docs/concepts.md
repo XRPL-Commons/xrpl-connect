@@ -191,6 +191,16 @@ const adapter = new XyraAdapter();
 
 **Features:** Transaction signing, message signing, no API keys required
 
+#### GHOSTSIG Adapter
+
+Connect to GHOSTSIG, a hosted passkey wallet opened in a popup. Nothing to install: one passkey prompt approves one transaction.
+
+```typescript
+import { GhostsigAdapter } from 'xrpl-connect';
+
+const adapter = new GhostsigAdapter();
+```
+
 #### Otsu Adapter
 
 Connect to Otsu Wallet, a browser extension XRPL wallet.

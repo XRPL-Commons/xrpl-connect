@@ -16,6 +16,7 @@
     "@xrpl-connect/adapter-walletconnect": "workspace:*",
     "@xrpl-connect/adapter-xaman": "workspace:*",
     "@xrpl-connect/adapter-xyra": "workspace:*",
+    "@xrpl-connect/adapter-ghostsig": "workspace:*",
     "@xrpl-connect/adapter-otsu": "workspace:*",
     "@xrpl-connect/core": "workspace:*",
     "@xrpl-connect/ui": "workspace:*",

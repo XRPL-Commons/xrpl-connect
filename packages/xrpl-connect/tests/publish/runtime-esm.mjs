@@ -20,6 +20,7 @@ assert.deepEqual(api.STANDARD_WALLET_IDS, [
   'walletconnect',
   'ledger',
   'xyra',
+  'ghostsig',
   'otsu',
   'metamask-snap',
 ]);
