@@ -344,6 +344,158 @@ afterEach(async () => {
 });
 
 describe('BrowserOAuthClient', () => {
+  it.each(['expired', 'revoked'] as const)(
+    'replaces a %s saved session in the first authorization',
+    async (reason) => {
+      const tab = makeTab(new SharedStorage());
+      installBrowser(tab);
+      const token = jwt(reason === 'expired' ? { exp: 1 } : {});
+      tab.localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({ jwt: token, state: 'xrpl-connect-old' })
+      );
+      if (reason === 'revoked') fetchMock.mockResolvedValueOnce(jsonResponse({}, 401));
+      const client = new BrowserOAuthClient(API_KEY);
+      clients.push(client);
+      const pending = track(client.authorize());
+      await vi.waitFor(() => expect(tab.open).toHaveBeenCalledOnce());
+      const state = new URL(tab.opened[0].url).searchParams.get('state')!;
+      const freshToken = jwt({ state });
+      tab.emit('message', {
+        origin: 'https://oauth2.xumm.app',
+        source: tab.popupHandles[0],
+        data: {
+          source: 'xumm_sign_request_resolved',
+          options: { full_redirect_uri: callbackHref(state, freshToken) },
+        },
+      });
+      await expect(pending).resolves.toMatchObject({ jwt: freshToken, me: ME });
+      expect(JSON.parse(tab.localStorage.getItem(SESSION_KEY)!)).toMatchObject({
+        jwt: freshToken,
+        state,
+      });
+    }
+  );
+
+  it('does not start fresh authorization after saved-session verification is cancelled', async () => {
+    const tab = makeTab(new SharedStorage());
+    installBrowser(tab);
+    tab.localStorage.setItem(SESSION_KEY, JSON.stringify({ jwt: jwt() }));
+    let rejectVerification!: (error: Error) => void;
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((_, reject) => {
+          rejectVerification = reject;
+        })
+    );
+    const client = new BrowserOAuthClient(API_KEY);
+    clients.push(client);
+    const pending = track(client.authorize());
+    client.cancelAuthorization();
+    rejectVerification(new Error('Request failed'));
+    await expect(pending).rejects.toThrow(/cancelled/);
+    expect(tab.open).not.toHaveBeenCalled();
+  });
+
+  it('keeps expired saved-session restoration passive', async () => {
+    const tab = makeTab(new SharedStorage());
+    installBrowser(tab);
+    tab.localStorage.setItem(SESSION_KEY, JSON.stringify({ jwt: jwt({ exp: 1 }) }));
+    const client = new BrowserOAuthClient(API_KEY);
+    clients.push(client);
+    await expect(client.user.account).rejects.toThrow(/expired/);
+    expect(tab.open).not.toHaveBeenCalled();
+  });
+
+  it('settles trusted popup closure after a grace period and permits a new attempt', async () => {
+    vi.useFakeTimers();
+    const shared = new SharedStorage();
+    const pending = await startPending(shared);
+    let settled = false;
+    void pending.promise.catch(() => {
+      settled = true;
+    });
+    const event = {
+      origin: 'https://oauth2.xumm.app',
+      source: pending.tab.popupHandles[0],
+      data: { source: 'xumm_sign_request_popup_closed' },
+    };
+    pending.tab.emit('message', { ...event, origin: 'https://untrusted.test' });
+    pending.tab.emit('message', { ...event, source: {} });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(settled).toBe(false);
+    pending.tab.emit('message', event);
+    await vi.advanceTimersByTimeAsync(749);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBe(true);
+    await expect(pending.promise).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_REJECTED,
+    });
+    const retry = await startPending(shared);
+    expect(retry.state).not.toBe(pending.state);
+    retry.client.cancelAuthorization();
+    await expect(retry.promise).rejects.toThrow(/cancelled/);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('lets a popup result finish verification after a preceding close message', async () => {
+    vi.useFakeTimers();
+    const pending = await startPending(new SharedStorage());
+    const event = { origin: 'https://oauth2.xumm.app', source: pending.tab.popupHandles[0] };
+    pending.tab.emit('message', { ...event, data: { source: 'xumm_sign_request_popup_closed' } });
+    let finishVerification!: (response: Response) => void;
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          finishVerification = resolve;
+        })
+    );
+    pending.tab.emit('message', {
+      ...event,
+      data: {
+        source: 'xumm_sign_request_resolved',
+        options: { full_redirect_uri: callbackHref(pending.state, jwt({ state: pending.state })) },
+      },
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    finishVerification(jsonResponse(ME));
+    await expect(pending.promise).resolves.toMatchObject({ me: ME });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('recovers a cross-tab result during the popup-close grace period', async () => {
+    vi.useFakeTimers();
+    const shared = new SharedStorage();
+    const pending = await startPending(shared);
+    pending.tab.emit('message', {
+      origin: 'https://oauth2.xumm.app',
+      source: pending.tab.popupHandles[0],
+      data: { source: 'xumm_sign_request_popup_closed' },
+    });
+    const returned = makeTab(shared, callbackHref(pending.state, jwt({ state: pending.state })));
+    installBrowser(returned);
+    const client = new BrowserOAuthClient(API_KEY);
+    clients.push(client);
+    await expect(client.authorize()).resolves.toMatchObject({ me: ME });
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(pending.promise).resolves.toMatchObject({ me: ME });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('cleans up a pending popup-close timer on cancellation', async () => {
+    vi.useFakeTimers();
+    const pending = await startPending(new SharedStorage());
+    pending.tab.emit('message', {
+      origin: 'https://oauth2.xumm.app',
+      source: pending.tab.popupHandles[0],
+      data: { source: 'xumm_sign_request_popup_closed' },
+    });
+    pending.client.cancelAuthorization();
+    await expect(pending.promise).rejects.toThrow(/cancelled/);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('starts one attempt with a unique state, redirect, and pending localStorage record', async () => {
     const shared = new SharedStorage();
     const first = await startPending(shared);

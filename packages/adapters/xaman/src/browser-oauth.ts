@@ -13,6 +13,7 @@ export type XamanClient = Pick<Xumm, 'authorize' | 'logout'> & {
 const PREFIX = 'xrpl-connect:xaman:';
 const STATE_PREFIX = 'xrpl-connect-';
 const OAUTH_ORIGIN = 'https://oauth2.xumm.app';
+const POPUP_CLOSE_GRACE_MS = 750;
 export const CONNECTION_TIMEOUT_MS = 5 * 60 * 1000;
 const CALLBACK_PARAMS = [
   'access_token',
@@ -86,7 +87,16 @@ export class BrowserOAuthClient implements XamanClient {
     } else {
       const saved = this.readSaved();
       if (typeof saved?.jwt === 'string') {
-        this.loading = this.bounded(() => this.verify(saved.jwt as string));
+        this.loading = this.bounded(async () => {
+          try {
+            return await this.verify(saved.jwt);
+          } catch {
+            this.assertActive();
+            this.invalidateSession(saved.jwt, this.saved?.state);
+            this.saved = undefined;
+            return await this.start();
+          }
+        });
       } else {
         this.loading = this.bounded(() => this.start());
       }
@@ -238,9 +248,11 @@ export class BrowserOAuthClient implements XamanClient {
 
     return new Promise((resolve, reject) => {
       let recovering = false;
+      let closeTimer: ReturnType<typeof setTimeout> | undefined;
       const finish = (result: Promise<ResolvedFlow>) => {
         if (recovering) return;
         recovering = true;
+        clearTimeout(closeTimer);
         result.then(resolve, reject).finally(cleanup);
       };
       const check = () => {
@@ -267,6 +279,23 @@ export class BrowserOAuthClient implements XamanClient {
         if (this.popup && event.source !== this.popup) return;
         try {
           const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+          if (data?.source === 'xumm_sign_request_popup_closed') {
+            if (
+              !this.popup ||
+              event.source !== this.popup ||
+              recovering ||
+              closeTimer !== undefined
+            )
+              return;
+            closeTimer = setTimeout(() => {
+              check();
+              if (!recovering) {
+                cleanup();
+                reject(createWalletError.connectionRejected('Xaman'));
+              }
+            }, POPUP_CLOSE_GRACE_MS);
+            return;
+          }
           if (
             data?.source === 'xumm_sign_request_rejected' &&
             this.popup &&
@@ -291,6 +320,7 @@ export class BrowserOAuthClient implements XamanClient {
       const poll = setInterval(check, 1000);
       const cleanup = () => {
         clearInterval(poll);
+        clearTimeout(closeTimer);
         this.browser.removeEventListener('storage', check);
         this.browser.removeEventListener('pageshow', check);
         this.browser.removeEventListener('focus', check);
