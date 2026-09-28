@@ -728,7 +728,9 @@ export class XamanAdapter
     };
 
     try {
-      const creation = client.payload?.createAndSubscribe(payloadBody, ({ data, payload }) => {
+      const payloadApi = client.payload;
+      if (!payloadApi) throw new Error('Failed to create payload');
+      const creation = payloadApi.createAndSubscribe(payloadBody, ({ data, payload }) => {
         if (data.opened === true || data.pre_signed === true || payload.meta.app_opened === true) {
           operation.opened = true;
         }
@@ -745,13 +747,6 @@ export class XamanAdapter
         throw new Error('Failed to create payload');
       }
 
-      // A request can finish after the caller's deadline; close its late subscription.
-      void Promise.resolve(creation)
-        .then((payload) => {
-          if (operation.phase === 'done') payload.resolve();
-        })
-        .catch(() => {});
-
       let payload;
       try {
         payload = await this.waitForOperationUntil(
@@ -761,6 +756,20 @@ export class XamanAdapter
           'Timed out creating the Xaman payload'
         );
       } catch (error) {
+        // The request may still create a payload after timeout and logout.
+        void Promise.resolve(creation)
+          .then(async (latePayload) => {
+            latePayload.resolve();
+            await this.waitForOperationUntil(
+              Promise.resolve(payloadApi.cancel(latePayload.created.uuid, true)),
+              new AbortController().signal,
+              Date.now() + PAYLOAD_CANCELLATION_TIMEOUT_MS,
+              'Timed out cancelling the late Xaman payload'
+            );
+          })
+          .catch((cleanupError) => {
+            logger.debug('Unable to cancel the late Xaman payload', cleanupError);
+          });
         if (error instanceof XamanRequestTimeoutError) {
           operation.stopRequested = true;
           throw createWalletError.operationTimeout('Xaman payload creation');
