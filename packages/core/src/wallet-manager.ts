@@ -493,10 +493,12 @@ export class WalletManager extends EventEmitter<WalletEvent> {
 
     const reconnectGeneration = this.reconnectGeneration;
     this.pendingReconnects += 1;
+    let attemptedStateSnapshot: string | null = null;
 
     try {
       const stored = await this.storage.loadState();
       if (reconnectGeneration !== this.reconnectGeneration) return null;
+      attemptedStateSnapshot = stored ? JSON.stringify(stored) : null;
       if (!stored) {
         for (const adapter of this.adapters.values()) {
           let pending = false;
@@ -515,15 +517,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       }
       if (!this.isStateValid(stored)) {
         this.logger.debug('Stored state expired; clearing it');
-        await this.queueStorage(async () => {
-          if (
-            reconnectGeneration === this.reconnectGeneration &&
-            this.currentAdapter === null &&
-            this.connectingAdapter === null
-          ) {
-            await this.storage.clearState();
-          }
-        });
+        await this.clearStateIfSnapshotMatches(reconnectGeneration, attemptedStateSnapshot);
         return null;
       }
 
@@ -553,7 +547,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         throw error;
       }
       this.logger.warn('Reconnection failed:', error);
-      await this.queueStorage(() => this.storage.clearState());
+      await this.clearStateIfSnapshotMatches(reconnectGeneration, attemptedStateSnapshot);
       return null;
     } finally {
       this.pendingReconnects -= 1;
@@ -882,6 +876,35 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       this.logger.warn('Failed to persist wallet state:', error);
     });
     return result;
+  }
+
+  /** Clear only the state this reconnect attempt actually loaded. */
+  private clearStateIfSnapshotMatches(
+    reconnectGeneration: number,
+    attemptedStateSnapshot: string | null
+  ): Promise<void> {
+    if (!attemptedStateSnapshot) return Promise.resolve();
+
+    return this.queueStorage(async () => {
+      if (
+        reconnectGeneration !== this.reconnectGeneration ||
+        this.currentAdapter !== null ||
+        this.connectingAdapter !== null
+      ) {
+        return;
+      }
+
+      const currentState = await this.storage.loadState();
+      if (
+        reconnectGeneration === this.reconnectGeneration &&
+        this.currentAdapter === null &&
+        this.connectingAdapter === null &&
+        currentState &&
+        JSON.stringify(currentState) === attemptedStateSnapshot
+      ) {
+        await this.storage.clearState();
+      }
+    });
   }
 
   /** Deduplicate provider teardown and block reuse of the same adapter until it settles. */

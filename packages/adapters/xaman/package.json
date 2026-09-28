@@ -48,7 +48,8 @@
   "dependencies": {
     "@xrpl-connect/core": "workspace:*",
     "xumm": "^1.8.0",
-    "xumm-oauth2-pkce": "^2.6.0"
+    "xumm-oauth2-pkce": "^2.6.0",
+    "xumm-sdk": "^1.11.2"
   },
   "peerDependencies": {
     "xrpl": "^3.0.0 || ^4.0.0 || ^5.0.0"

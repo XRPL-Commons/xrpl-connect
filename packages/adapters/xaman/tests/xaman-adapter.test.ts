@@ -795,19 +795,15 @@ describe('XamanAdapter.connect', () => {
 
     const connectPromise = adapter.connect();
     await vi.waitFor(() => expect(mockXummInstance.authorize).toHaveBeenCalledTimes(1));
-    let disconnected = false;
-    const disconnectPromise = adapter.disconnect().then(() => {
-      disconnected = true;
-    });
-    await Promise.resolve();
-    expect(disconnected).toBe(false);
-    resolveAuthorization?.({ me: { account: CONNECTED_ACCOUNT } });
+    const disconnectPromise = adapter.disconnect();
 
     await expect(connectPromise).rejects.toMatchObject({
       code: WalletErrorCode.CONNECTION_FAILED,
     });
     await disconnectPromise;
-    expect(mockXummInstance.logout).toHaveBeenCalledTimes(2);
+    resolveAuthorization?.({ me: { account: CONNECTED_ACCOUNT } });
+    await Promise.resolve();
+    expect(mockXummInstance.logout).toHaveBeenCalledTimes(1);
     await expect(adapter.getAccount()).resolves.toBeNull();
   });
 
@@ -874,6 +870,26 @@ describe('XamanAdapter.sign', () => {
     });
   });
 
+  it('bounds payload creation when the SDK never resolves it', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter } = await signedAdapter();
+      mockXummInstance.payload.createAndSubscribe.mockImplementation(() => new Promise(() => {}));
+
+      const signPromise = adapter.sign({ TransactionType: 'Payment' } as never);
+      const rejection = expect(signPromise).rejects.toMatchObject({
+        code: WalletErrorCode.OPERATION_TIMEOUT,
+        message: expect.stringContaining('payload creation'),
+      });
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      await rejection;
+      expect(mockXummInstance.payload.get).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('maps a rejected payload to a sign-rejected error', async () => {
     const { adapter, subscription } = await signedAdapter();
     const signPromise = adapter.sign({ TransactionType: 'Payment' } as never);
@@ -900,22 +916,113 @@ describe('XamanAdapter.sign', () => {
     expect(subscription.close).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps an opened payload alive through expiration and the pre-open timeout', async () => {
+  it('bounds an opened payload wait and exposes its UUID when status is unknown', async () => {
     vi.useFakeTimers();
     try {
       const { adapter, subscription } = await signedAdapter();
-      mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false, {}, { expired: true }));
+      mockXummInstance.payload.get.mockResolvedValue({
+        meta: {
+          resolved: false,
+          signed: false,
+          cancelled: false,
+          expired: true,
+          app_opened: true,
+        },
+      });
 
       const signPromise = adapter.sign({ TransactionType: 'Payment' } as never);
+      const rejection = expect(signPromise).rejects.toMatchObject({
+        code: WalletErrorCode.OPERATION_TIMEOUT,
+        payloadUuid: 'payload-uuid',
+      });
       await subscription.emit({ opened: true });
       await subscription.emit({ expired: true });
       await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
-      expect(subscription.close).not.toHaveBeenCalled();
 
-      await subscription.emit({ signed: true });
-      await expect(signPromise).resolves.toMatchObject({ hash: SIGNED_TX_HASH });
+      await rejection;
       expect(subscription.close).toHaveBeenCalledTimes(1);
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reconciles a signed payload when the websocket outcome is dropped', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false));
+
+      const signPromise = adapter.sign({ TransactionType: 'Payment' } as never);
+      await subscription.emit({ opened: true });
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await expect(signPromise).resolves.toMatchObject({ hash: SIGNED_TX_HASH });
+      expect(mockXummInstance.payload.get).toHaveBeenCalledWith('payload-uuid', true);
+      expect(mockXummInstance.payload.createAndSubscribe).toHaveBeenCalledTimes(1);
+      expect(subscription.close).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reconciles a rejected payload when the websocket outcome is dropped', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false, {}, { signed: false }));
+
+      const signPromise = adapter.sign({ TransactionType: 'Payment' } as never);
+      const rejection = expect(signPromise).rejects.toMatchObject({
+        code: WalletErrorCode.SIGN_REJECTED,
+      });
+      await subscription.emit({ opened: true });
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await rejection;
+      expect(mockXummInstance.payload.get).toHaveBeenCalledTimes(1);
+      expect(subscription.close).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('wakes status reconciliation when the page returns from Xaman', async () => {
+    vi.useFakeTimers();
+    const documentTarget = new EventTarget();
+    Object.defineProperty(documentTarget, 'visibilityState', {
+      configurable: true,
+      value: 'hidden',
+    });
+    const windowTarget = new EventTarget();
+    const addDocumentListener = vi.spyOn(documentTarget, 'addEventListener');
+    const removeDocumentListener = vi.spyOn(documentTarget, 'removeEventListener');
+    const addWindowListener = vi.spyOn(windowTarget, 'addEventListener');
+    const removeWindowListener = vi.spyOn(windowTarget, 'removeEventListener');
+    vi.stubGlobal('document', documentTarget);
+    vi.stubGlobal('window', windowTarget);
+    try {
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(true));
+
+      const submitPromise = adapter.signAndSubmit({ TransactionType: 'Payment' } as never);
+      await subscription.emit({ opened: true });
+      expect(mockXummInstance.payload.get).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(0);
+      const pageShowListener = addWindowListener.mock.calls.find(
+        ([eventName]) => eventName === 'pageshow'
+      )?.[1] as EventListener | undefined;
+      expect(pageShowListener).toBeTypeOf('function');
+      pageShowListener?.(new Event('pageshow'));
+      await vi.advanceTimersByTimeAsync(0);
+
+      await expect(submitPromise).resolves.toMatchObject({ hash: SIGNED_TX_HASH });
+      expect(addDocumentListener).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
+      expect(removeDocumentListener).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
+      expect(addWindowListener).toHaveBeenCalledWith('pageshow', expect.any(Function));
+      expect(removeWindowListener).toHaveBeenCalledWith('pageshow', expect.any(Function));
+    } finally {
+      vi.unstubAllGlobals();
       vi.useRealTimers();
     }
   });
@@ -1751,6 +1858,48 @@ describe.each(['sign', 'signAndSubmit'] as const)(
 );
 
 describe('XamanAdapter.signAndSubmit', () => {
+  it('reconciles a submitted payload when the websocket outcome is dropped without resubmitting', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(true));
+
+      const submitPromise = adapter.signAndSubmit({ TransactionType: 'Payment' } as never);
+      await subscription.emit({ opened: true });
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await expect(submitPromise).resolves.toMatchObject({ hash: SIGNED_TX_HASH });
+      expect(mockXummInstance.payload.createAndSubscribe).toHaveBeenCalledTimes(1);
+      expect(mockXummInstance.payload.get).toHaveBeenCalledWith('payload-uuid', true);
+      expect(subscription.close).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('bounds an opened submission when status requests never respond', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.payload.get.mockImplementation(() => new Promise(() => {}));
+
+      const submitPromise = adapter.signAndSubmit({ TransactionType: 'Payment' } as never);
+      const rejection = expect(submitPromise).rejects.toMatchObject({
+        code: WalletErrorCode.OPERATION_TIMEOUT,
+        payloadUuid: 'payload-uuid',
+      });
+      await subscription.emit({ opened: true });
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      await rejection;
+      expect(mockXummInstance.payload.get.mock.calls.length).toBeGreaterThan(1);
+      expect(mockXummInstance.payload.createAndSubscribe).toHaveBeenCalledTimes(1);
+      expect(subscription.close).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each([undefined, 0])(
     'does not compare submitted fields or apply expiry allowance %s',
     async (limit) => {
@@ -1848,7 +1997,9 @@ describe('XamanAdapter.signAndSubmit', () => {
 
       const submitPromise = adapter.signAndSubmit(REQUESTED_TRANSACTION);
       const rejection = expect(submitPromise).rejects.toMatchObject({
-        code: WalletErrorCode.SIGN_FAILED,
+        code: WalletErrorCode.OPERATION_TIMEOUT,
+        payloadUuid: 'payload-uuid',
+        message: expect.stringContaining('outcome is unknown'),
       });
       await subscription.emit({ signed: true });
       await vi.advanceTimersByTimeAsync(30_000);
@@ -1868,13 +2019,40 @@ describe('XamanAdapter.signAndSubmit', () => {
 
       const submitPromise = adapter.signAndSubmit(REQUESTED_TRANSACTION);
       const rejection = expect(submitPromise).rejects.toMatchObject({
-        code: WalletErrorCode.SIGN_FAILED,
+        code: WalletErrorCode.OPERATION_TIMEOUT,
+        payloadUuid: 'payload-uuid',
+        message: expect.stringContaining('before retrying'),
       });
       await subscription.emit({ signed: true });
       await vi.advanceTimersByTimeAsync(30_000);
 
       await rejection;
       expect(mockXummInstance.payload.get).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not treat a stale expiry response as rejection after the payload was opened', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.payload.get.mockResolvedValue(
+        resolvedPayload(
+          true,
+          {},
+          { resolved: false, signed: false, expired: true, app_opened: false }
+        )
+      );
+      const submitting = adapter.signAndSubmit(REQUESTED_TRANSACTION);
+      const completed = vi.fn();
+      void submitting.then(completed, completed);
+      await subscription.emit({ opened: true });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(completed).not.toHaveBeenCalled();
+      mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(true));
+      await subscription.emit({ signed: true });
+      await expect(submitting).resolves.toMatchObject({ hash: SIGNED_TX_HASH });
     } finally {
       vi.useRealTimers();
     }
@@ -1956,6 +2134,33 @@ describe('XamanAdapter.disconnect', () => {
     expect(mockXummInstance.logout).toHaveBeenCalledTimes(1);
   });
 
+  it('bounds an unresponsive payload cancellation before closing a sign-only operation', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.payload.cancel.mockImplementation(() => new Promise(() => {}));
+      mockXummInstance.logout.mockResolvedValue(undefined);
+
+      const signPromise = adapter.sign({ TransactionType: 'Payment' } as never);
+      await subscription.ready;
+      const rejection = expect(signPromise).rejects.toMatchObject({
+        code: WalletErrorCode.SIGN_FAILED,
+      });
+      const disconnectPromise = adapter.disconnect();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mockXummInstance.payload.cancel).toHaveBeenCalledWith('payload-uuid', true);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      await rejection;
+      await disconnectPromise;
+      expect(subscription.close).toHaveBeenCalledTimes(1);
+      expect(mockXummInstance.payload.cancel).toHaveBeenCalledTimes(1);
+      expect(mockXummInstance.logout).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('authoritatively cancels a payload that finishes creating after disconnect', async () => {
     const { adapter } = await signedAdapter();
     let resolveCreation: ((payload: Record<string, unknown>) => void) | undefined;
@@ -1985,6 +2190,124 @@ describe('XamanAdapter.disconnect', () => {
     expect(lateClose).toHaveBeenCalledTimes(1);
     expect(mockXummInstance.payload.cancel).toHaveBeenCalledWith('late-payload', true);
     expect(mockXummInstance.logout).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['sign', 'signAndSubmit'] as const)(
+    'cancels a late %s payload after creation times out and disconnect logs out',
+    async (method) => {
+      vi.useFakeTimers();
+      const payloadApi = mockXummInstance.payload;
+      try {
+        const { adapter } = await signedAdapter();
+        let resolveCreation!: (payload: Record<string, unknown>) => void;
+        const creation = new Promise<Record<string, unknown>>((resolve) => {
+          resolveCreation = resolve;
+        });
+        const close = vi.fn();
+        payloadApi.createAndSubscribe.mockReturnValueOnce(creation);
+        payloadApi.cancel.mockResolvedValueOnce(confirmedCancellation());
+        mockXummInstance.logout.mockImplementationOnce(async () => {
+          // BrowserOAuthClient drops access to the session's payload API on logout.
+          mockXummInstance.payload = undefined as never;
+        });
+
+        const signing = adapter[method](REQUESTED_TRANSACTION);
+        const rejection = expect(signing).rejects.toMatchObject({
+          code: WalletErrorCode.OPERATION_TIMEOUT,
+        });
+        const disconnecting = adapter.disconnect();
+        await vi.advanceTimersByTimeAsync(31_000);
+        await rejection;
+        await disconnecting;
+        expect(mockXummInstance.logout).toHaveBeenCalledOnce();
+
+        resolveCreation({
+          created: { uuid: 'late-payload' },
+          resolved: new Promise(() => {}),
+          resolve: close,
+        });
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(payloadApi.cancel).toHaveBeenCalledExactlyOnceWith('late-payload', true);
+        expect(close).toHaveBeenCalledOnce();
+        expect(payloadApi.createAndSubscribe).toHaveBeenCalledOnce();
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        mockXummInstance.payload = payloadApi;
+        vi.useRealTimers();
+      }
+    }
+  );
+
+  it.each(['rejected', 'unresponsive'] as const)(
+    'closes late subscriptions when cancellation is %s',
+    async (failure) => {
+      vi.useFakeTimers();
+      try {
+        const { adapter } = await signedAdapter();
+        let resolveCreation!: (payload: Record<string, unknown>) => void;
+        mockXummInstance.payload.createAndSubscribe.mockReturnValueOnce(
+          new Promise<Record<string, unknown>>((resolve) => {
+            resolveCreation = resolve;
+          })
+        );
+        mockXummInstance.payload.cancel.mockImplementationOnce(() =>
+          failure === 'rejected' ? Promise.reject(new Error('Offline')) : new Promise(() => {})
+        );
+        const close = vi.fn();
+        const signing = adapter.signAndSubmit(REQUESTED_TRANSACTION);
+        const rejection = expect(signing).rejects.toMatchObject({
+          code: WalletErrorCode.OPERATION_TIMEOUT,
+        });
+        const disconnecting = adapter.disconnect();
+        await vi.advanceTimersByTimeAsync(31_000);
+        await rejection;
+        await disconnecting;
+
+        resolveCreation({ created: { uuid: 'late-payload' }, resolve: close });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(close).toHaveBeenCalledOnce();
+        expect(mockXummInstance.payload.cancel).toHaveBeenCalledExactlyOnceWith(
+          'late-payload',
+          true
+        );
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  );
+
+  it('cancels a payload that resolves in the same turn as the creation deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter } = await signedAdapter();
+      let resolveCreation!: (payload: Record<string, unknown>) => void;
+      mockXummInstance.payload.createAndSubscribe.mockReturnValueOnce(
+        new Promise<Record<string, unknown>>((resolve) => {
+          resolveCreation = resolve;
+        })
+      );
+      mockXummInstance.payload.cancel.mockResolvedValueOnce(confirmedCancellation());
+      const close = vi.fn();
+      const signing = adapter.signAndSubmit(REQUESTED_TRANSACTION);
+      const rejection = expect(signing).rejects.toMatchObject({
+        code: WalletErrorCode.OPERATION_TIMEOUT,
+      });
+
+      // Resolve creation before the deadline's rejection microtasks have run.
+      vi.advanceTimersByTime(30_000);
+      resolveCreation({ created: { uuid: 'late-payload' }, resolve: close });
+      await vi.advanceTimersByTimeAsync(0);
+      await rejection;
+
+      expect(mockXummInstance.payload.cancel).toHaveBeenCalledExactlyOnceWith('late-payload', true);
+      expect(close).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('cancels an active signing subscription before logging out', async () => {

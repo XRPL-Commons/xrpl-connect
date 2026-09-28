@@ -20,6 +20,7 @@ const CODE_TO_CATEGORY: Record<WalletErrorCode, WalletErrorCategory> = {
   [WalletErrorCode.SIGN_REJECTED]: WalletErrorCategory.USER_ACTION,
 
   [WalletErrorCode.CONNECTION_FAILED]: WalletErrorCategory.NETWORK,
+  [WalletErrorCode.OPERATION_TIMEOUT]: WalletErrorCategory.NETWORK,
 
   [WalletErrorCode.CONFIGURATION_REQUIRED]: WalletErrorCategory.INVALID_INPUT,
   [WalletErrorCode.NOT_CONNECTED]: WalletErrorCategory.INVALID_INPUT,
@@ -150,6 +151,9 @@ export const createWalletError = {
       'Transaction signing was rejected by the user.',
       originalError
     ),
+
+  operationTimeout: (operation: string, originalError?: Error): WalletError =>
+    new WalletError(WalletErrorCode.OPERATION_TIMEOUT, `${operation} timed out.`, originalError),
 
   networkNotSupported: (networkId: string, walletName: string): WalletError =>
     new WalletError(

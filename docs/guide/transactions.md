@@ -61,6 +61,20 @@ Submit a multisigned artifact only after the adapter-specific flow has combined
 all required contributions. The generic result does not contain the account's
 signer-list quorum, so it cannot determine submission readiness by itself.
 
+### Xaman mobile returns and uncertain outcomes
+
+The adapter checks the existing Xaman payload when a wallet subscription misses a
+result. It never creates a replacement payment to recover that result. If no
+outcome can be established within five minutes, signing rejects with
+`WalletErrorCode.OPERATION_TIMEOUT`. When the payload UUID is known, the error also
+has a `payloadUuid` string property.
+
+A timeout means the outcome is **unknown**, including whether a payment was
+submitted. Check the payload or your server's order/ledger state before allowing
+another payment. A return URL or a closed wallet window is not proof of success or
+failure. Keep order reconciliation on the server for checkout flows, including
+when the original browser tab is closed.
+
 ### Xaman expiry policy
 
 ::: warning Release availability

@@ -455,6 +455,7 @@ export enum WalletErrorCode {
   // Signing errors
   SIGN_FAILED = 'SIGN_FAILED',
   SIGN_REJECTED = 'SIGN_REJECTED',
+  OPERATION_TIMEOUT = 'OPERATION_TIMEOUT',
 
   // Network errors
   NETWORK_NOT_SUPPORTED = 'NETWORK_NOT_SUPPORTED',
