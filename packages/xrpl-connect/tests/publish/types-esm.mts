@@ -114,17 +114,61 @@ const xamanReturnUrl: XamanReturnUrl = {
 const oauthConstructor: typeof XamanOAuth2.XummPkce = XamanOAuth2.XummPkce;
 const crossmarkSignIn: typeof CrossmarkSDK.default.methods.signInAndWait =
   CrossmarkSDK.default.methods.signInAndWait;
-const crossmarkTransaction = {} as typeof CrossmarkSDK.typings.Models.AllTransactionRequest;
+const crossmarkTransaction = {
+  TransactionType: 'SignIn',
+} satisfies typeof CrossmarkSDK.typings.Models.AllTransactionRequest;
 const crossmarkSignResponse: Promise<typeof CrossmarkSDK.typings.Models.SignFullResponse> =
   CrossmarkSDK.default.methods.signAndWait(crossmarkTransaction);
+const crossmarkCryptoOptions = {
+  algo: CrossmarkSDK.typings.EncryptionAlgos.AES_GCM,
+} satisfies typeof CrossmarkSDK.typings.Models.CryptOpts;
+const invalidCrossmarkCryptoOptions = {
+  // @ts-expect-error Crossmark encryption options accept only the published AES algorithms.
+  algo: 'AES-GCM',
+} satisfies typeof CrossmarkSDK.typings.Models.CryptOpts;
+const crossmarkSetHookTransaction = {
+  Account: 'rG1QQv2nh2gr7RCZ1P8YYcBUKCCN633jCn',
+  TransactionType: 'SetHook',
+  Hooks: [{ Hook: { CreateCode: 'ABCD' } }],
+} satisfies typeof CrossmarkSDK.typings.Models.AllTransactionRequest;
+const crossmarkInvokeTransaction = {
+  Account: 'rG1QQv2nh2gr7RCZ1P8YYcBUKCCN633jCn',
+  TransactionType: 'Invoke',
+  Destination: 'rG1QQv2nh2gr7RCZ1P8YYcBUKCCN633jCn',
+  Blob: 'ABCD',
+} satisfies typeof CrossmarkSDK.typings.Models.AllTransactionRequest;
+void CrossmarkSDK.default.methods.signAndWait(crossmarkSetHookTransaction);
+void CrossmarkSDK.default.methods.signAndWait(crossmarkInvokeTransaction);
+const invalidCrossmarkSetHookTransaction = {
+  Account: 'rG1QQv2nh2gr7RCZ1P8YYcBUKCCN633jCn',
+  TransactionType: 'SetHook',
+  // @ts-expect-error SetHook hooks preserve their nested Hook object shape.
+  Hooks: [{ CreateCode: 'ABCD' }],
+} satisfies typeof CrossmarkSDK.typings.Models.AllTransactionRequest;
+const invalidCrossmarkInvokeTransaction = {
+  Account: 'rG1QQv2nh2gr7RCZ1P8YYcBUKCCN633jCn',
+  TransactionType: 'Invoke',
+  // @ts-expect-error Invoke Blob remains a string in the published transaction union.
+  Blob: 123,
+} satisfies typeof CrossmarkSDK.typings.Models.AllTransactionRequest;
 const crossmarkResponseEvent: typeof CrossmarkSDK.typings.EVENTS.RESPONSE =
   CrossmarkSDK.typings.EVENTS.RESPONSE;
 CrossmarkSDK.default.on(crossmarkResponseEvent, (response) => {
   const typedResponse: typeof CrossmarkSDK.typings.Models.Response = response;
-  void typedResponse;
+  const responseId: string = typedResponse.id;
+  const responseType: typeof CrossmarkSDK.typings.TYPES.RESPONSE = typedResponse.type;
+  // @ts-expect-error Models.Response IDs remain strings in every response variant.
+  const invalidResponseId: typeof typedResponse.id = 123;
+  // @ts-expect-error Response events reject request message types.
+  const invalidResponseType: typeof CrossmarkSDK.typings.TYPES.RESPONSE = 'request';
+  void [typedResponse, responseId, responseType, invalidResponseId, invalidResponseType];
 });
-const crossmarkNetworkListener = (network: typeof CrossmarkSDK.typings.BasicNetwork) =>
-  void network;
+const crossmarkNetworkListener = (network: typeof CrossmarkSDK.typings.BasicNetwork) => {
+  const networkLabel: string = network.label;
+  // @ts-expect-error BasicNetwork labels remain a published literal union.
+  const invalidNetworkLabel: typeof network.label = 'unknown-network';
+  void [network, networkLabel, invalidNetworkLabel];
+};
 CrossmarkSDK.default.on(CrossmarkSDK.typings.EVENTS.NETWORK_CHANGE, crossmarkNetworkListener);
 CrossmarkSDK.default.off(CrossmarkSDK.typings.EVENTS.NETWORK_CHANGE, crossmarkNetworkListener);
 CrossmarkSDK.default.addListener('custom', crossmarkNetworkListener);
@@ -172,6 +216,12 @@ void [
   oauthConstructor,
   crossmarkSignIn,
   crossmarkSignResponse,
+  crossmarkCryptoOptions,
+  invalidCrossmarkCryptoOptions,
+  crossmarkSetHookTransaction,
+  crossmarkInvokeTransaction,
+  invalidCrossmarkSetHookTransaction,
+  invalidCrossmarkInvokeTransaction,
   crossmarkResponseEvent,
   gemWalletGetAddress,
   crossmarkClient,

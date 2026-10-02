@@ -74,7 +74,13 @@ const candidatePackages = [
       'THIRD_PARTY_NOTICES.md',
       'licenses/WALLETCONNECT-COMMUNITY-LICENSE.md',
       'licenses/WALLETCONNECT-MODAL-APACHE-2.0.txt',
+      'licenses/CROSSMARK-LICENSE.txt',
+      'licenses/XRPL-ISC-LICENSE.txt',
+      'licenses/NODE-FORGE-TYPES-MIT-LICENSE.txt',
       'index.d.ts',
+      'types/crossmark/build/src/sdk/index.d.ts',
+      'types/crossmark/build/src/crossmark/models/common/tx.d.ts',
+      'types/forge.d.ts',
       'xrpl-connect.mjs',
       'xrpl-connect.umd.js',
     ],
@@ -224,6 +230,38 @@ function verifyInstalledXrpl(consumerFolder) {
   if (xrplVersion === '5.0.0') assert.equal(version, '5.0.0');
   else assert.equal(version.split('.')[0], xrplVersion.slice(1));
   console.log(`✓ Consumer resolved xrpl@${version} for ${xrplVersion}`);
+}
+
+function verifyConsumerDependencies(consumerFolder, options) {
+  const tree = parseJson('npm', ['ls', '--all', '--json'], { ...options, cwd: consumerFolder });
+  const forbidden = new Set([
+    '@crossmarkio/sdk',
+    '@crossmarkio/typings',
+    '@transia/xrpl',
+    'node-forge',
+    '@types/node-forge',
+    'elliptic',
+  ]);
+  const visit = (node, parents) => {
+    for (const [name, dependency] of Object.entries(node.dependencies ?? {})) {
+      const chain = [...parents, `${name}@${dependency.version}`];
+      assert(!forbidden.has(name), `Unwanted consumer dependency: ${chain.join(' > ')}`);
+      if (name === 'xrpl') {
+        assert(
+          Number(dependency.version.split('.')[0]) >= 3,
+          `Legacy XRPL dependency: ${chain.join(' > ')}`
+        );
+      }
+      visit(dependency, chain);
+    }
+  };
+  // The fixture also installs build tools (Nuxt brings its own Forge copy).
+  // Check the actual dependency trees rooted at our published packages.
+  for (const { name } of candidatePackages) {
+    const installed = tree.dependencies?.[name];
+    if (installed) visit(installed, [name]);
+  }
+  console.log('✓ Published dependency trees exclude Crossmark typing-only runtime dependencies');
 }
 
 function copyReactFixtures(consumerFolder) {
@@ -410,6 +448,7 @@ try {
   );
   console.log('✓ Candidate install completed with strict peer dependency checks');
   verifyInstalledXrpl(consumerFolder);
+  verifyConsumerDependencies(consumerFolder, runOptions);
   verifyInstalledReactMajor(consumerFolder, 18);
 
   const installedManifests = Object.fromEntries(
@@ -463,6 +502,21 @@ try {
   );
   assert.match(walletConnectModalLicense, /Apache License/);
   assert.match(walletConnectModalLicense, /Version 2\.0, January 2004/);
+
+  for (const [file, expected] of [
+    ['CROSSMARK-LICENSE.txt', /GNU GENERAL PUBLIC LICENSE/],
+    ['XRPL-ISC-LICENSE.txt', /ISC License/],
+    ['NODE-FORGE-TYPES-MIT-LICENSE.txt', /MIT License/],
+  ]) {
+    assert.match(
+      readFileSync(path.join(installedUmbrellaFolder, 'licenses', file), 'utf8'),
+      expected
+    );
+    assert(thirdPartyNotices.includes(file), `Missing third-party notice for ${file}`);
+  }
+  assert.match(thirdPartyNotices, /@crossmarkio\/typings@0\.0\.6/);
+  assert.match(thirdPartyNotices, /@transia\/xrpl@2\.7\.3-alpha\.28/);
+  assert.match(thirdPartyNotices, /@types\/node-forge@1\.3\.14/);
 
   const unresolvedXyraImport =
     /import\s*\(\s*(?:\/\*[\s\S]*?\*\/\s*)?[`'"]@xyrawallet\/sdk[`'"]\s*\)/;
@@ -562,9 +616,7 @@ try {
     'xumm',
     'xumm-oauth2-pkce',
     '@gemwallet/api',
-    '@crossmarkio/typings',
     '@types/chrome',
-    '@types/node-forge',
   ]) {
     assert(
       umbrellaManifest.dependencies?.[dependency],
@@ -646,6 +698,7 @@ try {
   );
   verifyInstalledReactMajor(react19ConsumerFolder, 19);
   verifyInstalledXrpl(react19ConsumerFolder);
+  verifyConsumerDependencies(react19ConsumerFolder, runOptions);
   copyReactFixtures(react19ConsumerFolder);
   verifyPackedReactConsumer(react19ConsumerFolder, 19, tscPath, runOptions);
 
