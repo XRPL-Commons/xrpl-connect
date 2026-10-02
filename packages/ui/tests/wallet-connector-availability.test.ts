@@ -41,6 +41,38 @@ describe('WalletConnectorElement availability rendering', () => {
     return connector;
   };
 
+  it.each(['', ' , \t '])('shows no wallets for an explicitly empty filter %j', async (filter) => {
+    const connector = mount([createWallet('available', true)]);
+    connector.setAttribute('wallets', filter);
+
+    await connector.open();
+    await vi.waitFor(() =>
+      expect(connector.getOverlayRoot()?.querySelector('[aria-busy="true"]')).toBeNull()
+    );
+
+    expect(connector.getOverlayRoot()?.querySelectorAll('[data-wallet-id]')).toHaveLength(0);
+  });
+
+  it('clears a populated list for an empty filter and restores it when the filter is removed', async () => {
+    const connector = mount([createWallet('first', true), createWallet('second', true)]);
+    const displayedWallets = () =>
+      [...(connector.getOverlayRoot()?.querySelectorAll('[data-wallet-id]') ?? [])].map((button) =>
+        button.getAttribute('data-wallet-id')
+      );
+
+    await connector.open();
+    await vi.waitFor(() => expect(displayedWallets()).toEqual(['first', 'second']));
+
+    connector.setAttribute('wallets', '');
+    await vi.waitFor(() =>
+      expect(connector.getOverlayRoot()?.querySelector('[aria-busy="true"]')).toBeNull()
+    );
+    expect(displayedWallets()).toEqual([]);
+
+    connector.removeAttribute('wallets');
+    await vi.waitFor(() => expect(displayedWallets()).toEqual(['first', 'second']));
+  });
+
   it('does not render unavailable wallets as connectable after an empty availability check', async () => {
     const unavailableWallet = {
       id: 'unavailable',
