@@ -101,6 +101,298 @@ describe('WalletConnector wallet availability', () => {
     vi.useRealTimers();
   });
 
+  it.each(['manager before mount', 'manager after mount'])(
+    'starts passive discovery with %s and opens immediately',
+    async (order) => {
+      let resolveAvailability!: (available: boolean) => void;
+      const probe = new Promise<boolean>((resolve) => {
+        resolveAvailability = resolve;
+      });
+      const adapter = createAdapter(
+        'slow',
+        'Slow Wallet',
+        vi.fn(() => probe)
+      );
+      const manager = new WalletManager({ adapters: [adapter], autoConnect: false });
+      if (order === 'manager before mount') {
+        element = createElement(manager);
+        expect(adapter.isAvailable).not.toHaveBeenCalled();
+        document.body.appendChild(element);
+      } else {
+        element = document.createElement('xrpl-wallet-connector') as ReturnType<
+          typeof createElement
+        >;
+        document.body.appendChild(element);
+        element.setWalletManager(manager);
+      }
+      expect(adapter.isAvailable).toHaveBeenCalledOnce();
+      expect(element.getOverlayRoot()).toBeNull();
+      const onOpen = vi.fn();
+      element.addEventListener('open', onOpen);
+      await expect(element.open()).resolves.toBeUndefined();
+      expect(onOpen).toHaveBeenCalledOnce();
+      const root = element.getOverlayRoot()!;
+      expect(root.querySelector('[role="dialog"]')).not.toBeNull();
+      expect(root.querySelector('[role="status"]')?.textContent).toBe('Finding available wallets…');
+      expect(root.querySelector('[aria-busy="true"]')).not.toBeNull();
+      expect(root.querySelector('[data-wallet-id]')).toBeNull();
+      expect(adapter.connect).not.toHaveBeenCalled();
+      await element.open();
+      expect(adapter.isAvailable).toHaveBeenCalledOnce();
+      resolveAvailability(true);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(root.querySelector('[data-wallet-id="slow"]')).not.toBeNull();
+      expect(root.querySelector('[role="status"]')).toBeNull();
+      expect(root.querySelector('[aria-busy="true"]')).toBeNull();
+    }
+  );
+
+  it('bounds never-resolving discovery without delaying the dialog', async () => {
+    const hung = createAdapter(
+      'hung',
+      'Hung',
+      vi.fn(() => new Promise<boolean>(() => {}))
+    );
+    const available = createAdapter(
+      'available',
+      'Available',
+      vi.fn(async () => true)
+    );
+    element = createElement(new WalletManager({ adapters: [hung, available] }));
+    document.body.appendChild(element);
+    await element.open();
+    expect(element.getOverlayRoot()?.querySelector('[role="status"]')).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(TIME.AVAILABILITY_TIMEOUT);
+    expect(element.getOverlayRoot()?.querySelector('[role="status"]')).toBeNull();
+    expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="available"]')).not.toBeNull();
+    expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="hung"]')).toBeNull();
+  });
+
+  it('reuses mount results on immediate reopen and refreshes an open list without losing focus', async () => {
+    const first = createAdapter(
+      'first',
+      'First',
+      vi.fn(async () => true)
+    );
+    const injected = createAdapter(
+      'injected',
+      'Injected',
+      vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true)
+    );
+    element = createElement(new WalletManager({ adapters: [first, injected] }));
+    document.body.appendChild(element);
+    await vi.advanceTimersByTimeAsync(0);
+    await element.open();
+    element.close();
+    void element.open();
+    const root = element.getOverlayRoot()!;
+    const button = root.querySelector<HTMLButtonElement>('[data-wallet-id="first"]')!;
+    expect(button).not.toBeNull();
+    expect(root.querySelector('[role="status"]')).toBeNull();
+    expect(first.isAvailable).toHaveBeenCalledOnce();
+    expect(injected.isAvailable).toHaveBeenCalledOnce();
+    button.focus();
+    await vi.advanceTimersByTimeAsync(TIMINGS.WALLET_AVAILABILITY_REFRESH);
+    expect(root.querySelector('[data-wallet-id="injected"]')).not.toBeNull();
+    expect(root.querySelector('[data-wallet-id="first"]')).toBe(button);
+    expect(root.activeElement).toBe(button);
+  });
+
+  it('retains stale choices while refreshing and leaves an active connection view intact', async () => {
+    let resolveRefresh!: (available: boolean) => void;
+    const refresh = new Promise<boolean>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const probe = vi.fn().mockResolvedValueOnce(true).mockReturnValueOnce(refresh);
+    const adapter = createAdapter('walletconnect', 'WalletConnect', probe);
+    element = createElement(new WalletManager({ adapters: [adapter] }));
+    document.body.appendChild(element);
+    await vi.advanceTimersByTimeAsync(0);
+    await element.open();
+    await vi.advanceTimersByTimeAsync(TIMINGS.WALLET_AVAILABILITY_REFRESH);
+    const root = element.getOverlayRoot()!;
+    expect(root.querySelector('[data-wallet-id="walletconnect"]')).not.toBeNull();
+    element.showQRCodeView('walletconnect');
+    const dialog = root.querySelector('[role="dialog"]');
+    const focused = root.activeElement;
+    await element.open();
+    resolveRefresh(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.querySelector('[role="dialog"]')).toBe(dialog);
+    expect(root.activeElement).toBe(focused);
+    expect(root.querySelector('#qr-container')).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(TIMINGS.WALLET_AVAILABILITY_REFRESH);
+    expect(probe).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserves the displayed QR when the allowlist changes during a connection flow', async () => {
+    const xaman = createAdapter(
+      'xaman',
+      'Xaman',
+      vi.fn(async () => true)
+    );
+    const other = createAdapter(
+      'other',
+      'Other',
+      vi.fn(async () => true)
+    );
+    element = createElement(new WalletManager({ adapters: [xaman, other] }));
+    element.setAttribute('wallets', 'xaman');
+    document.body.appendChild(element);
+    await vi.advanceTimersByTimeAsync(0);
+    await element.open();
+    element.showQRCodeView('xaman');
+    element.setQRCode('xaman', 'https://xumm.app/sign/current.png');
+    await vi.advanceTimersByTimeAsync(TIMINGS.QR_RENDER_DELAY);
+    const root = element.getOverlayRoot()!;
+    const image = root.querySelector<HTMLImageElement>('#qr-container img');
+    const focused = root.activeElement;
+    expect(image?.src).toBe('https://xumm.app/sign/current.png');
+    element.setAttribute('wallets', 'other');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.querySelector('#qr-container img')).toBe(image);
+    expect(root.activeElement).toBe(focused);
+    element.showWalletList();
+    expect(root.querySelector('[data-wallet-id="xaman"]')).toBeNull();
+    expect(root.querySelector('[data-wallet-id="other"]')).not.toBeNull();
+  });
+
+  it('reuses pending discovery across close and reopen without late open events', async () => {
+    let resolveAvailability!: (available: boolean) => void;
+    const probe = new Promise<boolean>((resolve) => {
+      resolveAvailability = resolve;
+    });
+    const adapter = createAdapter(
+      'wallet',
+      'Wallet',
+      vi.fn(() => probe)
+    );
+    element = createElement(new WalletManager({ adapters: [adapter] }));
+    document.body.appendChild(element);
+    const onOpen = vi.fn();
+    element.addEventListener('open', onOpen);
+    await element.open();
+    element.close();
+    await element.open();
+    resolveAvailability(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onOpen).toHaveBeenCalledTimes(2);
+    expect(adapter.isAvailable).toHaveBeenCalledOnce();
+    expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="wallet"]')).not.toBeNull();
+    element.close();
+    await vi.advanceTimersByTimeAsync(TIMINGS.WALLET_AVAILABILITY_REFRESH * 2);
+    expect(adapter.isAvailable).toHaveBeenCalledOnce();
+  });
+
+  it('invalidates an in-flight allowlist and coalesces probes for overlapping wallets', async () => {
+    let resolveOld!: (available: boolean) => void;
+    const oldProbe = new Promise<boolean>((resolve) => {
+      resolveOld = resolve;
+    });
+    const old = createAdapter(
+      'old',
+      'Old',
+      vi.fn(() => oldProbe)
+    );
+    const current = createAdapter(
+      'current',
+      'Current',
+      vi.fn(async () => true)
+    );
+    element = createElement(new WalletManager({ adapters: [old, current] }));
+    element.setAttribute('wallets', 'old');
+    document.body.appendChild(element);
+    await element.open();
+    element.setAttribute('wallets', 'old,current');
+    expect(old.isAvailable).toHaveBeenCalledOnce();
+    element.setAttribute('wallets', 'current');
+    await vi.advanceTimersByTimeAsync(0);
+    resolveOld(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(current.isAvailable).toHaveBeenCalledOnce();
+    expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="old"]')).toBeNull();
+    expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="current"]')).not.toBeNull();
+  });
+
+  it('invalidates cached adapters replaced within the same manager', async () => {
+    const old = createAdapter(
+      'wallet',
+      'Old Wallet',
+      vi.fn(async () => true)
+    );
+    const replacement = createAdapter(
+      'wallet',
+      'New Wallet',
+      vi.fn(async () => true)
+    );
+    const manager = new WalletManager({ adapters: [old] });
+    element = createElement(manager);
+    document.body.appendChild(element);
+    await vi.advanceTimersByTimeAsync(0);
+    await element.open();
+    element.close();
+    manager.adapters.set('wallet', replacement);
+    await element.open();
+    expect(element.getOverlayRoot()?.querySelector('[data-wallet-id]')).toBeNull();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(element.getOverlayRoot()?.querySelector('[data-wallet-id]')?.textContent).toBe(
+      'New Wallet'
+    );
+    expect(replacement.isAvailable).toHaveBeenCalledOnce();
+  });
+
+  it('ignores adapters replaced inside the manager during discovery', async () => {
+    let resolveOld!: (available: boolean) => void;
+    const oldProbe = new Promise<boolean>((resolve) => {
+      resolveOld = resolve;
+    });
+    const old = createAdapter(
+      'wallet',
+      'Old Wallet',
+      vi.fn(() => oldProbe)
+    );
+    const replacement = createAdapter(
+      'wallet',
+      'New Wallet',
+      vi.fn(async () => true)
+    );
+    const manager = new WalletManager({ adapters: [old] });
+    element = createElement(manager);
+    document.body.appendChild(element);
+    await element.open();
+    manager.adapters.set('wallet', replacement);
+    resolveOld(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(element.getOverlayRoot()?.querySelector('[data-wallet-id]')?.textContent).toBe(
+      'New Wallet'
+    );
+    expect(replacement.isAvailable).toHaveBeenCalledOnce();
+  });
+
+  it('does not apply detached discovery and reuses its pending probe on remount', async () => {
+    let resolveAvailability!: (available: boolean) => void;
+    const probe = new Promise<boolean>((resolve) => {
+      resolveAvailability = resolve;
+    });
+    const adapter = createAdapter(
+      'wallet',
+      'Wallet',
+      vi.fn(() => probe)
+    );
+    element = createElement(new WalletManager({ adapters: [adapter] }));
+    document.body.appendChild(element);
+    await element.open();
+    element.remove();
+    document.body.appendChild(element);
+    expect(adapter.isAvailable).toHaveBeenCalledOnce();
+    resolveAvailability(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(element.getOverlayRoot()).toBeNull();
+    await element.open();
+    expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="wallet"]')).not.toBeNull();
+    expect(adapter.isAvailable).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ['omitted', {}],
     ['false', { autoConnect: false }],
@@ -254,6 +546,7 @@ describe('WalletConnector wallet availability', () => {
     element = createElement(new WalletManager({ adapters: [adapter] }));
 
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
 
     const overlay = element.getOverlayRoot();
     expect(overlay?.querySelector('[data-wallet-id="unavailable"]')).toBeNull();
@@ -262,7 +555,9 @@ describe('WalletConnector wallet availability', () => {
     );
 
     element.close();
+    await vi.advanceTimersByTimeAsync(TIMINGS.WALLET_AVAILABILITY_REFRESH);
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(isAvailable).toHaveBeenCalledTimes(2);
     expect(
@@ -270,11 +565,11 @@ describe('WalletConnector wallet availability', () => {
     ).not.toBeNull();
   });
 
-  it('preserves available wallets while retrying only unavailable wallets', async () => {
+  it('refreshes stale availability while retaining cached choices until completion', async () => {
     const availableProbe = vi
       .fn<WalletAdapter['isAvailable']>()
       .mockResolvedValueOnce(true)
-      .mockResolvedValue(false);
+      .mockResolvedValue(true);
     const recoveringProbe = vi
       .fn<WalletAdapter['isAvailable']>()
       .mockResolvedValueOnce(false)
@@ -284,10 +579,13 @@ describe('WalletConnector wallet availability', () => {
     element = createElement(new WalletManager({ adapters: [available, recovering] }));
 
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     element.close();
+    await vi.advanceTimersByTimeAsync(TIMINGS.WALLET_AVAILABILITY_REFRESH);
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
 
-    expect(availableProbe).toHaveBeenCalledTimes(1);
+    expect(availableProbe).toHaveBeenCalledTimes(2);
     expect(recoveringProbe).toHaveBeenCalledTimes(2);
     expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="available"]')).not.toBeNull();
     expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="recovering"]')).not.toBeNull();
@@ -312,7 +610,9 @@ describe('WalletConnector wallet availability', () => {
     expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="slow"]')).toBeNull();
 
     element.close();
+    await vi.advanceTimersByTimeAsync(TIMINGS.WALLET_AVAILABILITY_REFRESH);
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(isAvailable).toHaveBeenCalledTimes(2);
     expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="slow"]')).not.toBeNull();
@@ -335,11 +635,13 @@ describe('WalletConnector wallet availability', () => {
     element = createElement(new WalletManager({ adapters: [firstAdapter] }));
 
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="first"]')).not.toBeNull();
 
     element.close();
     element.setWalletManager(new WalletManager({ adapters: [secondAdapter] }));
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="first"]')).toBeNull();
     expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="second"]')).not.toBeNull();
@@ -354,12 +656,14 @@ describe('WalletConnector wallet availability', () => {
     element.setAttribute('wallets', 'first');
 
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="first"]')).not.toBeNull();
     expect(secondAvailable).not.toHaveBeenCalled();
 
     element.close();
     element.setAttribute('wallets', 'second');
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(firstAvailable).toHaveBeenCalledTimes(1);
     expect(secondAvailable).toHaveBeenCalledTimes(1);
@@ -395,7 +699,7 @@ describe('WalletConnector wallet availability', () => {
     expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="second"]')).not.toBeNull();
   });
 
-  it('ignores an older availability check that finishes after a newer one', async () => {
+  it('coalesces repeated opens during initial discovery', async () => {
     let resolveFirst!: (available: boolean) => void;
     const firstProbe = new Promise<boolean>((resolve) => {
       resolveFirst = resolve;
@@ -411,14 +715,15 @@ describe('WalletConnector wallet availability', () => {
     const secondOpen = element.open();
     await secondOpen;
 
-    resolveFirst(false);
+    resolveFirst(true);
     await firstOpen;
+    await vi.advanceTimersByTimeAsync(0);
 
-    expect(isAvailable).toHaveBeenCalledTimes(2);
+    expect(isAvailable).toHaveBeenCalledTimes(1);
     expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="wallet"]')).not.toBeNull();
   });
 
-  it('does not finish opening after the modal is closed during an availability check', async () => {
+  it('does not reopen after the modal is closed during an availability check', async () => {
     let resolveAvailability!: (available: boolean) => void;
     const availability = new Promise<boolean>((resolve) => {
       resolveAvailability = resolve;
@@ -437,8 +742,9 @@ describe('WalletConnector wallet availability', () => {
     resolveAvailability(true);
     await opening;
 
-    expect(onOpen).not.toHaveBeenCalled();
-    expect(element.getOverlayRoot()).toBeNull();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onOpen).toHaveBeenCalledOnce();
+    expect(element.getOverlayRoot()?.querySelector('[role="dialog"]')).toBeNull();
     expect(document.body.style.overflow).toBe('');
   });
 
@@ -450,6 +756,7 @@ describe('WalletConnector wallet availability', () => {
 
     try {
       await element.open();
+      await vi.advanceTimersByTimeAsync(0);
       await secondElement.open();
       expect(document.body.style.overflow).toBe('hidden');
 
@@ -537,6 +844,7 @@ describe('WalletConnector wallet availability', () => {
     document.body.appendChild(element);
 
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     element.close();
 
     expect(preInitialize).not.toHaveBeenCalled();
@@ -615,6 +923,7 @@ describe('WalletConnector wallet availability', () => {
     const replacementManager = new WalletManager({ adapters: [] });
     element = createElement(previousManager);
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     await vi.waitFor(() => expect(walletConnect.preInitialize).toHaveBeenCalledOnce());
 
     const connection = (
@@ -650,6 +959,7 @@ describe('WalletConnector wallet availability', () => {
     };
     element = createElement(new WalletManager({ adapters: [walletConnect] }));
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     await vi.waitFor(() => expect(walletConnect.preInitialize).toHaveBeenCalledOnce());
 
     element.close();
@@ -675,6 +985,7 @@ describe('WalletConnector wallet availability', () => {
     };
     element = createElement(new WalletManager({ adapters: [walletConnect] }));
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     await vi.waitFor(() => expect(walletConnect.preInitialize).toHaveBeenCalledOnce());
 
     const connection = (
@@ -707,6 +1018,7 @@ describe('WalletConnector wallet availability', () => {
     );
     element = createElement(new WalletManager({ adapters: [adapter] }));
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     const onCancelled = vi.fn();
     element.addEventListener('cancelled', onCancelled);
 
@@ -752,6 +1064,7 @@ describe('WalletConnector wallet availability', () => {
     element.addEventListener('close', () => events.push('close'));
 
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     const walletButton = element
       .getOverlayRoot()
       ?.querySelector<HTMLButtonElement>('[data-wallet-id="wallet"]');
@@ -787,6 +1100,7 @@ describe('WalletConnector wallet availability', () => {
     element.addEventListener('close', () => events.push('close'));
 
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     const connection = (
       element as unknown as {
         openAndWait(): Promise<{ address: string; network: NetworkInfo }>;
@@ -824,6 +1138,7 @@ describe('WalletConnector wallet availability', () => {
     element.addEventListener('close', onClose);
 
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     element
       .getOverlayRoot()
       ?.querySelector<HTMLButtonElement>('[data-wallet-id="wallet"]')
@@ -881,6 +1196,7 @@ describe('WalletConnector wallet availability', () => {
     element.addEventListener('close', () => events.push('close'));
 
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     element
       .getOverlayRoot()
       ?.querySelector<HTMLButtonElement>('[data-wallet-id="walletconnect"]')
@@ -916,6 +1232,7 @@ describe('WalletConnector wallet availability', () => {
     element.addEventListener('close', () => events.push('close'));
 
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     element
       .getOverlayRoot()
       ?.querySelector<HTMLButtonElement>('[data-wallet-id="walletconnect"]')
@@ -954,6 +1271,7 @@ describe('WalletConnector wallet availability', () => {
     element.addEventListener('close', () => events.push('close'));
 
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     element
       .getOverlayRoot()
       ?.querySelector<HTMLButtonElement>('[data-wallet-id="ledger"]')
@@ -994,6 +1312,7 @@ describe('WalletConnector wallet availability', () => {
     element.addEventListener('close', () => events.push('close'));
 
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     element
       .getOverlayRoot()
       ?.querySelector<HTMLButtonElement>('[data-wallet-id="ledger"]')
@@ -1029,6 +1348,7 @@ describe('WalletConnector wallet availability', () => {
     );
     element = createElement(new WalletManager({ adapters: [adapter] }));
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     const onCancelled = vi.fn();
     element.addEventListener('cancelled', onCancelled);
 
@@ -1041,11 +1361,13 @@ describe('WalletConnector wallet availability', () => {
   it('does not render a QR code scheduled by an earlier modal session', async () => {
     element = createElement(new WalletManager({ adapters: [] }));
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     element.showQRCodeView('xaman');
     element.setQRCode('xaman', 'https://xumm.app/sign/stale.png');
 
     element.close();
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     element.showQRCodeView('xaman');
     const currentUri = 'https://xumm.app/sign/current.png';
     element.setQRCode('xaman', currentUri);
@@ -1064,6 +1386,7 @@ describe('WalletConnector wallet availability', () => {
     element = createElement(new WalletManager({ adapters: [adapter] }));
 
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     (
       element.getOverlayRoot()?.querySelector('[data-wallet-id="wallet"]') as HTMLButtonElement
     ).click();
@@ -1101,6 +1424,7 @@ describe('WalletConnector wallet availability', () => {
     document.body.appendChild(element);
 
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     element.openAccountModal();
     element.setAttribute('wallets', 'wallet');
     expect(document.querySelector('[data-xrpl-account-modal-portal]')).not.toBeNull();
@@ -1116,6 +1440,7 @@ describe('WalletConnector wallet availability', () => {
     document.body.appendChild(element);
     expect(document.querySelector('[data-xrpl-account-modal-portal]')).toBeNull();
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
 
     expect(isAvailable).toHaveBeenCalledTimes(3);
     expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="wallet"]')).not.toBeNull();
@@ -1132,6 +1457,7 @@ describe('WalletConnector wallet availability', () => {
 
     await vi.advanceTimersByTimeAsync(20);
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     element.openAccountModal();
 
     const overlayHost = element.getOverlayRoot()?.host as HTMLElement;
@@ -1172,6 +1498,7 @@ describe('WalletConnector wallet availability', () => {
     try {
       await vi.advanceTimersByTimeAsync(20);
       await element.open();
+      await vi.advanceTimersByTimeAsync(0);
       element.openAccountModal();
       element.style.setProperty('--xc-primary-color', '#667788');
       element.style.setProperty('--xc-background-color', '#778899');
@@ -1201,6 +1528,7 @@ describe('WalletConnector wallet availability', () => {
 
     await vi.advanceTimersByTimeAsync(20);
     await element.open();
+    await vi.advanceTimersByTimeAsync(0);
     element.openAccountModal();
 
     const expectOmittedHover = (colors: ReturnType<typeof derivedHoverColors>) => {

@@ -59,6 +59,9 @@ describe('WalletConnectorElement availability rendering', () => {
     document.body.appendChild(connector);
 
     await connector.open();
+    await vi.waitFor(() =>
+      expect(connector.getOverlayRoot()?.querySelector('[aria-busy="true"]')).toBeNull()
+    );
 
     const modal = connector.getOverlayRoot()?.innerHTML ?? '';
     expect(unavailableWallet.isAvailable).toHaveBeenCalledOnce();
@@ -78,6 +81,9 @@ describe('WalletConnectorElement availability rendering', () => {
     connector.setAttribute('show-unavailable', '');
 
     await connector.open();
+    await vi.waitFor(() =>
+      expect(connector.getOverlayRoot()?.querySelector('[aria-busy="true"]')).toBeNull()
+    );
 
     const modal = connector.getOverlayRoot()?.innerHTML ?? '';
     expect(unconfiguredWallet.getMissingConfiguration).toHaveBeenCalledWith(undefined);
@@ -97,6 +103,9 @@ describe('WalletConnectorElement availability rendering', () => {
     localStorage.setItem('xrpl-connect:mru-wallets', JSON.stringify(['available-recent']));
 
     await connector.open();
+    await vi.waitFor(() =>
+      expect(connector.getOverlayRoot()?.querySelector('[aria-busy="true"]')).toBeNull()
+    );
 
     const labels = [...(connector.getOverlayRoot()?.querySelectorAll('.wallet-button') ?? [])].map(
       (button) => button.querySelector('span')?.textContent
@@ -113,6 +122,9 @@ describe('WalletConnectorElement availability rendering', () => {
     const connector = mount([createWallet('shared', false, 'https://old.example/install')]);
     connector.setAttribute('show-unavailable', '');
     await connector.open();
+    await vi.waitFor(() =>
+      expect(connector.getOverlayRoot()?.querySelector('[aria-busy="true"]')).toBeNull()
+    );
     expect(connector.getOverlayRoot()?.innerHTML).toContain('https://old.example/install');
 
     const replacement = createWallet('shared', false, 'https://new.example/install');

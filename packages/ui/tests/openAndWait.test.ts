@@ -80,7 +80,7 @@ describe('<xrpl-wallet-connector>.openAndWait()', () => {
 
     availability.resolve(true);
     await flushPromises();
-    expect(onOpen).not.toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalledOnce();
     expect(document.body.style.overflow).toBe('');
   });
 
@@ -187,7 +187,7 @@ describe('<xrpl-wallet-connector>.openAndWait()', () => {
 
     availability.resolve(true);
     await flushPromises();
-    expect(onOpen).not.toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalledOnce();
     expect(document.body.style.overflow).toBe('');
   });
 });

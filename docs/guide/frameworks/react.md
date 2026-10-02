@@ -129,9 +129,10 @@ function PaymentButton({ destination }: { destination: string }) {
 ## Modal control
 
 `useWalletModal()` returns reactive `ready`, `open(): Promise<void>`,
-`openAndWait(): Promise<AccountInfo>`, and `close(): void`. Await `open()` to observe availability
-failures, or await `openAndWait()` when the caller needs the connected account; `openAndWait()`
-also rejects if the modal closes before a connection completes.
+`openAndWait(): Promise<AccountInfo>`, and `close(): void`. `open()` resolves when the modal opens;
+wallet availability is discovered in the background with cached choices or a loading status.
+Await `openAndWait()` when the caller needs the connected account; it rejects if the modal
+closes before a connection completes.
 
 `ready` becomes `true` after a connector registers and returns to `false` after the last connector
 unmounts. Calling `open()` or `openAndWait()` while it is `false` rejects with a namespaced setup

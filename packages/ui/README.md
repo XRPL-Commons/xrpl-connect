@@ -120,7 +120,10 @@ connector.setWalletManager(walletManager);
 
 #### `open()`
 
-Opens the wallet connection modal.
+Opens the wallet connection modal immediately. Availability discovery starts when the mounted
+connector has a manager and runs in the background. The modal uses cached results or shows a loading
+status until discovery completes; stale results refresh while the wallet list is open.
+`await open()` waits for the modal to open, not for discovery or a wallet connection.
 
 ```typescript
 const connector = document.querySelector('xrpl-wallet-connector');
