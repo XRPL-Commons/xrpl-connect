@@ -92,7 +92,7 @@ describe('wallet connector MRU integration', () => {
     const element = mountConnector(manager);
 
     await element.open();
-    expect(getRenderedWalletIds()).toEqual(['first', 'second']);
+    await vi.waitFor(() => expect(getRenderedWalletIds()).toEqual(['first', 'second']));
     await manager.connect('second');
     await manager.disconnect();
     await element.open();
@@ -104,7 +104,7 @@ describe('wallet connector MRU integration', () => {
     stubLocalStorage();
     const cachedElement = mountConnector(createManager());
     await cachedElement.open();
-    expect(getRenderedWalletIds()).toEqual(['first', 'second']);
+    await vi.waitFor(() => expect(getRenderedWalletIds()).toEqual(['first', 'second']));
     cachedElement.close();
 
     const writerManager = createManager();

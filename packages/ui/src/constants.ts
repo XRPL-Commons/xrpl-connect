@@ -27,6 +27,7 @@ export const SIZES = {
  * Timing constants (in milliseconds)
  */
 export const TIMINGS = {
+  WALLET_AVAILABILITY_REFRESH: 5000,
   QR_RENDER_DELAY: 100,
   QR_LOGO_TIMEOUT: 3000,
   COPY_FEEDBACK_DURATION: 2000,

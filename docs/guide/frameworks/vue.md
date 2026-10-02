@@ -50,9 +50,10 @@ from other Vue applications on the same page and are released when the app unmou
 
 `useWallet()` returns readonly Vue refs, so use them directly in templates and through `.value`
 in scripts. `useWalletModal()` returns a readonly `ready` ref, `open(): Promise<void>`,
-`openAndWait(): Promise<AccountInfo>`, and `close(): void` for the active connector. Await
-`open()` to observe availability-check failures, or await `openAndWait()` when the caller needs
-the connected account; `openAndWait()` rejects if opening fails or the modal closes first.
+`openAndWait(): Promise<AccountInfo>`, and `close(): void` for the active connector. `open()` resolves
+when the modal opens; wallet availability is discovered in the background with cached choices or a
+loading status. Await `openAndWait()` when the caller needs the connected account; it rejects if
+opening fails or the modal closes first.
 
 All composables must run below an application that installed `createXrplConnect()`. `ready`
 becomes `true` after a connector registers and returns to `false` after the last connector

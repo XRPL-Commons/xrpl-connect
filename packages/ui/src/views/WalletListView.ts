@@ -51,7 +51,8 @@ function createUnavailableWalletButton(wallet: WalletAdapter): HTMLButtonElement
 export function renderWalletListView(
   primaryWallet: WalletAdapter | null,
   otherWallets: WalletAdapter[],
-  unavailableWalletIds: ReadonlySet<string> = new Set()
+  unavailableWalletIds: ReadonlySet<string> = new Set(),
+  loading = false
 ): DocumentFragment {
   const view = createStaticView`
       <div class="header">
@@ -69,6 +70,16 @@ export function renderWalletListView(
   );
   const content = getViewElement(view, '.content');
   const walletList = getViewElement(view, '.wallet-list');
+
+  content.setAttribute('aria-busy', String(loading));
+  if (loading) {
+    const status = document.createElement('p');
+    status.className = 'wallet-empty';
+    status.setAttribute('role', 'status');
+    status.textContent = 'Finding available wallets…';
+    walletList.append(status);
+    return view;
+  }
 
   if (primaryWallet) content.prepend(createWalletButton(primaryWallet, true));
   if (!primaryWallet && otherWallets.length === 0) {
