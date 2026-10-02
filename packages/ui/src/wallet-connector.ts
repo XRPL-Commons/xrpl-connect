@@ -154,6 +154,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     public errorData: ErrorData | null = null;
     public accountSelectionData: AccountSelectionData | null = null;
     private previousModalHeight: number = 0;
+    private modalHeightFrame: number | null = null;
     private preGeneratedQRCode: QRCodeStyling | null = null;
     private qrRenderGeneration = 0;
     private preGeneratedURI: string | null = null;
@@ -246,6 +247,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.accountModalPortal?.remove();
       this.accountModalPortal = null;
       this.clearQRRenderTimer();
+      this.clearModalHeightFrame();
       this.updateBodyScrollLock();
     }
 
@@ -590,6 +592,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       if (!root || !content) return;
       const next = this.createWalletListView().querySelector<HTMLElement>('.content');
       if (!next || content.isEqualNode(next)) return;
+      this.clearModalHeightFrame();
       const focused = root.activeElement;
       const buttons = [...content.querySelectorAll<HTMLElement>('button')];
       for (const button of next.querySelectorAll<HTMLElement>('button')) {
@@ -1268,6 +1271,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Render the component
      */
     private render() {
+      this.clearModalHeightFrame();
       // Capture current modal height before re-rendering
       const existingModal = this.overlayPortal?.shadowRoot?.querySelector(
         '.modal'
@@ -1371,6 +1375,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       });
     }
 
+    private clearModalHeightFrame(): void {
+      if (this.modalHeightFrame === null) return;
+      cancelAnimationFrame(this.modalHeightFrame);
+      this.modalHeightFrame = null;
+    }
+
     /**
      * Update modal height with smooth transition
      */
@@ -1393,7 +1403,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         void modal.offsetHeight;
 
         // Transition to new height
-        requestAnimationFrame(() => {
+        this.modalHeightFrame = requestAnimationFrame(() => {
+          this.modalHeightFrame = null;
           modal.style.height = `${newHeight}px`;
         });
       }

@@ -8,6 +8,8 @@ declare global {
     getOpenEventCount(): number;
     injectWallet(): void;
     resolveInitialAvailability(available?: boolean): void;
+    showDelayedWallets(): void;
+    resolveDelayedAvailability(): void;
   }
 }
 
@@ -110,4 +112,41 @@ test('does not reopen after closing while initial discovery is pending', async (
   await expect(page.locator('[data-xrpl-overlay-portal] .modal')).toHaveCount(0);
   await expect(opener).toBeFocused();
   expect(await page.evaluate(() => window.getOpenEventCount())).toBe(1);
+});
+
+test('expands the wallet list when discovery finishes during a height transition', async ({
+  page,
+}) => {
+  await loadFixture(page);
+  await page.evaluate(() => window.resolveInitialAvailability());
+  await page.getByRole('button', { name: 'Open wallet dialog' }).click();
+  const dialog = walletDialog(page);
+  await expect(dialog.getByRole('button', { name: 'Installed Wallet', exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+
+  await page.evaluate(async () => {
+    window.showDelayedWallets();
+    const connector = document.querySelector('#wallet-connector') as HTMLElement & {
+      open(): Promise<void>;
+    };
+    void connector.open();
+
+    // Resolve discovery after the loading view is measured, before its height is applied.
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        window.resolveDelayedAvailability();
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+    });
+  });
+
+  const content = dialog.getByRole('region', { name: 'Wallet options' });
+  await expect(content.getByRole('button')).toHaveCount(6);
+  await dialog.evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations({ subtree: true }).map((animation) => animation.finished)
+    );
+  });
+  expect(await content.evaluate((element) => element.scrollHeight - element.clientHeight)).toBe(0);
+  await expect(dialog.getByRole('button', { name: 'Close' })).toBeFocused();
 });

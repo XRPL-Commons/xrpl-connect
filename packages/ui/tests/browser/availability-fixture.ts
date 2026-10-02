@@ -50,7 +50,15 @@ const injectedWallet = createWallet('injected-wallet', 'Injected Wallet', async 
   return true;
 });
 
-const manager = new WalletManager({ adapters: [installedWallet] });
+let resolveDelayedAvailability!: (available: boolean) => void;
+const delayedAvailability = new Promise<boolean>((resolve) => {
+  resolveDelayedAvailability = resolve;
+});
+const delayedWallets = Array.from({ length: 6 }, (_, index) =>
+  createWallet(`delayed-${index}`, `Delayed Wallet ${index}`, () => delayedAvailability)
+);
+
+const manager = new WalletManager({ adapters: [installedWallet, ...delayedWallets] });
 const connector = document.querySelector('#wallet-connector') as HTMLElement & {
   setWalletManager(walletManager: WalletManager): void;
   open(): Promise<void>;
@@ -70,6 +78,8 @@ declare global {
     getOpenEventCount(): number;
     injectWallet(): void;
     resolveInitialAvailability(available?: boolean): void;
+    showDelayedWallets(): void;
+    resolveDelayedAvailability(): void;
   }
 }
 
@@ -84,5 +94,9 @@ window.injectWallet = () => {
 window.resolveInitialAvailability = (available = true) => {
   resolveInitialAvailability(available);
 };
+window.showDelayedWallets = () => {
+  connector.setAttribute('wallets', delayedWallets.map((wallet) => wallet.id).join(','));
+};
+window.resolveDelayedAvailability = () => resolveDelayedAvailability(true);
 
 document.body.dataset.ready = 'true';
