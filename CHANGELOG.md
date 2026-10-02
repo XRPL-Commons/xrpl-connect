@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- UI: treat an explicitly empty wallet filter, including React/Vue `wallets={[]}`, as an empty list; only an omitted filter shows all registered wallets.
 - Xaman: complete an explicitly initiated mobile login in both the original and return tabs, isolate concurrent OAuth attempts, and bound cancelled or unanswered connections (#201).
 - Xaman: reconcile signing results after a lost wallet subscription and report uncertain signing timeouts with `OPERATION_TIMEOUT` and the payload UUID, without resubmitting the transaction (#201).
 
