@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { WalletConnector as ReactWalletConnector } from '../../../react/src/WalletConnector';
 import { XrplConnectProvider } from '../../../react/src/provider';
-import { createApp, h } from 'vue';
+import { createApp, h, ref } from 'vue';
 import { createXrplConnect } from '../../../vue/src/context';
 import { WalletConnector as VueWalletConnector } from '../../../vue/src/WalletConnector';
 import { type NetworkInfo, type WalletAdapter } from '@xrpl-connect/core';
@@ -34,22 +34,30 @@ const wallet: WalletAdapter = {
   },
 };
 
-createRoot(document.querySelector('#react-root')!).render(
-  React.createElement(XrplConnectProvider, {
-    config: { adapters: [wallet], autoConnect: false },
-    children: React.createElement(ReactWalletConnector, {
-      id: 'react-connector',
-      nonce: STRICT_CSP_NONCE,
-      theme: 'light',
-      cssVars: { '--xc-connect-button-background': '#112233' },
-    }),
-  })
-);
+const initialWallets = new URLSearchParams(location.search).has('empty-wallets') ? [] : undefined;
+const reactRoot = createRoot(document.querySelector('#react-root')!);
+function renderReact(wallets?: string[]): void {
+  reactRoot.render(
+    React.createElement(XrplConnectProvider, {
+      config: { adapters: [wallet], autoConnect: false },
+      children: React.createElement(ReactWalletConnector, {
+        id: 'react-connector',
+        wallets,
+        nonce: STRICT_CSP_NONCE,
+        theme: 'light',
+        cssVars: { '--xc-connect-button-background': '#112233' },
+      }),
+    })
+  );
+}
+renderReact(initialWallets);
 
+const vueWallets = ref<string[] | undefined>(initialWallets);
 const vueApp = createApp({
   render: () =>
     h(VueWalletConnector, {
       id: 'vue-connector',
+      wallets: vueWallets.value,
       nonce: STRICT_CSP_NONCE,
       theme: 'light',
       cssVars: { '--xc-connect-button-background': '#112233' },
@@ -57,5 +65,16 @@ const vueApp = createApp({
 });
 vueApp.use(createXrplConnect({ adapters: [wallet], autoConnect: false }));
 vueApp.mount('#vue-root');
+
+declare global {
+  interface Window {
+    setFrameworkWallets(framework: 'react' | 'vue', wallets?: string[]): void;
+  }
+}
+
+window.setFrameworkWallets = (framework, wallets) => {
+  if (framework === 'react') renderReact(wallets);
+  else vueWallets.value = wallets;
+};
 
 document.body.dataset.ready = 'true';

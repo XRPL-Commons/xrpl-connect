@@ -467,8 +467,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Parse wallet IDs from the 'wallets' attribute
      */
     private parseWalletAttribute(): string[] {
-      const walletsAttr = this.getAttribute('wallets') || '';
-      if (!walletsAttr) {
+      const walletsAttr = this.getAttribute('wallets');
+      if (walletsAttr === null) {
         // If no wallets attribute, use all available wallets
         return this.walletManager?.wallets.map((w) => w.id) || [];
       }
