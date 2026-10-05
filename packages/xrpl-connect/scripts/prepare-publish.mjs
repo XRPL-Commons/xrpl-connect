@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'url';
 import { PUBLISH_GUARD } from './release-policy.mjs';
 
@@ -20,6 +21,44 @@ const walletConnectModalLicensePath = path.join(
   __dirname,
   '../licenses/WALLETCONNECT-MODAL-APACHE-2.0.txt'
 );
+
+const crossmarkRequire = createRequire(
+  fs.realpathSync(
+    path.join(__dirname, '../../adapters/crossmark/node_modules/@crossmarkio/typings/package.json')
+  )
+);
+const crossmarkLicenses = [
+  [
+    'CROSSMARK-LICENSE.txt',
+    path.join(__dirname, '../../adapters/crossmark/node_modules/@crossmarkio/sdk/LICENSE'),
+  ],
+  [
+    'CROSSMARK-LICENSE.txt',
+    path.join(__dirname, '../../adapters/crossmark/node_modules/@crossmarkio/typings/LICENSE'),
+  ],
+  [
+    'XRPL-ISC-LICENSE.txt',
+    path.join(path.dirname(crossmarkRequire.resolve('xrpl/package.json')), 'LICENSE'),
+  ],
+  [
+    'XRPL-ISC-LICENSE.txt',
+    path.join(path.dirname(crossmarkRequire.resolve('@transia/xrpl/package.json')), 'LICENSE'),
+  ],
+  [
+    'NODE-FORGE-TYPES-MIT-LICENSE.txt',
+    path.join(path.dirname(crossmarkRequire.resolve('@types/node-forge/package.json')), 'LICENSE'),
+  ],
+];
+for (const [file, installedLicense] of crossmarkLicenses) {
+  if (
+    fs.readFileSync(path.join(__dirname, '../licenses', file), 'utf8') !==
+    fs.readFileSync(installedLicense, 'utf8')
+  ) {
+    throw new Error(
+      `The checked-in ${file} does not match ${installedLicense}. Review the dependency license and update the distributed copy.`
+    );
+  }
+}
 
 // Read main package.json
 const mainPkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf-8'));
@@ -43,9 +82,7 @@ const externalDependencySources = [
   ['xumm', 'xaman'],
   ['xumm-oauth2-pkce', 'xaman'],
   ['@gemwallet/api', 'gemwallet'],
-  ['@crossmarkio/typings', 'crossmark'],
   ['@types/chrome', 'crossmark'],
-  ['@types/node-forge', 'crossmark'],
 ];
 
 const externalDependencies = {};
@@ -141,4 +178,7 @@ fs.copyFileSync(
   walletConnectModalLicensePath,
   path.join(licensesDir, 'WALLETCONNECT-MODAL-APACHE-2.0.txt')
 );
+for (const file of new Set(crossmarkLicenses.map(([file]) => file))) {
+  fs.copyFileSync(path.join(__dirname, '../licenses', file), path.join(licensesDir, file));
+}
 console.log('✓ Updated dist-publish/package.json with version', mainPkg.version);

@@ -17,8 +17,9 @@ export function createCommandRunner(spawnSync) {
     }
     if (result.status !== 0) {
       const output = [result.stdout, result.stderr].filter(Boolean).join('\n');
-      throw new Error(
-        `${command} ${args.join(' ')} failed with exit code ${result.status}\n${output}`
+      throw Object.assign(
+        new Error(`${command} ${args.join(' ')} failed with exit code ${result.status}\n${output}`),
+        { exitCode: result.status, stdout: result.stdout, stderr: result.stderr }
       );
     }
 

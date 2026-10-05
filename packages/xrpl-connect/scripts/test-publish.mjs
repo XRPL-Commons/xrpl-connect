@@ -14,6 +14,7 @@ import {
 } from './release-policy.mjs';
 import { readLocalReleaseConfig } from './publish-release.mjs';
 import { run } from './run-command.mjs';
+import { verifyConsumerDependencies } from './consumer-dependencies.mjs';
 
 const cliArgs = process.argv.slice(2);
 const xrplVersionIndex = cliArgs.indexOf('--xrpl-version');
@@ -74,7 +75,13 @@ const candidatePackages = [
       'THIRD_PARTY_NOTICES.md',
       'licenses/WALLETCONNECT-COMMUNITY-LICENSE.md',
       'licenses/WALLETCONNECT-MODAL-APACHE-2.0.txt',
+      'licenses/CROSSMARK-LICENSE.txt',
+      'licenses/XRPL-ISC-LICENSE.txt',
+      'licenses/NODE-FORGE-TYPES-MIT-LICENSE.txt',
       'index.d.ts',
+      'types/crossmark/build/src/sdk/index.d.ts',
+      'types/crossmark/build/src/crossmark/models/common/tx.d.ts',
+      'types/forge.d.ts',
       'xrpl-connect.mjs',
       'xrpl-connect.umd.js',
     ],
@@ -410,6 +417,7 @@ try {
   );
   console.log('✓ Candidate install completed with strict peer dependency checks');
   verifyInstalledXrpl(consumerFolder);
+  verifyConsumerDependencies(consumerFolder, RELEASE_PACKAGE_NAMES, runOptions);
   verifyInstalledReactMajor(consumerFolder, 18);
 
   const installedManifests = Object.fromEntries(
@@ -463,6 +471,21 @@ try {
   );
   assert.match(walletConnectModalLicense, /Apache License/);
   assert.match(walletConnectModalLicense, /Version 2\.0, January 2004/);
+
+  for (const [file, expected] of [
+    ['CROSSMARK-LICENSE.txt', /GNU GENERAL PUBLIC LICENSE/],
+    ['XRPL-ISC-LICENSE.txt', /ISC License/],
+    ['NODE-FORGE-TYPES-MIT-LICENSE.txt', /MIT License/],
+  ]) {
+    assert.match(
+      readFileSync(path.join(installedUmbrellaFolder, 'licenses', file), 'utf8'),
+      expected
+    );
+    assert(thirdPartyNotices.includes(file), `Missing third-party notice for ${file}`);
+  }
+  assert.match(thirdPartyNotices, /@crossmarkio\/typings@0\.0\.6/);
+  assert.match(thirdPartyNotices, /@transia\/xrpl@2\.7\.3-alpha\.28/);
+  assert.match(thirdPartyNotices, /@types\/node-forge@1\.3\.14/);
 
   const unresolvedXyraImport =
     /import\s*\(\s*(?:\/\*[\s\S]*?\*\/\s*)?[`'"]@xyrawallet\/sdk[`'"]\s*\)/;
@@ -562,9 +585,7 @@ try {
     'xumm',
     'xumm-oauth2-pkce',
     '@gemwallet/api',
-    '@crossmarkio/typings',
     '@types/chrome',
-    '@types/node-forge',
   ]) {
     assert(
       umbrellaManifest.dependencies?.[dependency],
@@ -646,6 +667,7 @@ try {
   );
   verifyInstalledReactMajor(react19ConsumerFolder, 19);
   verifyInstalledXrpl(react19ConsumerFolder);
+  verifyConsumerDependencies(react19ConsumerFolder, RELEASE_PACKAGE_NAMES.slice(0, 2), runOptions);
   copyReactFixtures(react19ConsumerFolder);
   verifyPackedReactConsumer(react19ConsumerFolder, 19, tscPath, runOptions);
 
