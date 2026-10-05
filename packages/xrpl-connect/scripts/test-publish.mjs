@@ -14,6 +14,7 @@ import {
 } from './release-policy.mjs';
 import { readLocalReleaseConfig } from './publish-release.mjs';
 import { run } from './run-command.mjs';
+import { verifyConsumerDependencies } from './consumer-dependencies.mjs';
 
 const cliArgs = process.argv.slice(2);
 const xrplVersionIndex = cliArgs.indexOf('--xrpl-version');
@@ -232,38 +233,6 @@ function verifyInstalledXrpl(consumerFolder) {
   console.log(`✓ Consumer resolved xrpl@${version} for ${xrplVersion}`);
 }
 
-function verifyConsumerDependencies(consumerFolder, options) {
-  const tree = parseJson('npm', ['ls', '--all', '--json'], { ...options, cwd: consumerFolder });
-  const forbidden = new Set([
-    '@crossmarkio/sdk',
-    '@crossmarkio/typings',
-    '@transia/xrpl',
-    'node-forge',
-    '@types/node-forge',
-    'elliptic',
-  ]);
-  const visit = (node, parents) => {
-    for (const [name, dependency] of Object.entries(node.dependencies ?? {})) {
-      const chain = [...parents, `${name}@${dependency.version}`];
-      assert(!forbidden.has(name), `Unwanted consumer dependency: ${chain.join(' > ')}`);
-      if (name === 'xrpl') {
-        assert(
-          Number(dependency.version.split('.')[0]) >= 3,
-          `Legacy XRPL dependency: ${chain.join(' > ')}`
-        );
-      }
-      visit(dependency, chain);
-    }
-  };
-  // The fixture also installs build tools (Nuxt brings its own Forge copy).
-  // Check the actual dependency trees rooted at our published packages.
-  for (const { name } of candidatePackages) {
-    const installed = tree.dependencies?.[name];
-    if (installed) visit(installed, [name]);
-  }
-  console.log('✓ Published dependency trees exclude Crossmark typing-only runtime dependencies');
-}
-
 function copyReactFixtures(consumerFolder) {
   for (const fixture of [
     'runtime-dom.mjs',
@@ -448,7 +417,7 @@ try {
   );
   console.log('✓ Candidate install completed with strict peer dependency checks');
   verifyInstalledXrpl(consumerFolder);
-  verifyConsumerDependencies(consumerFolder, runOptions);
+  verifyConsumerDependencies(consumerFolder, RELEASE_PACKAGE_NAMES, runOptions);
   verifyInstalledReactMajor(consumerFolder, 18);
 
   const installedManifests = Object.fromEntries(
@@ -698,7 +667,7 @@ try {
   );
   verifyInstalledReactMajor(react19ConsumerFolder, 19);
   verifyInstalledXrpl(react19ConsumerFolder);
-  verifyConsumerDependencies(react19ConsumerFolder, runOptions);
+  verifyConsumerDependencies(react19ConsumerFolder, RELEASE_PACKAGE_NAMES.slice(0, 2), runOptions);
   copyReactFixtures(react19ConsumerFolder);
   verifyPackedReactConsumer(react19ConsumerFolder, 19, tscPath, runOptions);
 
