@@ -374,6 +374,8 @@ try {
       [
         'publish',
         '--dry-run',
+        // npm otherwise rejects existing versions before completing the simulation.
+        '--force',
         '--json',
         '--tag',
         releaseConfig.publishTag,

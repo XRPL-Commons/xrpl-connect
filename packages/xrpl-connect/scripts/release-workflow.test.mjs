@@ -177,10 +177,16 @@ test('trusted release workflow publishes before tagging and calls exact-tag docs
   assert.match(workflow, /gh release edit "\$tag" --draft=false --prerelease=false --latest/);
   assert.match(workflow, /repos\/\$\{GITHUB_REPOSITORY\}\/releases\/latest/);
   assert.match(docsWorkflow, /workflow_call:[\s\S]*release_tag:/);
-  assert.match(docsWorkflow, /ref: \$\{\{ inputs\.release_tag \}\}/);
+  assert.match(docsWorkflow, /ref: refs\/tags\/\$\{\{ inputs\.release_tag \}\}/);
+  assert.match(docsWorkflow, /workflow_dispatch:[\s\S]*release_tag:/);
+  assert.match(docsWorkflow, /gh release view "\$RELEASE_TAG" --json tagName,isDraft/);
+  assert.match(docsWorkflow, /test "\$is_draft" = false/);
+  assert(
+    docsWorkflow.indexOf('Verify published release tag') < docsWorkflow.indexOf('name: Checkout'),
+    'documentation source is checked out before its published release is verified'
+  );
   assert.doesNotMatch(docsWorkflow, /branches: \[develop\]/);
   assert.doesNotMatch(docsWorkflow, /release:\n\s+types:/);
-  assert.doesNotMatch(docsWorkflow, /workflow_dispatch/);
 });
 
 test('RC policy accepts fresh and subsequent candidates while preserving latest', () => {

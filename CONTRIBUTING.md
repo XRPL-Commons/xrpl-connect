@@ -319,10 +319,21 @@ else
 fi
 ```
 
-Local npm publication and creating a GitHub Release do not trigger Pages deployment. The current
-Pages workflow accepts only `workflow_call` from `release.yaml`. Documentation deployment therefore
-requires the configured automated release workflow to verify/resume the same release, or a separately
-reviewed manual Pages entry point. Keep the documentation source pinned to `v1.0.0`.
+Local npm publication and creating a GitHub Release do not automatically deploy documentation.
+Once the source tag and published GitHub Release exist, dispatch the documentation workflow from
+`develop`, the repository's default branch:
+
+```bash
+gh workflow run deploy_vitepressDoc.yaml --ref develop --field release_tag=v1.0.0
+```
+
+The workflow requires a published, non-draft GitHub Release and builds from its exact source tag.
+It uses GitHub Pages permissions and does not require npm publishing credentials or republish any
+packages. The automated release workflow continues to call the same deployment workflow.
+
+Watch the resulting run in Actions. After it succeeds, check that the live installation guide uses
+the stable package names and the migration guide identifies `1.0.0`. Rerun the same dispatch if only
+the documentation deployment needs to be retried; keep the release tag unchanged.
 
 ### Live wallet validation
 
