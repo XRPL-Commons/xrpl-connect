@@ -77,11 +77,6 @@ when the original browser tab is closed.
 
 ### Xaman expiry policy
 
-::: info Historical RC2 behavior
-This policy is available in stable v1. The previous `1.0.0-rc.2` candidate required exact
-matching of supplied expiry values even when Xaman adjusted them.
-:::
-
 For `sign()` only, Xaman may increase a supplied absolute `LastLedgerSequence` by
 **up to 50 ledgers by default**. This is an extension beyond the requested expiry,
 not a 50-ledger deadline measured from signing time. Configure it on the adapter:
