@@ -7,7 +7,7 @@ modal component — so you configure your wallets once and never re-create objec
 ## Install
 
 ```bash
-npm install @xrpl-commons/xrpl-connect-react@rc xrpl-connect@rc xrpl@^4 react react-dom
+npm install @xrpl-commons/xrpl-connect-react xrpl-connect xrpl@^4 react react-dom
 ```
 
 > `react` / `react-dom` are peer dependencies. Importing any named export from
@@ -80,8 +80,8 @@ export function App() {
 
 ## Strict CSP
 
-After RC2 (unreleased), pass the current response's server-generated style nonce before
-mounting: `<WalletConnector nonce={responseNonce} className="wallet-theme" />`.
+Pass the current response's server-generated style nonce before mounting:
+`<WalletConnector nonce={responseNonce} className="wallet-theme" />`.
 The native attribute authorizes all connector/portal styles; no Google Fonts are loaded.
 Use an allowed external stylesheet for static themes and keep `style-src-attr 'none'`.
 See the [CSP policy, nonce lifecycle, and wallet-specific limits](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/docs/guide/production.md#strict-content-security-policy).

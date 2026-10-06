@@ -112,7 +112,7 @@ calling an adapter that explicitly declares the operation unsupported.
 
 For Xaman `sign()`, the adapter option `maxLastLedgerSequenceExtension` defaults to
 50 additional ledgers beyond a supplied absolute expiry (`0` for strict matching).
-This is unreleased after RC2 and does not apply to wallet-owned `signAndSubmit()`;
+This stable v1 policy applies to `sign()` only, not to wallet-owned `signAndSubmit()`;
 see [expiry policy and limits](/guide/transactions#xaman-expiry-policy).
 
 #### fetchAccount()
@@ -198,8 +198,8 @@ Beautiful UI component for wallet connection.
 
 ### Attributes
 
-The native `nonce` attribute supplies the response's style nonce before mount (unreleased
-after RC2). React and Vue forward it unchanged. See [strict CSP setup](/guide/production#strict-content-security-policy).
+The native `nonce` attribute supplies the response's style nonce before mount. React and Vue
+forward it unchanged. See [strict CSP setup](/guide/production#strict-content-security-policy).
 
 | Attribute          | Type      | Description                                                        |
 | ------------------ | --------- | ------------------------------------------------------------------ |
@@ -491,7 +491,8 @@ const manager = new WalletManager({
 });
 ```
 
-`Adapters` contains `Xaman`, `Crossmark`, `GemWallet`, `WalletConnect`, `Ledger`, `Xyra`, `Otsu`, and `MetaMaskSnap`.
+`Adapters` contains `Xaman`, `Crossmark`, `GemWallet`, `WalletConnect`, `Ledger`, `Xyra`,
+`Ghostsig`, `Otsu`, and `MetaMaskSnap`.
 
 The corresponding adapter-specific exports are also available from the umbrella package:
 
@@ -503,6 +504,7 @@ The corresponding adapter-specific exports are also available from the umbrella 
 | WalletConnect | `WalletConnectAdapterOptions`, `WalletConnectConnectOptions`, `XRPLMethod`                                 |
 | Ledger        | `LedgerAdapterOptions`, `LedgerConnectOptions`, `LedgerDeviceState`, `LEDGER_STATE_MESSAGES`               |
 | Xyra          | `XyraAdapterOptions`, `XyraConnectOptions`, `XRPL_CONNECT_TO_XYRA_NETWORK`, `XYRA_TO_XRPL_CONNECT_NETWORK` |
+| GHOSTSIG      | `GhostsigAdapterOptions`, `GhostsigConnectOptions`                                                         |
 | Otsu          | `OtsuProvider`, `OTSU_NETWORK_MAP`                                                                         |
 | MetaMask Snap | `MetaMaskSnapAdapterOptions`                                                                               |
 

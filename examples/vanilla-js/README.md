@@ -48,10 +48,10 @@ pnpm install
 ```
 
 The monorepo uses workspace links. When copying this example into a standalone project, install the
-published release candidate and its XRPL peer explicitly:
+published stable package and its XRPL peer explicitly:
 
 ```bash
-pnpm add xrpl-connect@rc xrpl@^4
+pnpm add xrpl-connect xrpl@^4
 ```
 
 ### 4. Run Development Server

@@ -1,8 +1,8 @@
-# @xrpl-connect/xrpl-connect - Code Documentation
+# xrpl-connect - Code Documentation
 
 ## Overview
 
-`@xrpl-connect/xrpl-connect` (often referred to as the "meta-package") is a convenience package that bundles all the XRPL Connect functionality into a single entry point. Instead of importing from multiple packages, developers can import everything they need from a single `xrpl-connect` module.
+`xrpl-connect` (the umbrella package) bundles all the XRPL Connect functionality into a single entry point. Instead of importing from multiple packages, developers can import everything they need from a single `xrpl-connect` module.
 
 **Key Responsibility**: Provide a simplified developer experience by re-exporting core functionality, UI components, and all adapters in one convenient location.
 
@@ -42,33 +42,18 @@ packages/xrpl-connect/
 This file contains all the re-exports that make up the public API:
 
 ```typescript
-// Core functionality
 export * from '@xrpl-connect/core';
-
-// UI Web Component
 export * from '@xrpl-connect/ui';
-
-// All adapters
-export { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-export { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
-export { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
-export { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
-export { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
-export { XyraAdapter } from '@xrpl-connect/adapter-xyra';
-export { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
-export { MetaMaskSnapAdapter } from '@xrpl-connect/adapter-metamask-snap';
-
-// Convenience object
-export const Adapters = {
-  Xaman: XamanAdapter,
-  Crossmark: CrossmarkAdapter,
-  GemWallet: GemWalletAdapter,
-  WalletConnect: WalletConnectAdapter,
-  Ledger: LedgerAdapter,
-  Xyra: XyraAdapter,
-  Otsu: OtsuAdapter,
-  MetaMaskSnap: MetaMaskSnapAdapter,
-};
+export * from '@xrpl-connect/adapter-xaman';
+export * from '@xrpl-connect/adapter-crossmark';
+export * from '@xrpl-connect/adapter-gemwallet';
+export * from '@xrpl-connect/adapter-walletconnect';
+export * from '@xrpl-connect/adapter-ledger';
+export * from '@xrpl-connect/adapter-xyra';
+export * from '@xrpl-connect/adapter-ghostsig';
+export * from '@xrpl-connect/adapter-otsu';
+export * from '@xrpl-connect/adapter-metamask-snap';
+export * from './adapters';
 ```
 
 ---
@@ -104,7 +89,11 @@ import {
   CrossmarkAdapter,
   GemWalletAdapter,
   WalletConnectAdapter,
+  LedgerAdapter,
   XyraAdapter,
+  GhostsigAdapter,
+  OtsuAdapter,
+  MetaMaskSnapAdapter,
   Adapters,
 } from 'xrpl-connect';
 ```
@@ -162,13 +151,7 @@ export {
 ### From @xrpl-connect/ui
 
 ```typescript
-export {
-  // Web Component (auto-registers as custom element)
-  WalletConnectorElement,
-
-  // Types
-  WalletConnectorElementOptions,
-};
+export * from '@xrpl-connect/ui';
 ```
 
 ### From Adapter Packages
@@ -182,7 +165,9 @@ export {
   WalletConnectAdapter,
   LedgerAdapter,
   XyraAdapter,
+  GhostsigAdapter,
   OtsuAdapter,
+  MetaMaskSnapAdapter,
 
   // Types
   XamanAdapterOptions,
@@ -195,6 +180,9 @@ export {
   LedgerConnectOptions,
   XyraAdapterOptions,
   XyraConnectOptions,
+  GhostsigAdapterOptions,
+  GhostsigConnectOptions,
+  MetaMaskSnapAdapterOptions,
 
   // Enums, constants, and complete upstream APIs
   XRPLMethod, // from WalletConnect adapter
@@ -214,8 +202,18 @@ export const Adapters = {
   WalletConnect: WalletConnectAdapter,
   Ledger: LedgerAdapter,
   Xyra: XyraAdapter,
+  Ghostsig: GhostsigAdapter,
   Otsu: OtsuAdapter,
+  MetaMaskSnap: MetaMaskSnapAdapter,
 };
+
+export { ADAPTER_DESCRIPTORS, createAdapters } from './adapters';
+export type {
+  AdapterAvailability,
+  AdapterDescriptor,
+  AdapterExportKey,
+  PackagedAdapterOptions,
+} from './adapters';
 ```
 
 ---
@@ -249,8 +247,12 @@ const walletManager = new WalletManager({
     new Adapters.Xaman({ apiKey: process.env.XUMM_API_KEY }),
     new Adapters.Crossmark(),
     new Adapters.WalletConnect({ projectId: process.env.WALLETCONNECT_ID }),
-    new Adapters(),
-    Xyra(),
+    new Adapters.GemWallet(),
+    new Adapters.Ledger(),
+    new Adapters.Xyra(),
+    new Adapters.Ghostsig(),
+    new Adapters.Otsu(),
+    new Adapters.MetaMaskSnap(),
   ],
   network: STANDARD_NETWORKS.mainnet,
   autoConnect: true,
@@ -287,7 +289,11 @@ const walletManager = new WalletManager({
     new Adapters.WalletConnect({
       projectId: process.env.WALLETCONNECT_ID,
     }),
+    new Adapters.Ledger(),
     new Adapters.Xyra(),
+    new Adapters.Ghostsig(),
+    new Adapters.Otsu(),
+    new Adapters.MetaMaskSnap(),
   ],
 });
 
@@ -420,7 +426,11 @@ The meta-package depends on:
     "@xrpl-connect/adapter-crossmark": "workspace:*",
     "@xrpl-connect/adapter-gemwallet": "workspace:*",
     "@xrpl-connect/adapter-walletconnect": "workspace:*",
-    "@xrpl-connect/adapter-xyra": "workspace:*"
+    "@xrpl-connect/adapter-ledger": "workspace:*",
+    "@xrpl-connect/adapter-xyra": "workspace:*",
+    "@xrpl-connect/adapter-ghostsig": "workspace:*",
+    "@xrpl-connect/adapter-otsu": "workspace:*",
+    "@xrpl-connect/adapter-metamask-snap": "workspace:*"
   }
 }
 ```
@@ -449,7 +459,11 @@ xrpl-connect (this package)
       ├── CrossmarkAdapter
       ├── GemWalletAdapter
       ├── WalletConnectAdapter
-      └── XyraAdapter
+      ├── LedgerAdapter
+      ├── XyraAdapter
+      ├── GhostsigAdapter
+      ├── OtsuAdapter
+      └── MetaMaskSnapAdapter
 ```
 
 ---
@@ -600,16 +614,15 @@ export { useWallet, useWalletConnect } from './hooks.js';
 
 ### Strict CSP
 
-Nonce support is an unreleased change after RC2. Set
-`<xrpl-wallet-connector nonce="RESPONSE_NONCE">` before mounting, using the server-generated
-style nonce for that HTML response. React/Vue forward the same native attribute. All
-connector and portal styles use it, and the UI no longer loads Google Fonts. Keep
+Set `<xrpl-wallet-connector nonce="RESPONSE_NONCE">` before mounting, using the server-generated
+style nonce for that HTML response. React/Vue forward the same native attribute. All connector
+and portal styles use it, and the UI no longer loads Google Fonts. Keep
 `style-src-attr 'none'` and use an allowed external stylesheet for static theme overrides.
 See the [complete policy setup and limitations](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/docs/guide/production.md#strict-content-security-policy).
 
 ### Xaman signing expiry
 
-Unreleased after RC2: Xaman `sign()` accepts up to 50 additional ledgers beyond a
+Xaman `sign()` accepts up to 50 additional ledgers beyond a
 supplied absolute `LastLedgerSequence`. Configure
 `new XamanAdapter({ apiKey, maxLastLedgerSequenceExtension: 50 })`; use `0` for
 strict matching. Omitted expiry remains wallet-chosen and has no extension bound;
@@ -733,7 +746,7 @@ const walletManager = new WalletManager({
 
 ## Summary
 
-The `@xrpl-connect/xrpl-connect` meta-package:
+The `xrpl-connect` umbrella package:
 
 - ✅ Provides a single import point for all XRPL Connect functionality
 - ✅ Re-exports core, UI, and all adapters

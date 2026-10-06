@@ -67,8 +67,8 @@ A Web Component is a reusable, encapsulated HTML element built using the Web Com
 
 All attributes are optional and control the behavior of the component:
 
-The native `nonce` attribute authorizes connector styles under CSP (unreleased after RC2).
-Set it before mounting; see [Strict CSP](#strict-csp).
+The native `nonce` attribute authorizes connector styles under CSP. Set it before mounting; see
+[Strict CSP](#strict-csp).
 
 | Attribute          | Type    | Default | Description                                                                               |
 | ------------------ | ------- | ------- | ----------------------------------------------------------------------------------------- |
@@ -81,8 +81,8 @@ Use the supported CSS variables and stable shadow parts documented in the
 
 ### Strict CSP
 
-After RC2 (unreleased), set the native `nonce` attribute to the server-generated style
-nonce **before** mounting the connector. It is copied to every internal stylesheet,
+Set the native `nonce` attribute to the server-generated style nonce **before** mounting the
+connector. It is copied to every internal stylesheet,
 including the wallet and account portals. No Google Fonts are loaded.
 
 ```html
@@ -182,8 +182,7 @@ connector.addEventListener('open', () => {
 });
 ```
 
-**Event Detail**: `{ connectionAttemptId: number }` when closing cancels an active connection
-attempt; otherwise no detail.
+**Event Detail**: None.
 
 ---
 
@@ -198,7 +197,8 @@ connector.addEventListener('close', () => {
 });
 ```
 
-**Event Detail**: None
+**Event Detail**: `{ connectionAttemptId: number }` when closing cancels an active connection
+attempt; otherwise no detail.
 
 ---
 

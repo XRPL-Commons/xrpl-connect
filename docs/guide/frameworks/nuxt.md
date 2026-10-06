@@ -11,14 +11,13 @@ Vue composables must also run only on the client.
 ## Installation
 
 ```bash
-npm install @xrpl-commons/xrpl-connect-vue@rc xrpl-connect@rc xrpl@^4 vue
+npm install @xrpl-commons/xrpl-connect-vue xrpl-connect xrpl@^4 vue
 ```
 
 ## Client plugin
 
-The install command selects the prerelease channel. See
-[release-channel guidance](/guide/getting-started#release-channel) for switching both
-packages to stable v1 after publication.
+The install command selects the coordinated stable v1 packages. Keep the Vue binding and
+`xrpl-connect` on the same release line.
 
 For Xaman OAuth, also check the served
 [popup security headers](/guide/production#xaman-oauth-popups-and-security-headers).

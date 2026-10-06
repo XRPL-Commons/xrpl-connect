@@ -10,58 +10,50 @@ Get up and running with XRPL-Connect in minutes.
 
 ### Release channel
 
-The commands below explicitly select the `rc` prerelease channel. An RC install does not
-automatically switch to stable v1. Once stable v1 is published, replace `@rc` with `@^1`
-for `xrpl-connect` and your framework binding, and update their lockfile entries together:
+Stable v1 is published under npm's default channel. Install the coordinated packages by their
+bare names and keep the framework binding and `xrpl-connect` versions aligned. The examples below
+pin `xrpl@^4`; the stable packages also declare compatibility with the supported v3 and v5 ranges.
 
-For Vue/Nuxt, the future stable package specifications are `xrpl-connect@^1` and
-`@xrpl-commons/xrpl-connect-vue@^1`, alongside the existing `xrpl@^4` and Vue dependencies.
-Keep using the RC installation commands below until stable v1 is published.
-
-For React, use `@xrpl-commons/xrpl-connect-react@^1` with React and React DOM instead.
-Do not assume the untagged npm default is v1 during the release transition. A local
-tarball may retain an RC version while containing newer merged fixes; record its source
-commit and integrity hash rather than treating the version label as proof of its contents.
+A local tarball may retain a prerelease version while containing newer merged fixes; record its
+source commit and integrity hash rather than treating the version label as proof of its contents.
 
 ### Using npm
 
-The upcoming release expands the `xrpl` peer range to v3, v4, and v5. Published
-`1.0.0-rc.2` artifacts still declare v3/v4 only, so the installation commands below
-remain pinned to v4 until the updated SDK and framework bindings are published.
-With the updated artifacts, applications already using v5 can retain it without
-pnpm compatibility overrides. Upgrade the SDK and framework binding together.
+The stable release supports `xrpl` v3, v4, and v5. The installation commands below remain pinned
+to v4 for a consistent baseline. Applications already using v5 can retain it without pnpm
+compatibility overrides; upgrade the SDK and framework binding together.
 
 ```bash
-npm install xrpl-connect@rc xrpl@^4
+npm install xrpl-connect xrpl@^4
 ```
 
 Add the official bindings for your framework:
 
 ```bash
 # React
-npm install @xrpl-commons/xrpl-connect-react@rc react react-dom
+npm install @xrpl-commons/xrpl-connect-react react react-dom
 
 # Vue 3 or Nuxt
-npm install @xrpl-commons/xrpl-connect-vue@rc vue
+npm install @xrpl-commons/xrpl-connect-vue vue
 ```
 
 ### Using pnpm
 
 ```bash
-pnpm add xrpl-connect@rc xrpl@^4
+pnpm add xrpl-connect xrpl@^4
 ```
 
 ### Using yarn
 
 ```bash
-yarn add xrpl-connect@rc xrpl@^4
+yarn add xrpl-connect xrpl@^4
 ```
 
 The `xrpl-connect` package includes:
 
 - **Core** - WalletManager, event system, and state management
 - **UI** - Beautiful web component for wallet connection
-- **Adapters** - Built-in support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap
+- **Adapters** - Built-in support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, GHOSTSIG, Otsu, and MetaMask Snap
 - **Framework bindings** - Official packages for React and Vue 3 / Nuxt
 
 > **Note:** The `xrpl` package is required for transaction types and utilities.

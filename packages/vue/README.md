@@ -6,7 +6,7 @@ composables, and a typed `<WalletConnector>` modal component.
 ## Install
 
 ```bash
-npm install @xrpl-commons/xrpl-connect-vue@rc xrpl-connect@rc xrpl@^4 vue
+npm install @xrpl-commons/xrpl-connect-vue xrpl-connect xrpl@^4 vue
 ```
 
 ## Usage
@@ -53,8 +53,8 @@ const { ready, open } = useWalletModal();
 
 ## Strict CSP
 
-After RC2 (unreleased), pass the current response's server-generated style nonce before
-mounting: `<WalletConnector :nonce="responseNonce" class="wallet-theme" />`.
+Pass the current response's server-generated style nonce before mounting:
+`<WalletConnector :nonce="responseNonce" class="wallet-theme" />`.
 The native attribute authorizes all connector/portal styles; no Google Fonts are loaded.
 Use an allowed external stylesheet for static themes and keep `style-src-attr 'none'`.
 See the [CSP policy, nonce lifecycle, and wallet-specific limits](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/docs/guide/production.md#strict-content-security-policy).

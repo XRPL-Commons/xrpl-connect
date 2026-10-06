@@ -49,10 +49,10 @@ pnpm install
 ```
 
 The monorepo uses workspace links. When copying this example into a standalone project, install
-the published release candidates explicitly:
+the published stable packages explicitly:
 
 ```bash
-pnpm add @xrpl-commons/xrpl-connect-react@rc xrpl-connect@rc xrpl@^4 react react-dom
+pnpm add @xrpl-commons/xrpl-connect-react xrpl-connect xrpl@^4 react react-dom
 ```
 
 ### 4. Run Development Server
@@ -204,7 +204,7 @@ Ensure your WalletConnect Project ID is valid and your internet connection is st
 
 ### TypeScript errors
 
-Install both `@xrpl-commons/xrpl-connect-react@rc` and `xrpl-connect@rc`, and import the provider, hooks, and
+Install both `@xrpl-commons/xrpl-connect-react` and `xrpl-connect`, and import the provider, hooks, and
 component from `@xrpl-commons/xrpl-connect-react`. The package supplies its own declarations; no custom JSX
 declaration is required.
 

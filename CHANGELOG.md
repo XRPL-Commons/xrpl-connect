@@ -7,11 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-06
+
 ### Added
 
 - New adapter `@xrpl-connect/adapter-ghostsig`: sign with GHOSTSIG, a hosted passkey wallet opened in a popup on ghostsig.dev with no extension and no dependency. Wired into the `xrpl-connect` meta-package (`GhostsigAdapter`, `Adapters.Ghostsig`).
 
 ### Changed
+
+- Publish `xrpl-connect` and the official React/Vue bindings as coordinated stable `1.0.0` packages, with binding peers requiring `xrpl-connect@^1.0.0`.
 
 - Expand the `xrpl` peer range to v3/v4/v5 across core, adapters, and framework bindings, with strict packed-consumer compatibility checks for v5. This does not change the peer metadata of already-published RC2 artifacts.
 
@@ -229,7 +233,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Switch the build to Vite for the meta package.
 - Crossmark adapter: use `signAndSubmitAndWait` and improve `isAvailable`.
 
-[Unreleased]: https://github.com/XRPL-Commons/xrpl-connect/compare/v1.0.0-rc.2...HEAD
+[Unreleased]: https://github.com/XRPL-Commons/xrpl-connect/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/XRPL-Commons/xrpl-connect/compare/v1.0.0-rc.2...v1.0.0
 [1.0.0-rc.2]: https://github.com/XRPL-Commons/xrpl-connect/compare/v1.0.0-rc.1...v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/XRPL-Commons/xrpl-connect/compare/v1.0.0-rc.0...v1.0.0-rc.1
 [1.0.0-rc.0]: https://github.com/XRPL-Commons/xrpl-connect/compare/v0.8.2...v1.0.0-rc.0
