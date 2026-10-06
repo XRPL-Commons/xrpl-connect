@@ -7,10 +7,10 @@ description: A framework-agnostic wallet connection toolkit for the XRP Ledger w
 <DownloadLLMsFullDoc />
 
 ::: info Current release channel
-This documentation tracks the 1.0.0 API. The currently installable candidate is `1.0.0-rc.1` under the npm `rc` tag; each package's existing `latest` tag remains unchanged until coordinated stable promotion.
+This documentation tracks the stable 1.0.0 API. The coordinated `xrpl-connect`, React, and Vue packages are available from npm's default stable channel.
 :::
 
-XRPL Connect is a typed wallet layer for XRP Ledger applications. The v1.0 release candidate combines a framework-agnostic manager, eight wallet adapters, a customizable web component, and official React and Vue bindings.
+XRPL Connect is a typed wallet layer for XRP Ledger applications. The v1.0 release combines a framework-agnostic manager, nine wallet adapters, a customizable web component, and official React and Vue bindings.
 
 ## What is XRPL-Connect?
 

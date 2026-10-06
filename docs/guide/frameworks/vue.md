@@ -11,13 +11,13 @@ in the application.
 ## Installation
 
 ```bash
-npm install @xrpl-commons/xrpl-connect-vue@rc xrpl-connect@rc xrpl@^4 vue
+npm install @xrpl-commons/xrpl-connect-vue xrpl-connect xrpl@^4 vue
 ```
 
 ## Configure the plugin
 
-The install command selects the prerelease channel; see
-[release-channel guidance](/guide/getting-started#release-channel) for stable v1 migration.
+The install command selects the coordinated stable v1 packages. Keep the Vue binding and
+`xrpl-connect` on the same release line.
 
 Import adapters from `xrpl-connect` in the browser entry point. Evaluating that package entry
 also registers the wallet connector custom element. Then install the Vue plugin before mounting

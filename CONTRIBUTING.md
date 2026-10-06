@@ -177,13 +177,14 @@ The three coordinated artifacts are `xrpl-connect`,
 framework packages' `xrpl-connect` peer ranges must move together. Standalone core, UI, and adapter
 packages remain on their independently versioned modular line.
 
-Publication runs through the protected `npm` GitHub environment in `release.yaml`. Configure each
+The automated release path uses the `npm` GitHub environment in `release.yaml`. Configure each
 package's npm trusted publisher for `XRPL-Commons/xrpl-connect`, workflow `release.yaml`, environment
 `npm`, and the `npm publish` action. `NPM_READ_TOKEN` must be read-only and is exposed only to the
 access/ownership preflight. `NPM_DIST_TAG_TOKEN` must be a granular token limited to these packages;
-it is exposed only to the resumable `dist-tag` operations that npm OIDC does not support. Artifact
-uploads run without either token through npm's OIDC trusted publisher and emit provenance. Keep
-environment approval enabled.
+it is exposed only to the resumable `dist-tag` operations, which the workflow's pinned npm 11.6.2
+does not authenticate through OIDC. Artifact uploads run without either token through npm's OIDC
+trusted publisher and emit provenance. Configure required reviewers on that environment before
+using the automated path.
 
 Before dispatching a release:
 
@@ -225,6 +226,103 @@ under the temporary `release` tag. It verifies the immutable integrity of all th
 artifacts before moving the first `latest` tag, promotes all three packages, removes the temporary
 tag, and verifies the final coordinated state while preserving `rc`. An interrupted upload or
 promotion is resumed by rerunning the exact workflow input; never repair tags with ad hoc commands.
+
+### Manual local publication
+
+Use this path to publish from your terminal with your npm account instead of configuring GitHub
+Actions credentials. Start from the reviewed release-preparation commit merged into `develop`, with
+a supported Node.js 24 release (24.11 or later) and pnpm 10.18.3. All three package versions must
+be `1.0.0`, and both framework peers must require `xrpl-connect@^1.0.0`.
+
+Set `RELEASE_COMMIT` to the full SHA of the reviewed commit on `develop`. Stop if any command fails;
+do not substitute a newer branch tip without reviewing it.
+
+```bash
+RELEASE_COMMIT="<full reviewed commit SHA>"
+git fetch origin develop
+git switch --detach "$RELEASE_COMMIT"
+test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
+git status --porcelain=v1 --untracked-files=all
+corepack pnpm install --frozen-lockfile
+```
+
+The status command must produce no output. If your normal checkout contains unrelated work, use a
+clean worktree at `RELEASE_COMMIT`. Retain this variable throughout publication; the source tag must
+identify that same commit. Check `pnpm --version` from this checkout: it must report `10.18.3`
+because the release scripts also invoke `pnpm` directly. If it resolves to another version, run
+`corepack enable pnpm` for your active Node installation and check again.
+
+Log in through npm's browser flow. Complete any account or two-factor authentication prompts in
+your own terminal/browser.
+
+```bash
+npm login --auth-type=web --registry=https://registry.npmjs.org/
+npm whoami --registry=https://registry.npmjs.org/
+```
+
+The commands below use the npm user config written by `npm login`. They clear release-token
+environment overrides so a stale CI token cannot override that login. Local publication does not
+produce the GitHub Actions provenance attestation.
+
+First run the read-only access and registry preflight:
+
+```bash
+env -u NODE_AUTH_TOKEN -u NPM_TOKEN -u NPM_READ_TOKEN -u NPM_DIST_TAG_TOKEN \
+  NPM_CONFIG_PROVENANCE=false \
+  corepack pnpm --filter xrpl-connect run verify:release:preflight
+```
+
+It verifies membership in `xrpl-commons`, ownership of `xrpl-connect`, and that the current npm tags
+allow the coordinated release. Resolve any failure before publishing.
+
+The following command **publishes all three npm packages**. It first repeats the full packed-consumer
+checks, then stages, verifies, and promotes the artifacts together:
+
+```bash
+env -u NODE_AUTH_TOKEN -u NPM_TOKEN -u NPM_READ_TOKEN -u NPM_DIST_TAG_TOKEN \
+  NPM_CONFIG_PROVENANCE=false \
+  corepack pnpm --filter xrpl-connect run publish:stable -- --confirm 1.0.0
+```
+
+Answer any npm authentication prompts interactively. If an upload or tag operation is interrupted,
+rerun the same command from the same clean commit. The publisher reuses matching artifacts and
+rejects integrity mismatches. Do not overwrite versions or manually move tags to bypass a failure.
+
+Verify the final npm state:
+
+```bash
+env -u NODE_AUTH_TOKEN -u NPM_TOKEN -u NPM_READ_TOKEN -u NPM_DIST_TAG_TOKEN \
+  corepack pnpm --filter xrpl-connect run verify:release:registry
+```
+
+All three packages must have `latest` pointing to `1.0.0`, their previous `rc` tags preserved, and no
+temporary `release` tag. Only after this verification succeeds, create `v1.0.0` at the recorded source
+commit and create the GitHub Release. If the tag already exists, verify it identifies that commit;
+never force-move it.
+
+```bash
+if ! git show-ref --verify --quiet refs/tags/v1.0.0; then
+  git tag --annotate v1.0.0 "$RELEASE_COMMIT" --message "XRPL Connect 1.0.0"
+fi
+test "$(git rev-parse 'v1.0.0^{commit}')" = "$RELEASE_COMMIT" &&
+  git push origin refs/tags/v1.0.0
+```
+
+Stop if the tag check or push fails. Once the remote tag is confirmed, create the GitHub Release
+if it does not already exist; otherwise inspect the existing release.
+
+```bash
+if gh release view v1.0.0; then
+  echo "Review the existing v1.0.0 release above."
+else
+  gh release create v1.0.0 --verify-tag --title v1.0.0 --generate-notes --latest
+fi
+```
+
+Local npm publication and creating a GitHub Release do not trigger Pages deployment. The current
+Pages workflow accepts only `workflow_call` from `release.yaml`. Documentation deployment therefore
+requires the configured automated release workflow to verify/resume the same release, or a separately
+reviewed manual Pages entry point. Keep the documentation source pinned to `v1.0.0`.
 
 ### Live wallet validation
 

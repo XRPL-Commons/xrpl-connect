@@ -38,8 +38,8 @@ Supply a custom `StorageAdapter` when local storage is inappropriate, or `Memory
 
 ## xrpl.js compatibility
 
-The upcoming SDK release accepts `xrpl` v3, v4, and v5; RC2 published before this
-change accepts v3/v4. V5 requires Node.js 20.19 or newer, consistent with this
+The stable SDK release accepts `xrpl` v3, v4, and v5; `1.0.0-rc.2` artifacts published before this
+change accepted v3/v4. V5 requires Node.js 20.19 or newer, consistent with this
 repository's supported Node release lines. The supported peer range does not make
 the upstream major versions interchangeable for application-owned code: v5 changes
 seed/mnemonic key derivation defaults and client network discovery error handling.
@@ -94,9 +94,10 @@ WalletConnect pairing URIs: they contain a pairing secret.
 
 ## Strict Content Security Policy
 
-::: warning Release availability
-Nonce support is an unreleased change after `1.0.0-rc.2`. RC2's official UI does not
-support this setup; use the headless API there or test a build containing this change.
+::: info Historical RC2 behavior
+Nonce support is available in stable v1. The `1.0.0-rc.2` candidate's official UI did not
+support this setup; applications still running that candidate should use the headless API or
+upgrade before enabling nonce-authorized styles.
 :::
 
 The official connector supports nonce-authorized styles without `unsafe-inline` or
@@ -194,10 +195,10 @@ The returned `account.network` and `getNetwork()` retain the network context est
 from OAuth user information at connection or restoration. That information may itself
 come from a saved session. Reconnecting is therefore not proof of the current selection.
 
-The OAuth ping schema does not declare `network_endpoint` or `network_id`. The adapter
-ignores these extensions rather than changing its signing target or failing on partial
-metadata. **This behavior is unreleased after RC2**: RC2 attempted to parse those fields,
-which could cause spurious refresh failures or misleading network updates.
+The OAuth ping schema does not declare `network_endpoint` or `network_id`. The stable adapter
+ignores these extensions rather than changing its signing target or failing on partial metadata.
+RC2 attempted to parse those fields, which could cause spurious refresh failures or misleading
+network updates.
 
 - A valid session subject refreshes the account while retaining the session network.
 - No authenticated subject returns `null`; the manager clears the session.

@@ -9,7 +9,7 @@
 ## ✨ Features
 
 - **Framework Agnostic** - Works with Vanilla JS, React, Vue, and any other framework
-- **Multiple Wallets** - Support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap
+- **Multiple Wallets** - Support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, GHOSTSIG, Otsu, and MetaMask Snap
 - **Modular Architecture** - Install only what you need
 - **Type Safe** - Full TypeScript support with comprehensive type definitions
 - **Event Driven** - Reactive architecture for connection state changes
@@ -22,7 +22,7 @@ The `xrpl-connect` package includes everything you need:
 
 - **Core**: Wallet management, event system, and state persistence
 - **UI**: Beautiful pre-built web component with QR codes and wallet selection
-- **Adapters**: All eight XRPL wallet adapters (Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, Otsu, and MetaMask Snap)
+- **Adapters**: All nine XRPL wallet adapters (Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, GHOSTSIG, Otsu, and MetaMask Snap)
 
 ## Documentation
 
@@ -33,7 +33,7 @@ Please read the documentation here [DOCS](https://xrpl-commons.github.io/xrpl-co
 ### Installation
 
 ```bash
-npm install xrpl-connect@rc xrpl@^4
+npm install xrpl-connect xrpl@^4
 ```
 
 That's it! Everything you need in one package.
