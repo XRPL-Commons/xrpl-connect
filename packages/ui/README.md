@@ -32,7 +32,7 @@ A Web Component is a reusable, encapsulated HTML element built using the Web Com
 ### Basic Usage
 
 ```html
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head></head>
   <body>

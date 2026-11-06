@@ -65,7 +65,7 @@
     "@xrpl-connect/core": "workspace:*",
     "jsdom": "^22.1.0",
     "typescript": "^5.5.0",
-    "vue": "^3.5.22",
+    "vue": "^3.5.45",
     "xrpl-connect": "workspace:*"
   }
 }

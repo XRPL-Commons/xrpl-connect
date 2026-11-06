@@ -29,7 +29,7 @@ The example includes detailed setup instructions, best practices for React integ
 Complete example with wallet connection and transaction signing:
 
 ```html
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <meta charset="UTF-8" />
@@ -401,7 +401,7 @@ Define themes globally for consistent application-wide styling:
 Complete example integrating Ledger hardware wallet:
 
 ```html
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <title>XRPL-Connect Ledger Example</title>
