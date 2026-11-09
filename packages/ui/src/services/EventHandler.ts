@@ -131,6 +131,13 @@ export class EventHandler {
       });
     });
 
+    overlayRoot?.querySelectorAll('[data-social-login-retry-id]').forEach((button: Element) => {
+      this.add(button, 'click', () => {
+        const adapterId = (button as HTMLElement).dataset.socialLoginRetryId;
+        if (adapterId) this.component.retrySocialLoginDiscovery(adapterId);
+      });
+    });
+
     // Social-login group button (in the wallet list)
     this.add(overlayRoot?.querySelector('#social-login-button'), 'click', () => {
       this.component.showSocialLoginList();
@@ -223,6 +230,19 @@ export class EventHandler {
 
     // Back button (social-login chooser, in overlay portal)
     this.add(overlayRoot?.querySelector('#social-login-back-button'), 'click', () => {
+      this.component.showWalletList();
+    });
+
+    // Authentication prompt form controls (in overlay portal)
+    this.add(overlayRoot?.querySelector('#auth-prompt-form'), 'submit', (event: Event) => {
+      event.preventDefault();
+      void this.component.submitAuthPrompt();
+    });
+    this.add(overlayRoot?.querySelector('#auth-prompt-secondary-button'), 'click', () => {
+      void this.component.runAuthPromptSecondaryAction();
+    });
+    this.add(overlayRoot?.querySelector('#auth-prompt-cancel-button'), 'click', () => {
+      this.component.cancelAuthPrompt();
       this.component.showWalletList();
     });
 

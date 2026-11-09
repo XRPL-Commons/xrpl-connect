@@ -4,3 +4,4 @@ export * from './LoadingView';
 export * from './ErrorView';
 export * from './AccountSelectionView';
 export * from './AccountModal';
+export * from './AuthPromptView';

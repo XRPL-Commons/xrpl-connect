@@ -77,12 +77,23 @@ function createSocialLoginGroupButton(): HTMLButtonElement {
   return button;
 }
 
+export interface SocialLoginDiscoveryErrorView {
+  readonly adapterId: string;
+  readonly adapterName: string;
+}
+
+export interface SocialLoginViewOptions {
+  readonly loading?: boolean;
+  readonly errors?: readonly SocialLoginDiscoveryErrorView[];
+}
+
 export function renderWalletListView(
   primaryWallet: WalletAdapter | null,
   otherWallets: WalletAdapter[],
   unavailableWalletIds: ReadonlySet<string> = new Set(),
   loading = false,
-  socialLogins: readonly SocialLogin[] = []
+  socialLogins: readonly SocialLogin[] = [],
+  socialLoginAvailable = false
 ): DocumentFragment {
   const view = createStaticView`
       <div class="header">
@@ -112,7 +123,12 @@ export function renderWalletListView(
   }
 
   if (primaryWallet) content.prepend(createWalletButton(primaryWallet, true));
-  if (!primaryWallet && otherWallets.length === 0 && socialLogins.length === 0) {
+  if (
+    !primaryWallet &&
+    otherWallets.length === 0 &&
+    socialLogins.length === 0 &&
+    !socialLoginAvailable
+  ) {
     const emptyMessage = document.createElement('p');
     emptyMessage.className = 'wallet-empty';
     emptyMessage.textContent = 'No wallets are currently available.';
@@ -125,13 +141,18 @@ export function renderWalletListView(
           : createWalletButton(wallet, false)
       );
     }
-    if (socialLogins.length > 0) walletList.append(createSocialLoginGroupButton());
+    if (socialLoginAvailable || socialLogins.length > 0) {
+      walletList.append(createSocialLoginGroupButton());
+    }
   }
 
   return view;
 }
 
-export function renderSocialLoginView(socialLogins: readonly SocialLogin[]): DocumentFragment {
+export function renderSocialLoginView(
+  socialLogins: readonly SocialLogin[],
+  options: SocialLoginViewOptions = {}
+): DocumentFragment {
   const view = createStaticView`
       <div class="header">
         <div class="header-with-back">
@@ -153,8 +174,36 @@ export function renderSocialLoginView(socialLogins: readonly SocialLogin[]): Doc
   );
 
   const walletList = getViewElement(view, '.wallet-list');
+  const content = getViewElement(view, '.content');
+  content.setAttribute('aria-busy', String(options.loading ?? false));
+  if (options.loading) {
+    const loading = document.createElement('p');
+    loading.className = 'wallet-empty social-login-loading';
+    loading.setAttribute('role', 'status');
+    loading.textContent = 'Loading available sign-in methods…';
+    walletList.append(loading);
+  }
   for (const socialLogin of socialLogins) {
     walletList.append(createSocialLoginButton(socialLogin));
+  }
+  for (const error of options.errors ?? []) {
+    const errorRow = document.createElement('div');
+    errorRow.className = 'social-login-discovery-error';
+    const message = document.createElement('p');
+    message.textContent = `Unable to load sign-in methods for ${error.adapterName}.`;
+    const retry = document.createElement('button');
+    retry.className = 'error-button error-button-secondary';
+    retry.type = 'button';
+    retry.dataset.socialLoginRetryId = error.adapterId;
+    retry.textContent = 'Try again';
+    errorRow.append(message, retry);
+    walletList.append(errorRow);
+  }
+  if (!options.loading && socialLogins.length === 0 && (options.errors ?? []).length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'wallet-empty';
+    empty.textContent = 'No social sign-in methods are currently available.';
+    walletList.append(empty);
   }
   return view;
 }

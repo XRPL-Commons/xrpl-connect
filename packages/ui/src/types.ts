@@ -16,6 +16,13 @@ import type {
   WalletManager,
 } from '@xrpl-connect/core';
 
+export type WalletLoginMethod = Awaited<
+  ReturnType<NonNullable<WalletAdapter['getLoginMethods']>>
+>[number];
+type WalletAuthPromptCallback = Parameters<NonNullable<WalletAdapter['onAuthPrompt']>>[0];
+export type WalletAuthPrompt = Exclude<Parameters<WalletAuthPromptCallback>[0], null>;
+export type WalletAuthField = NonNullable<WalletAuthPrompt['fields']>[number];
+
 /**
  * A user-configured social sign-in method backed by a registered wallet
  * adapter. Multiple methods may intentionally point at the same adapter.
@@ -108,6 +115,16 @@ export interface WalletConnectorContext extends HTMLElement {
   disconnectFromAccountModal(): Promise<void> | void;
   connectSocialLogin(socialLoginId: string): void;
   showSocialLoginList(): void;
+  retrySocialLoginDiscovery(adapterId: string): void;
+  showAuthPrompt(
+    prompt: WalletAuthPrompt,
+    walletId: string,
+    walletName: string,
+    walletIcon?: string
+  ): void;
+  submitAuthPrompt(): Promise<void>;
+  runAuthPromptSecondaryAction(): Promise<void>;
+  cancelAuthPrompt(): void;
 
   showQRCodeView(walletId: string, uri?: string): void;
   showLoadingView(walletId: string, walletName: string, walletIcon?: string): void;

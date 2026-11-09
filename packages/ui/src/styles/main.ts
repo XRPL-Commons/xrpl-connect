@@ -317,6 +317,107 @@ export const mainStyles = `
     color: var(--xc-text-muted-color);
   }
 
+  .social-login-discovery-error {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: var(--xc-secondary-button-border-radius);
+    background: var(--xc-background-secondary);
+    color: var(--xc-text-muted-color);
+    font-size: 14px;
+  }
+
+  .social-login-discovery-error p {
+    flex: 1;
+    line-height: 1.4;
+  }
+
+  .social-login-discovery-error .error-button {
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .auth-prompt-view {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 8px 0 20px;
+  }
+
+  .auth-prompt-description {
+    color: var(--xc-text-muted-color);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .auth-prompt-link {
+    color: var(--xc-primary-color);
+    font-size: 14px;
+    text-decoration: underline;
+  }
+
+  .auth-prompt-qr-container {
+    display: flex;
+    justify-content: center;
+  }
+
+  .auth-prompt-qr {
+    width: 220px;
+    height: 220px;
+    object-fit: contain;
+    border-radius: 12px;
+    background: #fff;
+    padding: 12px;
+  }
+
+  .auth-prompt-captcha {
+    display: flex;
+    justify-content: center;
+    min-height: 0;
+  }
+
+  .auth-prompt-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    color: var(--xc-text-color);
+    font-size: 14px;
+    font-weight: ${FONT_WEIGHTS.MEDIUM};
+  }
+
+  .auth-prompt-field input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--xc-background-tertiary);
+    border-radius: var(--xc-secondary-button-border-radius);
+    background: var(--xc-background-secondary);
+    color: var(--xc-text-color);
+    font-size: 16px;
+  }
+
+  .auth-prompt-field input:focus {
+    outline: 2px solid var(--xc-focus-color);
+    outline-offset: 1px;
+  }
+
+  .auth-prompt-error {
+    color: var(--xc-danger-color);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .auth-prompt-actions {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .auth-prompt-actions .error-button {
+    flex: 1;
+  }
+
   .qr-view {
     display: flex;
     flex-direction: column;
