@@ -12,15 +12,15 @@ separate operations:
   It connects only after the wallet has a valid XRPL address and matching public
   key. This is not an Ethereum address presented as an XRPL account.
 - Existing external wallets continue to use XRPL Connect's other adapters.
-  The integration renders only the social methods supplied by the application;
-  it never opens Privy's external-wallet login or connection screens.
+  Privy's external-wallet login options are excluded from the social chooser.
 
 ## Configuration
 
-Enable the desired OAuth providers in the Privy dashboard, configure the app's
+Enable the desired login methods in the Privy dashboard, configure the app's
 allowed origin and callback URL, and obtain its public app ID. Supply a client ID
-when using a specific Privy client. The provider list in your application must
-match the providers enabled in Privy.
+when using a specific Privy client. The adapter fetches the dashboard settings
+every time **Sign in with socials** opens. There is no provider list to duplicate
+in application code or environment variables.
 
 The integration pins `@privy-io/js-sdk-core` to `0.79.4`. Privy describes this as a
 low-level SDK and asks developers to discuss their use with its team. See the
@@ -40,10 +40,6 @@ const privy = new PrivyAdapter({
   appId: 'YOUR_PUBLIC_APP_ID',
   // clientId: 'YOUR_PUBLIC_CLIENT_ID',
   redirectUri: `${window.location.origin}/wallet/privy`,
-  loginMethods: [
-    { id: 'google', oauthProvider: 'google' },
-    { id: 'apple', oauthProvider: 'apple' },
-  ],
 });
 
 const manager = new WalletManager({
@@ -53,21 +49,6 @@ const manager = new WalletManager({
 });
 const connector = document.querySelector('xrpl-wallet-connector');
 connector.setWalletManager(manager);
-connector.socialLogins = [
-  {
-    id: 'google',
-    label: 'Continue with Google',
-    adapterId: 'privy',
-    connectOptions: { loginMethod: 'google' },
-  },
-  {
-    id: 'apple',
-    label: 'Continue with Apple',
-    adapterId: 'privy',
-    connectOptions: { loginMethod: 'apple' },
-  },
-];
-
 manager.on('connect', (account) => console.log(account.address));
 await manager.reconnect();
 ```
@@ -77,10 +58,32 @@ the first OAuth return even when no manager session has been saved yet. It also
 restores an existing connection. Framework providers can do this automatically
 with `autoConnect: true`.
 
-Without the Privy adapter and `socialLogins`, the normal wallet list is unchanged.
-An unconfigured adapter does not enable social login. Do not instantiate a second
-Privy SDK client alongside this adapter; its client, secure iframe, callback, and
+The wallet picker retains the XRPL wallet options and shows one **Sign in with
+socials** button. Its chooser displays the currently enabled dashboard methods.
+Without a configured Privy adapter, the normal wallet list is unchanged. Do not
+instantiate a second Privy SDK client alongside this adapter; its client, secure iframe, callback, and
 logout lifecycle belong to the adapter.
+
+## Dashboard methods
+
+The chooser supports the dashboard's email and phone authentication, built-in and
+custom OAuth providers, passkeys, Farcaster, and guest login. It shows only enabled
+methods. Phone authentication follows the dashboard's SMS or WhatsApp setting;
+WhatsApp must be enabled for the app. Native Telegram authentication requires the
+signed launch context from a Telegram Mini App and seamless login enabled in the
+dashboard. Telegram OAuth works through the normal redirect flow.
+
+Email and phone login request a verification code inside the connector. Passkeys
+use the browser's credential prompt, and Farcaster shows its authentication link
+and QR code. Closing or backing out of a prompt cancels the active connection.
+When the dashboard requires CAPTCHA, the connector renders the configured
+Turnstile or hCaptcha challenge before sending a verification code.
+
+`loginMethods` is optional. Use it to add an application-specific method, such as
+custom JWT authentication, or override a discovered method with the same ID. The
+default dashboard flow needs no explicit entries. Custom JWT authentication needs
+an application callback to obtain its token; a dashboard switch alone cannot
+provide that callback.
 
 ## Signing and submission
 
@@ -145,7 +148,14 @@ included in this package. See also
 
 ## Custom authentication and other OAuth integrations
 
-The UI's `SocialLogin` contract is backend-independent: `id`, `label`, optional
+Adapters can implement `getLoginMethods()` to supply fresh chooser entries and
+`onAuthPrompt()` to request email, verification codes, or other interactive input.
+These optional contracts are backend-independent. Authentication input stays
+inside the active flow and is never included in component events or saved manager
+state.
+
+Applications can also supply explicit `socialLogins` entries. The `SocialLogin`
+contract is backend-independent: `id`, `label`, optional
 `icon`, `adapterId`, and optional `connectOptions`. It calls the selected adapter
 through the manager and never interprets authentication tokens. Use a custom
 adapter for a different authentication backend.
@@ -178,17 +188,16 @@ Do not place tokens in `connectOptions`, attributes, or event details.
 
 ## Vue and React
 
-Create the same `privy` adapter and `socialLogins` descriptors shown above once,
-and include the adapter in your provider configuration.
+Create the same `privy` adapter shown above once and include it in your provider
+configuration. The connector discovers the dashboard methods automatically.
 
 ```vue
 <script setup>
 import { WalletConnector } from '@xrpl-commons/xrpl-connect-vue';
-import { socialLogins } from './wallet-config';
 </script>
 
 <template>
-  <WalletConnector :social-logins="socialLogins" />
+  <WalletConnector />
 </template>
 ```
 
@@ -198,18 +207,18 @@ consumer component in the client-only boundary.
 
 ```jsx
 import { XrplConnectProvider, WalletConnector } from '@xrpl-commons/xrpl-connect-react';
-import { config, socialLogins } from './wallet-config';
+import { config } from './wallet-config';
 
 export function App() {
   return (
     <XrplConnectProvider config={config}>
-      <WalletConnector socialLogins={socialLogins} />
+      <WalletConnector />
     </XrplConnectProvider>
   );
 }
 ```
 
-Keep `config`, its adapter instances, and `socialLogins` stable across renders.
+Keep `config` and its adapter instances stable across renders.
 React is used only by the consuming React application; it is not a dependency of
 this adapter or XRPL Connect's web component.
 

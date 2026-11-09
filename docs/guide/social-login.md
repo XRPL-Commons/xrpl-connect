@@ -10,14 +10,16 @@ do not load React. No application backend or Privy app secret is needed for the
 built-in OAuth flow. Applications using custom JWT authentication supply their
 own existing authentication service.
 
-Configure only the social methods you want to offer. The integration does not
-render Privy's “connect wallet” or “use your own wallet” options. External wallets
+Enable the desired authentication methods in the Privy dashboard. The integration
+does not render Privy's “connect wallet” or “use your own wallet” options. External wallets
 continue to connect through the other XRPL Connect adapters.
 
-When at least one configured method is available, the wallet picker shows a single
-`Sign in with socials` entry. Selecting it opens the configured provider choices;
-only descriptors whose adapter is registered, configured, and available are shown.
-Use the chooser's back button to return to the normal wallet list.
+With a configured Privy adapter, the wallet picker shows one **Sign in with
+socials** button alongside the XRPL wallet options. Opening it fetches the current
+Privy dashboard settings and displays the enabled authentication methods. Changes
+to those settings take effect the next time the chooser opens; no provider list
+needs to be maintained in code or environment variables. Use the chooser's back
+button to return to the normal wallet list.
 
 ```js
 import { WalletManager, CrossmarkAdapter } from 'xrpl-connect';
@@ -29,7 +31,6 @@ const manager = new WalletManager({
     new PrivyAdapter({
       appId: 'YOUR_PUBLIC_APP_ID',
       redirectUri: `${window.location.origin}/wallet/privy`,
-      loginMethods: [{ id: 'google', oauthProvider: 'google' }],
     }),
   ],
   network: 'testnet',
@@ -37,26 +38,19 @@ const manager = new WalletManager({
 });
 const connector = document.querySelector('xrpl-wallet-connector');
 connector.setWalletManager(manager);
-connector.socialLogins = [
-  {
-    id: 'google',
-    label: 'Continue with Google',
-    adapterId: 'privy',
-    connectOptions: { loginMethod: 'google' },
-  },
-];
 await manager.reconnect();
 ```
 
-Enable Google in the Privy dashboard and allow your application origin and
-callback URL. Serve the same application at `/wallet/privy`. Add the public client
-ID if your Privy app uses a specific client. Never expose an app secret.
+Allow your application origin and callback URL in the Privy dashboard. Serve the
+same application at `/wallet/privy`. Add the public client ID if your Privy app uses a specific client. Never expose an app secret.
 
-`socialLogins` is a JavaScript property, not an HTML attribute. The React wrapper
-accepts `socialLogins={entries}`, and Vue accepts `:social-logins="entries"`.
+For another authentication backend or explicit application entries, `socialLogins`
+is a JavaScript property, not an HTML attribute. Privy does not require it. The
+React wrapper accepts `socialLogins={entries}`, and Vue accepts `:social-logins="entries"`.
 Descriptors can select any registered adapter, so custom OAuth backends can use
-the same UI and manager lifecycle. When social login is not configured, the
-existing wallet list behaves as before. Provider labels are used only in the
+the same UI and manager lifecycle. Adapters can also provide `getLoginMethods()`
+for dynamic discovery and `onAuthPrompt()` for interactive authentication input.
+When social login is not configured, the existing wallet list behaves as before. Provider labels are used only in the
 chooser; connection options stay internal to the component and are passed to the
 selected adapter for retries.
 

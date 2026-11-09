@@ -44,6 +44,7 @@
   "dependencies": {
     "@noble/curves": "^1.9.7",
     "@privy-io/js-sdk-core": "0.79.4",
+    "@privy-io/routes": "0.5.0",
     "viem": "^2.57.8"
   },
   "peerDependencies": {

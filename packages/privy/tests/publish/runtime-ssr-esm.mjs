@@ -11,9 +11,11 @@ assert.equal(typeof api.PrivyAdapter, 'function');
 const adapter = new api.PrivyAdapter({
   appId: 'publish-smoke-test',
   redirectUri: 'https://example.test/wallet/privy',
-  loginMethods: [{ id: 'google', oauthProvider: 'google' }],
 });
 assert.equal(await adapter.isAvailable(), false);
+assert.deepEqual(adapter.getMissingConfiguration(), []);
+assert.equal(typeof adapter.getLoginMethods, 'function');
+assert.equal(typeof adapter.onAuthPrompt, 'function');
 
 const require = createRequire(import.meta.url);
 assert.throws(() => require.resolve('react'), /Cannot find module/);

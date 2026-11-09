@@ -2,16 +2,11 @@ import { WalletManager, CrossmarkAdapter, GemWalletAdapter } from 'xrpl-connect'
 import { PrivyAdapter } from '@xrpl-commons/xrpl-connect-privy';
 
 const appId = import.meta.env.VITE_PRIVY_APP_ID;
-const providers = (import.meta.env.VITE_PRIVY_PROVIDERS || 'google')
-  .split(',')
-  .map((value) => value.trim())
-  .filter(Boolean);
 const privy = appId
   ? new PrivyAdapter({
       appId,
       clientId: import.meta.env.VITE_PRIVY_CLIENT_ID || undefined,
       redirectUri: `${window.location.origin}/wallet/privy`,
-      loginMethods: providers.map((provider) => ({ id: provider, oauthProvider: provider })),
     })
   : undefined;
 
@@ -22,15 +17,6 @@ const manager = new WalletManager({
 });
 const connector = document.querySelector('xrpl-wallet-connector');
 connector.setWalletManager(manager);
-connector.socialLogins = privy
-  ? providers.map((provider) => ({
-      id: provider,
-      label: `Continue with ${provider[0].toUpperCase()}${provider.slice(1)}`,
-      adapterId: 'privy',
-      connectOptions: { loginMethod: provider },
-    }))
-  : [];
-
 const result = document.querySelector('#result');
 const configuration = document.querySelector('#configuration');
 configuration.textContent = privy

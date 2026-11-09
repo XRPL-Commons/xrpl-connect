@@ -256,6 +256,7 @@ export interface WalletAuthPrompt {
   description?: string;
   fields?: readonly WalletAuthField[];
   url?: string;
+  /** Authentication payload to encode as a QR code, such as a sign-in URL. */
   qrCode?: string;
   /** The UI supplies the completed challenge token as `values.captchaToken`. */
   captcha?: { provider: 'turnstile' | 'hcaptcha'; siteKey: string };

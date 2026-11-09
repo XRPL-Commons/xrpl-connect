@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vp dev --port 5175 --strictPort",
+    "dev": "vp dev --host 127.0.0.1 --port 5176 --strictPort",
     "build": "vp build"
   },
   "dependencies": {
