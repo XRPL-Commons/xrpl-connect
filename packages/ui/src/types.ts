@@ -107,6 +107,7 @@ export interface WalletConnectorContext extends HTMLElement {
   closeAccountModal(): void;
   disconnectFromAccountModal(): Promise<void> | void;
   connectSocialLogin(socialLoginId: string): void;
+  showSocialLoginList(): void;
 
   showQRCodeView(walletId: string, uri?: string): void;
   showLoadingView(walletId: string, walletName: string, walletIcon?: string): void;

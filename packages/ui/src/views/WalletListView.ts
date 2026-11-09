@@ -67,6 +67,16 @@ function createSocialLoginButton(socialLogin: SocialLogin): HTMLButtonElement {
   return button;
 }
 
+function createSocialLoginGroupButton(): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.className = 'wallet-button social-login-group-button';
+  button.id = 'social-login-button';
+  button.type = 'button';
+  button.setAttribute('aria-haspopup', 'dialog');
+  button.textContent = 'Sign in with socials';
+  return button;
+}
+
 export function renderWalletListView(
   primaryWallet: WalletAdapter | null,
   otherWallets: WalletAdapter[],
@@ -115,10 +125,36 @@ export function renderWalletListView(
           : createWalletButton(wallet, false)
       );
     }
-    for (const socialLogin of socialLogins) {
-      walletList.append(createSocialLoginButton(socialLogin));
-    }
+    if (socialLogins.length > 0) walletList.append(createSocialLoginGroupButton());
   }
 
+  return view;
+}
+
+export function renderSocialLoginView(socialLogins: readonly SocialLogin[]): DocumentFragment {
+  const view = createStaticView`
+      <div class="header">
+        <div class="header-with-back">
+          <button class="back-button" id="social-login-back-button" aria-label="Back to wallets">
+            ←
+          </button>
+          <h2 class="title" id="wallet-dialog-title">Sign in with socials</h2>
+        </div>
+        <button class="close-button" aria-label="Close">×</button>
+      </div>
+
+      <div class="content" role="region" aria-label="Social sign-in methods" tabindex="0">
+        <div class="wallet-list"></div>
+      </div>
+    `;
+  getViewElement(view, '.close-button').setAttribute(
+    'part',
+    WALLET_CONNECTOR_PARTS.walletModal.closeButton
+  );
+
+  const walletList = getViewElement(view, '.wallet-list');
+  for (const socialLogin of socialLogins) {
+    walletList.append(createSocialLoginButton(socialLogin));
+  }
   return view;
 }

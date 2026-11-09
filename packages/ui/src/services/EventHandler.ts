@@ -131,6 +131,11 @@ export class EventHandler {
       });
     });
 
+    // Social-login group button (in the wallet list)
+    this.add(overlayRoot?.querySelector('#social-login-button'), 'click', () => {
+      this.component.showSocialLoginList();
+    });
+
     // Install buttons for unavailable wallets — open the wallet's download page.
     overlayRoot?.querySelectorAll('[data-install-url]').forEach((button: Element) => {
       this.add(button, 'click', () => {
@@ -213,6 +218,11 @@ export class EventHandler {
 
     // Account selection back button (in overlay portal)
     this.add(overlayRoot?.querySelector('#account-selection-back-button'), 'click', () => {
+      this.component.showWalletList();
+    });
+
+    // Back button (social-login chooser, in overlay portal)
+    this.add(overlayRoot?.querySelector('#social-login-back-button'), 'click', () => {
       this.component.showWalletList();
     });
 

@@ -35,6 +35,7 @@ import {
   renderErrorView,
   renderAccountSelectionView,
   renderAccountModal,
+  renderSocialLoginView,
 } from './views';
 import { replaceViewChildren } from './views/dom';
 import { WalletService, EventHandler, type CancelledConnectionAttempt } from './services';
@@ -152,7 +153,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private primaryWalletId: string | null = null;
     private socialLoginInput: readonly SocialLogin[] = [];
     private validatedSocialLogins: readonly SocialLogin[] = [];
-    private viewState: 'list' | 'qr' | 'loading' | 'error' | 'account-selection' = 'list';
+    private viewState: 'list' | 'social-login' | 'qr' | 'loading' | 'error' | 'account-selection' =
+      'list';
     public qrCodeData: QRCodeData | null = null;
     private loadingData: LoadingData | null = null;
     public errorData: ErrorData | null = null;
@@ -719,6 +721,21 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       );
     }
 
+    private getAvailableSocialLogins(): SocialLogin[] {
+      return this.validatedSocialLogins.filter((login) =>
+        this.availableWallets.some((wallet) => wallet.id === login.adapterId)
+      );
+    }
+
+    private createSocialLoginView(): DocumentFragment {
+      const socialLogins = this.getAvailableSocialLogins();
+      if (socialLogins.length === 0) {
+        this.viewState = 'list';
+        return this.createWalletListView();
+      }
+      return renderSocialLoginView(socialLogins);
+    }
+
     /** localStorage key holding the most-recently-used wallet ids (newest first). */
     private static readonly MRU_STORAGE_KEY = 'xrpl-connect:mru-wallets';
 
@@ -912,6 +929,18 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         label: socialLogin.label,
         icon: socialLogin.icon ?? wallet.icon,
       });
+    }
+
+    /**
+     * Show the configured social-login methods without exposing their adapter
+     * rows in the main wallet list.
+     */
+    public showSocialLoginList(): void {
+      const socialLogins = this.getAvailableSocialLogins();
+      if (socialLogins.length === 0) return;
+      this.clearWalletAvailabilityTimer();
+      this.viewState = 'social-login';
+      this.render();
     }
 
     /**
@@ -1401,6 +1430,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           this.accountSelectionData.walletIcon,
           this.accountSelectionData.accounts
         );
+      } else if (this.viewState === 'social-login') {
+        content = this.createSocialLoginView();
       } else {
         content = this.createWalletListView();
       }

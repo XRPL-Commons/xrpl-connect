@@ -14,6 +14,11 @@ Configure only the social methods you want to offer. The integration does not
 render Privy's “connect wallet” or “use your own wallet” options. External wallets
 continue to connect through the other XRPL Connect adapters.
 
+When at least one configured method is available, the wallet picker shows a single
+`Sign in with socials` entry. Selecting it opens the configured provider choices;
+only descriptors whose adapter is registered, configured, and available are shown.
+Use the chooser's back button to return to the normal wallet list.
+
 ```js
 import { WalletManager, CrossmarkAdapter } from 'xrpl-connect';
 import { PrivyAdapter } from '@xrpl-commons/xrpl-connect-privy';
@@ -51,7 +56,9 @@ ID if your Privy app uses a specific client. Never expose an app secret.
 accepts `socialLogins={entries}`, and Vue accepts `:social-logins="entries"`.
 Descriptors can select any registered adapter, so custom OAuth backends can use
 the same UI and manager lifecycle. When social login is not configured, the
-existing wallet list behaves as before.
+existing wallet list behaves as before. Provider labels are used only in the
+chooser; connection options stay internal to the component and are passed to the
+selected adapter for retries.
 
 After connection, use `manager.sign()` or `manager.signAndSubmit()` with normal
 XRPL transactions. Fund a new account before submission. The Privy adapter

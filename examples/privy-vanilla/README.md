@@ -10,7 +10,8 @@ and no React runtime. It runs entirely in the browser.
    OAuth provider IDs. Never put a Privy app secret in frontend configuration.
 4. From the repository root, run `pnpm install`, `pnpm build`, then
    `pnpm --filter privy-vanilla-example dev`.
-5. Open `http://localhost:5175`, choose a social login, and finish authentication.
+5. Open `http://localhost:5175`, choose **Sign in with socials**, select one of the
+   configured providers, and finish authentication.
    The callback resumes the connection after the embedded XRPL wallet is ready.
 6. Use **Fund testnet wallet**, **Sign transaction**, and **Sign and submit** to
    verify signing and a validated XRPL testnet submission.

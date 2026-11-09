@@ -34,18 +34,33 @@ test('renders two social methods without a duplicate adapter row and preserves e
   const dialog = await openWalletDialog(page);
 
   await expect(
-    dialog.getByRole('button', { name: 'Continue with Google', exact: true })
+    dialog.getByRole('button', { name: 'Sign in with socials', exact: true })
   ).toBeVisible();
-  await expect(
-    dialog.getByRole('button', { name: 'Continue with Apple', exact: true })
-  ).toBeVisible();
-  await expect(dialog.locator('[data-social-login-id]')).toHaveCount(2);
+  await expect(dialog.locator('[data-social-login-id]')).toHaveCount(0);
   await expect(dialog.locator('[data-wallet-id="social-adapter"]')).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'External Wallet', exact: true })).toBeVisible();
 
+  await dialog.getByRole('button', { name: 'Sign in with socials', exact: true }).click();
+  const chooser = page.getByRole('dialog', { name: 'Sign in with socials' });
+  await expect(chooser).toBeVisible();
+  await expect(chooser.getByRole('region', { name: 'Social sign-in methods' })).toBeVisible();
+  await expect(
+    chooser.getByRole('button', { name: 'Continue with Google', exact: true })
+  ).toBeVisible();
+  await expect(
+    chooser.getByRole('button', { name: 'Continue with Apple', exact: true })
+  ).toBeVisible();
+  await expect(chooser.locator('[data-social-login-id]')).toHaveCount(2);
+  await expect(chooser.getByRole('button', { name: /Facebook/i })).toHaveCount(0);
+  await chooser.getByRole('button', { name: 'Back to wallets', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Connect Wallet' })).toBeVisible();
+
   await page.evaluate(() => window.clearSocialLogins());
-  await expect(dialog.getByRole('button', { name: 'Social Adapter', exact: true })).toBeVisible();
-  await dialog.getByRole('button', { name: 'External Wallet', exact: true }).click();
+  const walletDialog = page.getByRole('dialog', { name: 'Connect Wallet' });
+  await expect(
+    walletDialog.getByRole('button', { name: 'Social Adapter', exact: true })
+  ).toBeVisible();
+  await walletDialog.getByRole('button', { name: 'External Wallet', exact: true }).click();
   await expect(page.locator('#state')).toHaveText('connected:rExternal');
 });
 
@@ -54,7 +69,9 @@ test('connects through the manager once and retries the same social login method
 }) => {
   const dialog = await openWalletDialog(page);
 
-  await dialog.getByRole('button', { name: 'Continue with Google', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Sign in with socials', exact: true }).click();
+  const chooser = page.getByRole('dialog', { name: 'Sign in with socials' });
+  await chooser.getByRole('button', { name: 'Continue with Google', exact: true }).click();
   await expect(page.locator('#state')).toHaveText('pending');
   await expect.poll(() => page.evaluate(() => window.getSocialCallCount())).toBe(1);
 
@@ -78,9 +95,14 @@ test('connects through the manager once and retries the same social login method
 test('cancels pending authorization and ignores its late result', async ({ page }) => {
   const dialog = await openWalletDialog(page);
 
-  await dialog.getByRole('button', { name: 'Continue with Apple', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Sign in with socials', exact: true }).click();
+  const chooser = page.getByRole('dialog', { name: 'Sign in with socials' });
+  await chooser.getByRole('button', { name: 'Continue with Apple', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.getSocialCallCount())).toBe(1);
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Connect Wallet' })
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
   await expect(dialog).toBeHidden();
   await expect(page.locator('#state')).toHaveText('idle');
 

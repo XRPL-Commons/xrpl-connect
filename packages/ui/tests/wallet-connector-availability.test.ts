@@ -157,19 +157,16 @@ describe('WalletConnectorElement availability rendering', () => {
     expect(
       connector.getOverlayRoot()?.querySelector('[data-wallet-id="social-adapter"]')
     ).toBeNull();
-    expect(
-      connector.getOverlayRoot()?.querySelector('[data-social-login-id="google"]')
-    ).not.toBeNull();
+    expect(connector.getOverlayRoot()?.querySelector('#social-login-button')).not.toBeNull();
+    expect(connector.getOverlayRoot()?.querySelectorAll('[data-social-login-id]')).toHaveLength(0);
 
     connector.socialLogins = [
       { id: 'apple', label: 'Continue with Apple', adapterId: 'social-adapter' },
     ];
     await vi.waitFor(() =>
-      expect(
-        connector.getOverlayRoot()?.querySelector('[data-social-login-id="apple"]')
-      ).not.toBeNull()
+      expect(connector.getOverlayRoot()?.querySelector('#social-login-button')).not.toBeNull()
     );
-    expect(connector.getOverlayRoot()?.querySelector('[data-social-login-id="google"]')).toBeNull();
+    expect(connector.getOverlayRoot()?.querySelectorAll('[data-social-login-id]')).toHaveLength(0);
   });
 
   it('ignores malformed or unregistered social descriptors without hiding normal wallets', async () => {
