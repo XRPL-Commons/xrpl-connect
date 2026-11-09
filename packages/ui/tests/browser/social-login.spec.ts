@@ -1,0 +1,92 @@
+import { expect, test, type Locator, type Page } from '@playwright/test';
+
+const fixturePath = '/packages/ui/tests/browser/social-login.html';
+
+declare global {
+  interface Window {
+    clearSocialLogins(): void;
+    getManagerConnectCount(): number;
+    getConnectorConnectedCount(): number;
+    getSocialCallCount(): number;
+    getSocialDisconnectCount(): number;
+    getSocialLoginMethods(): Array<string | undefined>;
+    rejectSocial(message?: string): void;
+    resolveSocial(): void;
+  }
+}
+
+async function openWalletDialog(page: Page): Promise<Locator> {
+  await page.goto(fixturePath);
+  await expect(page.locator('body')).toHaveAttribute('data-ready', 'true');
+  await page.getByRole('button', { name: 'Open wallet dialog', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Connect Wallet' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('region', { name: 'Wallet options' })).toHaveAttribute(
+    'aria-busy',
+    'false'
+  );
+  return dialog;
+}
+
+test('renders two social methods without a duplicate adapter row and preserves external wallets', async ({
+  page,
+}) => {
+  const dialog = await openWalletDialog(page);
+
+  await expect(
+    dialog.getByRole('button', { name: 'Continue with Google', exact: true })
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole('button', { name: 'Continue with Apple', exact: true })
+  ).toBeVisible();
+  await expect(dialog.locator('[data-social-login-id]')).toHaveCount(2);
+  await expect(dialog.locator('[data-wallet-id="social-adapter"]')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'External Wallet', exact: true })).toBeVisible();
+
+  await page.evaluate(() => window.clearSocialLogins());
+  await expect(dialog.getByRole('button', { name: 'Social Adapter', exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'External Wallet', exact: true }).click();
+  await expect(page.locator('#state')).toHaveText('connected:rExternal');
+});
+
+test('connects through the manager once and retries the same social login method', async ({
+  page,
+}) => {
+  const dialog = await openWalletDialog(page);
+
+  await dialog.getByRole('button', { name: 'Continue with Google', exact: true }).click();
+  await expect(page.locator('#state')).toHaveText('pending');
+  await expect.poll(() => page.evaluate(() => window.getSocialCallCount())).toBe(1);
+
+  await page.evaluate(() => window.rejectSocial());
+  const errorDialog = page.getByRole('dialog', { name: 'Connection Failed' });
+  await expect(errorDialog).toBeVisible();
+  await expect(errorDialog.getByText('Failed to connect to Continue with Google')).toBeVisible();
+
+  await errorDialog.getByRole('button', { name: 'Try Again', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.getSocialCallCount())).toBe(2);
+  await expect
+    .poll(() => page.evaluate(() => window.getSocialLoginMethods()))
+    .toEqual(['google', 'google']);
+
+  await page.evaluate(() => window.resolveSocial());
+  await expect(page.locator('#state')).toHaveText('connected:rSocial');
+  expect(await page.evaluate(() => window.getManagerConnectCount())).toBe(1);
+  expect(await page.evaluate(() => window.getConnectorConnectedCount())).toBe(1);
+});
+
+test('cancels pending authorization and ignores its late result', async ({ page }) => {
+  const dialog = await openWalletDialog(page);
+
+  await dialog.getByRole('button', { name: 'Continue with Apple', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.getSocialCallCount())).toBe(1);
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('#state')).toHaveText('idle');
+
+  await page.evaluate(() => window.resolveSocial());
+  await expect.poll(() => page.evaluate(() => window.getManagerConnectCount())).toBe(0);
+  await expect.poll(() => page.evaluate(() => window.getConnectorConnectedCount())).toBe(0);
+  expect(await page.evaluate(() => window.getSocialDisconnectCount())).toBeGreaterThan(0);
+  expect(await page.locator('#state').textContent()).toBe('idle');
+});
