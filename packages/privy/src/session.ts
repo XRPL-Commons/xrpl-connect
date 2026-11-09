@@ -94,6 +94,8 @@ interface DashboardConfig {
   sms_auth?: boolean;
   spotify_oauth?: boolean;
   telegram_auth?: boolean;
+  telegram_auth_config?: { seamless_auth_enabled?: boolean };
+  telegram_seamless_auth_enabled?: boolean;
   telegram_oauth?: boolean;
   tiktok_oauth?: boolean;
   twitch_oauth?: boolean;
@@ -123,11 +125,19 @@ interface ResolvedLoginMethod {
 }
 
 interface PromptControls<T> {
-  show(prompt: WalletAuthPrompt): void;
+  step(): PromptStep;
+  show(prompt: WalletAuthPrompt, step: PromptStep): void;
+  run<R>(step: PromptStep, operation: () => Promise<R>): Promise<R>;
   complete(value: T): void;
   fail(error: unknown): void;
-  cancel(): void;
-  isActive(): boolean;
+  cancel(step: PromptStep): void;
+  isActive(step?: PromptStep): boolean;
+}
+
+interface PromptStep {
+  active: boolean;
+  signal: AbortSignal;
+  controller: AbortController;
 }
 
 interface PasskeyCredentialLike {
@@ -256,6 +266,7 @@ function dashboardMethodToPublic(method: ResolvedLoginMethod): WalletLoginMethod
   return {
     id: method.id,
     label: method.label,
+    connectOptions: { loginMethod: method.id },
     ...(method.icon ? { icon: method.icon } : {}),
   };
 }
@@ -281,6 +292,46 @@ function bytesToBase64Url(value: ArrayBuffer | ArrayBufferView): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function passkeyExtensions(value: unknown): AuthenticationExtensionsClientInputs | undefined {
+  const extensions = asRecord(value);
+  if (!extensions) return undefined;
+
+  const result: AuthenticationExtensionsClientInputs = {};
+  if (isNonEmptyString(extensions.app_id)) result.appid = extensions.app_id;
+  if (typeof extensions.cred_props === 'boolean') {
+    result.credProps = extensions.cred_props;
+  } else if (extensions.cred_props !== undefined && extensions.cred_props !== null) {
+    // Registration responses describe cred_props as an object, while the
+    // browser input is the boolean request flag.
+    result.credProps = true;
+  }
+  if (typeof extensions.hmac_create_secret === 'boolean') {
+    result.hmacCreateSecret = extensions.hmac_create_secret;
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function passkeyCredentialDescriptors(value: unknown): PublicKeyCredentialDescriptor[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.flatMap((entry) => {
+    const descriptor = asRecord(entry);
+    if (!descriptor || !isNonEmptyString(descriptor.id) || descriptor.type !== 'public-key')
+      return [];
+    const transports = Array.isArray(descriptor.transports)
+      ? descriptor.transports
+          .filter(isNonEmptyString)
+          .map((transport) => transport as AuthenticatorTransport)
+      : undefined;
+    return [
+      {
+        id: base64UrlToBytes(descriptor.id) as unknown as ArrayBuffer,
+        type: 'public-key' as const,
+        ...(transports && transports.length > 0 ? { transports } : {}),
+      },
+    ];
+  });
 }
 
 function asPasskeyCredential(value: Credential | null): PasskeyCredentialLike {
@@ -477,8 +528,9 @@ export class PrivySession {
    */
   async getLoginMethods(): Promise<readonly WalletLoginMethod[]> {
     const signal = new AbortController().signal;
-    await this.waitForDisconnect(signal);
     const generation = this.lifecycleGeneration;
+    await this.waitForDisconnect(signal);
+    this.assertGeneration(generation, signal);
     const client = await this.ensureClient(signal, generation);
     const config = await this.fetchDashboardConfig(client, signal, generation);
     this.assertGeneration(generation, signal);
@@ -807,7 +859,11 @@ export class PrivySession {
     // Native Telegram authentication is only exposed when the page is hosted
     // by Telegram and has its signed launch data. The ordinary dashboard OAuth
     // method remains available independently.
-    if (config.telegram_auth && this.telegramWebAppData()) {
+    const telegramSeamless =
+      config.telegram_auth_config?.seamless_auth_enabled ??
+      config.telegram_seamless_auth_enabled ??
+      false;
+    if (config.telegram_auth && telegramSeamless && this.telegramWebAppData()) {
       add({ id: 'telegram-native', label: 'Telegram', kind: 'telegram-native' });
     }
 
@@ -874,34 +930,80 @@ export class PrivySession {
   ): Promise<T> {
     this.assertGeneration(generation, signal);
     let settled = false;
+    let currentStep: PromptStep | undefined;
+    let actionQueue = Promise.resolve();
     let resolveResult!: (value: T) => void;
     let rejectResult!: (error: unknown) => void;
     const result = new Promise<T>((resolve, reject) => {
       resolveResult = resolve;
       rejectResult = reject;
     });
+    const staleStep = (): ReturnType<typeof createWalletError.notConnected> =>
+      createWalletError.notConnected();
+    const isActiveStep = (step: PromptStep): boolean =>
+      !settled &&
+      step.active &&
+      !step.signal.aborted &&
+      currentStep === step &&
+      !signal.aborted &&
+      generation === this.lifecycleGeneration;
     const controls: PromptControls<T> = {
-      show: (prompt) => {
-        if (settled) return;
+      step: () => {
+        if (currentStep) {
+          currentStep.active = false;
+          currentStep.controller.abort();
+        }
+        const controller = new AbortController();
+        const step: PromptStep = { active: !settled, signal: controller.signal, controller };
+        currentStep = step;
+        return step;
+      },
+      show: (prompt, step) => {
+        if (!isActiveStep(step)) return;
         this.assertGeneration(generation, signal);
         this.emitAuthPrompt(prompt);
+      },
+      run: async <R>(step: PromptStep, operation: () => Promise<R>): Promise<R> => {
+        if (!isActiveStep(step)) throw staleStep();
+        const request = actionQueue.then(async () => {
+          if (!isActiveStep(step)) throw staleStep();
+          return await operation();
+        });
+        actionQueue = request.then(
+          () => undefined,
+          () => undefined
+        );
+        return await request;
       },
       complete: (value) => {
         if (settled) return;
         settled = true;
+        if (currentStep) {
+          currentStep.active = false;
+          currentStep.controller.abort();
+        }
         resolveResult(value);
       },
       fail: (error) => {
         if (settled) return;
         settled = true;
+        if (currentStep) {
+          currentStep.active = false;
+          currentStep.controller.abort();
+        }
         rejectResult(error);
       },
-      cancel: () => {
-        if (settled) return;
+      cancel: (step) => {
+        if (!isActiveStep(step)) return;
         settled = true;
+        step.active = false;
+        step.controller.abort();
         rejectResult(connectionRejected(new Error('Privy authentication was cancelled')));
       },
-      isActive: () => !settled && !signal.aborted && generation === this.lifecycleGeneration,
+      isActive: (step) =>
+        step
+          ? isActiveStep(step)
+          : !settled && !signal.aborted && generation === this.lifecycleGeneration,
     };
     const rejectForDisconnect = (): void => controls.fail(createWalletError.notConnected());
     this.activePromptReject = rejectForDisconnect;
@@ -909,7 +1011,7 @@ export class PrivySession {
     signal.addEventListener('abort', onAbort, { once: true });
     try {
       const prompt = factory(controls);
-      this.emitAuthPrompt(prompt);
+      if (currentStep && isActiveStep(currentStep)) this.emitAuthPrompt(prompt);
       if (signal.aborted) controls.fail(createWalletError.notConnected());
       return await result;
     } finally {
@@ -1005,9 +1107,15 @@ export class PrivySession {
     let captchaToken = '';
     let codePrompt: WalletAuthPrompt | undefined;
     let resendPrompt: WalletAuthPrompt | undefined;
+    let controls!: PromptControls<PrivyUser>;
 
-    const sendCode = async (values: Record<string, string>, resend: boolean): Promise<void> => {
+    const sendCode = async (
+      values: Record<string, string>,
+      resend: boolean,
+      step: PromptStep
+    ): Promise<void> => {
       this.assertGeneration(generation, signal);
+      if (!controls.isActive(step)) throw createWalletError.notConnected();
       if (!resend) {
         destination = (values[isEmail ? 'email' : 'phone'] ?? '').trim();
         if (isEmail) {
@@ -1034,7 +1142,9 @@ export class PrivySession {
         `Privy ${kind} code delivery`
       );
       if (!response?.success) throw new Error(`Privy did not send the ${kind} code`);
+      if (!controls.isActive(step)) throw createWalletError.notConnected();
 
+      const codeStep = controls.step();
       codePrompt = {
         title: `Enter your ${isEmail ? 'email' : config.whatsapp_enabled ? 'WhatsApp' : 'phone'} code`,
         description: 'Enter the verification code sent to you.',
@@ -1049,48 +1159,51 @@ export class PrivySession {
         ],
         submitLabel: 'Verify code',
         submit: async (values: Record<string, string>) => {
-          const code = (values.code ?? '').trim();
-          if (!/^\d{4,12}$/.test(code)) throw new Error('Enter the verification code');
-          const authenticated = await this.runOperation(
-            () =>
-              isEmail
-                ? client.auth.email.loginWithCode(destination, code)
-                : client.auth.phone.loginWithCode(destination, code),
-            signal,
-            generation,
-            `Privy ${kind} code verification`
-          );
-          controls.complete(userFromResponse(authenticated));
+          await controls.run(codeStep, async () => {
+            const code = (values.code ?? '').trim();
+            if (!/^\d{4,12}$/.test(code)) throw new Error('Enter the verification code');
+            const authenticated = await this.runOperation(
+              () =>
+                isEmail
+                  ? client.auth.email.loginWithCode(destination, code)
+                  : client.auth.phone.loginWithCode(destination, code),
+              signal,
+              generation,
+              `Privy ${kind} code verification`
+            );
+            controls.complete(userFromResponse(authenticated));
+          });
         },
         secondaryAction: {
           label: 'Resend code',
           run: async () => {
             if (captcha) {
+              const resendStep = controls.step();
               resendPrompt = {
                 title: 'Complete CAPTCHA to resend',
                 description: 'Verify that you are human before requesting another code.',
                 captcha,
                 submitLabel: 'Resend code',
                 submit: async (values: Record<string, string>) => {
-                  await sendCode(values, true);
+                  await controls.run(resendStep, () => sendCode(values, true, resendStep));
                 },
-                cancel: controls.cancel,
+                cancel: () => controls.cancel(resendStep),
               };
-              controls.show(resendPrompt);
+              controls.show(resendPrompt, resendStep);
               return;
             }
-            await sendCode({}, true);
+            await controls.run(codeStep, () => sendCode({}, true, codeStep));
           },
         },
-        cancel: controls.cancel,
+        cancel: () => controls.cancel(codeStep),
       };
-      controls.show(codePrompt);
+      controls.show(codePrompt, codeStep);
     };
 
-    let controls!: PromptControls<PrivyUser>;
     const result = await this.waitForPrompt<PrivyUser>(
       (promptControls) => {
         controls = promptControls;
+        const initialStep = controls.step();
         return {
           title: isEmail
             ? 'Sign in with email'
@@ -1107,9 +1220,9 @@ export class PrivySession {
           ...(captcha ? { captcha } : {}),
           submitLabel: 'Send code',
           submit: async (values: Record<string, string>) => {
-            await sendCode(values, false);
+            await controls.run(initialStep, () => sendCode(values, false, initialStep));
           },
-          cancel: promptControls.cancel,
+          cancel: () => controls.cancel(initialStep),
         };
       },
       signal,
@@ -1128,13 +1241,13 @@ export class PrivySession {
       throw new Error('Privy passkey login requires browser credential support');
     }
     return await this.waitForPrompt(
-      (controls) => ({
-        title: 'Sign in with a passkey',
-        description: 'Use the passkey saved on this device or in your password manager.',
-        submitLabel: 'Use passkey',
-        submit: async () => {
+      (controls) => {
+        const step = controls.step();
+        const submitLogin = async (): Promise<void> => {
           if (!config.passkey_auth) {
-            controls.complete(await this.signupWithPasskey(client, signal, generation));
+            controls.complete(
+              await this.signupWithPasskey(client, signal, generation, step.signal)
+            );
             return;
           }
           const authentication = await this.runOperation(
@@ -1146,9 +1259,14 @@ export class PrivySession {
           const authenticationOptions = this.passkeyAuthenticationOptions(authentication);
           const credential = asPasskeyCredential(
             await this.waitForBrowserCredential(
-              () => navigator.credentials!.get({ publicKey: authenticationOptions }),
+              (credentialSignal) =>
+                navigator.credentials!.get({
+                  publicKey: authenticationOptions,
+                  signal: credentialSignal,
+                }),
               signal,
-              generation
+              generation,
+              step.signal
             )
           );
           try {
@@ -1166,11 +1284,36 @@ export class PrivySession {
             controls.complete(userFromResponse(authenticated));
           } catch (error) {
             if (!config.passkeys_for_signup_enabled || !isPasskeyUnavailable(error)) throw error;
-            controls.complete(await this.signupWithPasskey(client, signal, generation));
+            controls.complete(
+              await this.signupWithPasskey(client, signal, generation, step.signal)
+            );
           }
-        },
-        cancel: controls.cancel,
-      }),
+        };
+        const prompt: WalletAuthPrompt = {
+          title: 'Sign in with a passkey',
+          description: 'Use the passkey saved on this device or in your password manager.',
+          submitLabel: 'Use passkey',
+          submit: async () => {
+            await controls.run(step, submitLogin);
+          },
+          ...(config.passkeys_for_signup_enabled
+            ? {
+                secondaryAction: {
+                  label: 'Create a passkey',
+                  run: async () => {
+                    await controls.run(step, async () => {
+                      controls.complete(
+                        await this.signupWithPasskey(client, signal, generation, step.signal)
+                      );
+                    });
+                  },
+                },
+              }
+            : {}),
+          cancel: () => controls.cancel(step),
+        };
+        return prompt;
+      },
       signal,
       generation
     );
@@ -1179,7 +1322,8 @@ export class PrivySession {
   private async signupWithPasskey(
     client: PrivyClient,
     signal: AbortSignal,
-    generation: number
+    generation: number,
+    promptSignal: AbortSignal
   ): Promise<PrivyUser> {
     const registration = await this.runOperation(
       () => client.auth.passkey.generateSignupOptions(),
@@ -1190,9 +1334,14 @@ export class PrivySession {
     const registrationOptions = this.passkeyRegistrationOptions(registration);
     const registrationCredential = asPasskeyCredential(
       await this.waitForBrowserCredential(
-        () => navigator.credentials!.create({ publicKey: registrationOptions }),
+        (credentialSignal) =>
+          navigator.credentials!.create({
+            publicKey: registrationOptions,
+            signal: credentialSignal,
+          }),
         signal,
-        generation
+        generation,
+        promptSignal
       )
     );
     const signedUp = await this.runOperation(
@@ -1228,21 +1377,8 @@ export class PrivySession {
     if (!options || !isNonEmptyString(options.challenge)) {
       throw new Error('Privy passkey response did not include authentication options');
     }
-    const allowCredentials = Array.isArray(options.allow_credentials)
-      ? options.allow_credentials.flatMap((entry) => {
-          const descriptor = asRecord(entry);
-          if (!descriptor || !isNonEmptyString(descriptor.id)) return [];
-          return [
-            {
-              id: base64UrlToBytes(descriptor.id) as unknown as ArrayBuffer,
-              type: 'public-key' as const,
-              ...(Array.isArray(descriptor.transports)
-                ? { transports: descriptor.transports as AuthenticatorTransport[] }
-                : {}),
-            },
-          ];
-        })
-      : undefined;
+    const allowCredentials = passkeyCredentialDescriptors(options.allow_credentials);
+    const extensions = passkeyExtensions(options.extensions);
     return {
       challenge: base64UrlToBytes(options.challenge) as unknown as ArrayBuffer,
       ...(isNonEmptyString(options.rp_id) ? { rpId: options.rp_id } : {}),
@@ -1251,6 +1387,7 @@ export class PrivySession {
       ...(isNonEmptyString(options.user_verification)
         ? { userVerification: options.user_verification as UserVerificationRequirement }
         : {}),
+      ...(extensions ? { extensions } : {}),
     };
   }
 
@@ -1281,6 +1418,8 @@ export class PrivySession {
       : [];
     if (pubKeyCredParams.length === 0)
       throw new Error('Privy passkey response did not include algorithms');
+    const excludeCredentials = passkeyCredentialDescriptors(options.exclude_credentials);
+    const extensions = passkeyExtensions(options.extensions);
     return {
       challenge: base64UrlToBytes(options.challenge) as unknown as ArrayBuffer,
       rp: {
@@ -1330,27 +1469,40 @@ export class PrivySession {
             },
           }
         : {}),
+      ...(excludeCredentials ? { excludeCredentials } : {}),
+      ...(extensions ? { extensions } : {}),
     };
   }
 
   private async waitForBrowserCredential<T>(
-    operation: () => Promise<T>,
+    operation: (signal: AbortSignal) => Promise<T>,
     signal: AbortSignal,
-    generation: number
+    generation: number,
+    promptSignal: AbortSignal
   ): Promise<T> {
     this.assertGeneration(generation, signal);
-    let abortHandler: (() => void) | undefined;
+    if (promptSignal.aborted) throw createWalletError.notConnected();
+    const controller = new AbortController();
+    const abortHandler = (): void => controller.abort();
+    signal.addEventListener('abort', abortHandler, { once: true });
+    promptSignal.addEventListener('abort', abortHandler, { once: true });
     const aborted = new Promise<never>((_, reject) => {
-      abortHandler = () => reject(createWalletError.notConnected());
-      signal.addEventListener('abort', abortHandler, { once: true });
-      if (signal.aborted) abortHandler();
+      const rejectAbort = (): void => reject(createWalletError.notConnected());
+      controller.signal.addEventListener('abort', rejectAbort, { once: true });
+      if (controller.signal.aborted) rejectAbort();
     });
     try {
-      const value = await Promise.race([operation(), aborted]);
+      if (promptSignal.aborted || signal.aborted) {
+        controller.abort();
+        throw createWalletError.notConnected();
+      }
+      const value = await Promise.race([operation(controller.signal), aborted]);
       this.assertGeneration(generation, signal);
+      if (promptSignal.aborted) throw createWalletError.notConnected();
       return value;
     } finally {
-      if (abortHandler) signal.removeEventListener('abort', abortHandler);
+      signal.removeEventListener('abort', abortHandler);
+      promptSignal.removeEventListener('abort', abortHandler);
     }
   }
 
@@ -1373,15 +1525,21 @@ export class PrivySession {
     }
     return await this.waitForPrompt(
       (controls) => {
-        void this.pollFarcaster(client, initialized.channel_token, controls, signal, generation);
+        const step = controls.step();
+        void this.pollFarcaster(
+          client,
+          initialized.channel_token,
+          controls,
+          step,
+          signal,
+          generation
+        );
         return {
           title: 'Sign in with Farcaster',
           description: 'Scan this QR code with Farcaster to approve sign-in.',
           url: initialized.connect_uri,
           qrCode: initialized.connect_uri,
-          submitLabel: 'I approved in Farcaster',
-          submit: async () => undefined,
-          cancel: controls.cancel,
+          cancel: () => controls.cancel(step),
         };
       },
       signal,
@@ -1393,20 +1551,24 @@ export class PrivySession {
     client: PrivyClient,
     channelToken: string,
     controls: PromptControls<PrivyUser>,
+    step: PromptStep,
     signal: AbortSignal,
     generation: number
   ): Promise<void> {
     const deadline = Date.now() + FARCASTER_POLL_TIMEOUT_MS;
     try {
-      while (controls.isActive() && Date.now() < deadline) {
+      while (controls.isActive(step) && Date.now() < deadline) {
         const status = asRecord(
-          await this.runOperation(
-            () => client.auth.farcaster.getFarcasterStatus({ channel_token: channelToken }),
-            signal,
-            generation,
-            'Privy Farcaster status'
+          await controls.run(step, () =>
+            this.runOperation(
+              () => client.auth.farcaster.getFarcasterStatus({ channel_token: channelToken }),
+              signal,
+              generation,
+              'Privy Farcaster status'
+            )
           )
         );
+        if (!controls.isActive(step)) return;
         if (status?.state === 'completed') {
           if (
             typeof status.message !== 'string' ||
@@ -1415,27 +1577,30 @@ export class PrivySession {
           ) {
             throw new Error('Privy Farcaster status response is incomplete');
           }
-          const authenticated = await this.runOperation(
-            () =>
-              client.auth.farcaster.authenticate({
-                channel_token: channelToken,
-                message: status.message as string,
-                signature: status.signature as string,
-                fid: status.fid as number,
-              }),
-            signal,
-            generation,
-            'Privy Farcaster authentication'
+          const authenticated = await controls.run(step, () =>
+            this.runOperation(
+              () =>
+                client.auth.farcaster.authenticate({
+                  channel_token: channelToken,
+                  message: status.message as string,
+                  signature: status.signature as string,
+                  fid: status.fid as number,
+                }),
+              signal,
+              generation,
+              'Privy Farcaster authentication'
+            )
           );
+          if (!controls.isActive(step)) return;
           controls.complete(userFromResponse(authenticated));
           return;
         }
         await this.delayWithAbort(FARCASTER_POLL_INTERVAL_MS, signal, generation);
       }
-      if (controls.isActive())
+      if (controls.isActive(step))
         throw createWalletError.operationTimeout('Privy Farcaster authentication');
     } catch (error) {
-      if (controls.isActive()) controls.fail(error);
+      if (controls.isActive(step)) controls.fail(error);
     }
   }
 
