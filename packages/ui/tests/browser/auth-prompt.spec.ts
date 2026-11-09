@@ -1,4 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import jsQR from 'jsqr';
+import { PNG } from 'pngjs';
 
 const fixturePath = '/packages/ui/tests/browser/auth-prompt.html';
 
@@ -63,6 +65,23 @@ test('passes the selected non-first discovered method options unchanged', async 
     .toMatchObject({ loginMethod: 'github' });
   await page.evaluate(() => window.resolveAuthConnection());
   await expect(page.locator('#status')).toHaveText('connected:rLate');
+});
+
+test('encodes an auth prompt QR payload as a scannable QR', async ({ page }) => {
+  const dialog = await openWalletDialog(page);
+  await dialog.getByRole('button', { name: 'Sign in with socials', exact: true }).click();
+  const chooser = page.getByRole('dialog', { name: 'Sign in with socials' });
+  await chooser.getByRole('button', { name: 'Email', exact: true }).click();
+
+  const prompt = page.getByRole('dialog', { name: 'Sign in with email' });
+  const qr = prompt.locator('.auth-prompt-qr-container');
+  await expect(qr.locator('svg')).toBeVisible();
+  await expect
+    .poll(async () => {
+      const png = PNG.sync.read(await qr.screenshot());
+      return jsQR(new Uint8ClampedArray(png.data), png.width, png.height)?.data;
+    })
+    .toBe('farcaster://connect?uri=https%3A%2F%2Fexample.test%2Fauth');
 });
 
 test('keeps successful methods and retries a failed dashboard provider discovery', async ({

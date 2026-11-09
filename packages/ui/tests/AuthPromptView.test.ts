@@ -17,7 +17,7 @@ describe('renderAuthPromptView', () => {
         },
       ],
       url: 'javascript:alert(1)',
-      qrCode: 'javascript:alert(1)',
+      qrCode: 'farcaster://connect?uri=https%3A%2F%2Fexample.test%2Fauth',
       submit: vi.fn(),
       cancel: vi.fn(),
     };
@@ -31,6 +31,9 @@ describe('renderAuthPromptView', () => {
     expect(host.querySelector('input[name="code"]')?.getAttribute('inputmode')).toBe('numeric');
     expect(host.querySelector('a')).toBeNull();
     expect(host.querySelector('img')).toBeNull();
+    expect(host.querySelector('.auth-prompt-qr-container')?.textContent).toContain(
+      'Loading QR code'
+    );
     expect(host.querySelector('[data-auth-field]')?.getAttribute('value')).toBeNull();
     expect(host.querySelector('[data-auth-field]')?.getAttribute('data-callback')).toBeNull();
   });

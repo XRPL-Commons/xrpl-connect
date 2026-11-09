@@ -18,6 +18,7 @@ const CAPTCHA_SCRIPT_URLS: Record<CaptchaProvider, string> = {
   hcaptcha: 'https://js.hcaptcha.com/1/api.js?render=explicit',
 };
 
+const CAPTCHA_SCRIPT_LOAD_TIMEOUT = 10_000;
 const scriptPromises = new Map<CaptchaProvider, Promise<void>>();
 
 function getCaptchaApi(provider: CaptchaProvider): CaptchaApi | undefined {
@@ -30,30 +31,65 @@ function loadCaptchaScript(provider: CaptchaProvider, nonce?: string): Promise<v
   const existing = scriptPromises.get(provider);
   if (existing) return existing;
 
-  const promise = new Promise<void>((resolve, reject) => {
+  let promise: Promise<void>;
+  const attempt = new Promise<void>((resolve, reject) => {
     const selector = `script[data-xrpl-captcha-provider="${provider}"]`;
     const script =
       document.querySelector<HTMLScriptElement>(selector) ?? document.createElement('script');
-    const finish = () => {
-      if (getCaptchaApi(provider)) resolve();
-      else reject(new Error(`The ${provider} CAPTCHA API did not load.`));
+    const ownedScript = !script.parentNode || script.dataset.xrplCaptchaOwned === 'true';
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    const removeListeners = () => {
+      script.removeEventListener('load', handleLoad);
+      script.removeEventListener('error', handleError);
     };
 
-    script.addEventListener('load', finish, { once: true });
-    script.addEventListener(
-      'error',
-      () => reject(new Error(`The ${provider} CAPTCHA script could not load.`)),
-      { once: true }
-    );
+    const removeOwnedScript = () => {
+      if (ownedScript) script.remove();
+    };
+
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      removeListeners();
+      removeOwnedScript();
+      reject(error);
+    };
+
+    const handleLoad = () => {
+      if (getCaptchaApi(provider)) {
+        if (settled) return;
+        settled = true;
+        if (timeout) clearTimeout(timeout);
+        removeListeners();
+        resolve();
+      } else {
+        fail(new Error(`The ${provider} CAPTCHA API did not load.`));
+      }
+    };
+    const handleError = () => fail(new Error(`The ${provider} CAPTCHA script could not load.`));
+
+    script.addEventListener('load', handleLoad, { once: true });
+    script.addEventListener('error', handleError, { once: true });
     if (!script.parentNode) {
       script.async = true;
       script.src = CAPTCHA_SCRIPT_URLS[provider];
       script.dataset.xrplCaptchaProvider = provider;
+      script.dataset.xrplCaptchaOwned = 'true';
       if (nonce) script.nonce = nonce;
       (document.head ?? document.documentElement).append(script);
+    } else if ((script as HTMLScriptElement & { readyState?: string }).readyState === 'complete') {
+      queueMicrotask(handleLoad);
     }
-  }).catch((error) => {
-    scriptPromises.delete(provider);
+    timeout = setTimeout(
+      () => fail(new Error(`The ${provider} CAPTCHA script timed out while loading.`)),
+      CAPTCHA_SCRIPT_LOAD_TIMEOUT
+    );
+  });
+  promise = attempt.catch((error) => {
+    if (scriptPromises.get(provider) === promise) scriptPromises.delete(provider);
     throw error;
   });
 
@@ -83,8 +119,10 @@ export async function renderCaptchaWidget(
 
   return () => {
     try {
-      api.remove?.(widgetId);
-      api.reset?.(widgetId);
+      if (typeof api.remove === 'function') api.remove(widgetId);
+      else api.reset?.(widgetId);
+    } catch {
+      // Provider cleanup must never interrupt modal transitions or cancellation.
     } finally {
       while (container.firstChild) container.removeChild(container.firstChild);
     }

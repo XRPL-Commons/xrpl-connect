@@ -1,5 +1,4 @@
 import { WALLET_CONNECTOR_PARTS } from '../customization';
-import { getSafeImageUrl } from '../security';
 import type { WalletAuthField, WalletAuthPrompt } from '../types';
 import { getSafeExternalUrl } from '../utils';
 import { createStaticView, getViewElement } from './dom';
@@ -96,13 +95,12 @@ export function renderAuthPromptView(
   }
 
   const qrContainer = getViewElement(view, '.auth-prompt-qr-container');
-  const safeQrCode = getSafeImageUrl(prompt.qrCode);
-  if (safeQrCode) {
-    const image = document.createElement('img');
-    image.className = 'auth-prompt-qr';
-    image.src = safeQrCode;
-    image.alt = 'Authentication QR code';
-    qrContainer.append(image);
+  if (prompt.qrCode) {
+    const loading = document.createElement('p');
+    loading.className = 'qr-loading';
+    loading.setAttribute('role', 'status');
+    loading.textContent = 'Loading QR code…';
+    qrContainer.append(loading);
   }
 
   const form = getViewElement<HTMLFormElement>(view, '#auth-prompt-form');

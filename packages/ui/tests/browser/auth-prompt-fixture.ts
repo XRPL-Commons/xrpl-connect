@@ -59,11 +59,13 @@ let cancelCount = 0;
 let resendCount = 0;
 let lastConnectOptions: Record<string, unknown> | undefined;
 const eventDetailKeys: string[][] = [];
+const AUTH_QR_PAYLOAD = 'farcaster://connect?uri=https%3A%2F%2Fexample.test%2Fauth';
 
 function createEmailPrompt(): WalletAuthPrompt {
   return {
     title: 'Sign in with email',
     description: 'Enter your email to receive a verification code.',
+    qrCode: AUTH_QR_PAYLOAD,
     fields: [
       {
         name: 'email',

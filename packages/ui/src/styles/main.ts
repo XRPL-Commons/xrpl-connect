@@ -361,15 +361,16 @@ export const mainStyles = `
   .auth-prompt-qr-container {
     display: flex;
     justify-content: center;
-  }
-
-  .auth-prompt-qr {
-    width: 220px;
-    height: 220px;
-    object-fit: contain;
+    min-height: 24px;
+    padding: 12px;
     border-radius: 12px;
     background: #fff;
-    padding: 12px;
+  }
+
+  .auth-prompt-qr-container svg {
+    width: 220px;
+    height: 220px;
+    display: block;
   }
 
   .auth-prompt-captcha {

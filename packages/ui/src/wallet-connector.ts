@@ -196,6 +196,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private authCaptchaToken: string | null = null;
     private captchaCleanup: (() => void) | null = null;
     private captchaGeneration = 0;
+    private authQrRenderGeneration = 0;
     private previousModalHeight: number = 0;
     private modalHeightFrame: number | null = null;
     private preGeneratedQRCode: QRCodeStyling | null = null;
@@ -1288,6 +1289,40 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
     }
 
+    private async mountAuthPromptQRCode(): Promise<void> {
+      const state = this.authPromptData;
+      const payload = state?.prompt.qrCode;
+      const container = this.getOverlayRoot()?.querySelector<HTMLElement>(
+        '.auth-prompt-qr-container'
+      );
+      if (!state || !payload || !container) return;
+
+      const generation = this.authQrRenderGeneration;
+      const isCurrent = () =>
+        generation === this.authQrRenderGeneration &&
+        this.authPromptData === state &&
+        this.viewState === 'auth-prompt' &&
+        container ===
+          this.getOverlayRoot()?.querySelector<HTMLElement>('.auth-prompt-qr-container');
+
+      try {
+        const qrCode = await this.createQRCode(payload);
+        if (!isCurrent()) return;
+        replaceViewChildren(container);
+        qrCode.append(container);
+        const svg = container.querySelector('svg');
+        svg?.setAttribute('role', 'img');
+        svg?.setAttribute('aria-label', 'Authentication QR code');
+      } catch (error) {
+        if (!isCurrent()) return;
+        logger.warn('Failed to generate authentication QR code:', error);
+        const message = document.createElement('p');
+        message.className = 'qr-loading';
+        message.textContent = 'Failed to generate QR code';
+        replaceViewChildren(container, message);
+      }
+    }
+
     /**
      * Show the configured social-login methods without exposing their adapter
      * rows in the main wallet list.
@@ -1766,6 +1801,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private render() {
       this.clearModalHeightFrame();
       this.clearCaptchaWidget();
+      this.authQrRenderGeneration += 1;
       // Capture current modal height before re-rendering
       const existingModal = this.overlayPortal?.shadowRoot?.querySelector(
         '.modal'
@@ -1866,6 +1902,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       if (this.isOpen) this.ensureDialogFocus('wallet');
       if (this.accountModalOpen) this.ensureDialogFocus('account');
       if (this.viewState === 'auth-prompt') void this.mountCaptchaWidget();
+      if (this.viewState === 'auth-prompt') void this.mountAuthPromptQRCode();
 
       // Only measure the modal produced by this render; older callbacks can measure
       // a height that a newer transition has temporarily pinned to the previous view.
