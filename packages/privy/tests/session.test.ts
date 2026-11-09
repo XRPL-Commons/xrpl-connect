@@ -577,13 +577,23 @@ describe('PrivySession', () => {
     await prompt!.submit!({ email: 'user@example.com', captchaToken: 'captcha-1' });
     await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Enter your email code' }));
     expect(prompt!.captcha).toBeUndefined();
-    await prompt!.secondaryAction!.run();
+    const oldCodePrompt = prompt!;
+    await oldCodePrompt.secondaryAction!.run();
     await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Complete CAPTCHA to resend' }));
-    await prompt!.submit!({ captchaToken: 'captcha-2' });
+    const resendPrompt = prompt!;
+    await expect(oldCodePrompt.secondaryAction!.run()).rejects.toMatchObject({
+      code: 'NOT_CONNECTED',
+    });
+    expect(prompt).toBe(resendPrompt);
+    await resendPrompt.submit!({ captchaToken: 'captcha-2' });
     expect(mocks.emailSendCode).toHaveBeenNthCalledWith(1, 'user@example.com', 'captcha-1');
     expect(mocks.emailSendCode).toHaveBeenNthCalledWith(2, 'user@example.com', 'captcha-2');
-    prompt!.cancel();
-    await expect(connecting).rejects.toMatchObject({ code: 'CONNECTION_REJECTED' });
+    const currentCodePrompt = prompt!;
+    const verifying = currentCodePrompt.submit!({ code: '123456' });
+    const staleResend = currentCodePrompt.secondaryAction!.run();
+    await verifying;
+    await expect(staleResend).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+    await expect(connecting).resolves.toMatchObject({ id: walletId });
     await session.disconnect();
   });
 
@@ -654,6 +664,55 @@ describe('PrivySession', () => {
     expect(getOptions?.signal).toBeInstanceOf(AbortSignal);
     await session.disconnect();
   });
+
+  it.each(['invalid_passkey_response', 'passkey_not_found'])(
+    'does not turn a passkey login error into account creation (%s)',
+    async (code) => {
+      mocks.fetchPrivyRoute.mockResolvedValueOnce({
+        passkey_auth: true,
+        passkeys_for_signup_enabled: true,
+        custom_oauth_providers: [],
+      });
+      const loginError = Object.assign(new Error('Passkey login failed'), { code });
+      mocks.passkeyLoginWithPasskey.mockRejectedValueOnce(loginError);
+      const create = vi.fn();
+      Object.defineProperty(navigator, 'credentials', {
+        configurable: true,
+        value: {
+          get: vi.fn().mockResolvedValue({
+            id: 'credential-id',
+            type: 'public-key',
+            rawId: new ArrayBuffer(2),
+            response: {
+              clientDataJSON: new ArrayBuffer(2),
+              authenticatorData: new ArrayBuffer(2),
+              signature: new ArrayBuffer(2),
+              userHandle: null,
+            },
+            getClientExtensionResults: () => ({}),
+          }),
+          create,
+        },
+      });
+      const session = new PrivySession({
+        appId: 'app-216',
+        redirectUri: `${window.location.origin}/wallet/privy`,
+      });
+      let prompt: import('xrpl-connect').WalletAuthPrompt | null = null;
+      session.onAuthPrompt((value) => {
+        if (value) prompt = value;
+      });
+      const connecting = session.connect('passkey', new AbortController().signal);
+      await vi.waitFor(() => expect(prompt?.secondaryAction?.label).toBe('Create a passkey'));
+      await expect(prompt!.submit!({})).rejects.toBe(loginError);
+      expect(mocks.passkeyGenerateSignupOptions).not.toHaveBeenCalled();
+      expect(mocks.passkeySignupWithPasskey).not.toHaveBeenCalled();
+      expect(create).not.toHaveBeenCalled();
+      prompt!.cancel();
+      await expect(connecting).rejects.toMatchObject({ code: 'CONNECTION_REJECTED' });
+      await session.disconnect();
+    }
+  );
 
   it('does not open a passkey dialog after cancellation during option generation', async () => {
     mocks.fetchPrivyRoute.mockResolvedValueOnce({

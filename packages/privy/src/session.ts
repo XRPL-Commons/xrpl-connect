@@ -389,17 +389,6 @@ function toRegistrationResponse(credential: PasskeyCredentialLike): Record<strin
   };
 }
 
-function isPasskeyUnavailable(error: unknown): boolean {
-  const record = asRecord(error);
-  const code = record?.code ?? record?.privyErrorCode;
-  return (
-    (typeof code === 'string' && /passkey|credential/i.test(code)) ||
-    /no passkey|passkey.*not found|credential.*not found|not found.*credential|no credentials/i.test(
-      errorMessage(error)
-    )
-  );
-}
-
 function userFromResponse(value: unknown): PrivyUser {
   const response = asRecord(value);
   const candidate = asRecord(response?.user) ?? response;
@@ -1177,22 +1166,24 @@ export class PrivySession {
         secondaryAction: {
           label: 'Resend code',
           run: async () => {
-            if (captcha) {
-              const resendStep = controls.step();
-              resendPrompt = {
-                title: 'Complete CAPTCHA to resend',
-                description: 'Verify that you are human before requesting another code.',
-                captcha,
-                submitLabel: 'Resend code',
-                submit: async (values: Record<string, string>) => {
-                  await controls.run(resendStep, () => sendCode(values, true, resendStep));
-                },
-                cancel: () => controls.cancel(resendStep),
-              };
-              controls.show(resendPrompt, resendStep);
-              return;
-            }
-            await controls.run(codeStep, () => sendCode({}, true, codeStep));
+            await controls.run(codeStep, async () => {
+              if (captcha) {
+                const resendStep = controls.step();
+                resendPrompt = {
+                  title: 'Complete CAPTCHA to resend',
+                  description: 'Verify that you are human before requesting another code.',
+                  captcha,
+                  submitLabel: 'Resend code',
+                  submit: async (values: Record<string, string>) => {
+                    await controls.run(resendStep, () => sendCode(values, true, resendStep));
+                  },
+                  cancel: () => controls.cancel(resendStep),
+                };
+                controls.show(resendPrompt, resendStep);
+                return;
+              }
+              await sendCode({}, true, codeStep);
+            });
           },
         },
         cancel: () => controls.cancel(codeStep),
@@ -1269,25 +1260,18 @@ export class PrivySession {
               step.signal
             )
           );
-          try {
-            const authenticated = await this.runOperation(
-              () =>
-                client.auth.passkey.loginWithPasskey(
-                  toAuthenticationResponse(credential) as never,
-                  this.passkeyChallenge(authentication),
-                  this.passkeyRelyingParty(authentication)
-                ),
-              signal,
-              generation,
-              'Privy passkey login'
-            );
-            controls.complete(userFromResponse(authenticated));
-          } catch (error) {
-            if (!config.passkeys_for_signup_enabled || !isPasskeyUnavailable(error)) throw error;
-            controls.complete(
-              await this.signupWithPasskey(client, signal, generation, step.signal)
-            );
-          }
+          const authenticated = await this.runOperation(
+            () =>
+              client.auth.passkey.loginWithPasskey(
+                toAuthenticationResponse(credential) as never,
+                this.passkeyChallenge(authentication),
+                this.passkeyRelyingParty(authentication)
+              ),
+            signal,
+            generation,
+            'Privy passkey login'
+          );
+          controls.complete(userFromResponse(authenticated));
         };
         const prompt: WalletAuthPrompt = {
           title: 'Sign in with a passkey',
