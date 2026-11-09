@@ -1,5 +1,6 @@
 import Privy, { create, getWallet, LocalStorage, rawSign } from '@privy-io/js-sdk-core';
-import { createWalletError } from 'xrpl-connect';
+import { AppConfig } from '@privy-io/routes';
+import { createWalletError, type WalletAuthPrompt, type WalletLoginMethod } from 'xrpl-connect';
 import type {
   PrivyLoginMethod,
   PrivyOAuthProvider,
@@ -11,6 +12,8 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const SESSION_CHECK_INTERVAL_MS = 60_000;
 const OAUTH_MARKER_TTL_MS = 10 * 60_000;
 const PENDING_MARKER_VERSION = 1;
+const FARCASTER_POLL_INTERVAL_MS = 1_000;
+const FARCASTER_POLL_TIMEOUT_MS = 10 * 60_000;
 
 type PrivyClient = InstanceType<typeof Privy>;
 
@@ -61,6 +64,85 @@ interface IframeState {
 interface ConnectionAttempt {
   id: string;
   redirectReject?: (error: unknown) => void;
+}
+
+interface DashboardCustomOAuthProvider {
+  enabled?: boolean;
+  provider?: string;
+  provider_display_name?: string;
+  provider_icon_url?: string;
+}
+
+/** Public fields returned by the typed Privy AppConfig route. */
+interface DashboardConfig {
+  apple_oauth?: boolean;
+  captcha_enabled?: boolean;
+  captcha_site_key?: string;
+  custom_oauth_providers?: readonly DashboardCustomOAuthProvider[];
+  discord_oauth?: boolean;
+  email_auth?: boolean;
+  enabled_captcha_provider?: 'turnstile' | 'hcaptcha' | null;
+  farcaster_auth?: boolean;
+  github_oauth?: boolean;
+  google_oauth?: boolean;
+  guest_auth?: boolean;
+  instagram_oauth?: boolean;
+  line_oauth?: boolean;
+  linkedin_oauth?: boolean;
+  passkey_auth?: boolean;
+  passkeys_for_signup_enabled?: boolean;
+  sms_auth?: boolean;
+  spotify_oauth?: boolean;
+  telegram_auth?: boolean;
+  telegram_oauth?: boolean;
+  tiktok_oauth?: boolean;
+  twitch_oauth?: boolean;
+  twitter_oauth?: boolean;
+  wallet_auth?: boolean;
+  external_wallets_for_signup_enabled?: boolean;
+  whatsapp_enabled?: boolean;
+}
+
+type DashboardMethodKind =
+  | 'email'
+  | 'phone'
+  | 'oauth'
+  | 'passkey'
+  | 'farcaster'
+  | 'guest'
+  | 'telegram-native'
+  | 'custom-token';
+
+interface ResolvedLoginMethod {
+  id: string;
+  label: string;
+  icon?: string;
+  kind: DashboardMethodKind;
+  oauthProvider?: string;
+  explicit?: PrivyLoginMethod;
+}
+
+interface PromptControls<T> {
+  show(prompt: WalletAuthPrompt): void;
+  complete(value: T): void;
+  fail(error: unknown): void;
+  cancel(): void;
+  isActive(): boolean;
+}
+
+interface PasskeyCredentialLike {
+  id: string;
+  rawId: ArrayBuffer;
+  type: string;
+  response: {
+    clientDataJSON: ArrayBuffer;
+    authenticatorData?: ArrayBuffer;
+    signature?: ArrayBuffer;
+    userHandle?: ArrayBuffer | null;
+    attestationObject?: ArrayBuffer;
+    getTransports?: () => string[];
+  };
+  getClientExtensionResults(): Record<string, unknown>;
 }
 
 type UnknownRecord = Record<string, unknown>;
@@ -147,6 +229,126 @@ function connectionRejected(
   );
 }
 
+const DASHBOARD_OAUTH_METHODS: ReadonlyArray<{
+  provider: PrivyOAuthProvider;
+  label: string;
+  enabled: keyof DashboardConfig;
+}> = [
+  { provider: 'google', label: 'Google', enabled: 'google_oauth' },
+  { provider: 'github', label: 'GitHub', enabled: 'github_oauth' },
+  { provider: 'discord', label: 'Discord', enabled: 'discord_oauth' },
+  { provider: 'twitter', label: 'X', enabled: 'twitter_oauth' },
+  { provider: 'spotify', label: 'Spotify', enabled: 'spotify_oauth' },
+  { provider: 'instagram', label: 'Instagram', enabled: 'instagram_oauth' },
+  { provider: 'tiktok', label: 'TikTok', enabled: 'tiktok_oauth' },
+  { provider: 'linkedin', label: 'LinkedIn', enabled: 'linkedin_oauth' },
+  { provider: 'apple', label: 'Apple', enabled: 'apple_oauth' },
+  { provider: 'line', label: 'LINE', enabled: 'line_oauth' },
+  { provider: 'twitch', label: 'Twitch', enabled: 'twitch_oauth' },
+  { provider: 'telegram', label: 'Telegram', enabled: 'telegram_oauth' },
+];
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function dashboardMethodToPublic(method: ResolvedLoginMethod): WalletLoginMethod {
+  return {
+    id: method.id,
+    label: method.label,
+    ...(method.icon ? { icon: method.icon } : {}),
+  };
+}
+
+function base64UrlToBytes(value: string): Uint8Array {
+  const normalized = value
+    .replace(/-/g, '+')
+    .replace(/_/g, '/')
+    .padEnd(Math.ceil(value.length / 4) * 4, '=');
+  if (typeof atob !== 'function') throw new Error('Privy passkeys require browser base64 support');
+  const decoded = atob(normalized);
+  const bytes = new Uint8Array(decoded.length);
+  for (let index = 0; index < decoded.length; index += 1) bytes[index] = decoded.charCodeAt(index);
+  return bytes;
+}
+
+function bytesToBase64Url(value: ArrayBuffer | ArrayBufferView): string {
+  if (typeof btoa !== 'function') throw new Error('Privy passkeys require browser base64 support');
+  const bytes =
+    value instanceof ArrayBuffer
+      ? new Uint8Array(value)
+      : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function asPasskeyCredential(value: Credential | null): PasskeyCredentialLike {
+  const credential = value as unknown as PasskeyCredentialLike | null;
+  if (
+    !credential ||
+    !isNonEmptyString(credential.id) ||
+    !isNonEmptyString(credential.type) ||
+    !(credential.rawId instanceof ArrayBuffer) ||
+    !credential.response ||
+    typeof credential.getClientExtensionResults !== 'function'
+  ) {
+    throw new Error('Privy did not receive a valid browser passkey credential');
+  }
+  return credential;
+}
+
+function toAuthenticationResponse(credential: PasskeyCredentialLike): Record<string, unknown> {
+  const response = credential.response;
+  if (
+    !(response.authenticatorData instanceof ArrayBuffer) ||
+    !(response.signature instanceof ArrayBuffer)
+  ) {
+    throw new Error('Privy passkey authentication response is incomplete');
+  }
+  return {
+    id: credential.id,
+    rawId: bytesToBase64Url(credential.rawId),
+    response: {
+      clientDataJSON: bytesToBase64Url(response.clientDataJSON),
+      authenticatorData: bytesToBase64Url(response.authenticatorData),
+      signature: bytesToBase64Url(response.signature),
+      userHandle: response.userHandle ? bytesToBase64Url(response.userHandle) : null,
+    },
+    type: credential.type,
+    clientExtensionResults: credential.getClientExtensionResults(),
+  };
+}
+
+function toRegistrationResponse(credential: PasskeyCredentialLike): Record<string, unknown> {
+  const response = credential.response;
+  if (!(response.attestationObject instanceof ArrayBuffer)) {
+    throw new Error('Privy passkey registration response is incomplete');
+  }
+  return {
+    id: credential.id,
+    rawId: bytesToBase64Url(credential.rawId),
+    response: {
+      clientDataJSON: bytesToBase64Url(response.clientDataJSON),
+      attestationObject: bytesToBase64Url(response.attestationObject),
+      transports: response.getTransports?.() ?? [],
+    },
+    type: credential.type,
+    clientExtensionResults: credential.getClientExtensionResults(),
+  };
+}
+
+function isPasskeyUnavailable(error: unknown): boolean {
+  const record = asRecord(error);
+  const code = record?.code ?? record?.privyErrorCode;
+  return (
+    (typeof code === 'string' && /passkey|credential/i.test(code)) ||
+    /no passkey|passkey.*not found|credential.*not found|not found.*credential|no credentials/i.test(
+      errorMessage(error)
+    )
+  );
+}
+
 function userFromResponse(value: unknown): PrivyUser {
   const response = asRecord(value);
   const candidate = asRecord(response?.user) ?? response;
@@ -221,6 +423,7 @@ export class PrivySession {
   private readonly markerKey: string;
   private readonly loginMethods: readonly PrivyLoginMethod[];
   private readonly sessionLostCallbacks = new Set<() => void>();
+  private readonly authPromptCallbacks = new Set<(prompt: WalletAuthPrompt | null) => void>();
 
   private client: PrivyClient | undefined;
   private initializePromise: Promise<void> | undefined;
@@ -235,6 +438,7 @@ export class PrivySession {
   private pendingOAuthOperation: Promise<unknown> | undefined;
   private readonly pendingOperations = new Set<Promise<unknown>>();
   private disconnectPromise: Promise<void> | undefined;
+  private activePromptReject: (() => void) | undefined;
 
   constructor(private readonly options: PrivySessionOptions) {
     this.timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
@@ -263,6 +467,22 @@ export class PrivySession {
           typeof callback.state === 'string' &&
           typeof callback.provider === 'string'))
     );
+  }
+
+  /**
+   * Read the public dashboard configuration on every call. `app.getConfig()` is
+   * intentionally not used here: the SDK caches that value for its own
+   * internal consumers, while a picker must reflect a dashboard change made
+   * after this client was initialized.
+   */
+  async getLoginMethods(): Promise<readonly WalletLoginMethod[]> {
+    const signal = new AbortController().signal;
+    await this.waitForDisconnect(signal);
+    const generation = this.lifecycleGeneration;
+    const client = await this.ensureClient(signal, generation);
+    const config = await this.fetchDashboardConfig(client, signal, generation);
+    this.assertGeneration(generation, signal);
+    return this.resolveLoginMethods(config).map(dashboardMethodToPublic);
   }
 
   async connect(
@@ -304,8 +524,12 @@ export class PrivySession {
         if (loginMethod !== undefined && loginMethod !== validMarker.methodId) {
           throw new Error('Privy OAuth callback belongs to a different login method');
         }
-        const method = this.findLoginMethod(validMarker.methodId);
-        if (!method || !('oauthProvider' in method)) {
+        let method = this.resolveExplicitLoginMethod(validMarker.methodId);
+        if (!method) {
+          const config = await this.fetchDashboardConfig(client, signal, generation);
+          method = this.resolveLoginMethod(validMarker.methodId, config);
+        }
+        if (!method || method.kind !== 'oauth' || !method.oauthProvider) {
           throw new Error('Privy OAuth callback uses an unknown or non-OAuth login method');
         }
         clearOAuthCallback(this.browserWindow()!.location);
@@ -329,7 +553,7 @@ export class PrivySession {
               client.auth.oauth.loginWithCode(
                 callback.code!,
                 callback.state!,
-                method.oauthProvider
+                method.oauthProvider as PrivyOAuthProvider
               ),
             signal,
             generation,
@@ -359,22 +583,25 @@ export class PrivySession {
 
       const existingUser = await this.tryGetAuthenticatedUser(client, signal, generation);
       if (existingUser) {
-        if (loginMethod !== undefined && !this.findLoginMethod(loginMethod)) {
-          throw new Error(`Privy login method "${loginMethod}" is not configured`);
-        }
         return await this.establishWallet(existingUser, signal, generation);
       }
 
       if (loginMethod === undefined) {
         throw new Error('Privy login method is required when no session is available');
       }
-      const method = this.findLoginMethod(loginMethod);
+      let dashboardConfig: DashboardConfig | undefined;
+      let method = this.resolveExplicitLoginMethod(loginMethod);
+      if (!method) {
+        dashboardConfig = await this.fetchDashboardConfig(client, signal, generation);
+        method = this.resolveLoginMethod(loginMethod, dashboardConfig);
+      }
       if (!method) throw new Error(`Privy login method "${loginMethod}" is not configured`);
 
       let user: PrivyUser;
-      if ('getCustomToken' in method) {
+      const explicit = method.explicit;
+      if (method.kind === 'custom-token' && explicit && 'getCustomToken' in explicit) {
         const token = await this.runOperation(
-          () => method.getCustomToken(signal),
+          () => explicit.getCustomToken(signal),
           signal,
           generation,
           'Privy custom-token login'
@@ -390,10 +617,10 @@ export class PrivySession {
             'Privy custom-token login'
           )
         );
-      } else {
+      } else if (method.kind === 'oauth' && method.oauthProvider) {
         await this.beginOAuthRedirect(
           client,
-          method.oauthProvider,
+          method.oauthProvider as PrivyOAuthProvider,
           method.id,
           attempt,
           signal,
@@ -404,6 +631,11 @@ export class PrivySession {
           attempt.redirectReject = reject;
           if (signal.aborted) reject(createWalletError.notConnected());
         });
+      } else {
+        if (!dashboardConfig) {
+          dashboardConfig = await this.fetchDashboardConfig(client, signal, generation);
+        }
+        user = await this.authenticateMethod(client, method, dashboardConfig, signal, generation);
       }
 
       return await this.establishWallet(user, signal, generation);
@@ -463,6 +695,8 @@ export class PrivySession {
       return;
     }
     this.lifecycleGeneration += 1;
+    this.activePromptReject?.();
+    this.activePromptReject = undefined;
     const attempt = this.activeAttempt;
     this.activeAttempt = undefined;
     if (attempt) {
@@ -492,8 +726,29 @@ export class PrivySession {
     return () => this.sessionLostCallbacks.delete(callback);
   }
 
+  onAuthPrompt(callback: (prompt: WalletAuthPrompt | null) => void): () => void {
+    this.authPromptCallbacks.add(callback);
+    return () => this.authPromptCallbacks.delete(callback);
+  }
+
   private browserWindow(): Window | undefined {
     return typeof window === 'undefined' ? undefined : window;
+  }
+
+  private telegramWebAppData(): Record<string, unknown> | undefined {
+    const browser = this.browserWindow();
+    const telegram = asRecord((browser as unknown as UnknownRecord | undefined)?.Telegram);
+    const webApp = asRecord(telegram?.WebApp);
+    const initData = webApp?.initData;
+    if (!isNonEmptyString(initData)) return undefined;
+    const params = new URLSearchParams(initData);
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of params) result[key] = key === 'auth_date' ? Number(value) : value;
+    return isNonEmptyString(result.hash) &&
+      typeof result.auth_date === 'number' &&
+      isNonEmptyString(result.user)
+      ? result
+      : undefined;
   }
 
   private redirectURL(): URL | null {
@@ -504,8 +759,707 @@ export class PrivySession {
     }
   }
 
-  private findLoginMethod(id: string): PrivyLoginMethod | undefined {
-    return this.loginMethods.find((method) => method.id === id);
+  private resolveExplicitLoginMethod(id: string): ResolvedLoginMethod | undefined {
+    const method = this.loginMethods.find((candidate) => candidate.id === id);
+    if (!method) return undefined;
+    if ('getCustomToken' in method) {
+      return { id: method.id, label: method.id, kind: 'custom-token', explicit: method };
+    }
+    return {
+      id: method.id,
+      label: method.id,
+      kind: 'oauth',
+      oauthProvider: method.oauthProvider,
+      explicit: method,
+    };
+  }
+
+  private resolveLoginMethods(config: DashboardConfig): ResolvedLoginMethod[] {
+    const methods = new Map<string, ResolvedLoginMethod>();
+    const add = (method: ResolvedLoginMethod): void => {
+      if (!methods.has(method.id)) methods.set(method.id, method);
+    };
+
+    if (config.email_auth) add({ id: 'email', label: 'Email', kind: 'email' });
+    if (config.sms_auth || config.whatsapp_enabled) {
+      add({
+        id: 'phone',
+        label: config.whatsapp_enabled ? 'WhatsApp' : 'Phone',
+        kind: 'phone',
+      });
+    }
+    for (const oauth of DASHBOARD_OAUTH_METHODS) {
+      if (config[oauth.enabled] === true) {
+        add({
+          id: oauth.provider,
+          label: oauth.label,
+          kind: 'oauth',
+          oauthProvider: oauth.provider,
+        });
+      }
+    }
+    if (config.passkey_auth || config.passkeys_for_signup_enabled) {
+      add({ id: 'passkey', label: 'Passkey', kind: 'passkey' });
+    }
+    if (config.farcaster_auth) add({ id: 'farcaster', label: 'Farcaster', kind: 'farcaster' });
+    if (config.guest_auth) add({ id: 'guest', label: 'Guest', kind: 'guest' });
+
+    // Native Telegram authentication is only exposed when the page is hosted
+    // by Telegram and has its signed launch data. The ordinary dashboard OAuth
+    // method remains available independently.
+    if (config.telegram_auth && this.telegramWebAppData()) {
+      add({ id: 'telegram-native', label: 'Telegram', kind: 'telegram-native' });
+    }
+
+    for (const provider of config.custom_oauth_providers ?? []) {
+      if (!provider.enabled || !isNonEmptyString(provider.provider)) continue;
+      if (!provider.provider.startsWith('custom:')) continue;
+      methods.set(provider.provider, {
+        id: provider.provider,
+        label: isNonEmptyString(provider.provider_display_name)
+          ? provider.provider_display_name
+          : provider.provider,
+        icon: isNonEmptyString(provider.provider_icon_url) ? provider.provider_icon_url : undefined,
+        kind: 'oauth',
+        oauthProvider: provider.provider,
+      });
+    }
+
+    // Explicit methods are extensions, but an explicit id is authoritative.
+    for (const method of this.loginMethods) {
+      const explicit = this.resolveExplicitLoginMethod(method.id);
+      if (explicit) methods.set(method.id, explicit);
+    }
+    return [...methods.values()];
+  }
+
+  private resolveLoginMethod(id: string, config: DashboardConfig): ResolvedLoginMethod | undefined {
+    return this.resolveLoginMethods(config).find((method) => method.id === id);
+  }
+
+  private async fetchDashboardConfig(
+    client: PrivyClient,
+    signal: AbortSignal,
+    generation: number
+  ): Promise<DashboardConfig> {
+    const response = await this.runOperation(
+      () =>
+        client.fetchPrivyRoute(AppConfig, {
+          params: { app_id: this.options.appId },
+          signal,
+        }),
+      signal,
+      generation,
+      'Privy dashboard configuration'
+    );
+    const config = asRecord(response);
+    if (!config) throw new Error('Privy did not return a valid public app configuration');
+    return config as DashboardConfig;
+  }
+
+  private emitAuthPrompt(prompt: WalletAuthPrompt | null): void {
+    for (const callback of this.authPromptCallbacks) {
+      try {
+        callback(prompt);
+      } catch {
+        // UI observers are isolated from the authentication operation.
+      }
+    }
+  }
+
+  private async waitForPrompt<T>(
+    factory: (controls: PromptControls<T>) => WalletAuthPrompt,
+    signal: AbortSignal,
+    generation: number
+  ): Promise<T> {
+    this.assertGeneration(generation, signal);
+    let settled = false;
+    let resolveResult!: (value: T) => void;
+    let rejectResult!: (error: unknown) => void;
+    const result = new Promise<T>((resolve, reject) => {
+      resolveResult = resolve;
+      rejectResult = reject;
+    });
+    const controls: PromptControls<T> = {
+      show: (prompt) => {
+        if (settled) return;
+        this.assertGeneration(generation, signal);
+        this.emitAuthPrompt(prompt);
+      },
+      complete: (value) => {
+        if (settled) return;
+        settled = true;
+        resolveResult(value);
+      },
+      fail: (error) => {
+        if (settled) return;
+        settled = true;
+        rejectResult(error);
+      },
+      cancel: () => {
+        if (settled) return;
+        settled = true;
+        rejectResult(connectionRejected(new Error('Privy authentication was cancelled')));
+      },
+      isActive: () => !settled && !signal.aborted && generation === this.lifecycleGeneration,
+    };
+    const rejectForDisconnect = (): void => controls.fail(createWalletError.notConnected());
+    this.activePromptReject = rejectForDisconnect;
+    const onAbort = (): void => controls.fail(createWalletError.notConnected());
+    signal.addEventListener('abort', onAbort, { once: true });
+    try {
+      const prompt = factory(controls);
+      this.emitAuthPrompt(prompt);
+      if (signal.aborted) controls.fail(createWalletError.notConnected());
+      return await result;
+    } finally {
+      signal.removeEventListener('abort', onAbort);
+      if (this.activePromptReject === rejectForDisconnect) this.activePromptReject = undefined;
+      this.emitAuthPrompt(null);
+    }
+  }
+
+  private captchaForConfig(config: DashboardConfig): WalletAuthPrompt['captcha'] {
+    if (!config.captcha_enabled) return undefined;
+    const provider = config.enabled_captcha_provider;
+    const siteKey = config.captcha_site_key;
+    if ((provider !== 'turnstile' && provider !== 'hcaptcha') || !isNonEmptyString(siteKey)) {
+      throw new Error(
+        'Privy requires CAPTCHA, but the public dashboard configuration is incomplete'
+      );
+    }
+    return { provider, siteKey };
+  }
+
+  private async authenticateMethod(
+    client: PrivyClient,
+    method: ResolvedLoginMethod,
+    config: DashboardConfig,
+    configSignal: AbortSignal,
+    generation: number
+  ): Promise<PrivyUser> {
+    switch (method.kind) {
+      case 'email':
+        return await this.authenticatePasswordless(
+          client,
+          'email',
+          config,
+          configSignal,
+          generation
+        );
+      case 'phone':
+        return await this.authenticatePasswordless(
+          client,
+          'phone',
+          config,
+          configSignal,
+          generation
+        );
+      case 'passkey':
+        return await this.authenticatePasskey(client, config, configSignal, generation);
+      case 'farcaster':
+        return await this.authenticateFarcaster(client, configSignal, generation);
+      case 'guest':
+        return userFromResponse(
+          await this.runOperation(
+            () => client.auth.guest.create(),
+            configSignal,
+            generation,
+            'Privy guest login'
+          )
+        );
+      case 'telegram-native': {
+        const telegramWebAppData = this.telegramWebAppData();
+        if (!telegramWebAppData) {
+          throw new Error('Privy native Telegram login requires signed Telegram launch data');
+        }
+        return userFromResponse(
+          await this.runOperation(
+            () =>
+              client.auth.telegram.authenticate({
+                telegramWebAppData: telegramWebAppData as never,
+              }),
+            configSignal,
+            generation,
+            'Privy Telegram login'
+          )
+        );
+      }
+      case 'oauth':
+        throw new Error('Privy OAuth login must be started with its redirect flow');
+      case 'custom-token':
+        throw new Error('Privy custom-token login must be supplied by the application');
+    }
+  }
+
+  private async authenticatePasswordless(
+    client: PrivyClient,
+    kind: 'email' | 'phone',
+    config: DashboardConfig,
+    signal: AbortSignal,
+    generation: number
+  ): Promise<PrivyUser> {
+    const captcha = this.captchaForConfig(config);
+    const isEmail = kind === 'email';
+    let destination = '';
+    let captchaToken = '';
+    let codePrompt: WalletAuthPrompt | undefined;
+    let resendPrompt: WalletAuthPrompt | undefined;
+
+    const sendCode = async (values: Record<string, string>, resend: boolean): Promise<void> => {
+      this.assertGeneration(generation, signal);
+      if (!resend) {
+        destination = (values[isEmail ? 'email' : 'phone'] ?? '').trim();
+        if (isEmail) {
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(destination)) {
+            throw new Error('Enter a valid email address');
+          }
+        } else if (!/^\+?[0-9][0-9 ()-]{5,}$/.test(destination)) {
+          throw new Error('Enter a valid phone number');
+        }
+        captchaToken = (values.captchaToken ?? '').trim();
+        if (captcha && !captchaToken)
+          throw new Error('Complete the CAPTCHA before requesting a code');
+      } else if (captcha) {
+        captchaToken = (values.captchaToken ?? '').trim();
+        if (!captchaToken) throw new Error('Complete the CAPTCHA before requesting a code');
+      }
+      const response = await this.runOperation(
+        () =>
+          isEmail
+            ? client.auth.email.sendCode(destination, captchaToken || undefined)
+            : client.auth.phone.sendCode(destination, captchaToken || undefined),
+        signal,
+        generation,
+        `Privy ${kind} code delivery`
+      );
+      if (!response?.success) throw new Error(`Privy did not send the ${kind} code`);
+
+      codePrompt = {
+        title: `Enter your ${isEmail ? 'email' : config.whatsapp_enabled ? 'WhatsApp' : 'phone'} code`,
+        description: 'Enter the verification code sent to you.',
+        fields: [
+          {
+            name: 'code',
+            label: 'Verification code',
+            type: 'text',
+            inputMode: 'numeric',
+            autocomplete: 'one-time-code',
+          },
+        ],
+        submitLabel: 'Verify code',
+        submit: async (values: Record<string, string>) => {
+          const code = (values.code ?? '').trim();
+          if (!/^\d{4,12}$/.test(code)) throw new Error('Enter the verification code');
+          const authenticated = await this.runOperation(
+            () =>
+              isEmail
+                ? client.auth.email.loginWithCode(destination, code)
+                : client.auth.phone.loginWithCode(destination, code),
+            signal,
+            generation,
+            `Privy ${kind} code verification`
+          );
+          controls.complete(userFromResponse(authenticated));
+        },
+        secondaryAction: {
+          label: 'Resend code',
+          run: async () => {
+            if (captcha) {
+              resendPrompt = {
+                title: 'Complete CAPTCHA to resend',
+                description: 'Verify that you are human before requesting another code.',
+                captcha,
+                submitLabel: 'Resend code',
+                submit: async (values: Record<string, string>) => {
+                  await sendCode(values, true);
+                },
+                cancel: controls.cancel,
+              };
+              controls.show(resendPrompt);
+              return;
+            }
+            await sendCode({}, true);
+          },
+        },
+        cancel: controls.cancel,
+      };
+      controls.show(codePrompt);
+    };
+
+    let controls!: PromptControls<PrivyUser>;
+    const result = await this.waitForPrompt<PrivyUser>(
+      (promptControls) => {
+        controls = promptControls;
+        return {
+          title: isEmail
+            ? 'Sign in with email'
+            : `Sign in with ${config.whatsapp_enabled ? 'WhatsApp' : 'phone'}`,
+          fields: [
+            {
+              name: isEmail ? 'email' : 'phone',
+              label: isEmail ? 'Email address' : 'Phone number',
+              type: isEmail ? 'email' : 'tel',
+              autocomplete: isEmail ? 'email' : 'tel',
+              inputMode: isEmail ? 'email' : 'tel',
+            },
+          ],
+          ...(captcha ? { captcha } : {}),
+          submitLabel: 'Send code',
+          submit: async (values: Record<string, string>) => {
+            await sendCode(values, false);
+          },
+          cancel: promptControls.cancel,
+        };
+      },
+      signal,
+      generation
+    );
+    return result;
+  }
+
+  private async authenticatePasskey(
+    client: PrivyClient,
+    config: DashboardConfig,
+    signal: AbortSignal,
+    generation: number
+  ): Promise<PrivyUser> {
+    if (typeof navigator === 'undefined' || !navigator.credentials) {
+      throw new Error('Privy passkey login requires browser credential support');
+    }
+    return await this.waitForPrompt(
+      (controls) => ({
+        title: 'Sign in with a passkey',
+        description: 'Use the passkey saved on this device or in your password manager.',
+        submitLabel: 'Use passkey',
+        submit: async () => {
+          if (!config.passkey_auth) {
+            controls.complete(await this.signupWithPasskey(client, signal, generation));
+            return;
+          }
+          const authentication = await this.runOperation(
+            () => client.auth.passkey.generateAuthenticationOptions(),
+            signal,
+            generation,
+            'Privy passkey initialization'
+          );
+          const authenticationOptions = this.passkeyAuthenticationOptions(authentication);
+          const credential = asPasskeyCredential(
+            await this.waitForBrowserCredential(
+              () => navigator.credentials!.get({ publicKey: authenticationOptions }),
+              signal,
+              generation
+            )
+          );
+          try {
+            const authenticated = await this.runOperation(
+              () =>
+                client.auth.passkey.loginWithPasskey(
+                  toAuthenticationResponse(credential) as never,
+                  this.passkeyChallenge(authentication),
+                  this.passkeyRelyingParty(authentication)
+                ),
+              signal,
+              generation,
+              'Privy passkey login'
+            );
+            controls.complete(userFromResponse(authenticated));
+          } catch (error) {
+            if (!config.passkeys_for_signup_enabled || !isPasskeyUnavailable(error)) throw error;
+            controls.complete(await this.signupWithPasskey(client, signal, generation));
+          }
+        },
+        cancel: controls.cancel,
+      }),
+      signal,
+      generation
+    );
+  }
+
+  private async signupWithPasskey(
+    client: PrivyClient,
+    signal: AbortSignal,
+    generation: number
+  ): Promise<PrivyUser> {
+    const registration = await this.runOperation(
+      () => client.auth.passkey.generateSignupOptions(),
+      signal,
+      generation,
+      'Privy passkey signup initialization'
+    );
+    const registrationOptions = this.passkeyRegistrationOptions(registration);
+    const registrationCredential = asPasskeyCredential(
+      await this.waitForBrowserCredential(
+        () => navigator.credentials!.create({ publicKey: registrationOptions }),
+        signal,
+        generation
+      )
+    );
+    const signedUp = await this.runOperation(
+      () =>
+        client.auth.passkey.signupWithPasskey(
+          toRegistrationResponse(registrationCredential) as never,
+          this.passkeyRelyingParty(registration)
+        ),
+      signal,
+      generation,
+      'Privy passkey signup'
+    );
+    return userFromResponse(signedUp);
+  }
+
+  private passkeyChallenge(value: unknown): string {
+    const response = asRecord(value);
+    const options = asRecord(response?.options);
+    if (!options || !isNonEmptyString(options.challenge)) {
+      throw new Error('Privy passkey response did not include a challenge');
+    }
+    return options.challenge;
+  }
+
+  private passkeyRelyingParty(value: unknown): string | undefined {
+    const response = asRecord(value);
+    return isNonEmptyString(response?.relying_party) ? response.relying_party : undefined;
+  }
+
+  private passkeyAuthenticationOptions(value: unknown): PublicKeyCredentialRequestOptions {
+    const response = asRecord(value);
+    const options = asRecord(response?.options);
+    if (!options || !isNonEmptyString(options.challenge)) {
+      throw new Error('Privy passkey response did not include authentication options');
+    }
+    const allowCredentials = Array.isArray(options.allow_credentials)
+      ? options.allow_credentials.flatMap((entry) => {
+          const descriptor = asRecord(entry);
+          if (!descriptor || !isNonEmptyString(descriptor.id)) return [];
+          return [
+            {
+              id: base64UrlToBytes(descriptor.id) as unknown as ArrayBuffer,
+              type: 'public-key' as const,
+              ...(Array.isArray(descriptor.transports)
+                ? { transports: descriptor.transports as AuthenticatorTransport[] }
+                : {}),
+            },
+          ];
+        })
+      : undefined;
+    return {
+      challenge: base64UrlToBytes(options.challenge) as unknown as ArrayBuffer,
+      ...(isNonEmptyString(options.rp_id) ? { rpId: options.rp_id } : {}),
+      ...(allowCredentials ? { allowCredentials } : {}),
+      ...(typeof options.timeout === 'number' ? { timeout: options.timeout } : {}),
+      ...(isNonEmptyString(options.user_verification)
+        ? { userVerification: options.user_verification as UserVerificationRequirement }
+        : {}),
+    };
+  }
+
+  private passkeyRegistrationOptions(value: unknown): PublicKeyCredentialCreationOptions {
+    const response = asRecord(value);
+    const options = asRecord(response?.options);
+    const relyingParty = asRecord(options?.rp);
+    const user = asRecord(options?.user);
+    if (
+      !options ||
+      !isNonEmptyString(options.challenge) ||
+      !relyingParty ||
+      !isNonEmptyString(relyingParty.name) ||
+      !user ||
+      !isNonEmptyString(user.id) ||
+      !isNonEmptyString(user.name) ||
+      !isNonEmptyString(user.display_name)
+    ) {
+      throw new Error('Privy passkey response did not include registration options');
+    }
+    const pubKeyCredParams = Array.isArray(options.pub_key_cred_params)
+      ? options.pub_key_cred_params.flatMap((entry) => {
+          const parameter = asRecord(entry);
+          return typeof parameter?.alg === 'number'
+            ? [{ type: 'public-key' as const, alg: parameter.alg }]
+            : [];
+        })
+      : [];
+    if (pubKeyCredParams.length === 0)
+      throw new Error('Privy passkey response did not include algorithms');
+    return {
+      challenge: base64UrlToBytes(options.challenge) as unknown as ArrayBuffer,
+      rp: {
+        name: relyingParty.name,
+        ...(isNonEmptyString(relyingParty.id) ? { id: relyingParty.id } : {}),
+      },
+      user: {
+        id: base64UrlToBytes(user.id) as unknown as ArrayBuffer,
+        name: user.name,
+        displayName: user.display_name,
+      },
+      pubKeyCredParams,
+      ...(typeof options.timeout === 'number' ? { timeout: options.timeout } : {}),
+      ...(isNonEmptyString(options.attestation)
+        ? { attestation: options.attestation as AttestationConveyancePreference }
+        : {}),
+      ...(asRecord(options.authenticator_selection)
+        ? {
+            authenticatorSelection: {
+              ...(isNonEmptyString(
+                asRecord(options.authenticator_selection)!.authenticator_attachment
+              )
+                ? {
+                    authenticatorAttachment: asRecord(options.authenticator_selection)!
+                      .authenticator_attachment as AuthenticatorAttachment,
+                  }
+                : {}),
+              ...(typeof asRecord(options.authenticator_selection)!.require_resident_key ===
+              'boolean'
+                ? {
+                    requireResidentKey: asRecord(options.authenticator_selection)!
+                      .require_resident_key as boolean,
+                  }
+                : {}),
+              ...(isNonEmptyString(asRecord(options.authenticator_selection)!.resident_key)
+                ? {
+                    residentKey: asRecord(options.authenticator_selection)!
+                      .resident_key as ResidentKeyRequirement,
+                  }
+                : {}),
+              ...(isNonEmptyString(asRecord(options.authenticator_selection)!.user_verification)
+                ? {
+                    userVerification: asRecord(options.authenticator_selection)!
+                      .user_verification as UserVerificationRequirement,
+                  }
+                : {}),
+            },
+          }
+        : {}),
+    };
+  }
+
+  private async waitForBrowserCredential<T>(
+    operation: () => Promise<T>,
+    signal: AbortSignal,
+    generation: number
+  ): Promise<T> {
+    this.assertGeneration(generation, signal);
+    let abortHandler: (() => void) | undefined;
+    const aborted = new Promise<never>((_, reject) => {
+      abortHandler = () => reject(createWalletError.notConnected());
+      signal.addEventListener('abort', abortHandler, { once: true });
+      if (signal.aborted) abortHandler();
+    });
+    try {
+      const value = await Promise.race([operation(), aborted]);
+      this.assertGeneration(generation, signal);
+      return value;
+    } finally {
+      if (abortHandler) signal.removeEventListener('abort', abortHandler);
+    }
+  }
+
+  private async authenticateFarcaster(
+    client: PrivyClient,
+    signal: AbortSignal,
+    generation: number
+  ): Promise<PrivyUser> {
+    const initialized = await this.runOperation(
+      () => client.auth.farcaster.initializeAuth({ redirectUrl: this.options.redirectUri }),
+      signal,
+      generation,
+      'Privy Farcaster initialization'
+    );
+    if (
+      !isNonEmptyString(initialized.channel_token) ||
+      !isNonEmptyString(initialized.connect_uri)
+    ) {
+      throw new Error('Privy Farcaster initialization did not return a connection URI');
+    }
+    return await this.waitForPrompt(
+      (controls) => {
+        void this.pollFarcaster(client, initialized.channel_token, controls, signal, generation);
+        return {
+          title: 'Sign in with Farcaster',
+          description: 'Scan this QR code with Farcaster to approve sign-in.',
+          url: initialized.connect_uri,
+          qrCode: initialized.connect_uri,
+          submitLabel: 'I approved in Farcaster',
+          submit: async () => undefined,
+          cancel: controls.cancel,
+        };
+      },
+      signal,
+      generation
+    );
+  }
+
+  private async pollFarcaster(
+    client: PrivyClient,
+    channelToken: string,
+    controls: PromptControls<PrivyUser>,
+    signal: AbortSignal,
+    generation: number
+  ): Promise<void> {
+    const deadline = Date.now() + FARCASTER_POLL_TIMEOUT_MS;
+    try {
+      while (controls.isActive() && Date.now() < deadline) {
+        const status = asRecord(
+          await this.runOperation(
+            () => client.auth.farcaster.getFarcasterStatus({ channel_token: channelToken }),
+            signal,
+            generation,
+            'Privy Farcaster status'
+          )
+        );
+        if (status?.state === 'completed') {
+          if (
+            typeof status.message !== 'string' ||
+            typeof status.signature !== 'string' ||
+            typeof status.fid !== 'number'
+          ) {
+            throw new Error('Privy Farcaster status response is incomplete');
+          }
+          const authenticated = await this.runOperation(
+            () =>
+              client.auth.farcaster.authenticate({
+                channel_token: channelToken,
+                message: status.message as string,
+                signature: status.signature as string,
+                fid: status.fid as number,
+              }),
+            signal,
+            generation,
+            'Privy Farcaster authentication'
+          );
+          controls.complete(userFromResponse(authenticated));
+          return;
+        }
+        await this.delayWithAbort(FARCASTER_POLL_INTERVAL_MS, signal, generation);
+      }
+      if (controls.isActive())
+        throw createWalletError.operationTimeout('Privy Farcaster authentication');
+    } catch (error) {
+      if (controls.isActive()) controls.fail(error);
+    }
+  }
+
+  private async delayWithAbort(ms: number, signal: AbortSignal, generation: number): Promise<void> {
+    this.assertGeneration(generation, signal);
+    await new Promise<void>((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout>;
+      const finish = (): void => {
+        clearTimeout(timer);
+        signal.removeEventListener('abort', abort);
+        resolve();
+      };
+      const abort = (): void => {
+        clearTimeout(timer);
+        signal.removeEventListener('abort', abort);
+        reject(createWalletError.notConnected());
+      };
+      timer = setTimeout(finish, ms);
+      signal.addEventListener('abort', abort, { once: true });
+      void Promise.resolve().then(() => {
+        if (generation !== this.lifecycleGeneration) abort();
+      });
+      if (signal.aborted) abort();
+    });
   }
 
   private readPendingMarker(): PendingConnectionMarker | null {
@@ -1039,6 +1993,8 @@ export class PrivySession {
     if (this.sessionLost) return;
     this.sessionLost = true;
     this.lifecycleGeneration += 1;
+    this.activePromptReject?.();
+    this.activePromptReject = undefined;
     this.currentWallet = undefined;
     this.currentUserId = undefined;
     this.stopSessionMonitor();

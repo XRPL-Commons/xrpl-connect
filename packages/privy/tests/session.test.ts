@@ -6,10 +6,24 @@ const mocks = vi.hoisted(() => ({
   clients: [] as Array<Record<string, unknown>>,
   initialize: vi.fn(),
   getAccessToken: vi.fn(),
+  fetchPrivyRoute: vi.fn(),
   userGet: vi.fn(),
   refreshUser: vi.fn(),
   generateURL: vi.fn(),
   loginWithCode: vi.fn(),
+  emailSendCode: vi.fn(),
+  emailLoginWithCode: vi.fn(),
+  phoneSendCode: vi.fn(),
+  phoneLoginWithCode: vi.fn(),
+  guestCreate: vi.fn(),
+  passkeyGenerateAuthenticationOptions: vi.fn(),
+  passkeyGenerateSignupOptions: vi.fn(),
+  passkeyLoginWithPasskey: vi.fn(),
+  passkeySignupWithPasskey: vi.fn(),
+  farcasterInitializeAuth: vi.fn(),
+  farcasterGetStatus: vi.fn(),
+  farcasterAuthenticate: vi.fn(),
+  telegramAuthenticate: vi.fn(),
   syncWithToken: vi.fn(),
   logout: vi.fn(),
   getURL: vi.fn(),
@@ -181,9 +195,25 @@ function configureClient(): void {
       initialize: mocks.initialize,
       setMessagePoster: mocks.setMessagePoster,
       getAccessToken: mocks.getAccessToken,
+      fetchPrivyRoute: mocks.fetchPrivyRoute,
       user: { get: mocks.userGet, refreshUser: mocks.refreshUser },
       auth: {
         oauth: { generateURL: mocks.generateURL, loginWithCode: mocks.loginWithCode },
+        email: { sendCode: mocks.emailSendCode, loginWithCode: mocks.emailLoginWithCode },
+        phone: { sendCode: mocks.phoneSendCode, loginWithCode: mocks.phoneLoginWithCode },
+        guest: { create: mocks.guestCreate },
+        passkey: {
+          generateAuthenticationOptions: mocks.passkeyGenerateAuthenticationOptions,
+          generateSignupOptions: mocks.passkeyGenerateSignupOptions,
+          loginWithPasskey: mocks.passkeyLoginWithPasskey,
+          signupWithPasskey: mocks.passkeySignupWithPasskey,
+        },
+        farcaster: {
+          initializeAuth: mocks.farcasterInitializeAuth,
+          getFarcasterStatus: mocks.farcasterGetStatus,
+          authenticate: mocks.farcasterAuthenticate,
+        },
+        telegram: { authenticate: mocks.telegramAuthenticate },
         customProvider: { syncWithToken: mocks.syncWithToken },
         logout: mocks.logout,
       },
@@ -223,10 +253,41 @@ beforeEach(() => {
   configureClient();
   mocks.initialize.mockResolvedValue(undefined);
   mocks.getAccessToken.mockResolvedValue(null);
+  mocks.fetchPrivyRoute.mockResolvedValue({
+    email_auth: false,
+    sms_auth: false,
+    whatsapp_enabled: false,
+    custom_oauth_providers: [],
+  });
   mocks.userGet.mockResolvedValue({ user: user() });
   mocks.refreshUser.mockResolvedValue({ user: user() });
   mocks.generateURL.mockResolvedValue({ url: 'https://auth.privy.io/apps/app-216/login' });
   mocks.loginWithCode.mockResolvedValue({ user: user() });
+  mocks.emailSendCode.mockResolvedValue({ success: true });
+  mocks.emailLoginWithCode.mockResolvedValue({ user: user() });
+  mocks.phoneSendCode.mockResolvedValue({ success: true });
+  mocks.phoneLoginWithCode.mockResolvedValue({ user: user() });
+  mocks.guestCreate.mockResolvedValue({ user: user() });
+  mocks.passkeyGenerateAuthenticationOptions.mockResolvedValue({
+    options: { challenge: 'Y2hhbGxlbmdl' },
+  });
+  mocks.passkeyGenerateSignupOptions.mockResolvedValue({
+    options: {
+      challenge: 'Y2hhbGxlbmdl',
+      rp: { name: 'XRPL Connect' },
+      user: { id: 'dXNlcg', name: 'user', display_name: 'User' },
+      pub_key_cred_params: [{ type: 'public-key', alg: -7 }],
+    },
+  });
+  mocks.passkeyLoginWithPasskey.mockResolvedValue({ user: user() });
+  mocks.passkeySignupWithPasskey.mockResolvedValue({ user: user() });
+  mocks.farcasterInitializeAuth.mockResolvedValue({
+    channel_token: 'channel-token',
+    connect_uri: 'https://warpcast.com/~/sign-in?channelToken=channel-token',
+  });
+  mocks.farcasterGetStatus.mockResolvedValue({ state: 'pending', nonce: 'nonce' });
+  mocks.farcasterAuthenticate.mockResolvedValue({ user: user() });
+  mocks.telegramAuthenticate.mockResolvedValue({ user: user() });
   mocks.syncWithToken.mockResolvedValue({ user: user() });
   mocks.logout.mockResolvedValue(undefined);
   mocks.getURL.mockReturnValue('https://auth.privy.io/apps/app-216/embedded-wallets');
@@ -255,6 +316,265 @@ afterEach(async () => {
 });
 
 describe('PrivySession', () => {
+  it('discovers fresh dashboard methods while excluding external-wallet auth', async () => {
+    mocks.fetchPrivyRoute
+      .mockResolvedValueOnce({
+        email_auth: true,
+        sms_auth: false,
+        whatsapp_enabled: false,
+        google_oauth: true,
+        wallet_auth: true,
+        external_wallets_for_signup_enabled: true,
+        passkey_auth: true,
+        farcaster_auth: false,
+        guest_auth: false,
+        custom_oauth_providers: [
+          {
+            enabled: true,
+            provider: 'custom:acme',
+            provider_display_name: 'Acme',
+            provider_icon_url: 'https://example.test/acme.svg',
+          },
+          {
+            enabled: false,
+            provider: 'custom:disabled',
+            provider_display_name: 'Disabled',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        email_auth: false,
+        sms_auth: false,
+        whatsapp_enabled: true,
+        google_oauth: false,
+        github_oauth: true,
+        wallet_auth: true,
+        custom_oauth_providers: [],
+      });
+    const session = new PrivySession({
+      appId: 'app-216',
+      redirectUri: `${window.location.origin}/wallet/privy`,
+    });
+
+    await expect(session.getLoginMethods()).resolves.toEqual([
+      { id: 'email', label: 'Email' },
+      { id: 'google', label: 'Google' },
+      { id: 'passkey', label: 'Passkey' },
+      { id: 'custom:acme', label: 'Acme', icon: 'https://example.test/acme.svg' },
+    ]);
+    await expect(session.getLoginMethods()).resolves.toEqual([
+      { id: 'phone', label: 'WhatsApp' },
+      { id: 'github', label: 'GitHub' },
+    ]);
+    expect(mocks.fetchPrivyRoute).toHaveBeenCalledTimes(2);
+    expect(mocks.fetchPrivyRoute).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ path: '/api/v1/apps/:app_id', method: 'GET' }),
+      expect.objectContaining({ params: { app_id: 'app-216' }, signal: expect.any(AbortSignal) })
+    );
+    await session.disconnect();
+  });
+
+  it('waits for email input and code verification outside the SDK request timeout', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValueOnce({
+      email_auth: true,
+      custom_oauth_providers: [],
+      captcha_enabled: false,
+    });
+    const session = new PrivySession({
+      appId: 'app-216',
+      redirectUri: `${window.location.origin}/wallet/privy`,
+      timeoutMs: 20,
+    });
+    const seen: unknown[] = [];
+    session.onAuthPrompt((prompt) => {
+      seen.push(prompt);
+    });
+    const connecting = session.connect('email', new AbortController().signal);
+    await vi.waitFor(() => expect(seen.at(-1)).toMatchObject({ title: 'Sign in with email' }));
+    const emailPrompt = seen.at(-1) as NonNullable<(typeof seen)[number]> & {
+      submit(values: Record<string, string>): Promise<void>;
+    };
+    await emailPrompt.submit({ email: 'user@example.com' });
+    await vi.waitFor(() => expect(seen.at(-1)).toMatchObject({ title: 'Enter your email code' }));
+    const codePrompt = seen.at(-1) as typeof emailPrompt & {
+      secondaryAction: { run(): Promise<void> };
+    };
+    expect(mocks.emailSendCode).toHaveBeenCalledWith('user@example.com', undefined);
+    await expect(codePrompt.submit({ code: '123456' })).resolves.toBeUndefined();
+    await expect(connecting).resolves.toMatchObject({ id: walletId });
+    expect(seen.at(-1)).toBeNull();
+    await session.disconnect();
+    expect(mocks.emailLoginWithCode).toHaveBeenCalledWith('user@example.com', '123456');
+  });
+
+  it('keeps an OTP prompt for retry and supports resend before cancellation', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValueOnce({ email_auth: true, custom_oauth_providers: [] });
+    mocks.emailLoginWithCode.mockRejectedValueOnce(new Error('Invalid code'));
+    const session = new PrivySession({
+      appId: 'app-216',
+      redirectUri: `${window.location.origin}/wallet/privy`,
+    });
+    let prompt: import('xrpl-connect').WalletAuthPrompt | null = null;
+    session.onAuthPrompt((value) => {
+      if (value) prompt = value;
+    });
+    const connecting = session.connect('email', new AbortController().signal);
+    await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Sign in with email' }));
+    await prompt!.submit!({ email: 'user@example.com' });
+    await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Enter your email code' }));
+    await expect(prompt!.submit!({ code: '000000' })).rejects.toThrow('Invalid code');
+    expect(prompt).not.toBeNull();
+    await prompt!.secondaryAction!.run();
+    expect(mocks.emailSendCode).toHaveBeenCalledTimes(2);
+    prompt!.cancel();
+    await expect(connecting).rejects.toMatchObject({ code: 'CONNECTION_REJECTED' });
+    await session.disconnect();
+  });
+
+  it('uses the phone OTP API for a dashboard-enabled SMS method', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValueOnce({ sms_auth: true, custom_oauth_providers: [] });
+    const session = new PrivySession({
+      appId: 'app-216',
+      redirectUri: `${window.location.origin}/wallet/privy`,
+    });
+    let prompt: import('xrpl-connect').WalletAuthPrompt | null = null;
+    session.onAuthPrompt((value) => {
+      if (value) prompt = value;
+    });
+    const connecting = session.connect('phone', new AbortController().signal);
+    await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Sign in with phone' }));
+    await prompt!.submit!({ phone: '+33123456789' });
+    await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Enter your phone code' }));
+    await prompt!.submit!({ code: '123456' });
+    await expect(connecting).resolves.toMatchObject({ id: walletId });
+    expect(mocks.phoneSendCode).toHaveBeenCalledWith('+33123456789', undefined);
+    expect(mocks.phoneLoginWithCode).toHaveBeenCalledWith('+33123456789', '123456');
+    await session.disconnect();
+  });
+
+  it('requests a fresh CAPTCHA token before resending an OTP', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValueOnce({
+      email_auth: true,
+      captcha_enabled: true,
+      enabled_captcha_provider: 'turnstile',
+      captcha_site_key: 'site-key',
+      custom_oauth_providers: [],
+    });
+    const session = new PrivySession({
+      appId: 'app-216',
+      redirectUri: `${window.location.origin}/wallet/privy`,
+    });
+    let prompt: import('xrpl-connect').WalletAuthPrompt | null = null;
+    session.onAuthPrompt((value) => {
+      if (value) prompt = value;
+    });
+    const connecting = session.connect('email', new AbortController().signal);
+    await vi.waitFor(() => expect(prompt).toMatchObject({ captcha: { siteKey: 'site-key' } }));
+    await prompt!.submit!({ email: 'user@example.com', captchaToken: 'captcha-1' });
+    await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Enter your email code' }));
+    expect(prompt!.captcha).toBeUndefined();
+    await prompt!.secondaryAction!.run();
+    await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Complete CAPTCHA to resend' }));
+    await prompt!.submit!({ captchaToken: 'captcha-2' });
+    expect(mocks.emailSendCode).toHaveBeenNthCalledWith(1, 'user@example.com', 'captcha-1');
+    expect(mocks.emailSendCode).toHaveBeenNthCalledWith(2, 'user@example.com', 'captcha-2');
+    prompt!.cancel();
+    await expect(connecting).rejects.toMatchObject({ code: 'CONNECTION_REJECTED' });
+    await session.disconnect();
+  });
+
+  it('runs the native passkey ceremony from an explicit prompt submit action', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValueOnce({
+      passkey_auth: true,
+      passkeys_for_signup_enabled: false,
+      custom_oauth_providers: [],
+    });
+    const credential = {
+      id: 'credential-id',
+      rawId: new ArrayBuffer(2),
+      type: 'public-key',
+      response: {
+        clientDataJSON: new ArrayBuffer(2),
+        authenticatorData: new ArrayBuffer(2),
+        signature: new ArrayBuffer(2),
+        userHandle: null,
+      },
+      getClientExtensionResults: () => ({}),
+    };
+    Object.defineProperty(navigator, 'credentials', {
+      configurable: true,
+      value: { get: vi.fn(async () => credential) },
+    });
+    const session = new PrivySession({
+      appId: 'app-216',
+      redirectUri: `${window.location.origin}/wallet/privy`,
+    });
+    let prompt: import('xrpl-connect').WalletAuthPrompt | null = null;
+    session.onAuthPrompt((value) => {
+      if (value) prompt = value;
+    });
+    const connecting = session.connect('passkey', new AbortController().signal);
+    await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Sign in with a passkey' }));
+    await prompt!.submit!({});
+    await expect(connecting).resolves.toMatchObject({ id: walletId });
+    expect(mocks.passkeyGenerateAuthenticationOptions).toHaveBeenCalledOnce();
+    expect(mocks.passkeyLoginWithPasskey).toHaveBeenCalledOnce();
+    await session.disconnect();
+  });
+
+  it('rejects a human-input wait when the session is directly disconnected', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValueOnce({ email_auth: true, custom_oauth_providers: [] });
+    const session = new PrivySession({
+      appId: 'app-216',
+      redirectUri: `${window.location.origin}/wallet/privy`,
+    });
+    const prompts: Array<unknown> = [];
+    session.onAuthPrompt((prompt) => prompts.push(prompt));
+    const connecting = session.connect('email', new AbortController().signal);
+    await vi.waitFor(() => expect(prompts.at(-1)).toMatchObject({ title: 'Sign in with email' }));
+    await session.disconnect();
+    await expect(connecting).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+  });
+
+  it('polls the low-level Farcaster channel and exposes only its connect URI', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValueOnce({
+      farcaster_auth: true,
+      custom_oauth_providers: [],
+    });
+    mocks.farcasterGetStatus.mockResolvedValueOnce({
+      state: 'completed',
+      fid: 123,
+      message: 'Sign in with Farcaster',
+      signature: '0xsignature',
+      nonce: 'nonce',
+    });
+    const session = new PrivySession({
+      appId: 'app-216',
+      redirectUri: `${window.location.origin}/wallet/privy`,
+    });
+    let prompt: import('xrpl-connect').WalletAuthPrompt | null = null;
+    session.onAuthPrompt((value) => {
+      if (value) prompt = value;
+    });
+    const connecting = session.connect('farcaster', new AbortController().signal);
+    await vi.waitFor(() =>
+      expect(prompt).toMatchObject({
+        title: 'Sign in with Farcaster',
+        url: 'https://warpcast.com/~/sign-in?channelToken=channel-token',
+        qrCode: 'https://warpcast.com/~/sign-in?channelToken=channel-token',
+      })
+    );
+    await expect(connecting).resolves.toMatchObject({ id: walletId });
+    expect(mocks.farcasterAuthenticate).toHaveBeenCalledWith({
+      channel_token: 'channel-token',
+      message: 'Sign in with Farcaster',
+      signature: '0xsignature',
+      fid: 123,
+    });
+    await session.disconnect();
+  });
+
   it('remains constructible when login methods are omitted from runtime config', () => {
     const session = new PrivySession({
       appId: 'app-216',

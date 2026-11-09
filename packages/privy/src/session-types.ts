@@ -28,7 +28,8 @@ export type PrivyOAuthProvider =
   | 'apple'
   | 'line'
   | 'twitch'
-  | 'telegram';
+  | 'telegram'
+  | `custom:${string}`;
 
 export type PrivyLoginMethod =
   | {
@@ -44,6 +45,10 @@ export interface PrivySessionOptions {
   appId: string;
   clientId?: string;
   redirectUri: string;
-  loginMethods: readonly PrivyLoginMethod[];
+  /**
+   * Application supplied methods. Dashboard methods are discovered at runtime;
+   * these entries extend them and replace a dashboard entry with the same id.
+   */
+  loginMethods?: readonly PrivyLoginMethod[];
   timeoutMs?: number;
 }

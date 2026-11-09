@@ -14,6 +14,8 @@ import {
   type Transaction,
   type WalletAdapter,
   type WalletAdapterEvent,
+  type WalletAuthPrompt,
+  type WalletLoginMethod,
 } from 'xrpl-connect';
 import { PrivySession } from './session';
 import type { PrivySessionOptions, PrivyWallet } from './session-types';
@@ -41,6 +43,7 @@ export class PrivyAdapter implements WalletAdapter {
 
   private readonly session: PrivySession;
   private readonly listeners = new Map<WalletAdapterEvent, Set<(data: unknown) => void>>();
+  private readonly authPromptListeners = new Set<(prompt: WalletAuthPrompt | null) => void>();
   private controller: AbortController | null = null;
   private wallet: PrivyWallet | null = null;
   private account: AccountInfo | null = null;
@@ -48,6 +51,9 @@ export class PrivyAdapter implements WalletAdapter {
 
   constructor(private readonly options: PrivyAdapterOptions) {
     this.session = new PrivySession(options);
+    this.session.onAuthPrompt?.((prompt) => {
+      for (const callback of this.authPromptListeners) callback(prompt);
+    });
     this.session.onSessionLost(() => {
       const connected = this.account !== null;
       this.controller?.abort();
@@ -62,7 +68,6 @@ export class PrivyAdapter implements WalletAdapter {
     const missing: string[] = [];
     if (!this.options.appId?.trim()) missing.push('appId');
     if (!this.options.redirectUri?.trim()) missing.push('redirectUri');
-    if (!this.options.loginMethods?.length) missing.push('loginMethods');
     return missing;
   }
 
@@ -76,6 +81,15 @@ export class PrivyAdapter implements WalletAdapter {
 
   hasPendingConnection(): boolean {
     return this.session.hasPendingConnection();
+  }
+
+  async getLoginMethods(): Promise<readonly WalletLoginMethod[]> {
+    return this.session.getLoginMethods();
+  }
+
+  onAuthPrompt(callback: (prompt: WalletAuthPrompt | null) => void): () => void {
+    this.authPromptListeners.add(callback);
+    return () => this.authPromptListeners.delete(callback);
   }
 
   serializeReconnectOptions(): ReconnectOptions | undefined {
