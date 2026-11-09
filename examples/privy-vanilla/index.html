@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XRPL Connect · Social login</title>
+    <style>
+      :root {
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+        color: #172b39;
+        background: #f4f6f7;
+      }
+      body {
+        max-width: 680px;
+        margin: 10vh auto;
+        padding: 24px;
+      }
+      h1 {
+        letter-spacing: -0.04em;
+        line-height: 1.1;
+      }
+      section {
+        margin: 24px 0;
+        padding: 24px;
+        background: white;
+        border-radius: 16px;
+      }
+      button {
+        font: inherit;
+        padding: 10px 16px;
+        border: 1px solid #b8c8d0;
+        border-radius: 8px;
+        background: white;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font-size: 13px;
+      }
+      #account {
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <p>XRPL CONNECT · TESTNET</p>
+    <h1>A wallet starts with a login.</h1>
+    <p>
+      Use a social account to create or restore your embedded XRPL wallet, or connect an existing
+      wallet.
+    </p>
+    <section aria-label="Connect a wallet">
+      <xrpl-wallet-connector theme="light" show-unavailable></xrpl-wallet-connector>
+      <p id="configuration"></p>
+      <p id="account">No wallet connected.</p>
+      <button id="logout" disabled>Log out</button>
+    </section>
+    <section aria-label="Test the wallet">
+      <h2>Try a testnet transaction</h2>
+      <p>
+        Fund the account with test XRP, then sign and submit an AccountSet transaction. This only
+        uses testnet funds.
+      </p>
+      <div class="actions">
+        <button id="fund" disabled>Fund testnet wallet</button>
+        <button id="sign" disabled>Sign transaction</button>
+        <button id="submit" disabled>Sign and submit</button>
+      </div>
+      <pre id="result" role="status" aria-live="polite"></pre>
+    </section>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

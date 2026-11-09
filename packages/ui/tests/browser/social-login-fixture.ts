@@ -52,7 +52,7 @@ function createAdapter(id: string, name: string, connect: WalletAdapter['connect
 
 let socialCallCount = 0;
 let socialDisconnectCount = 0;
-let socialCalls: DeferredSocialCall[] = [];
+const socialCalls: DeferredSocialCall[] = [];
 
 const externalWallet = createAdapter('external-wallet', 'External Wallet', async () => ({
   address: 'rExternal',
@@ -80,6 +80,7 @@ const connector = document.querySelector('#wallet-connector') as HTMLElement & {
     connectOptions?: ConnectOptions;
   }[];
   setWalletManager(walletManager: WalletManager): void;
+  open(): Promise<void>;
 };
 
 const socialLogins = [

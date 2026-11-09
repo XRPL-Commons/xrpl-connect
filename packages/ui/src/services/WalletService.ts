@@ -380,6 +380,7 @@ export class WalletService {
       // Check for specific error codes
       if (
         err.code === ERROR_CODES.USER_REJECTED ||
+        err.code === WalletErrorCode.CONNECTION_REJECTED ||
         errorMessage.toLowerCase().includes('user rejected')
       ) {
         errorType = 'rejected';

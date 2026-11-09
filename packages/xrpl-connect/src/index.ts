@@ -22,7 +22,6 @@
 
 export * from '@xrpl-connect/core';
 export * from '@xrpl-connect/ui';
-export type { SocialLogin } from '@xrpl-connect/ui';
 
 // Re-export each adapter's full public surface — adapter classes, option types,
 // helpers, network maps, and collision-safe namespaces for the underlying wallet
