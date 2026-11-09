@@ -236,6 +236,36 @@ export function adapterSupports(
 /**
  * Core interface that all wallet adapters must implement
  */
+export interface WalletLoginMethod {
+  id: string;
+  label: string;
+  icon?: string;
+  connectOptions?: ConnectOptions<Record<string, unknown>>;
+}
+
+export interface WalletAuthField {
+  name: string;
+  label: string;
+  type: 'text' | 'email' | 'tel' | 'password';
+  autocomplete?: string;
+  inputMode?: 'text' | 'email' | 'tel' | 'numeric';
+  placeholder?: string;
+}
+
+/** A pending authentication step. Input values stay between the UI and adapter. */
+export interface WalletAuthPrompt {
+  title: string;
+  description?: string;
+  fields?: readonly WalletAuthField[];
+  url?: string;
+  qrCode?: string;
+  submitLabel?: string;
+  submit?: (values: Record<string, string>) => Promise<void>;
+  secondaryAction?: { label: string; run: () => Promise<void> };
+  cancel: () => void;
+}
+
+/** Core interface that all wallet adapters must implement. */
 export interface WalletAdapter {
   // Metadata
   readonly id: WalletIdentifier; // packaged or application-defined adapter ID
@@ -257,6 +287,11 @@ export interface WalletAdapter {
   // Availability
   getMissingConfiguration?(options?: ConnectOptions): readonly string[];
   isAvailable(): Promise<boolean>; // Check if wallet is installed/accessible
+
+  /** Discover the sign-in methods currently enabled by the authentication provider. */
+  getLoginMethods?(): Promise<readonly WalletLoginMethod[]>;
+  /** Subscribe to input or QR challenges during an active connection attempt. */
+  onAuthPrompt?(callback: (prompt: WalletAuthPrompt | null) => void): () => void;
 
   // Connection lifecycle
   connect(options?: ConnectOptions): Promise<AccountInfo>;
