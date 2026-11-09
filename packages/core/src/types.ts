@@ -233,9 +233,7 @@ export function adapterSupports(
   return adapter.capabilities?.[capability] ?? CAPABILITY_DEFAULTS[capability];
 }
 
-/**
- * Core interface that all wallet adapters must implement
- */
+/** A sign-in choice returned by an adapter's authentication provider. */
 export interface WalletLoginMethod {
   id: string;
   label: string;
@@ -259,6 +257,8 @@ export interface WalletAuthPrompt {
   fields?: readonly WalletAuthField[];
   url?: string;
   qrCode?: string;
+  /** The UI supplies the completed challenge token as `values.captchaToken`. */
+  captcha?: { provider: 'turnstile' | 'hcaptcha'; siteKey: string };
   submitLabel?: string;
   submit?: (values: Record<string, string>) => Promise<void>;
   secondaryAction?: { label: string; run: () => Promise<void> };
