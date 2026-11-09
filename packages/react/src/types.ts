@@ -5,8 +5,15 @@ import type {
   NetworkInfo,
   WalletError,
 } from '@xrpl-connect/core';
-import type { ConnectOptionsFor, WalletConnectorCssVars, WalletIdentifier } from 'xrpl-connect';
+import type {
+  ConnectOptionsFor,
+  SocialLogin,
+  WalletConnectorCssVars,
+  WalletIdentifier,
+} from 'xrpl-connect';
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
+
+export type { SocialLogin } from 'xrpl-connect';
 
 /**
  * Configuration for {@link XrplConnectProvider}. Identical to the core
@@ -55,6 +62,7 @@ export interface XrplConnectContextValue {
  * `WalletConnectorElementInstance` from `@xrpl-connect/ui`.
  */
 export interface WalletConnectorElement extends HTMLElement {
+  socialLogins: readonly SocialLogin[];
   setWalletManager(manager: WalletManager): void;
   open(): Promise<void>;
   openAndWait(): Promise<AccountInfo>;
@@ -85,6 +93,8 @@ export interface WalletConnectorProps
   primaryWallet?: WalletIdentifier;
   /** Restrict/order the wallet list (maps to the `wallets` attribute). */
   wallets?: WalletIdentifier[];
+  /** Configure optional social methods backed by registered wallet adapters. */
+  socialLogins?: readonly SocialLogin[];
   /** Show unavailable wallets (maps to the `show-unavailable` boolean attribute). */
   showUnavailable?: boolean;
   /** Built-in theme preset. Overridden per-token by `cssVars`. */

@@ -30,6 +30,13 @@ describe('WalletConnectorElement availability rendering', () => {
   const mount = (wallets: WalletAdapter[]) => {
     const Connector = WalletConnectorElement as typeof HTMLElement & {
       new (): HTMLElement & {
+        socialLogins: readonly {
+          id: string;
+          label: string;
+          adapterId: string;
+          icon?: string;
+          connectOptions?: Record<string, unknown>;
+        }[];
         setWalletManager(manager: WalletManager): void;
         open(): Promise<void>;
         getOverlayRoot(): ShadowRoot | null;
@@ -122,6 +129,63 @@ describe('WalletConnectorElement availability rendering', () => {
     expect(unconfiguredWallet.isAvailable).not.toHaveBeenCalled();
     expect(modal).not.toContain('data-wallet-id="unconfigured"');
     expect(modal).not.toContain('Unconfigured Wallet');
+  });
+
+  it('renders configured social methods outside the normal wallet allowlist and hides duplicates', async () => {
+    const normalWallet = createWallet('normal', true);
+    const socialAdapter = {
+      ...createWallet('social-adapter', true),
+      getMissingConfiguration: vi.fn(() => []),
+    } as WalletAdapter;
+    const connector = mount([normalWallet, socialAdapter]);
+    connector.setAttribute('wallets', 'normal');
+    connector.socialLogins = [
+      {
+        id: 'google',
+        label: 'Continue with Google',
+        adapterId: 'social-adapter',
+        connectOptions: { provider: 'google' },
+      },
+    ];
+
+    await connector.open();
+    await vi.waitFor(() =>
+      expect(connector.getOverlayRoot()?.querySelector('[aria-busy="true"]')).toBeNull()
+    );
+
+    expect(connector.getOverlayRoot()?.querySelector('[data-wallet-id="normal"]')).not.toBeNull();
+    expect(
+      connector.getOverlayRoot()?.querySelector('[data-wallet-id="social-adapter"]')
+    ).toBeNull();
+    expect(
+      connector.getOverlayRoot()?.querySelector('[data-social-login-id="google"]')
+    ).not.toBeNull();
+
+    connector.socialLogins = [
+      { id: 'apple', label: 'Continue with Apple', adapterId: 'social-adapter' },
+    ];
+    await vi.waitFor(() =>
+      expect(
+        connector.getOverlayRoot()?.querySelector('[data-social-login-id="apple"]')
+      ).not.toBeNull()
+    );
+    expect(connector.getOverlayRoot()?.querySelector('[data-social-login-id="google"]')).toBeNull();
+  });
+
+  it('ignores malformed or unregistered social descriptors without hiding normal wallets', async () => {
+    const connector = mount([createWallet('normal', true)]);
+    connector.socialLogins = [
+      { id: '', label: 'Missing ID', adapterId: 'normal' },
+      { id: 'missing', label: 'Missing adapter', adapterId: 'unknown' },
+    ];
+
+    await connector.open();
+    await vi.waitFor(() =>
+      expect(connector.getOverlayRoot()?.querySelector('[aria-busy="true"]')).toBeNull()
+    );
+
+    expect(connector.getOverlayRoot()?.querySelector('[data-wallet-id="normal"]')).not.toBeNull();
+    expect(connector.getOverlayRoot()?.querySelectorAll('[data-social-login-id]')).toHaveLength(0);
   });
 
   it('preserves unavailable slots while applying MRU order to available wallets', async () => {

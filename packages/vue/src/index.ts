@@ -9,6 +9,7 @@ import { useXrplConnectContext } from './context';
 export { createXrplConnect } from './context';
 export { WalletConnector } from './WalletConnector';
 export type { WalletConnectorElement, XrplConnectConfig, XrplConnectContextValue } from './context';
+export type { SocialLogin } from 'xrpl-connect';
 export type { WalletConnectorTheme } from './WalletConnector';
 
 export {

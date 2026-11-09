@@ -7,6 +7,7 @@ import {
   useWallet,
   useWalletModal,
   type XrplConnectConfig,
+  type SocialLogin,
 } from '@xrpl-commons/xrpl-connect-vue';
 import type {
   AccountInfo,
@@ -42,6 +43,15 @@ const connector: Component = WalletConnector;
 type WalletConnectorProps = InstanceType<typeof WalletConnector>['$props'];
 const omittedShowUnavailableProps: WalletConnectorProps = {};
 const showUnavailableProps: WalletConnectorProps = { showUnavailable: true };
+const socialLogins: readonly SocialLogin[] = [
+  {
+    id: 'google',
+    label: 'Google',
+    adapterId: 'custom-social',
+    connectOptions: { provider: 'google' },
+  },
+];
+const socialProps: WalletConnectorProps = { socialLogins };
 const cssVarsProps: WalletConnectorProps = { cssVars: { '--xc-primary-color': '#7c3aed' } };
 const invalidCssVarsProps: WalletConnectorProps = {
   cssVars: {
@@ -78,6 +88,7 @@ void [
   connector,
   omittedShowUnavailableProps,
   showUnavailableProps,
+  socialProps,
   cssVarsProps,
   invalidCssVarsProps,
   invalidShowUnavailableProps,

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vite-plus/test';
 import type { WalletAdapter } from '@xrpl-connect/core';
 import { mainStyles } from '../src/styles/main';
+import type { SocialLogin } from '../src/types';
 import { renderWalletListView } from '../src/views/WalletListView';
 
 const wallet = (id: string, url?: string): WalletAdapter =>
@@ -9,10 +10,13 @@ const wallet = (id: string, url?: string): WalletAdapter =>
 function renderWallets(
   primaryWallet: WalletAdapter | null,
   otherWallets: WalletAdapter[],
-  unavailableWalletIds: ReadonlySet<string> = new Set()
+  unavailableWalletIds: ReadonlySet<string> = new Set(),
+  socialLogins: readonly SocialLogin[] = []
 ): HTMLDivElement {
   const host = document.createElement('div');
-  host.append(renderWalletListView(primaryWallet, otherWallets, unavailableWalletIds));
+  host.append(
+    renderWalletListView(primaryWallet, otherWallets, unavailableWalletIds, false, socialLogins)
+  );
   return host;
 }
 
@@ -22,6 +26,20 @@ describe('renderWalletListView', () => {
     expect(host.querySelector('[data-wallet-id="xaman"]')).not.toBeNull();
     expect(host.querySelector('[data-wallet-id="crossmark"]')).not.toBeNull();
     expect(host.querySelector('[data-install-url]')).toBeNull();
+  });
+
+  it('renders social methods as property-configured buttons without wallet IDs', () => {
+    const host = renderWallets(null, [], new Set(), [
+      { id: 'google', label: 'Continue with Google', adapterId: 'privy' },
+      { id: 'apple', label: 'Continue with Apple', adapterId: 'privy' },
+    ]);
+
+    expect(host.querySelectorAll('[data-social-login-id]')).toHaveLength(2);
+    expect(host.querySelector('[data-social-login-id="google"]')?.textContent).toContain(
+      'Continue with Google'
+    );
+    expect(host.querySelector('[data-wallet-id]')).toBeNull();
+    expect(host.textContent).not.toContain('No wallets are currently available.');
   });
 
   it('inherits the configured primary and secondary button colors into wallet labels', () => {

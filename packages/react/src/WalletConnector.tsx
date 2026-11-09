@@ -44,6 +44,7 @@ export const WalletConnector = forwardRef<WalletConnectorElement, WalletConnecto
     {
       primaryWallet,
       wallets,
+      socialLogins,
       showUnavailable,
       theme,
       cssVars,
@@ -227,6 +228,16 @@ export const WalletConnector = forwardRef<WalletConnectorElement, WalletConnecto
       reportModalError,
       reportModalClosed,
     ]);
+
+    useEffect(() => {
+      let active = true;
+      void customElements.whenDefined('xrpl-wallet-connector').then(() => {
+        if (active && elRef.current) elRef.current.socialLogins = socialLogins ?? [];
+      });
+      return () => {
+        active = false;
+      };
+    }, [socialLogins]);
 
     const mergedStyle = {
       ...(theme ? THEMES[theme] : {}),

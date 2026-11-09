@@ -9,7 +9,28 @@
  * `SupportsDeepLink`) live in `@xrpl-connect/core`.
  */
 
-import type { WalletAdapter, WalletManager } from '@xrpl-connect/core';
+import type {
+  ConnectOptions,
+  WalletAdapter,
+  WalletIdentifier,
+  WalletManager,
+} from '@xrpl-connect/core';
+
+/**
+ * A user-configured social sign-in method backed by a registered wallet
+ * adapter. Multiple methods may intentionally point at the same adapter.
+ */
+export interface SocialLogin {
+  readonly id: string;
+  readonly label: string;
+  readonly adapterId: WalletIdentifier;
+  readonly icon?: string;
+  /**
+   * Adapter-specific options remain open so custom OAuth adapters can define
+   * their own provider selection without changing the core contract.
+   */
+  readonly connectOptions?: ConnectOptions<Record<string, unknown>>;
+}
 
 /**
  * A single derived account returned by Ledger's `getAccounts`.
@@ -74,6 +95,7 @@ export interface AccountSelectionData {
  */
 export interface WalletConnectorContext extends HTMLElement {
   readonly walletManager: WalletManager | null;
+  readonly socialLogins: readonly SocialLogin[];
   readonly shadow: ShadowRoot;
   readonly qrCodeData: QRCodeData | null;
   readonly errorData: ErrorData | null;
@@ -84,6 +106,7 @@ export interface WalletConnectorContext extends HTMLElement {
   openAccountModal(): void;
   closeAccountModal(): void;
   disconnectFromAccountModal(): Promise<void> | void;
+  connectSocialLogin(socialLoginId: string): void;
 
   showQRCodeView(walletId: string, uri?: string): void;
   showLoadingView(walletId: string, walletName: string, walletIcon?: string): void;

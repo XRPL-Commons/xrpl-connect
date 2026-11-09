@@ -122,6 +122,15 @@ export class EventHandler {
       });
     });
 
+    // Social-login buttons resolve their configured options inside the host
+    // component and use the same WalletService/WalletManager lifecycle.
+    overlayRoot?.querySelectorAll('[data-social-login-id]').forEach((button: Element) => {
+      this.add(button, 'click', () => {
+        const socialLoginId = (button as HTMLElement).dataset.socialLoginId;
+        if (socialLoginId) this.component.connectSocialLogin(socialLoginId);
+      });
+    });
+
     // Install buttons for unavailable wallets — open the wallet's download page.
     overlayRoot?.querySelectorAll('[data-install-url]').forEach((button: Element) => {
       this.add(button, 'click', () => {
@@ -190,6 +199,7 @@ export class EventHandler {
 
     // Error retry button (in overlay portal)
     this.add(overlayRoot?.querySelector('#error-retry-button'), 'click', () => {
+      if (this.walletService.retryLastConnection()) return;
       const errorWalletId = this.component.errorData?.walletId;
       if (errorWalletId) {
         this.walletService.connectWallet(errorWalletId);

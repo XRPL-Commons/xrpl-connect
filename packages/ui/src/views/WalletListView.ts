@@ -1,5 +1,6 @@
 import type { WalletAdapter } from '@xrpl-connect/core';
 import { WALLET_CONNECTOR_PARTS } from '../customization';
+import type { SocialLogin } from '../types';
 import { getSafeExternalUrl } from '../utils';
 import { createStaticView, createWalletImage, getViewElement } from './dom';
 
@@ -48,11 +49,30 @@ function createUnavailableWalletButton(wallet: WalletAdapter): HTMLButtonElement
   return button;
 }
 
+function createSocialLoginButton(socialLogin: SocialLogin): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.className = 'wallet-button social-login-button';
+  button.dataset.socialLoginId = socialLogin.id;
+  button.setAttribute('aria-label', socialLogin.label);
+
+  const label = document.createElement('span');
+  label.textContent = socialLogin.label;
+  button.append(label);
+
+  const image = createWalletImage(socialLogin.icon, socialLogin.label, {
+    width: 28,
+    height: 28,
+  });
+  if (image) button.append(image);
+  return button;
+}
+
 export function renderWalletListView(
   primaryWallet: WalletAdapter | null,
   otherWallets: WalletAdapter[],
   unavailableWalletIds: ReadonlySet<string> = new Set(),
-  loading = false
+  loading = false,
+  socialLogins: readonly SocialLogin[] = []
 ): DocumentFragment {
   const view = createStaticView`
       <div class="header">
@@ -82,7 +102,7 @@ export function renderWalletListView(
   }
 
   if (primaryWallet) content.prepend(createWalletButton(primaryWallet, true));
-  if (!primaryWallet && otherWallets.length === 0) {
+  if (!primaryWallet && otherWallets.length === 0 && socialLogins.length === 0) {
     const emptyMessage = document.createElement('p');
     emptyMessage.className = 'wallet-empty';
     emptyMessage.textContent = 'No wallets are currently available.';
@@ -94,6 +114,9 @@ export function renderWalletListView(
           ? createUnavailableWalletButton(wallet)
           : createWalletButton(wallet, false)
       );
+    }
+    for (const socialLogin of socialLogins) {
+      walletList.append(createSocialLoginButton(socialLogin));
     }
   }
 

@@ -732,6 +732,28 @@ describe('<WalletConnector>', () => {
     mounted.app.unmount();
   });
 
+  it('forwards social methods as a property and updates the same element', async () => {
+    const first = [
+      { id: 'google', label: 'Google', adapterId: 'fake', connectOptions: { provider: 'google' } },
+    ] as const;
+    const second = [
+      { id: 'apple', label: 'Apple', adapterId: 'fake', connectOptions: { provider: 'apple' } },
+    ] as const;
+    const socialLogins = ref<typeof first | typeof second>(first);
+    const mounted = mountModal(() => h(WalletConnector, { socialLogins: socialLogins.value }));
+    await vi.waitFor(() => expect(mounted.modal.ready.value).toBe(true));
+    const element = mounted.root.querySelector('xrpl-wallet-connector') as WalletConnectorElement;
+
+    await vi.waitFor(() => expect(element.socialLogins).toEqual(first));
+    expect(element.hasAttribute('social-logins')).toBe(false);
+
+    socialLogins.value = second;
+    await nextTick();
+    await vi.waitFor(() => expect(element.socialLogins).toEqual(second));
+    expect(element.hasAttribute('social-logins')).toBe(false);
+    mounted.app.unmount();
+  });
+
   it('binds the manager, forwards attributes/events, and supports modal control', async () => {
     const onConnecting = vi.fn();
     const onConnect = vi.fn();

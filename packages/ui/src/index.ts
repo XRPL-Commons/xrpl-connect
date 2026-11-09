@@ -12,3 +12,4 @@ export * from './utils';
 
 // Export types for TypeScript users
 export type { WalletManager } from '@xrpl-connect/core';
+export type { SocialLogin } from './types';

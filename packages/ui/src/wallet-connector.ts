@@ -44,6 +44,7 @@ import {
   type LedgerAccount,
   type LoadingData,
   type QRCodeData,
+  type SocialLogin,
   type WalletConnectorContext,
 } from './types';
 import { isXamanQRImage, adjustColorBrightness, orderWalletsByMru } from './utils';
@@ -96,6 +97,7 @@ function createMainStyleElement(nonce: string | undefined): HTMLStyleElement {
 
 /** Public API exposed by the `<xrpl-wallet-connector>` custom element. */
 export interface WalletConnectorElementInstance extends HTMLElement {
+  socialLogins: readonly SocialLogin[];
   setWalletManager(manager: WalletManager): void;
   open(): Promise<void>;
   openAndWait(): Promise<AccountInfo>;
@@ -148,6 +150,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private preInitializationGeneration = 0;
     private isFirstOpen = true;
     private primaryWalletId: string | null = null;
+    private socialLoginInput: readonly SocialLogin[] = [];
+    private validatedSocialLogins: readonly SocialLogin[] = [];
     private viewState: 'list' | 'qr' | 'loading' | 'error' | 'account-selection' = 'list';
     public qrCodeData: QRCodeData | null = null;
     private loadingData: LoadingData | null = null;
@@ -189,6 +193,18 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     // Observed attributes
     static get observedAttributes() {
       return ['primary-wallet', 'wallets', 'show-unavailable'];
+    }
+
+    public get socialLogins(): readonly SocialLogin[] {
+      return this.validatedSocialLogins;
+    }
+
+    public set socialLogins(value: readonly SocialLogin[]) {
+      this.socialLoginInput = Array.isArray(value) ? [...value] : [];
+      this.refreshSocialLogins();
+      this.resetWalletAvailability();
+      if (this.isConnected || this.isOpen) void this.refreshWalletAvailability();
+      if (this.shadow.children.length > 0) this.render();
     }
 
     /** Whether unavailable wallets are listed with an "Install" link. */
@@ -371,6 +387,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         });
       }
       this.walletManager = manager;
+      this.refreshSocialLogins();
       this.clearQRRenderTimer();
       this.viewState = 'list';
       this.qrCodeData = null;
@@ -479,6 +496,39 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         .filter((id) => id.length > 0);
     }
 
+    private refreshSocialLogins(): void {
+      const registeredAdapterIds = this.walletManager
+        ? new Set(this.walletManager.wallets.map((wallet) => wallet.id))
+        : null;
+      const seenIds = new Set<string>();
+      const validSocialLogins: SocialLogin[] = [];
+
+      for (const socialLogin of this.socialLoginInput) {
+        if (!socialLogin || typeof socialLogin !== 'object') continue;
+        const id = typeof socialLogin.id === 'string' ? socialLogin.id.trim() : '';
+        const label = typeof socialLogin.label === 'string' ? socialLogin.label : '';
+        const adapterId =
+          typeof socialLogin.adapterId === 'string' ? socialLogin.adapterId.trim() : '';
+        if (
+          !id ||
+          !label.trim() ||
+          !adapterId ||
+          seenIds.has(id) ||
+          (registeredAdapterIds !== null && !registeredAdapterIds.has(adapterId))
+        ) {
+          continue;
+        }
+        seenIds.add(id);
+        validSocialLogins.push({
+          ...socialLogin,
+          id,
+          adapterId: adapterId as SocialLogin['adapterId'],
+        });
+      }
+
+      this.validatedSocialLogins = validSocialLogins;
+    }
+
     private clearWalletAvailabilityTimer(): void {
       if (this.walletAvailabilityTimer === null) return;
       clearTimeout(this.walletAvailabilityTimer);
@@ -511,7 +561,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     private getConfiguredWallets(manager: WalletManager): WalletAdapter[] {
       const walletsById = new Map(manager.wallets.map((wallet) => [wallet.id, wallet]));
-      return [...new Set(this.parseWalletAttribute())]
+      const socialAdapterIds = this.getConfiguredSocialLogins(manager).map(
+        ({ wallet }) => wallet.id
+      );
+      return [...new Set([...this.parseWalletAttribute(), ...socialAdapterIds])]
         .map((id) => walletsById.get(id))
         .filter((wallet): wallet is WalletAdapter => {
           if (!wallet) return false;
@@ -522,6 +575,23 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
             return false;
           }
         });
+    }
+
+    private getConfiguredSocialLogins(
+      manager: WalletManager
+    ): Array<{ login: SocialLogin; wallet: WalletAdapter }> {
+      const walletsById = new Map(manager.wallets.map((wallet) => [wallet.id, wallet]));
+      const configured: Array<{ login: SocialLogin; wallet: WalletAdapter }> = [];
+      for (const login of this.validatedSocialLogins) {
+        const wallet = walletsById.get(login.adapterId);
+        if (!wallet) continue;
+        try {
+          if (isAdapterConfigured(wallet)) configured.push({ login, wallet });
+        } catch (error) {
+          logger.warn(`Error checking configuration for ${wallet.id}:`, error);
+        }
+      }
+      return configured;
     }
 
     private matchesWalletAvailability(wallets: WalletAdapter[]): boolean {
@@ -612,16 +682,24 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     private createWalletListView(): DocumentFragment {
-      const unavailableWalletIds = new Set(this.unavailableWallets.map((wallet) => wallet.id));
+      const configuredSocialLogins = this.walletManager
+        ? this.getConfiguredSocialLogins(this.walletManager)
+        : [];
+      const socialAdapterIds = new Set(configuredSocialLogins.map(({ wallet }) => wallet.id));
+      const availableWallets = this.availableWallets.filter(
+        (wallet) => !socialAdapterIds.has(wallet.id)
+      );
+      const unavailableWallets = this.unavailableWallets.filter(
+        (wallet) => !socialAdapterIds.has(wallet.id)
+      );
+      const unavailableWalletIds = new Set(unavailableWallets.map((wallet) => wallet.id));
       const checkedWallets = this.showUnavailable
         ? this.parseWalletAttribute()
             .map((id) =>
-              [...this.availableWallets, ...this.unavailableWallets].find(
-                (wallet) => wallet.id === id
-              )
+              [...availableWallets, ...unavailableWallets].find((wallet) => wallet.id === id)
             )
             .filter((wallet): wallet is WalletAdapter => wallet !== undefined)
-        : this.availableWallets;
+        : availableWallets;
       const wallets = this.showUnavailable
         ? this.orderVisibleWallets(checkedWallets, unavailableWalletIds)
         : this.orderByMru(checkedWallets);
@@ -634,7 +712,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         primaryWallet,
         wallets.filter((wallet) => wallet !== primaryWallet),
         unavailableWalletIds,
-        !!this.walletManager && !this.walletAvailabilityChecked
+        !!this.walletManager && !this.walletAvailabilityChecked,
+        this.validatedSocialLogins.filter((login) =>
+          this.availableWallets.some((wallet) => wallet.id === login.adapterId)
+        )
       );
     }
 
@@ -817,6 +898,20 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       } catch (error) {
         logger.error('Failed to disconnect:', error);
       }
+    }
+
+    public connectSocialLogin(socialLoginId: string): void {
+      const socialLogin = this.validatedSocialLogins.find(({ id }) => id === socialLoginId);
+      const wallet = socialLogin
+        ? this.walletManager?.wallets.find(({ id }) => id === socialLogin.adapterId)
+        : undefined;
+      if (!socialLogin || !wallet || !this.walletService) return;
+
+      void this.walletService.connectWallet(socialLogin.adapterId, socialLogin.connectOptions, {
+        socialLoginId: socialLogin.id,
+        label: socialLogin.label,
+        icon: socialLogin.icon ?? wallet.icon,
+      });
     }
 
     /**
