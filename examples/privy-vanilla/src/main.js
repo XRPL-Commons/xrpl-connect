@@ -38,12 +38,25 @@ configuration.textContent = privy
   : 'Set VITE_PRIVY_APP_ID to enable social login. Existing wallets are available below.';
 
 let busy = false;
+let restoring = true;
+const completingSocialLogin = privy?.hasPendingConnection() ?? false;
+const connectionProgress = document.querySelector('#connection-progress');
+connectionProgress.textContent = completingSocialLogin
+  ? 'Finishing sign-in… Preparing your wallet.'
+  : 'Checking wallet connection…';
 function render() {
+  document.querySelector('#connection-controls').setAttribute('aria-busy', String(restoring));
+  connectionProgress.hidden = !restoring;
+  document.querySelector('#connection-controls').hidden = restoring;
+  document.querySelector('#account').hidden = restoring;
+  document.querySelector('#cancel-connection').hidden = !restoring || !completingSocialLogin;
+  document.querySelector('#cancel-connection').disabled = busy;
+  document.querySelector('#logout').hidden = restoring;
   document.querySelector('#account').textContent = manager.account
     ? `${manager.wallet.name}: ${manager.account.address} · ${manager.account.network.name}`
     : 'No wallet connected.';
   for (const id of ['fund', 'sign', 'submit']) {
-    document.querySelector(`#${id}`).disabled = !manager.connected || busy;
+    document.querySelector(`#${id}`).disabled = restoring || !manager.connected || busy;
   }
   document.querySelector('#logout').disabled = !manager.connected;
 }
@@ -97,7 +110,17 @@ document.querySelector('#submit').addEventListener('click', () =>
   )
 );
 document.querySelector('#logout').addEventListener('click', () => run(() => manager.disconnect()));
+document
+  .querySelector('#cancel-connection')
+  .addEventListener('click', () => run(() => manager.disconnect()));
 
 // Install UI and listeners before completing an OAuth return or saved connection.
-await manager.reconnect();
 render();
+try {
+  await manager.reconnect();
+} catch (error) {
+  result.textContent = error instanceof Error ? error.message : String(error);
+} finally {
+  restoring = false;
+  render();
+}

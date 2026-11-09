@@ -76,10 +76,12 @@ function errorMessage(error: unknown): string {
 function isAuthenticationLoss(error: unknown): boolean {
   const record = asRecord(error);
   const status = record?.status;
-  if (status === 401 || status === 403) return true;
+  if (status === 401) return true;
 
   const code = record?.code ?? record?.privyErrorCode;
-  if (typeof code === 'string' && /auth|session|credential|token/i.test(code)) return true;
+  if (typeof code === 'string') {
+    return code === 'missing_or_invalid_token' || code === 'must_be_authenticated';
+  }
 
   const message = errorMessage(error);
   return /not authenticated|not logged in|missing access token|session (?:has )?expired|unauthorized/i.test(
@@ -128,11 +130,8 @@ function isEmbeddedXrplAccount(value: unknown): value is EmbeddedXrplAccount {
 function isOAuthRejection(error: unknown): boolean {
   const record = asRecord(error);
   const code = record?.code ?? record?.privyErrorCode;
-  if (
-    typeof code === 'string' &&
-    /denied|cancel(?:led|ed)?|rejected|exited_auth_flow/i.test(code)
-  ) {
-    return true;
+  if (typeof code === 'string') {
+    return ['oauth_user_denied', 'access_denied', 'exited_auth_flow'].includes(code);
   }
   return /access_denied|user(?:_| )?(?:cancel|reject)|oauth.*(?:cancel|denied)|(?:cancel|denied).*oauth/i.test(
     errorMessage(error)
@@ -323,8 +322,9 @@ export class PrivySession {
             new Error('Privy OAuth callback provider does not match the login method')
           );
         }
+        let authenticated: unknown;
         try {
-          await this.runTrackedOAuth(
+          authenticated = await this.runTrackedOAuth(
             () =>
               client.auth.oauth.loginWithCode(
                 callback.code!,
@@ -337,10 +337,9 @@ export class PrivySession {
           );
         } catch (error) {
           if (isOAuthRejection(error)) throw connectionRejected(error);
-          if (isAuthenticationLoss(error)) throw createWalletError.notConnected();
           throw error;
         }
-        const user = await this.requireAuthenticatedUser(client, signal, generation);
+        const user = userFromResponse(authenticated);
         return await this.establishWallet(user, signal, generation, restore);
       }
 
@@ -383,18 +382,14 @@ export class PrivySession {
         if (typeof token !== 'string' || token.trim() === '') {
           throw new Error('Privy custom-token login returned an empty token');
         }
-        try {
+        user = userFromResponse(
           await this.runTrackedOAuth(
             () => client.auth.customProvider.syncWithToken(token),
             signal,
             generation,
             'Privy custom-token login'
-          );
-        } catch (error) {
-          if (isAuthenticationLoss(error)) throw createWalletError.notConnected();
-          throw error;
-        }
-        user = await this.requireAuthenticatedUser(client, signal, generation);
+          )
+        );
       } else {
         await this.beginOAuthRedirect(
           client,
@@ -629,7 +624,7 @@ export class PrivySession {
         await this.runOperation(() => client.user.get(), signal, generation, 'Privy user restore')
       );
     } catch (error) {
-      if (isAuthenticationLoss(error)) {
+      if (this.currentWallet && isAuthenticationLoss(error)) {
         await this.notifySessionLost();
         throw createWalletError.notConnected();
       }
@@ -788,7 +783,6 @@ export class PrivySession {
     } catch (error) {
       this.clearPendingMarker(attempt.id);
       if (isOAuthRejection(error)) throw connectionRejected(error);
-      if (isAuthenticationLoss(error)) throw createWalletError.notConnected();
       throw error;
     }
   }

@@ -135,6 +135,27 @@ describe('PrivyAdapter', () => {
     expect(await adapter.getAccount()).toBeNull();
   });
 
+  it('keeps the provider error visible after cleaning up a failed login', async () => {
+    const failure = Object.assign(new Error('Origin not allowed'), {
+      status: 403,
+      code: 'invalid_origin',
+    });
+    mocks.connect.mockRejectedValueOnce(failure);
+    const adapter = new PrivyAdapter(options);
+    await expect(adapter.connect({ loginMethod: 'google' })).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+      message: expect.stringContaining('Origin not allowed'),
+      originalError: failure,
+    });
+    expect(await adapter.getAccount()).toBeNull();
+    expect(mocks.disconnect).toHaveBeenCalledOnce();
+
+    await expect(adapter.connect({ loginMethod: 'google' })).resolves.toMatchObject({
+      address: wallet.address,
+    });
+    await adapter.disconnect();
+  });
+
   it('restores the same wallet without persisting login credentials', async () => {
     const adapter = new PrivyAdapter(options);
     await adapter.connect({ privyWalletId: wallet.id, privyUserId: wallet.userId });

@@ -470,12 +470,63 @@ describe('PrivySession', () => {
     const wallet = await second.connect(undefined, new AbortController().signal);
 
     expect(mocks.loginWithCode).toHaveBeenCalledWith('oauth-code', 'oauth-state', 'google');
+    expect(mocks.userGet).not.toHaveBeenCalled();
     expect(window.location.search).toBe('');
     expect(wallet.id).toBe(walletId);
 
     await first.disconnect();
     await second.disconnect();
     await expect(firstConnect).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+  });
+
+  it.each([
+    { status: 403, code: 'invalid_origin', message: 'Origin not allowed' },
+    { status: 403, code: 'oauth_account_suspended', message: 'OAuth account is suspended' },
+    {
+      status: 403,
+      code: 'allowlist_rejected',
+      message: 'Access is restricted to the app allowlist',
+    },
+    { status: 401, code: 'missing_or_invalid_privy_client_id', message: 'Invalid client ID' },
+  ])('preserves OAuth initialization failures ($code)', async ({ message, ...details }) => {
+    const failure = Object.assign(new Error(message), details);
+    mocks.generateURL.mockRejectedValueOnce(failure);
+    const session = makeSession([oauthMethod]);
+    const lost = vi.fn();
+    session.onSessionLost(lost);
+
+    await expect(session.connect('google', new AbortController().signal)).rejects.toBe(failure);
+    expect(lost).not.toHaveBeenCalled();
+    expect(window.location.assign).not.toHaveBeenCalled();
+    expect(window.sessionStorage.length).toBe(0);
+    await session.disconnect();
+  });
+
+  it('preserves custom authentication failures before a wallet exists', async () => {
+    const failure = Object.assign(new Error('The custom JWT has an invalid audience'), {
+      status: 401,
+      code: 'invalid_credentials',
+    });
+    mocks.syncWithToken.mockRejectedValueOnce(failure);
+    const session = makeSession();
+    await expect(session.connect('custom', new AbortController().signal)).rejects.toBe(failure);
+    await session.disconnect();
+  });
+
+  it('preserves user lookup failures during connection without signalling a lost wallet', async () => {
+    const failure = Object.assign(new Error('The authenticated session has expired'), {
+      status: 401,
+      code: 'missing_or_invalid_token',
+    });
+    mocks.userGet.mockRejectedValueOnce(failure);
+    const session = makeSession();
+    const lost = vi.fn();
+    session.onSessionLost(lost);
+    await expect(
+      session.connect(undefined, new AbortController().signal, { walletId, userId })
+    ).rejects.toBe(failure);
+    expect(lost).not.toHaveBeenCalled();
+    await session.disconnect();
   });
 
   it('reports an OAuth user cancellation as a connection rejection', async () => {
@@ -548,7 +599,7 @@ describe('PrivySession', () => {
     await session.disconnect();
   });
 
-  it('does not report transient refresh errors as session loss, but reports token expiry', async () => {
+  it('does not report transient or configuration refresh errors as session loss, but reports token expiry', async () => {
     configureExistingUser();
     const session = makeSession();
     await session.connect('custom', new AbortController().signal);
@@ -556,6 +607,13 @@ describe('PrivySession', () => {
     session.onSessionLost(lost);
 
     mocks.refreshUser.mockRejectedValueOnce(new Error('temporary network failure'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(lost).not.toHaveBeenCalled();
+
+    mocks.refreshUser.mockRejectedValueOnce(
+      Object.assign(new Error('Origin not allowed'), { status: 403, code: 'invalid_origin' })
+    );
     document.dispatchEvent(new Event('visibilitychange'));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(lost).not.toHaveBeenCalled();

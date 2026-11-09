@@ -52,6 +52,34 @@
       #account {
         overflow-wrap: anywhere;
       }
+      #connection-progress {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      #connection-progress[hidden] {
+        display: none;
+      }
+      #connection-progress::before {
+        content: '';
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+        border: 2px solid #b8c8d0;
+        border-top-color: #172b39;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #connection-progress::before {
+          animation: none;
+        }
+      }
     </style>
   </head>
   <body>
@@ -61,11 +89,15 @@
       Use a social account to create or restore your embedded XRPL wallet, or connect an existing
       wallet.
     </p>
-    <section aria-label="Connect a wallet">
-      <xrpl-wallet-connector theme="light" show-unavailable></xrpl-wallet-connector>
+    <section id="connection-panel" aria-label="Connect a wallet">
+      <p id="connection-progress" role="status">Checking wallet connection…</p>
+      <button id="cancel-connection" hidden>Cancel sign-in</button>
+      <div id="connection-controls" aria-busy="true" hidden>
+        <xrpl-wallet-connector theme="light" show-unavailable></xrpl-wallet-connector>
+      </div>
       <p id="configuration"></p>
-      <p id="account">No wallet connected.</p>
-      <button id="logout" disabled>Log out</button>
+      <p id="account" hidden></p>
+      <button id="logout" disabled hidden>Log out</button>
     </section>
     <section aria-label="Test the wallet">
       <h2>Try a testnet transaction</h2>
