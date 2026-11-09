@@ -9,6 +9,9 @@ export { WalletManager } from './wallet-manager';
 // Types
 export type {
   WalletAdapter,
+  WalletLoginMethod,
+  WalletAuthField,
+  WalletAuthPrompt,
   WalletId,
   WalletIdentifier,
   WalletManagerOptions,
