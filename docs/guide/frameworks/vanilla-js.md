@@ -11,16 +11,13 @@ Integrate XRPL-Connect into your Vanilla JavaScript application.
 Here's a complete example with a single HTML file:
 
 ```html
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <title>XRPL-Connect Example</title>
     <style>
       body {
-        font-family:
-          system-ui,
-          -apple-system,
-          sans-serif;
+        font-family: system-ui, -apple-system, sans-serif;
         max-width: 600px;
         margin: 40px auto;
         padding: 20px;

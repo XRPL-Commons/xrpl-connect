@@ -19,7 +19,8 @@ jobs:
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
         with:
-          node-version: ${{ matrix.node-version }}
+          # Vite+ requires Node 22+, while published packages still support Node 20.
+          node-version: ${{ matrix.node-version == '20.19' && '22.18' || matrix.node-version }}
           cache: true
 
       - name: Install dependencies
@@ -28,8 +29,10 @@ jobs:
       - name: Build
         run: vp run -r build
 
-      - name: Test published package
-        run: vp run -F xrpl-connect test:publish
+      - name: Build published packages
+        run: |
+          vp run -F xrpl-connect publish:build
+          vp run -F @xrpl-commons/xrpl-connect-react -F @xrpl-commons/xrpl-connect-vue --no-cache build
 
       - name: Check
         run: vp check
@@ -44,6 +47,16 @@ jobs:
       - name: Browser tests
         if: matrix.node-version == '24.11'
         run: vp exec playwright test
+
+      - name: Setup Node 20 for consumer compatibility
+        if: matrix.node-version == '20.19'
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20.19'
+          package-manager-cache: false
+
+      - name: Test published packages on the consumer Node version
+        run: node packages/xrpl-connect/scripts/test-publish.mjs
 
   docs-build:
     runs-on: ubuntu-latest

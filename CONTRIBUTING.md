@@ -17,9 +17,12 @@ This project follows the spirit of the [Contributor Covenant](https://www.contri
 
 ### Prerequisites
 
-- **Node.js** 20.19+, 22.18+, or 24.11+
+- **Node.js** 22.18+, 24.11+, or 26+ for the Vite+ development toolchain
 - **pnpm** ≥ 8 (the repo pins `pnpm@10.18.3` via `packageManager`)
 - **Vite+** (installed as a workspace dependency; invoke it with `pnpm exec vp`)
+
+Published packages also support Node.js 20.19+. CI builds with Node.js 22 or 24
+and verifies the packed packages on Node.js 20, 22, and 24.
 
 ### Install
 
