@@ -3,7 +3,13 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vite-plus/test'
 import { webcrypto } from 'node:crypto';
 import { secp256k1 } from '@noble/curves/secp256k1';
 import { deriveAddress, verifyKeypairSignature, encodeForSigning } from 'xrpl';
-import { WalletErrorCode, WalletManager, type Transaction } from 'xrpl-connect';
+import {
+  createWalletError,
+  MemoryStorageAdapter,
+  WalletErrorCode,
+  WalletManager,
+  type Transaction,
+} from 'xrpl-connect';
 import { PrivyAdapter } from '../src/privy-adapter';
 
 const mocks = vi.hoisted(() => ({
@@ -11,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   disconnect: vi.fn(),
   signHash: vi.fn(),
   pending: vi.fn(),
+  onAuthPrompt: vi.fn(),
   lost: undefined as (() => void) | undefined,
   clientConnect: vi.fn(),
   clientDisconnect: vi.fn(),
@@ -24,6 +31,7 @@ vi.mock('../src/session', () => ({
     disconnect = mocks.disconnect;
     signHash = mocks.signHash;
     hasPendingConnection = mocks.pending;
+    onAuthPrompt = mocks.onAuthPrompt;
     onSessionLost(callback: () => void) {
       mocks.lost = callback;
       return () => {};
@@ -149,6 +157,7 @@ describe('PrivyAdapter', () => {
     });
     expect(await adapter.getAccount()).toBeNull();
     expect(mocks.disconnect).toHaveBeenCalledOnce();
+    expect(mocks.disconnect).toHaveBeenCalledWith({ preserveProviderSession: false });
 
     await expect(adapter.connect({ loginMethod: 'google' })).resolves.toMatchObject({
       address: wallet.address,
@@ -164,6 +173,42 @@ describe('PrivyAdapter', () => {
       userId: wallet.userId,
     });
     await adapter.disconnect();
+  });
+
+  it('keeps the Privy session and the saved state when a restore times out', async () => {
+    const adapter = new PrivyAdapter(options);
+    const storage = new MemoryStorageAdapter();
+    const manager = new WalletManager({ adapters: [adapter], autoConnect: false, storage });
+    await manager.connect('privy', { loginMethod: 'google' });
+    // Simulate a page reload: the saved state remains, the adapter is fresh.
+    const reloaded = new PrivyAdapter(options);
+    const restored = new WalletManager({ adapters: [reloaded], autoConnect: false, storage });
+    mocks.connect.mockClear();
+    mocks.disconnect.mockClear();
+
+    mocks.connect.mockRejectedValueOnce(createWalletError.operationTimeout('Privy user restore'));
+    await expect(restored.reconnect()).resolves.toBeNull();
+    expect(mocks.disconnect).toHaveBeenCalledOnce();
+    expect(mocks.disconnect).toHaveBeenCalledWith({ preserveProviderSession: true });
+
+    await expect(restored.reconnect()).resolves.toMatchObject({ address: wallet.address });
+    expect(mocks.connect).toHaveBeenLastCalledWith(undefined, expect.any(AbortSignal), {
+      walletId: wallet.id,
+      userId: wallet.userId,
+    });
+    await restored.disconnect();
+    expect(mocks.disconnect).toHaveBeenLastCalledWith({ preserveProviderSession: false });
+  });
+
+  it('subscribes auth prompt listeners on the session so it knows when nobody listens', () => {
+    const unsubscribe = vi.fn();
+    mocks.onAuthPrompt.mockReturnValue(unsubscribe);
+    const adapter = new PrivyAdapter(options);
+    expect(mocks.onAuthPrompt).not.toHaveBeenCalled();
+
+    const listener = vi.fn();
+    expect(adapter.onAuthPrompt(listener)).toBe(unsubscribe);
+    expect(mocks.onAuthPrompt).toHaveBeenCalledWith(listener);
   });
 
   it('cancels a new login that is still waiting for a previous logout', async () => {

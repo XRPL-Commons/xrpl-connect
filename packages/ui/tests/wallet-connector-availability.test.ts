@@ -177,6 +177,27 @@ describe('WalletConnectorElement availability rendering', () => {
     expect(wallet.isAvailable).toHaveBeenCalledTimes(3);
   });
 
+  it('backs off rechecking a wallet that stays unavailable while open', async () => {
+    vi.useFakeTimers();
+    const wallet = createWallet('gemwallet', false);
+    const connector = mount([wallet]);
+    await vi.advanceTimersByTimeAsync(0);
+    await connector.open();
+    await vi.advanceTimersByTimeAsync(0);
+    const probe = vi.mocked(wallet.isAvailable);
+    const afterOpen = probe.mock.calls.length;
+
+    // Quick retries cover an extension that is still injecting...
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(probe.mock.calls.length).toBeGreaterThan(afterOpen);
+
+    // ...then settle on the regular refresh instead of two probes a second.
+    await vi.advanceTimersByTimeAsync(10_000);
+    const settled = probe.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(probe.mock.calls.length - settled).toBeLessThanOrEqual(4);
+  });
+
   it('recovers from a timed-out probe after the underlying SDK finishes', async () => {
     vi.useFakeTimers();
     let resolveProbe!: (available: boolean) => void;

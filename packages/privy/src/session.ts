@@ -1,6 +1,12 @@
 import Privy, { create, getWallet, LocalStorage, rawSign } from '@privy-io/js-sdk-core';
 import { AppConfig } from '@privy-io/routes';
-import { createWalletError, type WalletAuthPrompt, type WalletLoginMethod } from 'xrpl-connect';
+import {
+  createWalletError,
+  isWalletError,
+  WalletErrorCode,
+  type WalletAuthPrompt,
+  type WalletLoginMethod,
+} from 'xrpl-connect';
 import { resolveLoginIcon } from './login-icons';
 import type {
   PrivyLoginMethod,
@@ -404,6 +410,19 @@ function userFromResponse(value: unknown): PrivyUser {
   return { id: candidate.id, linked_accounts: candidate.linked_accounts };
 }
 
+const OAUTH_CALLBACK_PARAMS = [
+  'privy_oauth_code',
+  'privy_oauth_state',
+  'privy_oauth_provider',
+  'privy_oauth_error',
+  'privy_oauth_error_description',
+] as const;
+
+/**
+ * Read Privy's callback from the redirect URL. Only Privy-namespaced
+ * parameters are recognized: generic OAuth names such as `code`, `state` and
+ * `error` belong to the host application and its other integrations.
+ */
 function extractOAuthCallback(location: Location, redirectUri: URL): OAuthCallback | null {
   if (
     location.origin !== redirectUri.origin ||
@@ -422,9 +441,8 @@ function extractOAuthCallback(location: Location, redirectUri: URL): OAuthCallba
   const code = params.get('privy_oauth_code') ?? undefined;
   const state = params.get('privy_oauth_state') ?? undefined;
   const provider = params.get('privy_oauth_provider') ?? undefined;
-  const error = params.get('privy_oauth_error') ?? params.get('error') ?? undefined;
-  const errorDescription =
-    params.get('privy_oauth_error_description') ?? params.get('error_description') ?? undefined;
+  const error = params.get('privy_oauth_error') ?? undefined;
+  const errorDescription = params.get('privy_oauth_error_description') ?? undefined;
   return code || state || provider || error || errorDescription
     ? { code, state, provider, error, errorDescription }
     : null;
@@ -432,21 +450,7 @@ function extractOAuthCallback(location: Location, redirectUri: URL): OAuthCallba
 
 function clearOAuthCallback(location: Location): void {
   const url = new URL(location.href);
-  for (const key of [
-    'privy_oauth_code',
-    'privy_oauth_state',
-    'privy_oauth_provider',
-    'privy_oauth_error',
-    'privy_oauth_error_description',
-    'code',
-    'state',
-    'error',
-    'error_description',
-    'error_uri',
-    'scope',
-  ]) {
-    url.searchParams.delete(key);
-  }
+  for (const key of OAUTH_CALLBACK_PARAMS) url.searchParams.delete(key);
   if (url.href === location.href || typeof history === 'undefined') return;
   history.replaceState(history.state, '', url.href);
 }
@@ -578,16 +582,15 @@ export class PrivySession {
         clearOAuthCallback(this.browserWindow()!.location);
         this.clearPendingMarker(validMarker.attemptId);
         if (callback.error || callback.errorDescription || !callback.code || !callback.state) {
-          throw connectionRejected(
-            new Error(
-              callback.errorDescription ?? callback.error ?? 'Privy OAuth login was rejected'
-            )
+          const failure = new Error(
+            callback.errorDescription ?? callback.error ?? 'Privy OAuth login did not complete'
           );
+          // Only a denial is the user's choice; any other provider error keeps
+          // its own message so the application can act on it.
+          throw isOAuthRejection(callback.error ?? failure) ? connectionRejected(failure) : failure;
         }
         if (callback.provider !== method.oauthProvider) {
-          throw connectionRejected(
-            new Error('Privy OAuth callback provider does not match the login method')
-          );
+          throw new Error('Privy OAuth callback provider does not match the login method');
         }
         let authenticated: unknown;
         try {
@@ -626,7 +629,18 @@ export class PrivySession {
 
       const existingUser = await this.tryGetAuthenticatedUser(client, signal, generation);
       if (existingUser) {
-        return await this.establishWallet(existingUser, signal, generation);
+        if (loginMethod === undefined) {
+          return await this.establishWallet(existingUser, signal, generation);
+        }
+        // Choosing a method is a request to authenticate with it. A session
+        // left behind by an incomplete logout may belong to someone else, so
+        // it is ended instead of being handed to whoever clicks next.
+        await this.runOperation(
+          () => client.auth.logout({ userId: existingUser.id }),
+          signal,
+          generation,
+          'Privy previous session logout'
+        );
       }
 
       if (loginMethod === undefined) {
@@ -732,7 +746,12 @@ export class PrivySession {
     return result.data.signature;
   }
 
-  async disconnect(): Promise<void> {
+  /**
+   * End the local session. `preserveProviderSession` skips the Privy logout,
+   * for a failed restore that never signed anyone in and so must not sign
+   * anyone out.
+   */
+  async disconnect(options?: { preserveProviderSession?: boolean }): Promise<void> {
     if (this.disconnectPromise) {
       await this.settleWithin(this.disconnectPromise, this.timeoutMs);
       return;
@@ -753,7 +772,7 @@ export class PrivySession {
     this.currentUserId = undefined;
     this.sessionLost = false;
 
-    const cleanup = this.finishDisconnect(userId);
+    const cleanup = this.finishDisconnect(userId, options?.preserveProviderSession !== true);
     this.disconnectPromise = cleanup;
     cleanup
       .finally(() => {
@@ -801,15 +820,35 @@ export class PrivySession {
     }
   }
 
-  private resolveExplicitLoginMethod(id: string): ResolvedLoginMethod | undefined {
+  /**
+   * `dashboard` is the dashboard entry this explicit method replaces, if any.
+   * The explicit entry decides how to authenticate; presentation falls back to
+   * the dashboard's, then to the provider's name.
+   */
+  private resolveExplicitLoginMethod(
+    id: string,
+    dashboard?: ResolvedLoginMethod
+  ): ResolvedLoginMethod | undefined {
     const method = this.loginMethods.find((candidate) => candidate.id === id);
     if (!method) return undefined;
+    const label = isNonEmptyString(method.label) ? method.label.trim() : undefined;
+    const icon = dashboard?.icon;
     if ('getCustomToken' in method) {
-      return { id: method.id, label: method.id, kind: 'custom-token', explicit: method };
+      return {
+        id: method.id,
+        label: label ?? dashboard?.label ?? method.id,
+        ...(icon ? { icon } : {}),
+        kind: 'custom-token',
+        explicit: method,
+      };
     }
+    const providerLabel = DASHBOARD_OAUTH_METHODS.find(
+      (oauth) => oauth.provider === method.oauthProvider
+    )?.label;
     return {
       id: method.id,
-      label: method.id,
+      label: label ?? dashboard?.label ?? providerLabel ?? method.id,
+      ...(icon ? { icon } : {}),
       kind: 'oauth',
       oauthProvider: method.oauthProvider,
       explicit: method,
@@ -876,7 +915,7 @@ export class PrivySession {
 
     // Explicit methods are extensions, but an explicit id is authoritative.
     for (const method of this.loginMethods) {
-      const explicit = this.resolveExplicitLoginMethod(method.id);
+      const explicit = this.resolveExplicitLoginMethod(method.id, methods.get(method.id));
       if (explicit) methods.set(method.id, explicit);
     }
     return [...methods.values()];
@@ -895,9 +934,10 @@ export class PrivySession {
       () =>
         client.fetchPrivyRoute(AppConfig, {
           params: { app_id: this.options.appId },
-          // The public endpoint is browser-cacheable for five minutes; the SDK
-          // exposes query parameters, but no RequestInit cache option.
-          query: { xrpl_connect_config: createAttemptId() },
+          // The public endpoint is browser-cacheable for five minutes and the
+          // SDK exposes no RequestInit cache option, so ask for revalidation
+          // with the standard request directive.
+          headers: { 'Cache-Control': 'no-cache' },
           signal,
         }),
       signal,
@@ -925,6 +965,12 @@ export class PrivySession {
     generation: number
   ): Promise<T> {
     this.assertGeneration(generation, signal);
+    if (this.authPromptCallbacks.size === 0) {
+      // Nothing can show the prompt or answer it, so the login could never settle.
+      throw new Error(
+        'This Privy login method needs an authentication prompt. Connect through the wallet connector UI or subscribe with onAuthPrompt() first.'
+      );
+    }
     let settled = false;
     let currentStep: PromptStep | undefined;
     let actionQueue = Promise.resolve();
@@ -1705,12 +1751,20 @@ export class PrivySession {
         throw error;
       });
     }
-    await this.runOperation(
-      () => this.initializePromise!,
-      signal,
-      generation,
-      'Privy SDK initialization'
-    );
+    const initialize = this.initializePromise;
+    try {
+      await this.runOperation(() => initialize, signal, generation, 'Privy SDK initialization');
+    } catch (error) {
+      // An initialization that never settles must not be awaited by every later call.
+      if (
+        isWalletError(error) &&
+        error.code === WalletErrorCode.OPERATION_TIMEOUT &&
+        this.initializePromise === initialize
+      ) {
+        this.initializePromise = undefined;
+      }
+      throw error;
+    }
     return this.client;
   }
 
@@ -2229,23 +2283,49 @@ export class PrivySession {
     });
   }
 
-  private async finishDisconnect(userId: string | undefined): Promise<void> {
+  /**
+   * Every wait here is bounded: an SDK call or application callback that never
+   * settles must not keep `disconnectPromise` set and block each later
+   * connection.
+   */
+  private async finishDisconnect(userId: string | undefined, logout: boolean): Promise<void> {
     try {
-      await this.waitForPendingOperations();
-      if (!this.client) return;
+      const abandoned = await this.waitForPendingOperations();
+      const client = this.client;
+      if (!logout || !client) return;
       // SDK logout reloads the iframe and awaits its MFA-clear acknowledgement.
-      await this.client.auth.logout(userId ? { userId } : undefined);
-    } catch {
       // Local session state is already cleared; provider failures must not block teardown.
+      const providerLogout = (): Promise<unknown> =>
+        client.auth.logout(userId ? { userId } : undefined);
+      await this.settleWithin(Promise.resolve().then(providerLogout), this.timeoutMs);
+      if (abandoned.length > 0) {
+        // A login that outlived the wait can still complete and sign the user
+        // back in after the logout above, so log out again once it settles,
+        // unless a newer connection owns the session by then.
+        void Promise.allSettled(abandoned)
+          .then(() => (this.activeAttempt || this.currentWallet ? undefined : providerLogout()))
+          .catch(() => undefined);
+      }
     } finally {
       this.cleanupIframe();
     }
   }
 
-  private async waitForPendingOperations(): Promise<void> {
+  /** Wait for in-flight SDK work, returning whatever is still pending at the deadline. */
+  private async waitForPendingOperations(): Promise<Promise<unknown>[]> {
+    const deadline = Date.now() + this.timeoutMs;
     while (this.pendingOperations.size > 0) {
-      await Promise.allSettled([...this.pendingOperations]);
+      const pending = [...this.pendingOperations];
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        // Stop tracking them, or the next teardown and login would wait again.
+        this.pendingOperations.clear();
+        this.pendingOAuthOperation = undefined;
+        return pending;
+      }
+      await this.settleWithin(Promise.allSettled(pending), remaining);
     }
+    return [];
   }
 
   private async waitForDisconnect(signal: AbortSignal): Promise<void> {
@@ -2262,7 +2342,8 @@ export class PrivySession {
     const timedOut = new Promise<never>((_, reject) => {
       timeoutTimer = setTimeout(
         () => reject(createWalletError.operationTimeout('Privy disconnect cleanup')),
-        this.timeoutMs
+        // Cleanup waits for pending work, then for logout, each within `timeoutMs`.
+        this.timeoutMs * 2
       );
     });
     try {

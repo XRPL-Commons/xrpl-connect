@@ -46,7 +46,6 @@ export class PrivyAdapter implements WalletAdapter {
 
   private readonly session: PrivySession;
   private readonly listeners = new Map<WalletAdapterEvent, Set<(data: unknown) => void>>();
-  private readonly authPromptListeners = new Set<(prompt: WalletAuthPrompt | null) => void>();
   private controller: AbortController | null = null;
   private wallet: PrivyWallet | null = null;
   private account: AccountInfo | null = null;
@@ -54,9 +53,6 @@ export class PrivyAdapter implements WalletAdapter {
 
   constructor(private readonly options: PrivyAdapterOptions) {
     this.session = new PrivySession(options);
-    this.session.onAuthPrompt?.((prompt) => {
-      for (const callback of this.authPromptListeners) callback(prompt);
-    });
     this.session.onSessionLost(() => {
       const connected = this.account !== null;
       this.controller?.abort();
@@ -91,8 +87,9 @@ export class PrivyAdapter implements WalletAdapter {
   }
 
   onAuthPrompt(callback: (prompt: WalletAuthPrompt | null) => void): () => void {
-    this.authPromptListeners.add(callback);
-    return () => this.authPromptListeners.delete(callback);
+    // Subscribe on the session itself: it refuses prompt-based logins while
+    // nobody is listening instead of waiting for an answer that cannot come.
+    return this.session.onAuthPrompt(callback);
   }
 
   serializeReconnectOptions(): ReconnectOptions | undefined {
@@ -111,6 +108,7 @@ export class PrivyAdapter implements WalletAdapter {
     const network = resolveNetwork(options?.network);
     const controller = new AbortController();
     this.controller = controller;
+    let restore: { walletId: string; userId: string } | undefined;
     try {
       if (this.teardown) await this.teardown;
       this.assertActive(controller);
@@ -119,7 +117,7 @@ export class PrivyAdapter implements WalletAdapter {
       if (Boolean(options?.privyWalletId) !== Boolean(options?.privyUserId)) {
         throw new Error('Restoring Privy requires both the wallet and user identity');
       }
-      const restore =
+      restore =
         options?.privyWalletId && options.privyUserId
           ? { walletId: options.privyWalletId, userId: options.privyUserId }
           : undefined;
@@ -139,7 +137,9 @@ export class PrivyAdapter implements WalletAdapter {
     } catch (error) {
       const cancelled = controller.signal.aborted;
       if (this.controller === controller) {
-        await this.disconnect();
+        // A failed restore signed nobody in, so it leaves the Privy session
+        // alone: a transient failure can then be retried without a new login.
+        await this.endSession(restore === undefined);
       }
       if (cancelled) throw createWalletError.notConnected();
       if (isWalletError(error)) throw error;
@@ -148,13 +148,17 @@ export class PrivyAdapter implements WalletAdapter {
   }
 
   async disconnect(): Promise<void> {
+    await this.endSession(true);
+  }
+
+  private async endSession(logout: boolean): Promise<void> {
     const connected = this.account !== null;
     this.controller?.abort();
     this.controller = null;
     this.wallet = null;
     this.account = null;
     if (this.teardown) return this.teardown;
-    const teardown = this.session.disconnect();
+    const teardown = this.session.disconnect({ preserveProviderSession: !logout });
     this.teardown = teardown;
     try {
       await teardown;

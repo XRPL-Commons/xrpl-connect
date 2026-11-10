@@ -544,6 +544,13 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       ) {
         throw error;
       }
+      // A timeout says nothing about whether the session is still valid. Keep
+      // it until it expires so a later reconnect can retry, instead of making
+      // a slow network cost the user a new wallet authorization.
+      if (isWalletError(error) && error.code === WalletErrorCode.OPERATION_TIMEOUT) {
+        this.logger.warn('Reconnection timed out; keeping the stored session:', error);
+        return null;
+      }
       this.logger.warn('Reconnection failed:', error);
       await this.clearStateIfSnapshotMatches(reconnectGeneration, attemptedStateSnapshot);
       return null;

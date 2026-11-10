@@ -433,13 +433,14 @@ describe('PrivySession', () => {
     await session.disconnect();
   });
 
-  it('bypasses a previously cached dashboard response when X is enabled or disabled', async () => {
+  it('revalidates the dashboard response when X is enabled or disabled', async () => {
     let dashboard = { google_oauth: true, twitter_oauth: false };
-    const cached = new Map<string, typeof dashboard>();
+    let cached: typeof dashboard | undefined;
     mocks.fetchPrivyRoute.mockImplementation(async (_route, options) => {
-      const key = JSON.stringify({ params: options.params, query: options.query });
-      if (!cached.has(key)) cached.set(key, { ...dashboard });
-      return cached.get(key);
+      // Model the browser cache: only a revalidating request reaches the origin.
+      const revalidate = new Headers(options.headers).get('cache-control') === 'no-cache';
+      if (revalidate || !cached) cached = { ...dashboard };
+      return cached;
     });
     const session = new PrivySession({
       appId: 'app-216',
@@ -458,11 +459,11 @@ describe('PrivySession', () => {
     dashboard = { google_oauth: true, twitter_oauth: false };
     expect((await session.getLoginMethods()).map(({ id }) => id)).toEqual(['google']);
 
-    const queries = mocks.fetchPrivyRoute.mock.calls.map(
-      ([, options]) => options.query.xrpl_connect_config
-    );
-    expect(queries).toEqual([expect.any(String), expect.any(String), expect.any(String)]);
-    expect(new Set(queries).size).toBe(3);
+    expect(mocks.fetchPrivyRoute).toHaveBeenCalledTimes(3);
+    for (const [, options] of mocks.fetchPrivyRoute.mock.calls) {
+      // No query parameter the Privy API does not define.
+      expect(options.query).toBeUndefined();
+    }
     await session.disconnect();
   });
 
@@ -1199,7 +1200,7 @@ describe('PrivySession', () => {
     configureExistingUser();
     mocks.fetchPrivyRoute.mockResolvedValue({ google_oauth: true, custom_oauth_providers: [] });
     const session = makeSession();
-    await session.connect('custom', new AbortController().signal);
+    await session.connect(undefined, new AbortController().signal);
     const firstIframe = document.querySelector('iframe')!;
     let acknowledgeLogout!: () => void;
     mocks.logout.mockImplementationOnce(async () => {
@@ -1596,9 +1597,9 @@ describe('PrivySession', () => {
     await session.disconnect();
   });
 
-  it('waits for timed-out SDK work before logout and blocks a new login during cleanup', async () => {
+  it('bounds the wait for SDK work that never settles and lets the next login proceed', async () => {
     let releaseSync: (() => void) | undefined;
-    mocks.syncWithToken.mockImplementation(
+    mocks.syncWithToken.mockImplementationOnce(
       () =>
         new Promise<void>((resolve) => {
           releaseSync = resolve;
@@ -1610,13 +1611,205 @@ describe('PrivySession', () => {
     await expect(firstConnect).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
 
     await session.disconnect();
-    expect(mocks.logout).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(mocks.logout).toHaveBeenCalledTimes(1));
+
+    // The hung call no longer blocks cleanup, so a new login completes.
+    mocks.getWallet.mockResolvedValue(walletApi());
+    await expect(session.connect('custom', new AbortController().signal)).resolves.toMatchObject({
+      id: walletId,
+    });
+    await session.disconnect();
+    await vi.waitFor(() => expect(mocks.logout).toHaveBeenCalledTimes(2));
+
+    // If the abandoned login completes late it could sign the user back in,
+    // so it is followed by another logout.
+    releaseSync?.();
+    await vi.waitFor(() => expect(mocks.logout).toHaveBeenCalledTimes(3));
+  });
+
+  it('does not log out again for abandoned SDK work while a newer session is active', async () => {
+    let releaseSync: (() => void) | undefined;
+    mocks.syncWithToken.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseSync = resolve;
+        })
+    );
+    const session = makeSession();
     await expect(session.connect('custom', new AbortController().signal)).rejects.toMatchObject({
       code: 'OPERATION_TIMEOUT',
     });
-    expect(mocks.logout).not.toHaveBeenCalled();
+    await session.disconnect();
+    await vi.waitFor(() => expect(mocks.logout).toHaveBeenCalledTimes(1));
 
+    await session.connect('custom', new AbortController().signal);
     releaseSync?.();
-    await vi.waitFor(() => expect(mocks.logout).toHaveBeenCalledWith(undefined));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mocks.logout).toHaveBeenCalledTimes(1);
+    await session.disconnect();
+  });
+
+  it('retries SDK initialization after it timed out', async () => {
+    mocks.initialize.mockImplementationOnce(() => new Promise<void>(() => undefined));
+    const session = makeSession();
+    await expect(session.connect('custom', new AbortController().signal)).rejects.toMatchObject({
+      code: 'OPERATION_TIMEOUT',
+    });
+    await session.disconnect();
+
+    await expect(session.connect('custom', new AbortController().signal)).resolves.toMatchObject({
+      id: walletId,
+    });
+    expect(mocks.initialize).toHaveBeenCalledTimes(2);
+    await session.disconnect();
+  });
+
+  it('ends a leftover session before authenticating with an explicitly chosen method', async () => {
+    configureExistingUser();
+    const order: string[] = [];
+    mocks.logout.mockImplementationOnce(async () => {
+      order.push('logout');
+    });
+    mocks.syncWithToken.mockImplementationOnce(async () => {
+      order.push('login');
+      return { user: user() };
+    });
+    const session = makeSession();
+
+    await expect(session.connect('custom', new AbortController().signal)).resolves.toMatchObject({
+      id: walletId,
+    });
+    expect(order).toEqual(['logout', 'login']);
+    expect(mocks.logout).toHaveBeenCalledWith({ userId });
+    await session.disconnect();
+  });
+
+  it('does not connect a leftover session when ending it fails', async () => {
+    configureExistingUser();
+    mocks.logout.mockRejectedValueOnce(new Error('logout failed'));
+    const session = makeSession();
+
+    await expect(session.connect('custom', new AbortController().signal)).rejects.toThrow(
+      'logout failed'
+    );
+    expect(mocks.syncWithToken).not.toHaveBeenCalled();
+    expect(mocks.getWallet).not.toHaveBeenCalled();
+    await session.disconnect();
+  });
+
+  it('reuses an existing session only when no login method is requested', async () => {
+    configureExistingUser();
+    const session = makeSession();
+
+    await expect(session.connect(undefined, new AbortController().signal)).resolves.toMatchObject({
+      id: walletId,
+      userId,
+    });
+    expect(mocks.logout).not.toHaveBeenCalled();
+    expect(mocks.syncWithToken).not.toHaveBeenCalled();
+    await session.disconnect();
+  });
+
+  it('keeps the Privy session when asked to preserve it on disconnect', async () => {
+    configureExistingUser();
+    const session = makeSession();
+    await session.connect(undefined, new AbortController().signal);
+
+    await session.disconnect({ preserveProviderSession: true });
+
+    expect(mocks.logout).not.toHaveBeenCalled();
+    expect(document.querySelector('iframe')).toBeNull();
+    await expect(session.connect(undefined, new AbortController().signal)).resolves.toMatchObject({
+      id: walletId,
+    });
+    await session.disconnect();
+  });
+
+  it('fails a prompt-based login immediately when nothing can show the prompt', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValue({ email_auth: true, custom_oauth_providers: [] });
+    const session = new PrivySession({
+      appId: 'app-216',
+      redirectUri: `${window.location.origin}/wallet/privy`,
+      timeoutMs: 100,
+    });
+
+    await expect(session.connect('email', new AbortController().signal)).rejects.toThrow(
+      /needs an authentication prompt/
+    );
+    expect(mocks.emailSendCode).not.toHaveBeenCalled();
+    await session.disconnect();
+  });
+
+  it('ignores generic OAuth parameters that belong to the application', async () => {
+    const first = makeSession([oauthMethod]);
+    const firstConnect = first.connect('google', new AbortController().signal);
+    await vi.waitFor(() => expect(mocks.generateURL).toHaveBeenCalled());
+
+    resetURL('/wallet/privy?error=access_denied&code=app-code&state=app-state&scope=openid');
+    const second = makeSession([oauthMethod]);
+    expect(second.hasPendingConnection()).toBe(false);
+
+    // Connecting neither treats them as a Privy callback nor strips them.
+    await expect(second.connect(undefined, new AbortController().signal)).rejects.toThrow(
+      'Privy login method is required when no session is available'
+    );
+    expect(window.location.search).toBe(
+      '?error=access_denied&code=app-code&state=app-state&scope=openid'
+    );
+    expect(mocks.loginWithCode).not.toHaveBeenCalled();
+
+    await first.disconnect();
+    await second.disconnect();
+    await expect(firstConnect).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+  });
+
+  it('keeps the provider message for an OAuth error that is not a user denial', async () => {
+    const first = makeSession([oauthMethod]);
+    const firstConnect = first.connect('google', new AbortController().signal);
+    await vi.waitFor(() => expect(mocks.generateURL).toHaveBeenCalled());
+
+    resetURL(
+      '/wallet/privy?privy_oauth_error=invalid_origin&privy_oauth_error_description=Origin%20not%20allowed'
+    );
+    const second = makeSession([oauthMethod]);
+    const failure = await second
+      .connect(undefined, new AbortController().signal)
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe('Origin not allowed');
+    expect((failure as { code?: string }).code).not.toBe('CONNECTION_REJECTED');
+
+    await first.disconnect();
+    await second.disconnect();
+    await expect(firstConnect).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+  });
+
+  it('labels explicit methods from their label, the dashboard, or the provider name', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValue({
+      github_oauth: true,
+      custom_oauth_providers: [
+        { enabled: true, provider: 'custom:acme', provider_display_name: 'Acme SSO' },
+      ],
+    });
+    const session = makeSession([
+      { id: 'google', oauthProvider: 'google' },
+      { id: 'github', oauthProvider: 'github', label: 'Work GitHub' },
+      { id: 'custom:acme', oauthProvider: 'custom:acme' },
+      { id: 'company', label: 'Company account', getCustomToken: async () => 'jwt' },
+      { id: 'legacy', getCustomToken: async () => 'jwt' },
+    ]);
+
+    const labels = Object.fromEntries(
+      (await session.getLoginMethods()).map(({ id, label }) => [id, label])
+    );
+    expect(labels).toEqual({
+      google: 'Google',
+      github: 'Work GitHub',
+      'custom:acme': 'Acme SSO',
+      company: 'Company account',
+      legacy: 'legacy',
+    });
+    await session.disconnect();
   });
 });

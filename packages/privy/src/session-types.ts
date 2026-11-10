@@ -31,15 +31,22 @@ export type PrivyOAuthProvider =
   | 'telegram'
   | `custom:${string}`;
 
+interface PrivyLoginMethodBase {
+  id: string;
+  /**
+   * Text shown on the login button. Defaults to the dashboard label of the
+   * method this entry replaces, then to the OAuth provider's name, then `id`.
+   */
+  label?: string;
+}
+
 export type PrivyLoginMethod =
-  | {
-      id: string;
+  | (PrivyLoginMethodBase & {
       oauthProvider: PrivyOAuthProvider;
-    }
-  | {
-      id: string;
+    })
+  | (PrivyLoginMethodBase & {
       getCustomToken: (signal: AbortSignal) => Promise<string>;
-    };
+    });
 
 export interface PrivySessionOptions {
   appId: string;

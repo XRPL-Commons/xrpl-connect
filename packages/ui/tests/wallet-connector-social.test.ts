@@ -146,6 +146,17 @@ describe('WalletConnector social login', () => {
     expect(signals[0].aborted).toBe(true);
   });
 
+  it('cancels an auth prompt that arrives while the modal is closed', async () => {
+    const cancel = vi.fn();
+    const { connector, root } = await mount([createAdapter('social')]);
+    connector.close();
+
+    connector.showAuthPrompt({ title: 'Verify', submit: vi.fn(), cancel }, 'social', 'Social');
+
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(root.querySelector('#auth-prompt-error')).toBeNull();
+  });
+
   it('keeps a solved CAPTCHA while submitting and clears the pre-submit error', async () => {
     const submitted = deferred<void>();
     const submit = vi.fn(() => submitted.promise);

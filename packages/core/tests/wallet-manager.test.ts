@@ -3,6 +3,7 @@ import EventEmitter from 'eventemitter3';
 import { WalletManager } from '../src/wallet-manager';
 import { MemoryStorageAdapter, Storage } from '../src/storage';
 import { TIME } from '../src/constants';
+import { createWalletError } from '../src/errors';
 import { CAPABILITY_DEFAULTS, WalletErrorCode } from '../src/types';
 import type {
   AccountInfo,
@@ -1608,6 +1609,29 @@ describe('WalletManager.reconnect()', () => {
     await expect(manager.reconnect()).resolves.toBeNull();
 
     expect(await new Storage(storage).loadState()).toBeNull();
+  });
+
+  it('keeps the stored session when a reconnect times out', async () => {
+    const storage = new MemoryStorageAdapter();
+    await new Storage(storage).saveState({
+      walletId: 'fake',
+      account: ACCOUNT,
+      network: NETWORK,
+      timestamp: Date.now(),
+    });
+    const storedBefore = await new Storage(storage).loadState();
+    const adapter = {
+      ...createFakeAdapter(),
+      connect: vi.fn(async () => {
+        throw createWalletError.operationTimeout('Session restore');
+      }),
+    };
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    expect(manager.connected).toBe(false);
+    expect(await new Storage(storage).loadState()).toEqual(storedBefore);
   });
 
   it('returns the active account without clearing its stored session', async () => {

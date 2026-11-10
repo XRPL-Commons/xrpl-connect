@@ -20,7 +20,7 @@ import {
   isStandardNetworkId,
   isWalletError,
   resolveNetwork,
-  TIME,
+  withTimeout,
 } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
 import { CrossmarkSDK } from './sdk';
@@ -81,11 +81,14 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
    */
   async isAvailable(): Promise<boolean> {
     try {
-      // The synchronous value is the fast path, but it can still be unset
-      // while Crossmark's content script is being injected. The async SDK
-      // detector retries that discovery and stops after the shared bound.
+      // The synchronous value is the fast path, but it stays unset when
+      // Crossmark's content script is injected after the SDK's own startup
+      // detection gave up. The async detector looks for the extension once
+      // before its first 500ms poll, so only that immediate result is taken:
+      // waiting for the polling loop would always outlast the availability
+      // bound callers apply, turning "not installed" into a timeout.
       if (sdk.sync.isInstalled() === true) return true;
-      return await sdk.async.detect(TIME.AVAILABILITY_TIMEOUT);
+      return await withTimeout(() => sdk.async.detect(0), 0, false);
     } catch {
       return false;
     }

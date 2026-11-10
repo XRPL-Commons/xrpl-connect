@@ -270,6 +270,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private walletAvailabilityChecked: boolean = false;
     private walletAvailabilityPromise: Promise<void> | null = null;
     private walletAvailabilityUpdatedAt = -Infinity;
+    private walletAvailabilityRetryDelay: number = TIMINGS.WALLET_AVAILABILITY_RETRY;
     private walletAvailabilityFullRefreshAt = -Infinity;
     private walletAvailabilityWallets: WalletAdapter[] | null = null;
     private walletAvailabilityTimer: ReturnType<typeof setTimeout> | null = null;
@@ -851,6 +852,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.walletAvailabilityChecked = false;
       this.walletAvailabilityUpdatedAt = -Infinity;
       this.walletAvailabilityFullRefreshAt = -Infinity;
+      this.walletAvailabilityRetryDelay = TIMINGS.WALLET_AVAILABILITY_RETRY;
       this.walletAvailabilityWallets = null;
     }
 
@@ -863,7 +865,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.unavailableWallets.length > 0
           ? Math.min(
               fullRefreshAt,
-              this.walletAvailabilityUpdatedAt + TIMINGS.WALLET_AVAILABILITY_RETRY
+              this.walletAvailabilityUpdatedAt + this.walletAvailabilityRetryDelay
             )
           : fullRefreshAt;
       const remaining = Math.max(0, refreshAt - Date.now());
@@ -916,6 +918,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private refreshWalletAvailability(retryUnavailable = false): Promise<void> {
       const manager = this.walletManager;
       if (!manager) return Promise.resolve();
+      if (retryUnavailable) this.walletAvailabilityRetryDelay = TIMINGS.WALLET_AVAILABILITY_RETRY;
       const wallets = this.getConfiguredWallets(manager);
       if (!this.matchesWalletAvailability(wallets)) {
         const available = this.availableWallets.filter((wallet) => wallets.includes(wallet));
@@ -935,7 +938,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         fresh &&
         (this.unavailableWallets.length === 0 ||
           (!retryUnavailable &&
-            Date.now() - this.walletAvailabilityUpdatedAt < TIMINGS.WALLET_AVAILABILITY_RETRY))
+            Date.now() - this.walletAvailabilityUpdatedAt < this.walletAvailabilityRetryDelay))
       ) {
         this.scheduleWalletAvailabilityRefresh();
         return Promise.resolve();
@@ -962,7 +965,17 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           this.walletAvailabilityPromise = null;
           this.walletAvailabilityChecked = true;
           this.walletAvailabilityUpdatedAt = Date.now();
-          if (!fresh) this.walletAvailabilityFullRefreshAt = this.walletAvailabilityUpdatedAt;
+          if (!fresh) {
+            this.walletAvailabilityFullRefreshAt = this.walletAvailabilityUpdatedAt;
+          } else {
+            // Back off the quick retries: an extension that is still injecting
+            // shows up within the first few, and one that is not installed is
+            // left to the regular refresh instead of being probed twice a second.
+            this.walletAvailabilityRetryDelay = Math.min(
+              this.walletAvailabilityRetryDelay * 2,
+              TIMINGS.WALLET_AVAILABILITY_REFRESH
+            );
+          }
         }
         if (this.isOpen && this.viewState === 'list') this.renderWalletAvailability();
         if (complete) this.scheduleWalletAvailabilityRefresh();
@@ -1259,7 +1272,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       walletName: string,
       walletIcon?: string
     ): void {
-      if (!this.isOpen) return;
+      if (!this.isOpen) {
+        // A prompt nobody can see would leave its connection waiting forever.
+        try {
+          prompt.cancel();
+        } catch (error) {
+          logger.warn('Failed to cancel authentication prompt:', error);
+        }
+        return;
+      }
       this.authCaptchaToken = null;
       this.authPromptData = {
         prompt,

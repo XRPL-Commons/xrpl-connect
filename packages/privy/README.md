@@ -88,7 +88,15 @@ Turnstile or hCaptcha challenge before sending a verification code.
 custom JWT authentication, or override a discovered method with the same ID. The
 default dashboard flow needs no explicit entries. Custom JWT authentication needs
 an application callback to obtain its token; a dashboard switch alone cannot
-provide that callback.
+provide that callback. Each entry accepts an optional `label` for its button;
+without one the button uses the dashboard label of the method it overrides, then
+the OAuth provider's name, then the `id`.
+
+Choosing a login method always authenticates with that method. If a previous
+Privy session is still present, for example because an earlier logout could not
+complete, it is ended first and is never handed to the next person who signs in.
+Calling `manager.connect('privy')` without a `loginMethod` resumes the current
+session instead.
 
 ## Signing and submission
 
@@ -147,10 +155,14 @@ included in this package. See also
   monitoring. SDK logout runs after any already-started SDK requests settle,
   preventing a late response from restoring authentication. The secure iframe
   stays available for pending requests and the SDK's logout acknowledgement,
-  then is removed along with its listeners. Caller waits are bounded by
-  `timeoutMs` (15 seconds by default); provider discovery and a new login wait
-  for the retained cleanup operation. A later login restores the same embedded
-  wallet.
+  then is removed along with its listeners. Every wait is bounded by
+  `timeoutMs` (15 seconds by default): a request that never settles is
+  abandoned so it cannot block later logins, and if it completes afterwards
+  the adapter logs out once more. Provider discovery and a new login wait for
+  the cleanup operation. A later login restores the same embedded wallet.
+- A restore that times out, for example on a slow network, leaves both the
+  saved connection and the Privy session in place, so the next
+  `manager.reconnect()` can retry without a new login.
 - Authentication failures, blocked storage, iframe readiness failures, and
   signing failures surface as wallet errors. The UI permits retry with the same
   selected social method.
@@ -159,6 +171,9 @@ included in this package. See also
 
 Adapters can implement `getLoginMethods()` to supply fresh chooser entries and
 `onAuthPrompt()` to request email, verification codes, or other interactive input.
+The connector subscribes for you. When connecting without it, subscribe with
+`adapter.onAuthPrompt()` before choosing email, phone, passkey, or Farcaster:
+those logins fail immediately when nothing can show their prompt.
 These optional contracts are backend-independent. Authentication input stays
 inside the active flow and is never included in component events or saved manager
 state.
@@ -179,6 +194,7 @@ const privy = new PrivyAdapter({
   loginMethods: [
     {
       id: 'company',
+      label: 'Company account',
       getCustomToken: async (signal) => {
         const response = await fetch('/api/auth/privy-token', { signal });
         if (!response.ok) throw new Error('Company login failed');
