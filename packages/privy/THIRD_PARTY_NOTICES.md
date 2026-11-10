@@ -52,6 +52,7 @@ color.
 
 ## Apache License 2.0 — Privy source
 
+```text
 Copyright 2022–2023 Horkos, Inc.
 
 
@@ -256,9 +257,11 @@ Copyright 2022–2023 Horkos, Inc.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+```
 
 ## ISC License — Lucide source
 
+```text
 Copyright (c) for portions of Lucide are held by Cole Bemis 2013–2023 as part
 of Feather (MIT). All other copyright (c) for Lucide are held by Lucide
 Contributors 2025.
@@ -302,9 +305,11 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
 
 ## MIT License — Heroicons source
 
+```text
 Copyright (c) Tailwind Labs, Inc.
 
 MIT License
@@ -328,3 +333,4 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
