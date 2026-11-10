@@ -201,6 +201,32 @@ function appendAuthField(
   else appendCodeAuthField(form, field, index, codeLength, options);
 }
 
+function getSubmitLabel(prompt: WalletAuthPrompt, busy: boolean): string {
+  return busy ? 'Submitting…' : prompt.submitLabel?.trim() || 'Continue';
+}
+
+/**
+ * Toggle the busy state of a rendered prompt in place, so embedded widgets
+ * such as a solved CAPTCHA survive the request.
+ */
+export function updateAuthPromptBusy(
+  root: ParentNode,
+  prompt: WalletAuthPrompt,
+  busy: boolean
+): void {
+  root.querySelector('#auth-prompt-form')?.setAttribute('aria-busy', String(busy));
+  for (const input of root.querySelectorAll<HTMLInputElement>('[data-auth-field]')) {
+    input.disabled = busy;
+  }
+  const submitButton = root.querySelector<HTMLButtonElement>('#auth-prompt-submit-button');
+  if (submitButton) {
+    submitButton.textContent = getSubmitLabel(prompt, busy);
+    submitButton.disabled = busy;
+  }
+  const secondaryButton = root.querySelector<HTMLButtonElement>('#auth-prompt-secondary-button');
+  if (secondaryButton) secondaryButton.disabled = busy;
+}
+
 export function renderAuthPromptView(
   prompt: WalletAuthPrompt,
   options: AuthPromptViewOptions = {}
@@ -286,7 +312,7 @@ export function renderAuthPromptView(
   const submitButton = getViewElement<HTMLButtonElement>(view, '#auth-prompt-submit-button');
   if (prompt.submit) {
     submitButton.setAttribute('form', 'auth-prompt-form');
-    submitButton.textContent = busy ? 'Submitting…' : prompt.submitLabel?.trim() || 'Continue';
+    submitButton.textContent = getSubmitLabel(prompt, busy);
     submitButton.disabled = busy;
   } else {
     submitButton.remove();

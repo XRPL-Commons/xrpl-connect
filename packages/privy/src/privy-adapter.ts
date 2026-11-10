@@ -86,8 +86,8 @@ export class PrivyAdapter implements WalletAdapter {
     return this.session.hasPendingConnection();
   }
 
-  async getLoginMethods(): Promise<readonly WalletLoginMethod[]> {
-    return this.session.getLoginMethods();
+  async getLoginMethods(options?: { signal?: AbortSignal }): Promise<readonly WalletLoginMethod[]> {
+    return this.session.getLoginMethods(options?.signal);
   }
 
   onAuthPrompt(callback: (prompt: WalletAuthPrompt | null) => void): () => void {
@@ -202,17 +202,16 @@ export class PrivyAdapter implements WalletAdapter {
         this.assertActive(controller);
         const result = await client.submitAndWait(signed.tx_blob!);
         const metadata = result.result.meta;
-        if (
-          !metadata ||
-          typeof metadata !== 'object' ||
-          metadata.TransactionResult !== 'tesSUCCESS'
-        ) {
-          throw new Error(
-            `XRPL transaction failed: ${metadata && typeof metadata === 'object' ? metadata.TransactionResult : 'missing result'}`
-          );
-        }
+        // A validated tec result consumed the fee and sequence. Return it like a
+        // success so the caller sees the hash and outcome instead of retrying.
         // Logout cannot undo a submission; retain its validated result for the caller.
-        return { ...signed, hash: result.result.hash, id: result.result.hash };
+        return {
+          ...signed,
+          hash: result.result.hash,
+          id: result.result.hash,
+          transactionResult:
+            metadata && typeof metadata === 'object' ? metadata.TransactionResult : undefined,
+        };
       });
     } catch (error) {
       if (isWalletError(error)) throw error;

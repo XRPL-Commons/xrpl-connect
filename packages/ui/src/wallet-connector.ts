@@ -37,6 +37,7 @@ import {
   renderAccountModal,
   renderSocialLoginView,
   renderAuthPromptView,
+  updateAuthPromptBusy,
   getAuthCodeLength,
   normalizeAuthCodeValue,
 } from './views';
@@ -120,6 +121,42 @@ function createMainStyleElement(nonce: string | undefined): HTMLStyleElement {
   return style;
 }
 
+const CAPTCHA_ERRORS = {
+  required: 'Complete the CAPTCHA challenge before continuing.',
+  expired: 'CAPTCHA expired. Please try again.',
+  rejected: 'CAPTCHA could not be verified. Please try again.',
+  unavailable: 'CAPTCHA could not be loaded. Please try again.',
+} as const;
+const CAPTCHA_ERROR_MESSAGES = new Set<string>(Object.values(CAPTCHA_ERRORS));
+
+/** Structural equality for plain descriptor data; other objects compare by identity. */
+function isSameValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((value, index) => isSameValue(value, b[index]));
+  }
+  const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+    value !== null &&
+    typeof value === 'object' &&
+    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+  if (!isPlainObject(a) || !isPlainObject(b)) return false;
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((key) => Object.prototype.hasOwnProperty.call(b, key) && isSameValue(a[key], b[key]))
+  );
+}
+
+function areSocialLoginsEqual(
+  current: readonly SocialLogin[],
+  next: readonly SocialLogin[]
+): boolean {
+  return (
+    current.length === next.length &&
+    current.every((login, index) => isSameValue(login, next[index]))
+  );
+}
+
 /** Public API exposed by the `<xrpl-wallet-connector>` custom element. */
 export interface WalletConnectorElementInstance extends HTMLElement {
   socialLogins: readonly SocialLogin[];
@@ -201,6 +238,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private socialDiscoveryErrors = new Map<string, SocialLoginDiscoveryError>();
     private socialDiscoveryPending = new Set<string>();
     private socialDiscoveryGeneration = 0;
+    private socialDiscoveryController = new AbortController();
     private viewState:
       | 'list'
       | 'social-login'
@@ -262,8 +300,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     public set socialLogins(value: readonly SocialLogin[]) {
+      const next = Array.isArray(value) ? [...value] : [];
+      // Framework wrappers re-assign a fresh array on every render; only an
+      // actual change may reset discovery or leave the social chooser.
+      if (areSocialLoginsEqual(this.socialLoginInput, next)) return;
       this.invalidateSocialDiscovery();
-      this.socialLoginInput = Array.isArray(value) ? [...value] : [];
+      this.socialLoginInput = next;
       this.refreshSocialLogins();
       this.resetWalletAvailability();
       if (this.viewState === 'social-login') this.viewState = 'list';
@@ -602,17 +644,22 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     private invalidateSocialDiscovery(): void {
       this.socialDiscoveryGeneration += 1;
+      this.socialDiscoveryController.abort();
+      this.socialDiscoveryController = new AbortController();
       this.discoveredSocialLogins = [];
       this.socialDiscoveryErrors.clear();
       this.socialDiscoveryPending.clear();
     }
 
     private getConfiguredSocialAdapterIds(manager: WalletManager): Set<string> {
+      // Explicit `socialLogins` entries opt their adapter in; dynamic discovery
+      // honors the `wallets` filter like every other registered adapter.
       const adapterIds = new Set(
         this.getConfiguredSocialLogins(manager).map(({ wallet }) => wallet.id)
       );
+      const allowedIds = new Set(this.parseWalletAttribute());
       for (const wallet of manager.wallets) {
-        if (typeof wallet.getLoginMethods !== 'function') continue;
+        if (typeof wallet.getLoginMethods !== 'function' || !allowedIds.has(wallet.id)) continue;
         try {
           if (isAdapterConfigured(wallet)) adapterIds.add(wallet.id);
         } catch (error) {
@@ -731,9 +778,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       wallet: WalletAdapter,
       generation: number
     ): Promise<void> {
+      // One controller per request: aborted when discovery is invalidated, and
+      // after the request settles or times out so adapters stop network work.
+      const controller = new AbortController();
+      const discoverySignal = this.socialDiscoveryController.signal;
+      const abort = (): void => controller.abort();
+      discoverySignal.addEventListener('abort', abort, { once: true });
       try {
         const methods = await withTimeout<readonly WalletLoginMethod[] | null>(
-          () => wallet.getLoginMethods!(),
+          () => wallet.getLoginMethods!({ signal: controller.signal }),
           TIMINGS.SOCIAL_DISCOVERY_TIMEOUT,
           null
         );
@@ -751,6 +804,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           adapterName: wallet.name,
         });
       } finally {
+        discoverySignal.removeEventListener('abort', abort);
+        controller.abort();
         if (this.isCurrentSocialDiscovery(manager, generation)) {
           this.socialDiscoveryPending.delete(wallet.id);
           this.render();
@@ -1171,10 +1226,16 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Disconnect wallet from the account modal
      */
     public async disconnectFromAccountModal() {
+      const manager = this.walletManager;
       try {
-        await this.walletManager?.disconnect();
+        await manager?.disconnect();
       } catch (error) {
         logger.error('Failed to disconnect:', error);
+      }
+      // The manager's 'disconnect' event usually closes the modal; close it here
+      // too when the session ended without that event (e.g. partial cleanup).
+      if (manager === this.walletManager && !manager?.connected && this.accountModalOpen) {
+        this.closeAccountModal();
       }
     }
 
@@ -1246,15 +1307,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       if (state.prompt.captcha) {
         if (!this.authCaptchaToken) {
-          this.setAuthPromptError('Complete the CAPTCHA challenge before continuing.');
+          this.setAuthPromptError(CAPTCHA_ERRORS.required);
           return;
         }
         values.captchaToken = this.authCaptchaToken;
       }
 
-      state.busy = true;
-      state.error = null;
-      this.render();
+      // Update in place: a full render would replace the solved CAPTCHA widget
+      // with a fresh challenge while its token is being submitted.
+      this.setAuthPromptBusy(state, true);
       try {
         await submit(values);
       } catch (error) {
@@ -1264,7 +1325,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       } finally {
         if (this.authPromptData === state) {
           state.busy = false;
-          this.authCaptchaToken = null;
+          // The submitted CAPTCHA token is single-use; render mounts a fresh challenge.
           this.render();
         }
       }
@@ -1280,9 +1341,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         if (input.name) state.values[input.name] = input.value;
       }
 
-      state.busy = true;
-      state.error = null;
-      this.render();
+      // Secondary actions (e.g. resending a code) keep the solved CAPTCHA.
+      this.setAuthPromptBusy(state, true);
       try {
         await run();
       } catch (error) {
@@ -1291,23 +1351,43 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         }
       } finally {
         if (this.authPromptData === state) {
-          state.busy = false;
-          this.render();
+          this.setAuthPromptBusy(state, false);
+          if (state.error) this.setAuthPromptError(state.error);
         }
       }
     }
 
     public cancelAuthPrompt(): void {
-      const state = this.authPromptData;
-      this.authPromptData = null;
-      this.authCaptchaToken = null;
-      this.clearCaptchaWidget();
-      if (!state) return;
-      try {
-        state.prompt.cancel();
-      } catch (error) {
-        logger.warn('Failed to cancel authentication prompt:', error);
+      this.clearAuthPromptState(true);
+    }
+
+    private setAuthPromptBusy(state: AuthPromptState, busy: boolean): void {
+      state.busy = busy;
+      if (busy) state.error = null;
+      const root = this.getOverlayRoot();
+      const dialog = this.getDialog('wallet');
+      if (!root || !dialog) return;
+      const active = root.activeElement;
+      updateAuthPromptBusy(root, state.prompt, busy);
+      if (busy) {
+        const errorElement = root.querySelector<HTMLElement>('#auth-prompt-error');
+        if (errorElement) {
+          errorElement.hidden = true;
+          errorElement.textContent = '';
+        }
+        // Keep focus inside the dialog when the focused control becomes disabled.
+        if (active instanceof HTMLElement && active.matches(':disabled')) dialog.focus();
+      } else if (active === dialog) {
+        this.focusAuthPromptControl(dialog);
       }
+    }
+
+    private focusAuthPromptControl(dialog: HTMLElement): void {
+      (
+        dialog.querySelector<HTMLElement>('[data-auth-field]:not([disabled])') ??
+        this.getDialogFocusables(dialog)[0] ??
+        dialog
+      ).focus();
     }
 
     private setAuthPromptError(message: string): void {
@@ -1320,17 +1400,23 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       errorElement.textContent = message;
     }
 
+    /** Tear down the prompt; `callCancel` also notifies the adapter that issued it. */
     private clearAuthPromptState(callCancel: boolean): void {
-      if (callCancel) this.cancelAuthPrompt();
-      else {
-        this.authPromptData = null;
-        this.authCaptchaToken = null;
-        this.clearCaptchaWidget();
+      const state = this.authPromptData;
+      this.authPromptData = null;
+      this.clearCaptchaWidget();
+      if (!state || !callCancel) return;
+      try {
+        state.prompt.cancel();
+      } catch (error) {
+        logger.warn('Failed to cancel authentication prompt:', error);
       }
     }
 
+    /** Remove the CAPTCHA widget; its token is only valid with the widget that issued it. */
     private clearCaptchaWidget(): void {
       this.captchaGeneration += 1;
+      this.authCaptchaToken = null;
       const cleanup = this.captchaCleanup;
       this.captchaCleanup = null;
       cleanup?.();
@@ -1351,7 +1437,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           (token) => {
             if (this.captchaGeneration !== generation || this.authPromptData !== state) return;
             this.authCaptchaToken = token;
-            if (state.error?.startsWith('CAPTCHA')) {
+            if (state.error && CAPTCHA_ERROR_MESSAGES.has(state.error)) {
               state.error = null;
               const errorElement =
                 this.getOverlayRoot()?.querySelector<HTMLElement>('#auth-prompt-error');
@@ -1364,13 +1450,13 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           () => {
             if (this.captchaGeneration === generation && this.authPromptData === state) {
               this.authCaptchaToken = null;
-              this.setAuthPromptError('CAPTCHA expired. Please try again.');
+              this.setAuthPromptError(CAPTCHA_ERRORS.expired);
             }
           },
           () => {
             if (this.captchaGeneration === generation && this.authPromptData === state) {
               this.authCaptchaToken = null;
-              this.setAuthPromptError('CAPTCHA could not be verified. Please try again.');
+              this.setAuthPromptError(CAPTCHA_ERRORS.rejected);
             }
           }
         );
@@ -1381,7 +1467,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.captchaCleanup = cleanup;
       } catch {
         if (this.captchaGeneration === generation && this.authPromptData === state) {
-          this.setAuthPromptError('CAPTCHA could not be loaded. Please try again.');
+          this.setAuthPromptError(CAPTCHA_ERRORS.unavailable);
         }
       }
     }

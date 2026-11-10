@@ -111,7 +111,9 @@ configured on the manager, autofills missing fee/sequence fields, hashes the XRP
 signing serialization with SHA-512Half, and requests a raw signature from the
 Privy user's signer. It converts the compact signature to canonical DER, verifies
 it against the connected public key, and returns the signed blob. Submission
-waits for validation and rejects a non-`tesSUCCESS` ledger result.
+waits for validation and returns the hash with `transactionResult`. A validated
+`tec` result is returned rather than thrown, because it consumed the fee and
+sequence; check `transactionResult === 'tesSUCCESS'` before treating it as applied.
 
 Prepared transactions with `Fee` and `Sequence` can be signed without connecting
 to an XRPL server. Include `LastLedgerSequence` to bound their lifetime. The

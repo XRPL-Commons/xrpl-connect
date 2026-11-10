@@ -219,17 +219,22 @@ describe('PrivyAdapter', () => {
     await adapter.disconnect();
   });
 
-  it('submits verified signatures and rejects unsuccessful ledger results', async () => {
+  it('returns validated ledger results, including tec failures, with their hash', async () => {
     const adapter = new PrivyAdapter(options);
     await adapter.connect();
     expect(await adapter.signAndSubmit(transaction)).toMatchObject({
       hash: 'validated-hash',
       signerAddress: wallet.address,
+      transactionResult: 'tesSUCCESS',
     });
     mocks.submit.mockResolvedValueOnce({
       result: { hash: 'failed', meta: { TransactionResult: 'tecUNFUNDED_PAYMENT' } },
     });
-    await expect(adapter.signAndSubmit(transaction)).rejects.toThrow('tecUNFUNDED_PAYMENT');
+    await expect(adapter.signAndSubmit(transaction)).resolves.toMatchObject({
+      hash: 'failed',
+      id: 'failed',
+      transactionResult: 'tecUNFUNDED_PAYMENT',
+    });
     expect(mocks.clientDisconnect).toHaveBeenCalledTimes(2);
     await adapter.disconnect();
   });

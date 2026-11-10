@@ -516,8 +516,9 @@ export class PrivySession {
    * internal consumers, while a picker must reflect a dashboard change made
    * after this client was initialized.
    */
-  async getLoginMethods(): Promise<readonly WalletLoginMethod[]> {
-    const signal = new AbortController().signal;
+  async getLoginMethods(
+    signal: AbortSignal = new AbortController().signal
+  ): Promise<readonly WalletLoginMethod[]> {
     const generation = this.lifecycleGeneration;
     await this.waitForDisconnect(signal);
     this.assertGeneration(generation, signal);

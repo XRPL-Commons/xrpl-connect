@@ -50,6 +50,9 @@ React wrapper accepts `socialLogins={entries}`, and Vue accepts `:social-logins=
 Descriptors can select any registered adapter, so custom OAuth backends can use
 the same UI and manager lifecycle. Adapters can also provide `getLoginMethods()`
 for dynamic discovery and `onAuthPrompt()` for interactive authentication input.
+Dynamically discovered adapters follow the `wallets` attribute: when it is set,
+only listed adapters are discovered, while explicit `socialLogins` entries always
+show their adapter.
 When social login is not configured, the existing wallet list behaves as before. Provider labels are used only in the
 chooser; connection options stay internal to the component and are passed to the
 selected adapter for retries.

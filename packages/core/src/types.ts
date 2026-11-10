@@ -299,8 +299,11 @@ export interface WalletAdapter {
   getMissingConfiguration?(options?: ConnectOptions): readonly string[];
   isAvailable(): Promise<boolean>; // Check if wallet is installed/accessible
 
-  /** Discover the sign-in methods currently enabled by the authentication provider. */
-  getLoginMethods?(): Promise<readonly WalletLoginMethod[]>;
+  /**
+   * Discover the sign-in methods currently enabled by the authentication provider.
+   * Callers abort `signal` when the result is no longer needed.
+   */
+  getLoginMethods?(options?: { signal?: AbortSignal }): Promise<readonly WalletLoginMethod[]>;
   /** Subscribe to input or QR challenges during an active connection attempt. */
   onAuthPrompt?(callback: (prompt: WalletAuthPrompt | null) => void): () => void;
 
