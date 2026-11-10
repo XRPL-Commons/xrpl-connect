@@ -9,7 +9,35 @@
  * `SupportsDeepLink`) live in `@xrpl-connect/core`.
  */
 
-import type { WalletAdapter, WalletManager } from '@xrpl-connect/core';
+import type {
+  ConnectOptions,
+  WalletAdapter,
+  WalletIdentifier,
+  WalletManager,
+} from '@xrpl-connect/core';
+
+export type WalletLoginMethod = Awaited<
+  ReturnType<NonNullable<WalletAdapter['getLoginMethods']>>
+>[number];
+type WalletAuthPromptCallback = Parameters<NonNullable<WalletAdapter['onAuthPrompt']>>[0];
+export type WalletAuthPrompt = Exclude<Parameters<WalletAuthPromptCallback>[0], null>;
+export type WalletAuthField = NonNullable<WalletAuthPrompt['fields']>[number];
+
+/**
+ * A user-configured social sign-in method backed by a registered wallet
+ * adapter. Multiple methods may intentionally point at the same adapter.
+ */
+export interface SocialLogin {
+  readonly id: string;
+  readonly label: string;
+  readonly adapterId: WalletIdentifier;
+  readonly icon?: string;
+  /**
+   * Adapter-specific options remain open so custom OAuth adapters can define
+   * their own provider selection without changing the core contract.
+   */
+  readonly connectOptions?: ConnectOptions<Record<string, unknown>>;
+}
 
 /**
  * A single derived account returned by Ledger's `getAccounts`.
@@ -74,6 +102,7 @@ export interface AccountSelectionData {
  */
 export interface WalletConnectorContext extends HTMLElement {
   readonly walletManager: WalletManager | null;
+  readonly socialLogins: readonly SocialLogin[];
   readonly shadow: ShadowRoot;
   readonly qrCodeData: QRCodeData | null;
   readonly errorData: ErrorData | null;
@@ -84,6 +113,18 @@ export interface WalletConnectorContext extends HTMLElement {
   openAccountModal(): void;
   closeAccountModal(): void;
   disconnectFromAccountModal(): Promise<void> | void;
+  connectSocialLogin(socialLoginId: string): void;
+  showSocialLoginList(): void;
+  retrySocialLoginDiscovery(adapterId: string): void;
+  showAuthPrompt(
+    prompt: WalletAuthPrompt,
+    walletId: string,
+    walletName: string,
+    walletIcon?: string
+  ): void;
+  submitAuthPrompt(): Promise<void>;
+  runAuthPromptSecondaryAction(): Promise<void>;
+  cancelAuthPrompt(): void;
 
   showQRCodeView(walletId: string, uri?: string): void;
   showLoadingView(walletId: string, walletName: string, walletIcon?: string): void;

@@ -16,6 +16,7 @@ afterEach(() => {
   document.body.innerHTML = '';
   localStorage.clear();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe('WalletConnectorElement availability rendering', () => {
@@ -30,6 +31,13 @@ describe('WalletConnectorElement availability rendering', () => {
   const mount = (wallets: WalletAdapter[]) => {
     const Connector = WalletConnectorElement as typeof HTMLElement & {
       new (): HTMLElement & {
+        socialLogins: readonly {
+          id: string;
+          label: string;
+          adapterId: string;
+          icon?: string;
+          connectOptions?: Record<string, unknown>;
+        }[];
         setWalletManager(manager: WalletManager): void;
         open(): Promise<void>;
         getOverlayRoot(): ShadowRoot | null;
@@ -101,6 +109,110 @@ describe('WalletConnectorElement availability rendering', () => {
     expect(modal).not.toContain('Unavailable Wallet');
   });
 
+  it('shows a ready wallet before unrelated availability checks finish', async () => {
+    vi.useFakeTimers();
+    let resolveSlow!: (available: boolean) => void;
+    const slow = createWallet('slow', false, 'https://example.com/install');
+    slow.isAvailable = vi.fn(() => new Promise<boolean>((resolve) => (resolveSlow = resolve)));
+    const ready = createWallet('gemwallet', true);
+    const connector = mount([slow, ready]);
+    connector.setAttribute('show-unavailable', '');
+    await connector.open();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(
+      connector.getOverlayRoot()?.querySelector('[data-wallet-id="gemwallet"]')
+    ).not.toBeNull();
+    expect(
+      connector.getOverlayRoot()?.querySelector('[role="region"]')?.getAttribute('aria-busy')
+    ).toBe('true');
+    expect(connector.getOverlayRoot()?.querySelector('[data-install-url]')).toBeNull();
+    expect(ready.isAvailable).toHaveBeenCalledOnce();
+
+    resolveSlow(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(
+      connector.getOverlayRoot()?.querySelector('[role="region"]')?.getAttribute('aria-busy')
+    ).toBe('false');
+    expect(connector.getOverlayRoot()?.querySelector('[data-install-url]')).not.toBeNull();
+  });
+
+  it('rechecks a cached unavailable extension immediately when opening', async () => {
+    vi.useFakeTimers();
+    let installed = false;
+    const wallet = createWallet('gemwallet', false);
+    wallet.isAvailable = vi.fn(async () => installed);
+    const connector = mount([wallet]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(wallet.isAvailable).toHaveBeenCalledOnce();
+
+    installed = true;
+    await connector.open();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(
+      connector.getOverlayRoot()?.querySelector('[data-wallet-id="gemwallet"]')
+    ).not.toBeNull();
+    expect(wallet.isAvailable).toHaveBeenCalledTimes(2);
+  });
+
+  it('detects a late extension promptly while open without polling while closed', async () => {
+    vi.useFakeTimers();
+    let installed = false;
+    const wallet = createWallet('gemwallet', false);
+    wallet.isAvailable = vi.fn(async () => installed);
+    const connector = mount([wallet]);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(wallet.isAvailable).toHaveBeenCalledOnce();
+
+    await connector.open();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(connector.getOverlayRoot()?.querySelector('[data-wallet-id="gemwallet"]')).toBeNull();
+    installed = true;
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(
+      connector.getOverlayRoot()?.querySelector('[data-wallet-id="gemwallet"]')
+    ).not.toBeNull();
+    expect(wallet.isAvailable).toHaveBeenCalledTimes(3);
+  });
+
+  it('recovers from a timed-out probe after the underlying SDK finishes', async () => {
+    vi.useFakeTimers();
+    let resolveProbe!: (available: boolean) => void;
+    const wallet = createWallet('late', false);
+    wallet.isAvailable = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<boolean>((resolve) => (resolveProbe = resolve)))
+      .mockResolvedValue(true);
+    const connector = mount([wallet]);
+    await connector.open();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(wallet.isAvailable).toHaveBeenCalledOnce();
+    expect(connector.getOverlayRoot()?.querySelector('[data-wallet-id="late"]')).toBeNull();
+
+    resolveProbe(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(wallet.isAvailable).toHaveBeenCalledTimes(2);
+    expect(connector.getOverlayRoot()?.querySelector('[data-wallet-id="late"]')).not.toBeNull();
+  });
+
+  it('ignores partial results from a replaced manager', async () => {
+    vi.useFakeTimers();
+    let resolveOld!: (available: boolean) => void;
+    const old = createWallet('old', true);
+    old.isAvailable = vi.fn(() => new Promise<boolean>((resolve) => (resolveOld = resolve)));
+    const connector = mount([old]);
+    await connector.open();
+    connector.setWalletManager(new WalletManager({ adapters: [createWallet('new', true)] }));
+    await vi.advanceTimersByTimeAsync(0);
+    resolveOld(true);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(connector.getOverlayRoot()?.querySelector('[data-wallet-id="new"]')).not.toBeNull();
+    expect(connector.getOverlayRoot()?.querySelector('[data-wallet-id="old"]')).toBeNull();
+  });
+
   it('omits unconfigured wallets instead of presenting them as installable', async () => {
     const unconfiguredWallet = {
       id: 'unconfigured',
@@ -122,6 +234,60 @@ describe('WalletConnectorElement availability rendering', () => {
     expect(unconfiguredWallet.isAvailable).not.toHaveBeenCalled();
     expect(modal).not.toContain('data-wallet-id="unconfigured"');
     expect(modal).not.toContain('Unconfigured Wallet');
+  });
+
+  it('renders configured social methods outside the normal wallet allowlist and hides duplicates', async () => {
+    const normalWallet = createWallet('normal', true);
+    const socialAdapter = {
+      ...createWallet('social-adapter', true),
+      getMissingConfiguration: vi.fn(() => []),
+    } as WalletAdapter;
+    const connector = mount([normalWallet, socialAdapter]);
+    connector.setAttribute('wallets', 'normal');
+    connector.socialLogins = [
+      {
+        id: 'google',
+        label: 'Continue with Google',
+        adapterId: 'social-adapter',
+        connectOptions: { provider: 'google' },
+      },
+    ];
+
+    await connector.open();
+    await vi.waitFor(() =>
+      expect(connector.getOverlayRoot()?.querySelector('[aria-busy="true"]')).toBeNull()
+    );
+
+    expect(connector.getOverlayRoot()?.querySelector('[data-wallet-id="normal"]')).not.toBeNull();
+    expect(
+      connector.getOverlayRoot()?.querySelector('[data-wallet-id="social-adapter"]')
+    ).toBeNull();
+    expect(connector.getOverlayRoot()?.querySelector('#social-login-button')).not.toBeNull();
+    expect(connector.getOverlayRoot()?.querySelectorAll('[data-social-login-id]')).toHaveLength(0);
+
+    connector.socialLogins = [
+      { id: 'apple', label: 'Continue with Apple', adapterId: 'social-adapter' },
+    ];
+    await vi.waitFor(() =>
+      expect(connector.getOverlayRoot()?.querySelector('#social-login-button')).not.toBeNull()
+    );
+    expect(connector.getOverlayRoot()?.querySelectorAll('[data-social-login-id]')).toHaveLength(0);
+  });
+
+  it('ignores malformed or unregistered social descriptors without hiding normal wallets', async () => {
+    const connector = mount([createWallet('normal', true)]);
+    connector.socialLogins = [
+      { id: '', label: 'Missing ID', adapterId: 'normal' },
+      { id: 'missing', label: 'Missing adapter', adapterId: 'unknown' },
+    ];
+
+    await connector.open();
+    await vi.waitFor(() =>
+      expect(connector.getOverlayRoot()?.querySelector('[aria-busy="true"]')).toBeNull()
+    );
+
+    expect(connector.getOverlayRoot()?.querySelector('[data-wallet-id="normal"]')).not.toBeNull();
+    expect(connector.getOverlayRoot()?.querySelectorAll('[data-social-login-id]')).toHaveLength(0);
   });
 
   it('preserves unavailable slots while applying MRU order to available wallets', async () => {

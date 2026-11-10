@@ -43,6 +43,7 @@ const currentSidebar = [
     text: 'Build',
     items: [
       { text: 'Wallets & Capabilities', link: '/guide/wallets' },
+      { text: 'Social Login', link: '/guide/social-login' },
       { text: 'Transactions & Signing', link: '/guide/transactions' },
       { text: 'Production & Security', link: '/guide/production' },
     ],

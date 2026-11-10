@@ -5,6 +5,7 @@ import {
   useWalletModal,
   type WalletConnectorElement,
   type WalletConnectorProps,
+  type SocialLogin,
 } from '../dist/index';
 
 declare const connector: WalletConnectorElement;
@@ -26,6 +27,15 @@ const accountResult: Promise<AccountInfo> = connector.openAndWait();
 const closeResult: void = connector.close();
 const toggleResult: void = connector.toggle();
 const cssVarsProps: WalletConnectorProps = { cssVars: { '--xc-primary-color': '#7c3aed' } };
+const socialLogins: readonly SocialLogin[] = [
+  {
+    id: 'google',
+    label: 'Google',
+    adapterId: 'custom-social',
+    connectOptions: { provider: 'google' },
+  },
+];
+const socialProps: WalletConnectorProps = { socialLogins };
 const invalidCssVarsProps: WalletConnectorProps = {
   cssVars: {
     // @ts-expect-error Unsupported or misspelled CSS variables are rejected.
@@ -52,6 +62,7 @@ void accountResult;
 void closeResult;
 void toggleResult;
 void cssVarsProps;
+void socialProps;
 void invalidCssVarsProps;
 void modalReady;
 void modalOpen;

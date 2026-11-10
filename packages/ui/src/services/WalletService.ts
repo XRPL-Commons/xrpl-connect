@@ -77,6 +77,18 @@ export interface SuccessfulConnectionAttempt {
   detail: Record<string, unknown>;
 }
 
+export interface ConnectionDisplayMetadata {
+  socialLoginId?: string;
+  label?: string;
+  icon?: string;
+}
+
+interface ConnectionRequest {
+  walletId: string;
+  options?: ConnectOptions;
+  display?: ConnectionDisplayMetadata;
+}
+
 interface ActiveConnectionAttempt extends CancelledConnectionAttempt {
   detail: Record<string, unknown>;
 }
@@ -84,6 +96,11 @@ interface ActiveConnectionAttempt extends CancelledConnectionAttempt {
 export class WalletService {
   private nextConnectionAttemptId = 0;
   private activeConnectionAttempt: ActiveConnectionAttempt | null = null;
+  private lastConnectionRequest: ConnectionRequest | null = null;
+  private authPromptSubscription: {
+    connectionAttemptId: number;
+    unsubscribe: () => void;
+  } | null = null;
 
   constructor(
     private walletManager: WalletManager,
@@ -104,7 +121,9 @@ export class WalletService {
 
   cancelPendingWork(): CancelledConnectionAttempt | null {
     const activeAttempt = this.activeConnectionAttempt;
+    this.clearAuthPromptSubscription();
     this.activeConnectionAttempt = null;
+    this.lastConnectionRequest = null;
     this.nextConnectionAttemptId += 1;
     return activeAttempt
       ? {
@@ -126,8 +145,10 @@ export class WalletService {
       return null;
     }
 
+    this.clearAuthPromptSubscription(activeAttempt.connectionAttemptId);
     this.activeConnectionAttempt = null;
     this.nextConnectionAttemptId += 1;
+    this.lastConnectionRequest = null;
     return {
       connectionAttemptId: activeAttempt.connectionAttemptId,
       walletId: activeAttempt.walletId,
@@ -161,12 +182,65 @@ export class WalletService {
   }
 
   private settleConnectionAttempt(connectionAttemptId: number): void {
+    this.clearAuthPromptSubscription(connectionAttemptId);
     if (this.activeConnectionAttempt?.connectionAttemptId === connectionAttemptId) {
       this.activeConnectionAttempt = null;
     }
   }
 
-  async connectWallet(walletId: string, options?: ConnectOptions) {
+  private clearAuthPromptSubscription(connectionAttemptId?: number): void {
+    const subscription = this.authPromptSubscription;
+    if (
+      !subscription ||
+      (connectionAttemptId !== undefined &&
+        subscription.connectionAttemptId !== connectionAttemptId)
+    ) {
+      return;
+    }
+    this.authPromptSubscription = null;
+    try {
+      subscription.unsubscribe();
+    } catch (error) {
+      logger.warn('Failed to remove authentication prompt subscription:', error);
+    }
+  }
+
+  private subscribeToAuthPrompt(
+    wallet: WalletAdapter,
+    connectionAttemptId: number,
+    walletName: string,
+    walletIcon?: string
+  ): void {
+    this.clearAuthPromptSubscription();
+    if (!wallet.onAuthPrompt) return;
+
+    try {
+      const unsubscribe = wallet.onAuthPrompt((prompt) => {
+        if (!this.isCurrentAttempt(connectionAttemptId)) return;
+        if (prompt) {
+          this.component.showAuthPrompt(prompt, wallet.id, walletName, walletIcon);
+        } else {
+          this.component.showLoadingView(wallet.id, walletName, walletIcon);
+        }
+      });
+      this.authPromptSubscription = { connectionAttemptId, unsubscribe };
+    } catch (error) {
+      logger.warn(`Failed to subscribe to authentication prompts for ${wallet.id}:`, error);
+    }
+  }
+
+  retryLastConnection(): boolean {
+    const request = this.lastConnectionRequest;
+    if (!request) return false;
+    void this.connectWallet(request.walletId, request.options, request.display);
+    return true;
+  }
+
+  async connectWallet(
+    walletId: string,
+    options?: ConnectOptions,
+    display?: ConnectionDisplayMetadata
+  ) {
     if (!this.walletManager) {
       logger.error('WalletManager not set');
       return;
@@ -179,6 +253,16 @@ export class WalletService {
       const wallet = this.walletManager.wallets.find((w) => w.id === walletId);
       if (!wallet) {
         throw new Error('Wallet not found');
+      }
+
+      this.lastConnectionRequest = { walletId, options, display };
+      const walletName = display?.label ?? wallet.name;
+      const walletIcon = display?.icon ?? wallet.icon;
+      const attemptDetail = display?.socialLoginId
+        ? { socialLoginId: display.socialLoginId }
+        : undefined;
+      if (attemptDetail && this.activeConnectionAttempt) {
+        this.activeConnectionAttempt.detail = attemptDetail;
       }
 
       logger.debug('Connecting to wallet:', walletId);
@@ -215,20 +299,24 @@ export class WalletService {
           // This gives users the impression they're still in the connection flow
 
           // Show loading state first (with spinning animation like Xaman)
-          this.component.showLoadingView(walletId, wallet.name, wallet.icon);
+          this.component.showLoadingView(walletId, walletName, walletIcon);
 
-          this.dispatchConnecting(walletId, connectionAttemptId);
+          this.dispatchConnecting(walletId, connectionAttemptId, attemptDetail);
 
           // Small delay to show the loading animation before WC modal appears
           await delay(TIMINGS.NON_SAFARI_CONNECT_DELAY);
           if (!this.isCurrentAttempt(uiAttempt)) return;
 
           // Connect - WalletConnect modal will open on top of our loading view
+          this.subscribeToAuthPrompt(wallet, connectionAttemptId, walletName, walletIcon);
           this.markManagerConnectionStarted(connectionAttemptId);
           await this.walletManager.connect(walletId, options);
           if (!this.isCurrentAttempt(uiAttempt)) return;
+          this.lastConnectionRequest = null;
           this.component.dispatchEvent(
-            new CustomEvent('connected', { detail: { walletId, connectionAttemptId } })
+            new CustomEvent('connected', {
+              detail: { walletId, ...attemptDetail, connectionAttemptId },
+            })
           );
 
           // Close our modal after successful connection
@@ -250,12 +338,16 @@ export class WalletService {
             },
           };
 
-          this.dispatchConnecting(walletId, connectionAttemptId);
+          this.dispatchConnecting(walletId, connectionAttemptId, attemptDetail);
+          this.subscribeToAuthPrompt(wallet, connectionAttemptId, walletName, walletIcon);
           this.markManagerConnectionStarted(connectionAttemptId);
           await this.walletManager.connect(walletId, connectOptions);
           if (!this.isCurrentAttempt(uiAttempt)) return;
+          this.lastConnectionRequest = null;
           this.component.dispatchEvent(
-            new CustomEvent('connected', { detail: { walletId, connectionAttemptId } })
+            new CustomEvent('connected', {
+              detail: { walletId, ...attemptDetail, connectionAttemptId },
+            })
           );
         }
       } else if (walletId === 'ledger') {
@@ -274,7 +366,7 @@ export class WalletService {
         }
 
         // Show loading while fetching accounts
-        this.component.showLoadingView(walletId, wallet.name, wallet.icon);
+        this.component.showLoadingView(walletId, walletName, walletIcon);
 
         // Small delay for UI
         if (!isSafari()) {
@@ -292,9 +384,9 @@ export class WalletService {
         this.component.showAccountSelectionView(walletId, wallet.name, wallet.icon, accounts);
       } else {
         // Show loading state
-        this.component.showLoadingView(walletId, wallet.name, wallet.icon);
+        this.component.showLoadingView(walletId, walletName, walletIcon);
 
-        this.dispatchConnecting(walletId, connectionAttemptId);
+        this.dispatchConnecting(walletId, connectionAttemptId, attemptDetail);
 
         // Browser-specific delay (Safari needs immediate connection for user gesture)
         if (!isSafari() && walletId !== 'xaman') {
@@ -312,15 +404,19 @@ export class WalletService {
           });
         }
 
+        this.subscribeToAuthPrompt(wallet, connectionAttemptId, walletName, walletIcon);
         this.markManagerConnectionStarted(connectionAttemptId);
         await this.walletManager.connect(walletId, options);
         if (!this.isCurrentAttempt(uiAttempt)) return;
+        this.lastConnectionRequest = null;
 
         if (walletId === 'xaman') {
           logger.info('Xaman UI connection phase: WalletManager connected');
         }
         this.component.dispatchEvent(
-          new CustomEvent('connected', { detail: { walletId, connectionAttemptId } })
+          new CustomEvent('connected', {
+            detail: { walletId, ...attemptDetail, connectionAttemptId },
+          })
         );
       }
     } catch (error: unknown) {
@@ -335,6 +431,7 @@ export class WalletService {
       // Check for specific error codes
       if (
         err.code === ERROR_CODES.USER_REJECTED ||
+        err.code === WalletErrorCode.CONNECTION_REJECTED ||
         errorMessage.toLowerCase().includes('user rejected')
       ) {
         errorType = 'rejected';
@@ -355,10 +452,20 @@ export class WalletService {
 
       logger.debug('Connection error type:', errorType, 'Code:', err.code);
 
-      this.component.showErrorView(walletId, wallet?.name || 'Wallet', new Error(errorMessage));
+      this.component.showErrorView(
+        walletId,
+        display?.label ?? wallet?.name ?? 'Wallet',
+        new Error(errorMessage)
+      );
       this.component.dispatchEvent(
         new CustomEvent('error', {
-          detail: { error, walletId, errorType, connectionAttemptId },
+          detail: {
+            error,
+            walletId,
+            ...this.activeConnectionAttempt?.detail,
+            errorType,
+            connectionAttemptId,
+          },
         })
       );
       logger.error('Failed to connect:', error);
@@ -388,6 +495,8 @@ export class WalletService {
       this.dispatchConnecting(walletId, connectionAttemptId, { accountIndex });
 
       const ledgerOptions: ConnectOptions<LedgerConnectOptions> = { accountIndex };
+      const wallet = this.walletManager.wallets.find(({ id }) => id === walletId);
+      if (wallet) this.subscribeToAuthPrompt(wallet, connectionAttemptId, walletName, walletIcon);
       this.markManagerConnectionStarted(connectionAttemptId);
       await this.walletManager.connect(walletId, ledgerOptions);
       if (!this.isCurrentAttempt(uiAttempt)) return;
@@ -452,6 +561,8 @@ export class WalletService {
       this.dispatchConnecting(walletId, connectionAttemptId, { derivationPath });
 
       const ledgerOptions: ConnectOptions<LedgerConnectOptions> = { derivationPath };
+      const wallet = this.walletManager.wallets.find(({ id }) => id === walletId);
+      if (wallet) this.subscribeToAuthPrompt(wallet, connectionAttemptId, walletName, walletIcon);
       this.markManagerConnectionStarted(connectionAttemptId);
       await this.walletManager.connect(walletId, ledgerOptions);
       if (!this.isCurrentAttempt(uiAttempt)) return;

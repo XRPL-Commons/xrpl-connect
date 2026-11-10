@@ -20,6 +20,7 @@ import {
   isStandardNetworkId,
   isWalletError,
   resolveNetwork,
+  TIME,
 } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
 import { CrossmarkSDK } from './sdk';
@@ -80,10 +81,11 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
    */
   async isAvailable(): Promise<boolean> {
     try {
-      if (!sdk.sync.isInstalled()) {
-        return false;
-      }
-      return true;
+      // The synchronous value is the fast path, but it can still be unset
+      // while Crossmark's content script is being injected. The async SDK
+      // detector retries that discovery and stops after the shared bound.
+      if (sdk.sync.isInstalled() === true) return true;
+      return await sdk.async.detect(TIME.AVAILABILITY_TIMEOUT);
     } catch {
       return false;
     }

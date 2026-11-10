@@ -1170,6 +1170,34 @@ describe('<WalletConnector>', () => {
     expect(el.hasAttribute('wallets')).toBe(false);
   });
 
+  it('forwards social methods as a property and never serializes options as attributes', async () => {
+    const first = [
+      { id: 'google', label: 'Google', adapterId: 'fake', connectOptions: { provider: 'google' } },
+    ] as const;
+    const second = [
+      { id: 'apple', label: 'Apple', adapterId: 'fake', connectOptions: { provider: 'apple' } },
+    ] as const;
+    function View({ socialLogins }: { socialLogins: typeof first | typeof second }) {
+      return (
+        <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+          <WalletConnector socialLogins={socialLogins} />
+        </XrplConnectProvider>
+      );
+    }
+
+    const { rerender } = render(<View socialLogins={first} />);
+    const element = document.querySelector('xrpl-wallet-connector') as WalletConnectorElement & {
+      manager: unknown;
+    };
+    await waitFor(() => expect(element.manager).not.toBeNull());
+    await waitFor(() => expect(element.socialLogins).toEqual(first));
+    expect(element.hasAttribute('social-logins')).toBe(false);
+
+    rerender(<View socialLogins={second} />);
+    await waitFor(() => expect(element.socialLogins).toEqual(second));
+    expect(element.hasAttribute('social-logins')).toBe(false);
+  });
+
   it('enables and disables unavailable-wallet rendering on rerender', async () => {
     function View({ showUnavailable }: { showUnavailable?: boolean }) {
       return (

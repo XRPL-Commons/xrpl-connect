@@ -7,6 +7,7 @@ export const RELEASE_PACKAGE_NAMES = [
   'xrpl-connect',
   '@xrpl-commons/xrpl-connect-react',
   '@xrpl-commons/xrpl-connect-vue',
+  '@xrpl-commons/xrpl-connect-privy',
 ];
 
 export const PUBLISH_CONFIG = {

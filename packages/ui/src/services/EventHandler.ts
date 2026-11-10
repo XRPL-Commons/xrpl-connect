@@ -122,6 +122,27 @@ export class EventHandler {
       });
     });
 
+    // Social-login buttons resolve their configured options inside the host
+    // component and use the same WalletService/WalletManager lifecycle.
+    overlayRoot?.querySelectorAll('[data-social-login-id]').forEach((button: Element) => {
+      this.add(button, 'click', () => {
+        const socialLoginId = (button as HTMLElement).dataset.socialLoginId;
+        if (socialLoginId) this.component.connectSocialLogin(socialLoginId);
+      });
+    });
+
+    overlayRoot?.querySelectorAll('[data-social-login-retry-id]').forEach((button: Element) => {
+      this.add(button, 'click', () => {
+        const adapterId = (button as HTMLElement).dataset.socialLoginRetryId;
+        if (adapterId) this.component.retrySocialLoginDiscovery(adapterId);
+      });
+    });
+
+    // Social-login group button (in the wallet list)
+    this.add(overlayRoot?.querySelector('#social-login-button'), 'click', () => {
+      this.component.showSocialLoginList();
+    });
+
     // Install buttons for unavailable wallets — open the wallet's download page.
     overlayRoot?.querySelectorAll('[data-install-url]').forEach((button: Element) => {
       this.add(button, 'click', () => {
@@ -190,6 +211,7 @@ export class EventHandler {
 
     // Error retry button (in overlay portal)
     this.add(overlayRoot?.querySelector('#error-retry-button'), 'click', () => {
+      if (this.walletService.retryLastConnection()) return;
       const errorWalletId = this.component.errorData?.walletId;
       if (errorWalletId) {
         this.walletService.connectWallet(errorWalletId);
@@ -203,6 +225,24 @@ export class EventHandler {
 
     // Account selection back button (in overlay portal)
     this.add(overlayRoot?.querySelector('#account-selection-back-button'), 'click', () => {
+      this.component.showWalletList();
+    });
+
+    // Back button (social-login chooser, in overlay portal)
+    this.add(overlayRoot?.querySelector('#social-login-back-button'), 'click', () => {
+      this.component.showWalletList();
+    });
+
+    // Authentication prompt form controls (in overlay portal)
+    this.add(overlayRoot?.querySelector('#auth-prompt-form'), 'submit', (event: Event) => {
+      event.preventDefault();
+      void this.component.submitAuthPrompt();
+    });
+    this.add(overlayRoot?.querySelector('#auth-prompt-secondary-button'), 'click', () => {
+      void this.component.runAuthPromptSecondaryAction();
+    });
+    this.add(overlayRoot?.querySelector('#auth-prompt-cancel-button'), 'click', () => {
+      this.component.cancelAuthPrompt();
       this.component.showWalletList();
     });
 

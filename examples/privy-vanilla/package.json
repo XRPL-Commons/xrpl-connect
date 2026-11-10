@@ -1,0 +1,19 @@
+{
+  "name": "privy-vanilla-example",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev --host 127.0.0.1 --port 5176 --strictPort",
+    "build": "vp build"
+  },
+  "dependencies": {
+    "@xrpl-commons/xrpl-connect-privy": "workspace:*",
+    "xrpl-connect": "workspace:*",
+    "xrpl": "^4.4.3"
+  },
+  "devDependencies": {
+    "vite": "catalog:",
+    "vite-plugin-node-polyfills": "^0.24.0"
+  }
+}

@@ -62,6 +62,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectFolder = path.join(__dirname, '..');
 const repositoryRoot = path.join(projectFolder, '..', '..');
 const fixturesFolder = path.join(projectFolder, 'tests', 'publish');
+const privyFixturesFolder = path.join(repositoryRoot, 'packages', 'privy', 'tests', 'publish');
 const reactFixturesFolder = path.join(repositoryRoot, 'packages', 'react', 'tests', 'publish');
 const vueFixturesFolder = path.join(repositoryRoot, 'packages', 'vue', 'tests', 'publish');
 const candidatePackages = [
@@ -102,6 +103,19 @@ const candidatePackages = [
   {
     name: '@xrpl-commons/xrpl-connect-vue',
     folder: path.join(repositoryRoot, 'packages', 'vue'),
+    requiredFiles: [
+      'package.json',
+      'README.md',
+      'LICENSE',
+      'dist/index.d.ts',
+      'dist/index.d.mts',
+      'dist/index.js',
+      'dist/index.mjs',
+    ],
+  },
+  {
+    name: '@xrpl-commons/xrpl-connect-privy',
+    folder: path.join(repositoryRoot, 'packages', 'privy'),
     requiredFiles: [
       'package.json',
       'README.md',
@@ -406,6 +420,7 @@ try {
       '--package-lock=false',
       ...resolveReactCandidateSpecs(documentedReactInstall, tarballsByName, 18),
       tarballsByName.get('@xrpl-commons/xrpl-connect-vue'),
+      tarballsByName.get('@xrpl-commons/xrpl-connect-privy'),
       '@types/react@18',
       '@types/react-dom@18',
       'jsdom@^22.1.0',
@@ -578,8 +593,17 @@ try {
     xrpl: '^3.0.0 || ^4.0.0 || ^5.0.0',
     'xrpl-connect': FRAMEWORK_PEER_RANGE,
   });
+  assert.deepEqual(installedManifests['@xrpl-commons/xrpl-connect-privy'].peerDependencies, {
+    xrpl: '^3.0.0 || ^4.0.0 || ^5.0.0',
+    'xrpl-connect': FRAMEWORK_PEER_RANGE,
+  });
 
   const umbrellaManifest = installedManifests['xrpl-connect'];
+  assert.equal(
+    umbrellaManifest.dependencies?.['@xrpl-commons/xrpl-connect-privy'],
+    undefined,
+    'Published xrpl-connect must not depend on the optional Privy package'
+  );
   for (const dependency of [
     '@walletconnect/types',
     '@xyrawallet/sdk',
@@ -636,6 +660,53 @@ try {
   );
 
   const tscPath = path.join(repositoryRoot, 'node_modules', 'typescript', 'bin', 'tsc');
+  const privyConsumerFolder = path.join(temporaryRoot, 'consumer-privy');
+  writeConsumerManifest(privyConsumerFolder, 'xrpl-connect-publish-consumer-privy');
+  run(
+    'npm',
+    [
+      'install',
+      '--strict-peer-deps',
+      '--legacy-peer-deps=false',
+      '--ignore-scripts',
+      '--no-audit',
+      '--no-fund',
+      '--package-lock=false',
+      tarballsByName.get('xrpl-connect'),
+      tarballsByName.get('@xrpl-commons/xrpl-connect-privy'),
+      `xrpl@${xrplVersion}`,
+    ],
+    { ...runOptions, cwd: privyConsumerFolder }
+  );
+  verifyInstalledXrpl(privyConsumerFolder);
+  verifyConsumerDependencies(
+    privyConsumerFolder,
+    ['xrpl-connect', '@xrpl-commons/xrpl-connect-privy'],
+    runOptions
+  );
+  for (const fixture of [
+    'runtime-ssr-esm.mjs',
+    'runtime-ssr-cjs.cjs',
+    'types-esm.mts',
+    'types-cjs.cts',
+    'tsconfig.esm.json',
+    'tsconfig.cjs.json',
+  ]) {
+    copyFileSync(path.join(privyFixturesFolder, fixture), path.join(privyConsumerFolder, fixture));
+  }
+  console.log('→ Type-checking packed Privy ESM and CommonJS public declarations');
+  run(process.execPath, [tscPath, '--project', 'tsconfig.esm.json'], {
+    ...runOptions,
+    cwd: privyConsumerFolder,
+  });
+  run(process.execPath, [tscPath, '--project', 'tsconfig.cjs.json'], {
+    ...runOptions,
+    cwd: privyConsumerFolder,
+  });
+  console.log('→ Loading packed Privy ESM and CommonJS entries without browser globals');
+  run(process.execPath, ['runtime-ssr-esm.mjs'], { ...runOptions, cwd: privyConsumerFolder });
+  run(process.execPath, ['runtime-ssr-cjs.cjs'], { ...runOptions, cwd: privyConsumerFolder });
+
   console.log('→ Type-checking packed ESM consumer');
   run(process.execPath, [tscPath, '--project', 'tsconfig.esm.json'], {
     ...runOptions,

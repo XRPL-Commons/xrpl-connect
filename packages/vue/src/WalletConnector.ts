@@ -6,6 +6,7 @@ import {
   onDeactivated,
   onMounted,
   ref,
+  watch,
   type PropType,
 } from 'vue';
 import {
@@ -16,7 +17,7 @@ import {
   type WalletError,
   type WalletIdentifier,
 } from '@xrpl-connect/core';
-import type { WalletConnectorCssVars } from 'xrpl-connect';
+import type { SocialLogin, WalletConnectorCssVars } from 'xrpl-connect';
 import { useXrplConnectContext, type WalletConnectorElement } from './context';
 
 const THEMES: Record<WalletConnectorTheme, Record<string, string>> = {
@@ -48,6 +49,7 @@ export const WalletConnector = defineComponent({
   props: {
     primaryWallet: String as PropType<WalletIdentifier>,
     wallets: Array as PropType<WalletIdentifier[]>,
+    socialLogins: Array as PropType<readonly SocialLogin[]>,
     showUnavailable: Boolean,
     theme: String as PropType<WalletConnectorTheme>,
     cssVars: Object as PropType<WalletConnectorCssVars>,
@@ -182,6 +184,7 @@ export const WalletConnector = defineComponent({
       void customElements.whenDefined('xrpl-wallet-connector').then(() => {
         if (!active || registered || !element.value) return;
         element.value.setWalletManager(context.manager);
+        element.value.socialLogins = props.socialLogins ?? [];
         element.value.addEventListener('connecting', onConnecting);
         element.value.addEventListener('error', onError);
         element.value.addEventListener('open', onOpen);
@@ -210,6 +213,13 @@ export const WalletConnector = defineComponent({
     onMounted(() => {
       activateConnector();
     });
+
+    watch(
+      () => props.socialLogins,
+      (socialLogins) => {
+        if (registered) registered.socialLogins = socialLogins ?? [];
+      }
+    );
 
     onActivated(activateConnector);
     onDeactivated(deactivateConnector);

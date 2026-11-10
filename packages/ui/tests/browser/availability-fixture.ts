@@ -78,6 +78,8 @@ declare global {
     getOpenEventCount(): number;
     injectWallet(): void;
     resolveInitialAvailability(available?: boolean): void;
+    showMixedWallets(): void;
+    getAvailabilityWalletId(): string | undefined;
     showDelayedWallets(): void;
     resolveDelayedAvailability(): void;
   }
@@ -94,6 +96,13 @@ window.injectWallet = () => {
 window.resolveInitialAvailability = (available = true) => {
   resolveInitialAvailability(available);
 };
+window.showMixedWallets = () => {
+  connector.setAttribute(
+    'wallets',
+    [delayedWallets[0], installedWallet, ...delayedWallets.slice(1)].map(({ id }) => id).join(',')
+  );
+};
+window.getAvailabilityWalletId = () => manager.wallet?.id;
 window.showDelayedWallets = () => {
   connector.setAttribute('wallets', delayedWallets.map((wallet) => wallet.id).join(','));
 };

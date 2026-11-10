@@ -265,6 +265,34 @@ describe('WalletManager.disconnect()', () => {
     expect(manager.account?.address).toBe(ACCOUNT.address);
   });
 
+  it('notifies consumers as soon as the session clears while provider logout is pending', async () => {
+    let finishDisconnect!: () => void;
+    const adapter = createFakeAdapter();
+    adapter.disconnect = vi.fn(() => new Promise<void>((resolve) => (finishDisconnect = resolve)));
+    const storageAdapter = new MemoryStorageAdapter();
+    const manager = new WalletManager({ adapters: [adapter], storage: storageAdapter });
+    const disconnected = vi.fn(() => {
+      expect(manager.connected).toBe(false);
+      expect(manager.account).toBeNull();
+    });
+    manager.on('disconnect', disconnected);
+    await manager.connect('fake');
+
+    let settled = false;
+    const disconnecting = manager.disconnect().finally(() => {
+      settled = true;
+    });
+    try {
+      await vi.waitFor(() => expect(disconnected).toHaveBeenCalledOnce());
+      expect(settled).toBe(false);
+      await expect(new Storage(storageAdapter).loadState()).resolves.toBeNull();
+    } finally {
+      finishDisconnect();
+      await disconnecting;
+    }
+    expect(disconnected).toHaveBeenCalledOnce();
+  });
+
   it('waits for an earlier teardown before reconnecting the same adapter', async () => {
     let finishDisconnect!: () => void;
     const adapter = createFakeAdapter();
@@ -301,6 +329,8 @@ describe('WalletManager.disconnect()', () => {
     const oldDisconnecting = manager.disconnect();
     await vi.waitFor(() => expect(oldAdapter.disconnect).toHaveBeenCalledOnce());
 
+    expect(disconnected).toHaveBeenCalledOnce();
+    disconnected.mockClear();
     await manager.connect('new');
     finishOldDisconnect();
     await oldDisconnecting;
@@ -312,6 +342,43 @@ describe('WalletManager.disconnect()', () => {
     await manager.disconnect();
     expect(disconnected).toHaveBeenCalledOnce();
   });
+
+  it.each(['adapter event', 'account refresh'] as const)(
+    'does not notify a newer session when %s cleanup finishes',
+    async (source) => {
+      const adapter = createFakeAdapter();
+      adapter.fetchAccount = vi.fn(async () => null);
+      const newerAdapter = { ...createFakeAdapter(), id: 'new', name: 'New Wallet' };
+      const storage = new MemoryStorageAdapter();
+      const manager = new WalletManager({ adapters: [adapter, newerAdapter], storage });
+      await manager.connect('fake');
+      const disconnected = vi.fn();
+      manager.on('disconnect', disconnected);
+      let releaseStorage!: () => void;
+      const storageGate = new Promise<void>((resolve) => (releaseStorage = resolve));
+      const remove = storage.remove.bind(storage);
+      vi.spyOn(storage, 'remove').mockImplementation(async (key) => {
+        await storageGate;
+        await remove(key);
+      });
+
+      const clearing = source === 'account refresh' ? manager.fetchAccount() : undefined;
+      if (source === 'adapter event') adapter.emitAdapterEvent('disconnect');
+      await vi.waitFor(() => expect(storage.remove).toHaveBeenCalledOnce());
+      const connecting = manager.connect('new');
+      try {
+        await vi.waitFor(() => expect(manager.wallet).toBe(newerAdapter));
+      } finally {
+        releaseStorage();
+      }
+      await Promise.all([clearing, connecting]);
+
+      expect(disconnected).not.toHaveBeenCalled();
+      expect(manager.connected).toBe(true);
+      expect(manager.wallet).toBe(newerAdapter);
+      await expect(new Storage(storage).loadState()).resolves.toMatchObject({ walletId: 'new' });
+    }
+  );
 
   it('joins concurrent disconnect callers while teardown is pending', async () => {
     let finishDisconnect!: () => void;
@@ -518,7 +585,7 @@ describe('WalletManager.disconnect()', () => {
     expect(manager.connected).toBe(false);
   });
 
-  it('tears down the provider before notifying disconnect listeners', async () => {
+  it('completes provider teardown even when a disconnect listener throws', async () => {
     const failure = new Error('listener failed');
     const adapter = createFakeAdapter();
     const manager = new WalletManager({ adapters: [adapter] });
