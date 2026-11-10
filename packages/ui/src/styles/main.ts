@@ -317,6 +317,16 @@ export const mainStyles = `
     color: var(--xc-text-muted-color);
   }
 
+  .social-login-button {
+    justify-content: flex-start;
+    gap: 12px;
+    text-align: left;
+  }
+
+  .social-login-button img {
+    flex-shrink: 0;
+  }
+
   .social-login-discovery-error {
     display: flex;
     align-items: center;

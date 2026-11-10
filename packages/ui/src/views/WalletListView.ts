@@ -57,13 +57,13 @@ function createSocialLoginButton(socialLogin: SocialLogin): HTMLButtonElement {
 
   const label = document.createElement('span');
   label.textContent = socialLogin.label;
-  button.append(label);
 
   const image = createWalletImage(socialLogin.icon, socialLogin.label, {
     width: 28,
     height: 28,
   });
   if (image) button.append(image);
+  button.append(label);
   return button;
 }
 
