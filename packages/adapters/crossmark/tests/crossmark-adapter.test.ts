@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
-import { WalletErrorCode } from '@xrpl-connect/core';
+import { TIME, WalletErrorCode } from '@xrpl-connect/core';
 
 vi.mock('@crossmarkio/sdk', () => {
   const sdk = {
     sync: { isInstalled: vi.fn() },
+    async: { detect: vi.fn() },
     api: { awaitRequest: vi.fn() },
     methods: {
       signInAndWait: vi.fn(),
@@ -22,6 +23,7 @@ import { CrossmarkAdapter } from '../src/crossmark-adapter';
 
 const sdk = sdkDefault as unknown as {
   sync: { isInstalled: ReturnType<typeof vi.fn> };
+  async: { detect: ReturnType<typeof vi.fn> };
   api: { awaitRequest: ReturnType<typeof vi.fn> };
   methods: {
     signInAndWait: ReturnType<typeof vi.fn>;
@@ -55,6 +57,8 @@ beforeEach(() => {
   getRandomValues.mockClear();
   vi.stubGlobal('crypto', { getRandomValues });
   sdk.sync.isInstalled.mockReset();
+  sdk.async.detect.mockReset();
+  sdk.async.detect.mockResolvedValue(false);
   sdk.api.awaitRequest.mockReset();
   sdk.methods.signInAndWait.mockReset();
   sdk.methods.signAndWait.mockReset();
@@ -229,12 +233,24 @@ describe('CrossmarkAdapter.isAvailable', () => {
     sdk.sync.isInstalled.mockReturnValue(true);
     const adapter = new CrossmarkAdapter();
     await expect(adapter.isAvailable()).resolves.toBe(true);
+    expect(sdk.async.detect).not.toHaveBeenCalled();
   });
 
   it('returns false when the extension reports not installed', async () => {
     sdk.sync.isInstalled.mockReturnValue(false);
     const adapter = new CrossmarkAdapter();
     await expect(adapter.isAvailable()).resolves.toBe(false);
+    expect(sdk.async.detect).toHaveBeenCalledWith(TIME.AVAILABILITY_TIMEOUT);
+  });
+
+  it('waits for async detection when the extension is injected after SDK startup', async () => {
+    sdk.sync.isInstalled.mockReturnValue(undefined);
+    sdk.async.detect.mockResolvedValue(true);
+    const adapter = new CrossmarkAdapter();
+
+    await expect(adapter.isAvailable()).resolves.toBe(true);
+    expect(sdk.async.detect).toHaveBeenCalledOnce();
+    expect(sdk.async.detect).toHaveBeenCalledWith(TIME.AVAILABILITY_TIMEOUT);
   });
 
   it('returns false when the underlying check throws', async () => {
@@ -243,6 +259,16 @@ describe('CrossmarkAdapter.isAvailable', () => {
     });
     const adapter = new CrossmarkAdapter();
     await expect(adapter.isAvailable()).resolves.toBe(false);
+    expect(sdk.async.detect).not.toHaveBeenCalled();
+  });
+
+  it('returns false when async detection fails', async () => {
+    sdk.sync.isInstalled.mockReturnValue(false);
+    sdk.async.detect.mockRejectedValue(new Error('detection failed'));
+    const adapter = new CrossmarkAdapter();
+
+    await expect(adapter.isAvailable()).resolves.toBe(false);
+    expect(sdk.async.detect).toHaveBeenCalledWith(TIME.AVAILABILITY_TIMEOUT);
   });
 });
 
