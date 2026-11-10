@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { MemoryStorageAdapter, Storage, TIME, WalletManager } from '@xrpl-connect/core';
-import type { NetworkInfo, WalletAdapter } from '@xrpl-connect/core';
+import type { NetworkInfo, WalletAdapter, WalletAuthPrompt } from '@xrpl-connect/core';
 import '../src/wallet-connector';
 import { COLOR_ADJUSTMENT, TIMINGS } from '../src/constants';
 import { adjustColorBrightness } from '../src/utils';
@@ -79,6 +79,8 @@ function createElement(manager: WalletManager) {
     getOverlayRoot(): ShadowRoot | null;
     getAccountModalRoot(): ShadowRoot | null;
     showWalletList(): void;
+    showSocialLoginList(): void;
+    showAuthPrompt(prompt: WalletAuthPrompt, walletId: string, walletName: string): void;
     showQRCodeView(walletId: string, uri?: string): void;
     setQRCode(walletId: string, uri: string): void;
   };
@@ -100,6 +102,57 @@ describe('WalletConnector wallet availability', () => {
     vi.clearAllTimers();
     vi.useRealTimers();
   });
+
+  it.each([false, true])(
+    'scopes login branding with multiple social providers: %s',
+    async (mixed) => {
+      const logo =
+        'data:image/svg+xml,' +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>'
+        );
+      const provider: WalletAdapter = {
+        ...createAdapter('provider', 'Provider', async () => true),
+        icon: logo,
+        loginBranding: { label: 'Protected by Provider', logo },
+        getLoginMethods: async () => [{ id: 'email', label: 'Email' }],
+      };
+      const external = createAdapter('external', 'External', async () => true);
+      const second: WalletAdapter = {
+        ...createAdapter('second', 'Second', async () => true),
+        getLoginMethods: async () => [{ id: 'guest', label: 'Guest' }],
+      };
+      const manager = new WalletManager({
+        adapters: [provider, external, ...(mixed ? [second] : [])],
+        autoConnect: false,
+      });
+      element = createElement(manager);
+      document.body.append(element);
+      await element.open();
+      await vi.advanceTimersByTimeAsync(0);
+      const root = element.getOverlayRoot()!;
+      expect(root.querySelector('#social-login-button img') !== null).toBe(!mixed);
+      expect(root.querySelector('.auth-provider-attribution')).toBeNull();
+
+      element.showSocialLoginList();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(root.querySelector('.auth-provider-attribution') !== null).toBe(!mixed);
+      if (!mixed)
+        expect(root.querySelector('.auth-provider-attribution img')?.getAttribute('alt')).toBe(
+          'Protected by Provider'
+        );
+
+      const prompt = { title: 'Sign in', cancel: vi.fn() };
+      element.showAuthPrompt(prompt, provider.id, provider.name);
+      expect(root.querySelector('.auth-provider-attribution img')?.getAttribute('alt')).toBe(
+        'Protected by Provider'
+      );
+      element.showAuthPrompt(prompt, external.id, external.name);
+      expect(root.querySelector('.auth-provider-attribution')).toBeNull();
+      element.showWalletList();
+      expect(root.querySelector('.auth-provider-attribution')).toBeNull();
+    }
+  );
 
   it.each(['manager before mount', 'manager after mount'])(
     'starts passive discovery with %s and opens immediately',

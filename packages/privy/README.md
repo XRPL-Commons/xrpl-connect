@@ -60,7 +60,9 @@ restores an existing connection. Framework providers can do this automatically
 with `autoConnect: true`.
 
 The wallet picker retains the XRPL wallet options and shows one **Sign in with
-socials** button. Its chooser displays the currently enabled dashboard methods.
+socials** button with the Privy symbol. Its chooser displays the currently enabled
+dashboard methods. Privy authentication screens include the official
+“Protected by Privy” attribution.
 Without a configured Privy adapter, the normal wallet list is unchanged. Do not
 instantiate a second Privy SDK client alongside this adapter; its client, secure iframe, callback, and
 logout lifecycle belong to the adapter.

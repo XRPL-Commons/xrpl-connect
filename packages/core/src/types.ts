@@ -281,6 +281,8 @@ export interface WalletAdapter {
   readonly name: string; // 'Xaman Wallet', 'Crossmark', etc.
   readonly icon?: string; // URL or base64 icon
   readonly url?: string; // Wallet website/download URL
+  /** Attribution artwork and accessible label for this adapter's login flow. */
+  readonly loginBranding?: { readonly label: string; readonly logo: string };
 
   /**
    * Declared feature support. Optional — omitted flags use

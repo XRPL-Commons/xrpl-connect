@@ -40,7 +40,7 @@ import {
   getAuthCodeLength,
   normalizeAuthCodeValue,
 } from './views';
-import { replaceViewChildren } from './views/dom';
+import { createWalletImage, replaceViewChildren } from './views/dom';
 import { WalletService, EventHandler, type CancelledConnectionAttempt } from './services';
 import { renderCaptchaWidget } from './services/Captcha';
 import {
@@ -663,6 +663,35 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       return Math.max(explicitCount, discoveredAdapterCount);
     }
 
+    private getSingleSocialLoginAdapter(): WalletAdapter | undefined {
+      if (!this.walletManager) return undefined;
+      const ids = new Set([
+        ...this.getAvailableLoginAdapters(this.walletManager).map(({ id }) => id),
+        ...this.getAvailableSocialLogins().map(({ adapterId }) => adapterId),
+      ]);
+      if (ids.size !== 1) return undefined;
+      return this.walletManager.wallets.find(({ id }) => ids.has(id));
+    }
+
+    private createLoginAttribution(): HTMLElement | null {
+      let walletId: string | undefined;
+      if (this.viewState === 'auth-prompt') walletId = this.authPromptData?.walletId;
+      else if (this.viewState === 'loading') walletId = this.loadingData?.walletId;
+      else if (this.viewState === 'error') walletId = this.errorData?.walletId;
+      const adapter =
+        this.viewState === 'social-login'
+          ? this.getSingleSocialLoginAdapter()
+          : this.walletManager?.wallets.find(({ id }) => id === walletId);
+      const branding = adapter?.loginBranding;
+      if (!branding?.label.trim()) return null;
+      const logo = createWalletImage(branding.logo, branding.label, { height: 13 });
+      if (!logo) return null;
+      const footer = document.createElement('div');
+      footer.className = 'auth-provider-attribution';
+      footer.append(logo);
+      return footer;
+    }
+
     private normalizeLoginMethods(
       wallet: WalletAdapter,
       methods: readonly WalletLoginMethod[]
@@ -946,7 +975,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         unavailableWalletIds,
         !!this.walletManager && !this.walletAvailabilityChecked,
         this.getAvailableSocialLogins(),
-        this.walletManager ? this.getAvailableSocialLoginSourceCount(this.walletManager) > 0 : false
+        this.walletManager
+          ? this.getAvailableSocialLoginSourceCount(this.walletManager) > 0
+          : false,
+        this.getSingleSocialLoginAdapter()?.icon
       );
     }
 
@@ -1945,6 +1977,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         modal.setAttribute('aria-labelledby', 'wallet-dialog-title');
         modal.tabIndex = -1;
         modal.append(content);
+        const attribution = this.createLoginAttribution();
+        if (attribution) modal.append(attribution);
         overlay.append(modal);
         replaceViewChildren(overlayRoot, createMainStyleElement(this.nonce), overlay);
       } else if (this.overlayPortal) {

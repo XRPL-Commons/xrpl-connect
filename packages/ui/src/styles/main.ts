@@ -343,6 +343,20 @@ export const mainStyles = `
     font-size: 13px;
   }
 
+  .auth-provider-attribution {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    padding: 0 24px 20px;
+  }
+
+  .auth-provider-attribution img {
+    display: block;
+    height: 13px;
+    width: auto;
+  }
+
   .auth-prompt-view {
     display: flex;
     flex-direction: column;

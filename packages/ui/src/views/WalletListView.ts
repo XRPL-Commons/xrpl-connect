@@ -64,13 +64,17 @@ function createSocialLoginButton(socialLogin: SocialLogin): HTMLButtonElement {
   return button;
 }
 
-function createSocialLoginGroupButton(): HTMLButtonElement {
+function createSocialLoginGroupButton(icon?: string): HTMLButtonElement {
   const button = document.createElement('button');
   button.className = 'wallet-button social-login-group-button';
   button.id = 'social-login-button';
   button.type = 'button';
   button.setAttribute('aria-haspopup', 'dialog');
-  button.textContent = 'Sign in with socials';
+  const image = createWalletImage(icon, '', { width: 28, height: 28 });
+  if (image) button.append(image);
+  const label = document.createElement('span');
+  label.textContent = 'Sign in with socials';
+  button.append(label);
   return button;
 }
 
@@ -90,7 +94,8 @@ export function renderWalletListView(
   unavailableWalletIds: ReadonlySet<string> = new Set(),
   loading = false,
   socialLogins: readonly SocialLogin[] = [],
-  socialLoginAvailable = false
+  socialLoginAvailable = false,
+  socialLoginIcon?: string
 ): DocumentFragment {
   const view = createStaticView`
       <div class="header">
@@ -139,7 +144,7 @@ export function renderWalletListView(
       );
     }
     if (socialLoginAvailable || socialLogins.length > 0) {
-      walletList.append(createSocialLoginGroupButton());
+      walletList.append(createSocialLoginGroupButton(socialLoginIcon));
     }
   }
 

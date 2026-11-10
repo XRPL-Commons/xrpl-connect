@@ -18,6 +18,7 @@ import {
   type WalletLoginMethod,
 } from 'xrpl-connect';
 import { PrivySession } from './session';
+import { PRIVY_ATTRIBUTION, PRIVY_SYMBOL } from './branding';
 import type { PrivySessionOptions, PrivyWallet } from './session-types';
 import { prepareSigningInput, signPreparedTransaction, validateWallet } from './signing';
 
@@ -38,6 +39,8 @@ function asError(error: unknown): Error {
 export class PrivyAdapter implements WalletAdapter {
   readonly id = 'privy';
   readonly name = 'Privy';
+  readonly icon = PRIVY_SYMBOL;
+  readonly loginBranding = { label: 'Protected by Privy', logo: PRIVY_ATTRIBUTION } as const;
   readonly url = 'https://privy.io';
   readonly capabilities = { sign: true, signAndSubmit: true, signMessage: false } as const;
 

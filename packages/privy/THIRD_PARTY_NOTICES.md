@@ -334,3 +334,11 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Privy attribution artwork
+
+`src/branding.ts` includes the canonical “Protected by Privy” artwork from
+`@privy-io/react-auth@3.51.3`, source `src/svg/protected-by-privy.tsx`, published
+in `dist/esm/ModalFooter-W9Sd_7dV.mjs`. The circle-and-oval symbol uses the two
+original subpaths with a cropped viewBox; both assets use a neutral attribution
+color for light and dark themes. The Privy Apache-2.0 notice above applies.
