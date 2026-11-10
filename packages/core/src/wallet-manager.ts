@@ -450,6 +450,19 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     const cleaned = await cleanup;
     if (!cleaned) await this.storageTail;
 
+    let eventFailed = false;
+    let eventError: unknown;
+    // Notify consumers when local state clears, even if provider logout is slow.
+    // A newer session may have committed while storage cleanup was pending.
+    if (cleaned && this.currentAdapter === null && this.sessionGeneration === generation + 1) {
+      try {
+        this.emit('disconnect');
+      } catch (error) {
+        eventFailed = true;
+        eventError = error;
+      }
+    }
+
     let teardownFailed = false;
     let teardownError: unknown;
     try {
@@ -459,21 +472,6 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       this.logger.error(`Failed to disconnect from ${walletName}:`, error);
       teardownFailed = true;
       teardownError = error;
-    }
-
-    let eventFailed = false;
-    let eventError: unknown;
-    // A newer session may have committed while the provider teardown was in
-    // flight. Only emit the disconnect event for the session this operation
-    // actually cleaned up; a late teardown must never look like a disconnect
-    // from the newer active wallet.
-    if (cleaned && this.currentAdapter === null && this.sessionGeneration === generation + 1) {
-      try {
-        this.emit('disconnect');
-      } catch (error) {
-        eventFailed = true;
-        eventError = error;
-      }
     }
 
     if (teardownFailed) throw teardownError;
@@ -735,7 +733,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
 
     if (!fetched) {
       const cleaned = await this.cleanup(adapter, generation);
-      if (cleaned) this.emit('disconnect');
+      if (cleaned && this.currentAdapter === null && this.sessionGeneration === generation + 1) {
+        this.emit('disconnect');
+      }
       return null;
     }
 
@@ -826,7 +826,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     this.logger.info('Wallet disconnected (adapter event)');
     void this.cleanup(adapter, generation)
       .then((cleaned) => {
-        if (cleaned) this.emit('disconnect');
+        if (cleaned && this.currentAdapter === null && this.sessionGeneration === generation + 1) {
+          this.emit('disconnect');
+        }
       })
       .catch((error) => {
         this.logger.warn('Failed to clean up disconnected wallet:', error);

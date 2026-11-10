@@ -4,6 +4,8 @@ const fixturePath = '/packages/ui/tests/browser/social-login.html';
 
 declare global {
   interface Window {
+    delaySocialLogout(): void;
+    finishSocialLogout(): void;
     clearSocialLogins(): void;
     getManagerConnectCount(): number;
     getConnectorConnectedCount(): number;
@@ -111,4 +113,67 @@ test('cancels pending authorization and ignores its late result', async ({ page 
   await expect.poll(() => page.evaluate(() => window.getConnectorConnectedCount())).toBe(0);
   expect(await page.evaluate(() => window.getSocialDisconnectCount())).toBeGreaterThan(0);
   expect(await page.locator('#state').textContent()).toBe('idle');
+});
+
+for (const source of ['application', 'component'] as const) {
+  test(`updates the component on ${source} logout before provider cleanup finishes`, async ({
+    page,
+  }) => {
+    const dialog = await openWalletDialog(page);
+    await dialog.getByRole('button', { name: 'Sign in with socials', exact: true }).click();
+    await page.getByRole('button', { name: 'Continue with Google', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.getSocialCallCount())).toBe(1);
+    await page.evaluate(() => window.resolveSocial());
+    await expect(page.locator('#state')).toHaveText('connected:rSocial');
+
+    const trigger = page.locator('#wallet-connector').locator('#connect-wallet-button');
+    await trigger.click();
+    const accountDialog = page.getByRole('dialog', { name: 'Connected' });
+    await expect(accountDialog).toBeVisible();
+    await page.evaluate(() => window.delaySocialLogout());
+    if (source === 'application') {
+      // Application logout can happen while the component's account dialog is open.
+      await page.locator('#logout').dispatchEvent('click');
+    } else {
+      await accountDialog.getByRole('button', { name: 'Disconnect', exact: true }).click();
+    }
+
+    await expect(page.locator('#state')).toHaveText('idle');
+    await expect(accountDialog).toBeHidden();
+    await expect(trigger).toHaveText('Connect Wallet');
+
+    await trigger.click();
+    await page.getByRole('button', { name: 'Sign in with socials', exact: true }).click();
+    await page.getByRole('button', { name: 'Continue with Google', exact: true }).click();
+    expect(await page.evaluate(() => window.getSocialCallCount())).toBe(1);
+    await page.evaluate(() => window.finishSocialLogout());
+    await expect.poll(() => page.evaluate(() => window.getSocialCallCount())).toBe(2);
+    await page.evaluate(() => window.resolveSocial());
+    await expect(page.locator('#state')).toHaveText('connected:rSocial');
+  });
+}
+
+test('keeps a newer account dialog open when an earlier logout finishes', async ({ page }) => {
+  const dialog = await openWalletDialog(page);
+  await dialog.getByRole('button', { name: 'Sign in with socials', exact: true }).click();
+  await page.getByRole('button', { name: 'Continue with Google', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.getSocialCallCount())).toBe(1);
+  await page.evaluate(() => window.resolveSocial());
+  await expect(page.locator('#state')).toHaveText('connected:rSocial');
+
+  const trigger = page.locator('#wallet-connector').locator('#connect-wallet-button');
+  await trigger.click();
+  await page.evaluate(() => window.delaySocialLogout());
+  await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Connected' })).toBeHidden();
+
+  await trigger.click();
+  await page.getByRole('button', { name: 'External Wallet', exact: true }).click();
+  await expect(page.locator('#state')).toHaveText('connected:rExternal');
+  await trigger.click();
+  await expect(page.getByRole('dialog', { name: 'Connected' })).toBeVisible();
+
+  await page.evaluate(() => window.finishSocialLogout());
+  await expect(page.getByRole('dialog', { name: 'Connected' })).toBeVisible();
+  await expect(page.locator('#state')).toHaveText('connected:rExternal');
 });

@@ -52,6 +52,7 @@ function createAdapter(id: string, name: string, connect: WalletAdapter['connect
 
 let socialCallCount = 0;
 let socialDisconnectCount = 0;
+let pendingLogout: ReturnType<typeof createDeferred<void>> | undefined;
 const socialCalls: DeferredSocialCall[] = [];
 
 const externalWallet = createAdapter('external-wallet', 'External Wallet', async () => ({
@@ -68,6 +69,7 @@ const socialWallet = createAdapter('social-adapter', 'Social Adapter', (options)
 const originalSocialDisconnect = socialWallet.disconnect;
 socialWallet.disconnect = async () => {
   socialDisconnectCount += 1;
+  await pendingLogout?.promise;
   await originalSocialDisconnect();
 };
 
@@ -126,12 +128,18 @@ connector.addEventListener('close', () => {
 connector.setWalletManager(manager);
 connector.socialLogins = socialLogins;
 
+document.querySelector('#logout')?.addEventListener('click', () => {
+  void manager.disconnect();
+});
+
 document.querySelector('#open-wallet-dialog')?.addEventListener('click', () => {
   void connector.open();
 });
 
 declare global {
   interface Window {
+    delaySocialLogout(): void;
+    finishSocialLogout(): void;
     clearSocialLogins(): void;
     getManagerConnectCount(): number;
     getConnectorConnectedCount(): number;
@@ -143,6 +151,13 @@ declare global {
   }
 }
 
+window.delaySocialLogout = () => {
+  pendingLogout = createDeferred<void>();
+};
+window.finishSocialLogout = () => {
+  pendingLogout?.resolve();
+  pendingLogout = undefined;
+};
 window.clearSocialLogins = () => {
   connector.socialLogins = [];
 };

@@ -1097,7 +1097,6 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     public async disconnectFromAccountModal() {
       try {
         await this.walletManager?.disconnect();
-        if (this.accountModalOpen) this.closeAccountModal();
       } catch (error) {
         logger.error('Failed to disconnect:', error);
       }
