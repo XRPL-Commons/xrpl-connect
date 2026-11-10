@@ -6,6 +6,7 @@ const fixturePath = '/packages/ui/tests/browser/auth-prompt.html';
 
 declare global {
   interface Window {
+    clearAuthState(): void;
     getAuthCancelCount(): number;
     getAuthEventDetailKeys(): string[][];
     getDiscoveryCallCount(): number;
@@ -208,6 +209,8 @@ test('cancels a prompt and ignores a late adapter result', async ({ page }) => {
   await expect(page.locator('#status')).toHaveText('idle');
   await expect(page.getByRole('dialog', { name: 'Connect Wallet' })).toBeVisible();
 
+  // Start a fresh adapter attempt after resolving the cancelled fixture request.
+  await page.evaluate(() => window.clearAuthState());
   await page.getByRole('button', { name: 'Sign in with socials', exact: true }).click();
   await page
     .getByRole('dialog', { name: 'Sign in with socials' })

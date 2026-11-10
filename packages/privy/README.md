@@ -19,7 +19,8 @@ separate operations:
 Enable the desired login methods in the Privy dashboard, configure the app's
 allowed origin and callback URL, and obtain its public app ID. Supply a client ID
 when using a specific Privy client. The adapter fetches the dashboard settings
-every time **Sign in with socials** opens. There is no provider list to duplicate
+every time **Sign in with socials** opens, bypassing cached browser responses.
+There is no provider list to duplicate
 in application code or environment variables.
 
 The integration pins `@privy-io/js-sdk-core` to `0.79.4`. Privy describes this as a
@@ -73,9 +74,11 @@ WhatsApp must be enabled for the app. Native Telegram authentication requires th
 signed launch context from a Telegram Mini App and seamless login enabled in the
 dashboard. Telegram OAuth works through the normal redirect flow.
 
-Email and phone login request a verification code inside the connector. Passkeys
-use the browser's credential prompt, and Farcaster shows its authentication link
-and QR code. Closing or backing out of a prompt cancels the active connection.
+Email and phone login request a verification code inside the connector. The
+confirmation screen shows the destination, six code cells with paste and autofill
+support, and a resend link. Input stays in the active prompt during retries and is
+cleared when the prompt changes or closes. Passkeys use the browser's credential
+prompt, and Farcaster shows its authentication link and QR code. Closing or backing out of a prompt cancels the active connection.
 When the dashboard requires CAPTCHA, the connector renders the configured
 Turnstile or hCaptcha challenge before sending a verification code.
 

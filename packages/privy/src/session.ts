@@ -895,6 +895,9 @@ export class PrivySession {
       () =>
         client.fetchPrivyRoute(AppConfig, {
           params: { app_id: this.options.appId },
+          // The public endpoint is browser-cacheable for five minutes; the SDK
+          // exposes query parameters, but no RequestInit cache option.
+          query: { xrpl_connect_config: createAttemptId() },
           signal,
         }),
       signal,
@@ -1096,6 +1099,7 @@ export class PrivySession {
   ): Promise<PrivyUser> {
     const captcha = this.captchaForConfig(config);
     const isEmail = kind === 'email';
+    const icon = resolveLoginIcon({ kind });
     let destination = '';
     let captchaToken = '';
     let codePrompt: WalletAuthPrompt | undefined;
@@ -1139,8 +1143,11 @@ export class PrivySession {
 
       const codeStep = controls.step();
       codePrompt = {
-        title: `Enter your ${isEmail ? 'email' : config.whatsapp_enabled ? 'WhatsApp' : 'phone'} code`,
-        description: 'Enter the verification code sent to you.',
+        title: 'Enter confirmation code',
+        icon,
+        description: isEmail
+          ? `Check ${destination} for an email with your confirmation code.`
+          : `Enter the confirmation code sent to ${destination}${config.whatsapp_enabled ? ' on WhatsApp' : ' by text message'}.`,
         fields: [
           {
             name: 'code',
@@ -1148,13 +1155,14 @@ export class PrivySession {
             type: 'text',
             inputMode: 'numeric',
             autocomplete: 'one-time-code',
+            codeLength: 6,
           },
         ],
         submitLabel: 'Verify code',
         submit: async (values: Record<string, string>) => {
           await controls.run(codeStep, async () => {
             const code = (values.code ?? '').trim();
-            if (!/^\d{4,12}$/.test(code)) throw new Error('Enter the verification code');
+            if (!/^\d{6}$/.test(code)) throw new Error('Enter the 6-digit confirmation code');
             const authenticated = await this.runOperation(
               () =>
                 isEmail
@@ -1169,12 +1177,14 @@ export class PrivySession {
         },
         secondaryAction: {
           label: 'Resend code',
+          description: isEmail ? "Didn't get an email?" : "Didn't get a message?",
           run: async () => {
             await controls.run(codeStep, async () => {
               if (captcha) {
                 const resendStep = controls.step();
                 resendPrompt = {
                   title: 'Complete CAPTCHA to resend',
+                  icon,
                   description: 'Verify that you are human before requesting another code.',
                   captcha,
                   submitLabel: 'Resend code',
@@ -1203,6 +1213,10 @@ export class PrivySession {
           title: isEmail
             ? 'Sign in with email'
             : `Sign in with ${config.whatsapp_enabled ? 'WhatsApp' : 'phone'}`,
+          icon,
+          description: isEmail
+            ? 'Enter your email address to receive a confirmation code.'
+            : `Enter your phone number, including the country code, to receive a confirmation code${config.whatsapp_enabled ? ' on WhatsApp' : ' by text message'}.`,
           fields: [
             {
               name: isEmail ? 'email' : 'phone',
@@ -1210,6 +1224,7 @@ export class PrivySession {
               type: isEmail ? 'email' : 'tel',
               autocomplete: isEmail ? 'email' : 'tel',
               inputMode: isEmail ? 'email' : 'tel',
+              placeholder: isEmail ? 'you@example.com' : '+1 555 123 4567',
             },
           ],
           ...(captcha ? { captcha } : {}),

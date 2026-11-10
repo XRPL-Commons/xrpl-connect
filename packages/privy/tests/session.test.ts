@@ -433,6 +433,39 @@ describe('PrivySession', () => {
     await session.disconnect();
   });
 
+  it('bypasses a previously cached dashboard response when X is enabled or disabled', async () => {
+    let dashboard = { google_oauth: true, twitter_oauth: false };
+    const cached = new Map<string, typeof dashboard>();
+    mocks.fetchPrivyRoute.mockImplementation(async (_route, options) => {
+      const key = JSON.stringify({ params: options.params, query: options.query });
+      if (!cached.has(key)) cached.set(key, { ...dashboard });
+      return cached.get(key);
+    });
+    const session = new PrivySession({
+      appId: 'app-216',
+      redirectUri: `${window.location.origin}/wallet/privy`,
+    });
+
+    expect((await session.getLoginMethods()).map(({ id }) => id)).toEqual(['google']);
+    dashboard = { google_oauth: true, twitter_oauth: true };
+    expect(await session.getLoginMethods()).toContainEqual(
+      expect.objectContaining({
+        id: 'twitter',
+        label: 'X',
+        connectOptions: { loginMethod: 'twitter' },
+      })
+    );
+    dashboard = { google_oauth: true, twitter_oauth: false };
+    expect((await session.getLoginMethods()).map(({ id }) => id)).toEqual(['google']);
+
+    const queries = mocks.fetchPrivyRoute.mock.calls.map(
+      ([, options]) => options.query.xrpl_connect_config
+    );
+    expect(queries).toEqual([expect.any(String), expect.any(String), expect.any(String)]);
+    expect(new Set(queries).size).toBe(3);
+    await session.disconnect();
+  });
+
   it('does not initialize a fresh client after an immediate discovery disconnect', async () => {
     const session = new PrivySession({
       appId: 'app-216',
@@ -531,14 +564,28 @@ describe('PrivySession', () => {
     const emailPrompt = seen.at(-1) as NonNullable<(typeof seen)[number]> & {
       submit(values: Record<string, string>): Promise<void>;
     };
+    expect(emailPrompt).toMatchObject({
+      icon: LOGIN_ICONS.email,
+      fields: [expect.objectContaining({ type: 'email', autocomplete: 'email' })],
+    });
     await emailPrompt.submit({ email: 'user@example.com' });
-    await vi.waitFor(() => expect(seen.at(-1)).toMatchObject({ title: 'Enter your email code' }));
+    await vi.waitFor(() => expect(seen.at(-1)).toMatchObject({ title: 'Enter confirmation code' }));
     const codePrompt = seen.at(-1) as typeof emailPrompt & {
       secondaryAction: { run(): Promise<void> };
     };
     await expect(emailPrompt.submit({ email: 'stale@example.com' })).rejects.toMatchObject({
       code: 'NOT_CONNECTED',
     });
+    expect(codePrompt).toMatchObject({
+      icon: LOGIN_ICONS.email,
+      description: 'Check user@example.com for an email with your confirmation code.',
+      fields: [
+        expect.objectContaining({ name: 'code', codeLength: 6, autocomplete: 'one-time-code' }),
+      ],
+      secondaryAction: { label: 'Resend code', description: "Didn't get an email?" },
+    });
+    await expect(codePrompt.submit({ code: '1234' })).rejects.toThrow('6-digit');
+    expect(mocks.emailLoginWithCode).not.toHaveBeenCalled();
     expect(mocks.emailSendCode).toHaveBeenCalledWith('user@example.com', undefined);
     await expect(codePrompt.submit({ code: '123456' })).resolves.toBeUndefined();
     await expect(connecting).resolves.toMatchObject({ id: walletId });
@@ -561,7 +608,7 @@ describe('PrivySession', () => {
     const connecting = session.connect('email', new AbortController().signal);
     await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Sign in with email' }));
     await prompt!.submit!({ email: 'user@example.com' });
-    await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Enter your email code' }));
+    await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Enter confirmation code' }));
     await expect(prompt!.submit!({ code: '000000' })).rejects.toThrow('Invalid code');
     expect(prompt).not.toBeNull();
     await prompt!.secondaryAction!.run();
@@ -610,7 +657,7 @@ describe('PrivySession', () => {
     const connecting = session.connect('email', new AbortController().signal);
     await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Sign in with email' }));
     await prompt!.submit!({ email: 'user@example.com' });
-    await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Enter your email code' }));
+    await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Enter confirmation code' }));
 
     const oldCodePrompt = prompt!;
     const resend = oldCodePrompt.secondaryAction!.run();
@@ -626,26 +673,43 @@ describe('PrivySession', () => {
     await session.disconnect();
   });
 
-  it('uses the phone OTP API for a dashboard-enabled SMS method', async () => {
-    mocks.fetchPrivyRoute.mockResolvedValueOnce({ sms_auth: true, custom_oauth_providers: [] });
-    const session = new PrivySession({
-      appId: 'app-216',
-      redirectUri: `${window.location.origin}/wallet/privy`,
-    });
-    let prompt: import('xrpl-connect').WalletAuthPrompt | null = null;
-    session.onAuthPrompt((value) => {
-      if (value) prompt = value;
-    });
-    const connecting = session.connect('phone', new AbortController().signal);
-    await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Sign in with phone' }));
-    await prompt!.submit!({ phone: '+33123456789' });
-    await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Enter your phone code' }));
-    await prompt!.submit!({ code: '123456' });
-    await expect(connecting).resolves.toMatchObject({ id: walletId });
-    expect(mocks.phoneSendCode).toHaveBeenCalledWith('+33123456789', undefined);
-    expect(mocks.phoneLoginWithCode).toHaveBeenCalledWith('+33123456789', '123456');
-    await session.disconnect();
-  });
+  it.each([false, true])(
+    'uses the phone OTP API with WhatsApp enabled: %s',
+    async (whatsappEnabled) => {
+      mocks.fetchPrivyRoute.mockResolvedValueOnce({
+        sms_auth: true,
+        whatsapp_enabled: whatsappEnabled,
+        custom_oauth_providers: [],
+      });
+      const session = new PrivySession({
+        appId: 'app-216',
+        redirectUri: `${window.location.origin}/wallet/privy`,
+      });
+      let prompt: import('xrpl-connect').WalletAuthPrompt | null = null;
+      session.onAuthPrompt((value) => {
+        if (value) prompt = value;
+      });
+      const connecting = session.connect('phone', new AbortController().signal);
+      await vi.waitFor(() =>
+        expect(prompt).toMatchObject({
+          title: `Sign in with ${whatsappEnabled ? 'WhatsApp' : 'phone'}`,
+          icon: LOGIN_ICONS.phone,
+        })
+      );
+      await prompt!.submit!({ phone: '+33123456789' });
+      await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Enter confirmation code' }));
+      expect(prompt).toMatchObject({
+        description: `Enter the confirmation code sent to +33123456789${whatsappEnabled ? ' on WhatsApp' : ' by text message'}.`,
+        fields: [expect.objectContaining({ name: 'code', codeLength: 6 })],
+        secondaryAction: { description: "Didn't get a message?" },
+      });
+      await prompt!.submit!({ code: '012345' });
+      await expect(connecting).resolves.toMatchObject({ id: walletId });
+      expect(mocks.phoneSendCode).toHaveBeenCalledWith('+33123456789', undefined);
+      expect(mocks.phoneLoginWithCode).toHaveBeenCalledWith('+33123456789', '012345');
+      await session.disconnect();
+    }
+  );
 
   it('requests a fresh CAPTCHA token before resending an OTP', async () => {
     mocks.fetchPrivyRoute.mockResolvedValueOnce({
@@ -666,7 +730,7 @@ describe('PrivySession', () => {
     const connecting = session.connect('email', new AbortController().signal);
     await vi.waitFor(() => expect(prompt).toMatchObject({ captcha: { siteKey: 'site-key' } }));
     await prompt!.submit!({ email: 'user@example.com', captchaToken: 'captcha-1' });
-    await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Enter your email code' }));
+    await vi.waitFor(() => expect(prompt).toMatchObject({ title: 'Enter confirmation code' }));
     expect(prompt!.captcha).toBeUndefined();
     const oldCodePrompt = prompt!;
     await oldCodePrompt.secondaryAction!.run();
