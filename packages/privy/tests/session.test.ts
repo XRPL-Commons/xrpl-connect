@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { LOGIN_ICONS } from '../src/login-icons';
 import { PrivySession } from '../src/session';
 import type { PrivyLoginMethod, PrivyWallet } from '../src/session-types';
 
@@ -323,6 +324,17 @@ describe('PrivySession', () => {
         sms_auth: false,
         whatsapp_enabled: false,
         google_oauth: true,
+        github_oauth: true,
+        discord_oauth: true,
+        twitter_oauth: true,
+        spotify_oauth: true,
+        instagram_oauth: true,
+        tiktok_oauth: true,
+        linkedin_oauth: true,
+        apple_oauth: true,
+        line_oauth: true,
+        twitch_oauth: true,
+        telegram_oauth: true,
         wallet_auth: true,
         external_wallets_for_signup_enabled: true,
         passkey_auth: true,
@@ -356,20 +368,61 @@ describe('PrivySession', () => {
       redirectUri: `${window.location.origin}/wallet/privy`,
     });
 
-    await expect(session.getLoginMethods()).resolves.toEqual([
-      { id: 'email', label: 'Email', connectOptions: { loginMethod: 'email' } },
-      { id: 'google', label: 'Google', connectOptions: { loginMethod: 'google' } },
-      { id: 'passkey', label: 'Passkey', connectOptions: { loginMethod: 'passkey' } },
-      {
-        id: 'custom:acme',
-        label: 'Acme',
-        icon: 'https://example.test/acme.svg',
-        connectOptions: { loginMethod: 'custom:acme' },
-      },
+    const firstMethods = await session.getLoginMethods();
+    expect(firstMethods.map(({ id }) => id)).toEqual([
+      'email',
+      'google',
+      'github',
+      'discord',
+      'twitter',
+      'spotify',
+      'instagram',
+      'tiktok',
+      'linkedin',
+      'apple',
+      'line',
+      'twitch',
+      'telegram',
+      'passkey',
+      'custom:acme',
     ]);
-    await expect(session.getLoginMethods()).resolves.toEqual([
-      { id: 'phone', label: 'WhatsApp', connectOptions: { loginMethod: 'phone' } },
-      { id: 'github', label: 'GitHub', connectOptions: { loginMethod: 'github' } },
+    const firstById = new Map(firstMethods.map((method) => [method.id, method]));
+    for (const [id, icon] of [
+      ['google', LOGIN_ICONS.google],
+      ['github', LOGIN_ICONS.github],
+      ['discord', LOGIN_ICONS.discord],
+      ['twitter', LOGIN_ICONS.twitter],
+      ['spotify', LOGIN_ICONS.spotify],
+      ['instagram', LOGIN_ICONS.instagram],
+      ['tiktok', LOGIN_ICONS.tiktok],
+      ['linkedin', LOGIN_ICONS.linkedin],
+      ['apple', LOGIN_ICONS.apple],
+      ['line', LOGIN_ICONS.line],
+      ['twitch', LOGIN_ICONS.twitch],
+      ['telegram', LOGIN_ICONS.telegram],
+    ] as const) {
+      expect(firstById.get(id)).toMatchObject({ icon });
+    }
+    expect(firstById.get('email')).toMatchObject({ icon: LOGIN_ICONS.email });
+    expect(firstById.get('passkey')).toMatchObject({ icon: LOGIN_ICONS.passkey });
+    expect(firstById.get('custom:acme')).toMatchObject({
+      icon: 'https://example.test/acme.svg',
+    });
+
+    const secondMethods = await session.getLoginMethods();
+    expect(secondMethods).toEqual([
+      {
+        id: 'phone',
+        label: 'WhatsApp',
+        icon: LOGIN_ICONS.whatsapp,
+        connectOptions: { loginMethod: 'phone' },
+      },
+      {
+        id: 'github',
+        label: 'GitHub',
+        icon: LOGIN_ICONS.github,
+        connectOptions: { loginMethod: 'github' },
+      },
     ]);
     expect(mocks.fetchPrivyRoute).toHaveBeenCalledTimes(2);
     expect(mocks.fetchPrivyRoute).toHaveBeenNthCalledWith(
@@ -415,6 +468,44 @@ describe('PrivySession', () => {
 
     await expect(session.getLoginMethods()).resolves.not.toContainEqual(
       expect.objectContaining({ id: 'telegram-native' })
+    );
+    await session.disconnect();
+    delete (window as unknown as { Telegram?: unknown }).Telegram;
+  });
+
+  it('uses provider-aware icons for special and explicit login methods', async () => {
+    Object.defineProperty(window, 'Telegram', {
+      configurable: true,
+      value: {
+        WebApp: {
+          initData: 'user=%7B%22id%22%3A1%7D&auth_date=1700000000&hash=signed-hash',
+        },
+      },
+    });
+    mocks.fetchPrivyRoute.mockResolvedValueOnce({
+      sms_auth: true,
+      whatsapp_enabled: true,
+      farcaster_auth: true,
+      guest_auth: true,
+      telegram_auth: true,
+      telegram_auth_config: { seamless_auth_enabled: true },
+      custom_oauth_providers: [],
+    });
+    const session = new PrivySession({
+      appId: 'app-216',
+      redirectUri: `${window.location.origin}/wallet/privy`,
+      loginMethods: [{ id: 'github-alias', oauthProvider: 'github' }],
+    });
+
+    const methods = await session.getLoginMethods();
+    expect(methods).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'phone', icon: LOGIN_ICONS.whatsapp }),
+        expect.objectContaining({ id: 'farcaster', icon: LOGIN_ICONS.farcaster }),
+        expect.objectContaining({ id: 'guest', icon: LOGIN_ICONS.guest }),
+        expect.objectContaining({ id: 'telegram-native', icon: LOGIN_ICONS.telegram }),
+        expect.objectContaining({ id: 'github-alias', icon: LOGIN_ICONS.github }),
+      ])
     );
     await session.disconnect();
     delete (window as unknown as { Telegram?: unknown }).Telegram;

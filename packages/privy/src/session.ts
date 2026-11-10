@@ -1,6 +1,7 @@
 import Privy, { create, getWallet, LocalStorage, rawSign } from '@privy-io/js-sdk-core';
 import { AppConfig } from '@privy-io/routes';
 import { createWalletError, type WalletAuthPrompt, type WalletLoginMethod } from 'xrpl-connect';
+import { resolveLoginIcon } from './login-icons';
 import type {
   PrivyLoginMethod,
   PrivyOAuthProvider,
@@ -267,7 +268,7 @@ function dashboardMethodToPublic(method: ResolvedLoginMethod): WalletLoginMethod
     id: method.id,
     label: method.label,
     connectOptions: { loginMethod: method.id },
-    ...(method.icon ? { icon: method.icon } : {}),
+    icon: resolveLoginIcon(method),
   };
 }
 
@@ -826,6 +827,9 @@ export class PrivySession {
       add({
         id: 'phone',
         label: config.whatsapp_enabled ? 'WhatsApp' : 'Phone',
+        icon: config.whatsapp_enabled
+          ? resolveLoginIcon({ kind: 'oauth', oauthProvider: 'whatsapp' })
+          : undefined,
         kind: 'phone',
       });
     }
