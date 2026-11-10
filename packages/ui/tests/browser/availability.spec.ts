@@ -8,6 +8,8 @@ declare global {
     getOpenEventCount(): number;
     injectWallet(): void;
     resolveInitialAvailability(available?: boolean): void;
+    showMixedWallets(): void;
+    getAvailabilityWalletId(): string | undefined;
     showDelayedWallets(): void;
     resolveDelayedAvailability(): void;
   }
@@ -149,4 +151,58 @@ test('expands the wallet list when discovery finishes during a height transition
   });
   expect(await content.evaluate((element) => element.scrollHeight - element.clientHeight)).toBe(0);
   await expect(dialog.getByRole('button', { name: 'Close' })).toBeFocused();
+});
+
+async function openMixedWallets(page: Page): Promise<Locator> {
+  await page.clock.install({ time: new Date('2026-01-01T00:00:00Z') });
+  await page.clock.pauseAt(new Date('2026-01-01T00:00:01Z'));
+  await loadFixture(page);
+  await page.evaluate(() => window.showMixedWallets());
+  await page.getByRole('button', { name: 'Open wallet dialog' }).click();
+  await page.evaluate(() => window.resolveInitialAvailability());
+  const dialog = walletDialog(page);
+  await expect(dialog.getByRole('button', { name: 'Installed Wallet', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('region', { name: 'Wallet options' })).toHaveAttribute(
+    'aria-busy',
+    'true'
+  );
+  return dialog;
+}
+
+test('shows responsive wallets independently and preserves focus and order as others arrive', async ({
+  page,
+}) => {
+  const dialog = await openMixedWallets(page);
+  const installed = dialog.getByRole('button', { name: 'Installed Wallet', exact: true });
+  await installed.focus();
+  await page.evaluate(() => window.resolveDelayedAvailability());
+  await expect(dialog.locator('[data-wallet-id]')).toHaveText([
+    'Delayed Wallet 0',
+    'Installed Wallet',
+    'Delayed Wallet 1',
+    'Delayed Wallet 2',
+    'Delayed Wallet 3',
+    'Delayed Wallet 4',
+    'Delayed Wallet 5',
+  ]);
+  await expect(installed).toBeFocused();
+  await expect(dialog.getByRole('region', { name: 'Wallet options' })).toHaveAttribute(
+    'aria-busy',
+    'false'
+  );
+});
+
+test('connects to an installed wallet while unrelated detection is still pending', async ({
+  page,
+}) => {
+  const dialog = await openMixedWallets(page);
+  await dialog.getByRole('button', { name: 'Installed Wallet', exact: true }).click();
+  await page.clock.runFor(200);
+  await expect
+    .poll(() => page.evaluate(() => window.getAvailabilityWalletId()))
+    .toBe('installed-wallet');
+  await expect(dialog).toBeHidden();
+  await page.evaluate(() => window.resolveDelayedAvailability());
+  await expect(dialog).toBeHidden();
+  expect(await page.evaluate(() => window.getAvailabilityWalletId())).toBe('installed-wallet');
 });

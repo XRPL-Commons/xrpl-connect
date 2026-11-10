@@ -116,11 +116,11 @@ export function renderWalletListView(
     status.setAttribute('role', 'status');
     status.textContent = 'Finding available wallets…';
     walletList.append(status);
-    return view;
   }
 
   if (primaryWallet) content.prepend(createWalletButton(primaryWallet, true));
   if (
+    !loading &&
     !primaryWallet &&
     otherWallets.length === 0 &&
     socialLogins.length === 0 &&

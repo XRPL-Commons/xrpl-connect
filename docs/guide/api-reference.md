@@ -224,9 +224,10 @@ async open(): Promise<void>
 ```
 
 Open the wallet selection modal immediately using cached availability or an accessible loading
-status. Discovery starts on mount once a manager is available, and stale availability refreshes
-in the background while the wallet list is open. The promise resolves when the modal opens;
-it does not wait for discovery or a connection.
+status. Discovery starts on mount once a manager is available. Wallets appear independently as
+their checks finish, and cached available choices remain usable during background refresh.
+Unavailable wallets are rechecked on open and retried promptly while the list stays open.
+The promise resolves when the modal opens; it does not wait for discovery or a connection.
 
 #### openAndWait()
 

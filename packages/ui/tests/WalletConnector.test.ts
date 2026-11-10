@@ -166,9 +166,11 @@ describe('WalletConnector wallet availability', () => {
     expect(element.getOverlayRoot()?.querySelector('[role="status"]')).toBeNull();
     expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="available"]')).not.toBeNull();
     expect(element.getOverlayRoot()?.querySelector('[data-wallet-id="hung"]')).toBeNull();
+    await vi.advanceTimersByTimeAsync(TIMINGS.WALLET_AVAILABILITY_REFRESH * 2);
+    expect(hung.isAvailable).toHaveBeenCalledOnce();
   });
 
-  it('reuses mount results on immediate reopen and refreshes an open list without losing focus', async () => {
+  it('reuses available mount results and retries unavailable wallets without losing focus', async () => {
     const first = createAdapter(
       'first',
       'First',
@@ -190,7 +192,7 @@ describe('WalletConnector wallet availability', () => {
     expect(button).not.toBeNull();
     expect(root.querySelector('[role="status"]')).toBeNull();
     expect(first.isAvailable).toHaveBeenCalledOnce();
-    expect(injected.isAvailable).toHaveBeenCalledOnce();
+    expect(injected.isAvailable).toHaveBeenCalledTimes(2);
     button.focus();
     await vi.advanceTimersByTimeAsync(TIMINGS.WALLET_AVAILABILITY_REFRESH);
     expect(root.querySelector('[data-wallet-id="injected"]')).not.toBeNull();

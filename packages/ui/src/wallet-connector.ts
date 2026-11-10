@@ -59,38 +59,56 @@ import { isXamanQRImage, adjustColorBrightness, orderWalletsByMru } from './util
  */
 const logger = createLogger('[WalletConnector]');
 const AVAILABILITY_TIMED_OUT = Symbol('availability-timed-out');
-const availabilityChecks = new WeakMap<WalletManager, WeakMap<WalletAdapter, Promise<boolean>>>();
+interface AvailabilityCheck {
+  result: Promise<boolean>;
+  timedOut: boolean;
+}
 
-function checkWalletAvailability(manager: WalletManager, wallet: WalletAdapter): Promise<boolean> {
+const availabilityChecks = new WeakMap<WalletManager, WeakMap<WalletAdapter, AvailabilityCheck>>();
+
+function checkWalletAvailability(
+  manager: WalletManager,
+  wallet: WalletAdapter,
+  retryTimedOut = false
+): Promise<boolean> {
   let checks = availabilityChecks.get(manager);
   if (!checks) {
     checks = new WeakMap();
     availabilityChecks.set(manager, checks);
   }
   const pending = checks.get(wallet);
-  if (pending) return pending;
-  const check = withTimeout<boolean | typeof AVAILABILITY_TIMED_OUT>(
-    async () => {
-      try {
-        return await wallet.isAvailable();
-      } catch (error) {
-        logger.warn(`Error checking availability for ${wallet.id}:`, error);
-        return false;
-      }
-    },
-    TIME.AVAILABILITY_TIMEOUT,
-    AVAILABILITY_TIMED_OUT
-  ).then((result) => {
-    checks.delete(wallet);
-    if (result === AVAILABILITY_TIMED_OUT) {
-      logger.warn(
-        `Timed out checking availability for ${wallet.id} after ${TIME.AVAILABILITY_TIMEOUT}ms`
-      );
+  if (pending && !(retryTimedOut && pending.timedOut)) return pending.result;
+  const probe = (async () => {
+    try {
+      return await wallet.isAvailable();
+    } catch (error) {
+      logger.warn(`Error checking availability for ${wallet.id}:`, error);
+      return false;
     }
-    return result === true;
-  });
+  })();
+  const check: AvailabilityCheck = {
+    timedOut: false,
+    result: withTimeout<boolean | typeof AVAILABILITY_TIMED_OUT>(
+      () => probe,
+      TIME.AVAILABILITY_TIMEOUT,
+      AVAILABILITY_TIMED_OUT
+    ).then((result) => {
+      if (result === AVAILABILITY_TIMED_OUT) {
+        check.timedOut = true;
+        logger.warn(
+          `Timed out checking availability for ${wallet.id} after ${TIME.AVAILABILITY_TIMEOUT}ms`
+        );
+      }
+      return result === true;
+    }),
+  };
   checks.set(wallet, check);
-  return check;
+  // Keep background retries from overlapping a hung SDK probe. Reopening the
+  // modal can explicitly retry a timed-out check without trusting its late result.
+  void probe.then(() => {
+    if (checks.get(wallet) === check) checks.delete(wallet);
+  });
+  return check.result;
 }
 
 function createMainStyleElement(nonce: string | undefined): HTMLStyleElement {
@@ -211,6 +229,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private walletAvailabilityChecked: boolean = false;
     private walletAvailabilityPromise: Promise<void> | null = null;
     private walletAvailabilityUpdatedAt = -Infinity;
+    private walletAvailabilityFullRefreshAt = -Infinity;
     private walletAvailabilityWallets: WalletAdapter[] | null = null;
     private walletAvailabilityTimer: ReturnType<typeof setTimeout> | null = null;
     private walletAvailabilityGeneration: number = 0;
@@ -739,16 +758,23 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.unavailableWallets = [];
       this.walletAvailabilityChecked = false;
       this.walletAvailabilityUpdatedAt = -Infinity;
+      this.walletAvailabilityFullRefreshAt = -Infinity;
       this.walletAvailabilityWallets = null;
     }
 
     private scheduleWalletAvailabilityRefresh(): void {
       this.clearWalletAvailabilityTimer();
       if (!this.isOpen || this.viewState !== 'list' || !this.walletManager) return;
-      const remaining = Math.max(
-        0,
-        this.walletAvailabilityUpdatedAt + TIMINGS.WALLET_AVAILABILITY_REFRESH - Date.now()
-      );
+      const fullRefreshAt =
+        this.walletAvailabilityFullRefreshAt + TIMINGS.WALLET_AVAILABILITY_REFRESH;
+      const refreshAt =
+        this.unavailableWallets.length > 0
+          ? Math.min(
+              fullRefreshAt,
+              this.walletAvailabilityUpdatedAt + TIMINGS.WALLET_AVAILABILITY_RETRY
+            )
+          : fullRefreshAt;
+      const remaining = Math.max(0, refreshAt - Date.now());
       this.walletAvailabilityTimer = setTimeout(() => {
         this.walletAvailabilityTimer = null;
         void this.refreshWalletAvailability();
@@ -795,7 +821,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       );
     }
 
-    private refreshWalletAvailability(): Promise<void> {
+    private refreshWalletAvailability(retryUnavailable = false): Promise<void> {
       const manager = this.walletManager;
       if (!manager) return Promise.resolve();
       const wallets = this.getConfiguredWallets(manager);
@@ -806,45 +832,55 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.walletAvailabilityWallets = wallets;
         this.availableWallets = available;
         this.unavailableWallets = unavailable;
-        this.walletAvailabilityChecked = available.length + unavailable.length > 0;
+        this.walletAvailabilityChecked = available.length + unavailable.length === wallets.length;
         if (this.isOpen && this.viewState === 'list') this.renderWalletAvailability();
       }
       if (this.walletAvailabilityPromise) return this.walletAvailabilityPromise;
-      if (
+      const fresh =
         this.walletAvailabilityChecked &&
-        Date.now() - this.walletAvailabilityUpdatedAt < TIMINGS.WALLET_AVAILABILITY_REFRESH
+        Date.now() - this.walletAvailabilityFullRefreshAt < TIMINGS.WALLET_AVAILABILITY_REFRESH;
+      if (
+        fresh &&
+        (this.unavailableWallets.length === 0 ||
+          (!retryUnavailable &&
+            Date.now() - this.walletAvailabilityUpdatedAt < TIMINGS.WALLET_AVAILABILITY_RETRY))
       ) {
         this.scheduleWalletAvailabilityRefresh();
         return Promise.resolve();
       }
+      const walletsToCheck = fresh ? this.unavailableWallets : wallets;
 
       this.clearWalletAvailabilityTimer();
       const generation = this.walletAvailabilityGeneration;
-      const discovery = Promise.all(
-        wallets.map(async (wallet) => ({
-          wallet,
-          available: await checkWalletAvailability(manager, wallet),
-        }))
-      ).then((results) => {
+      const results = new Map<WalletAdapter, boolean>([
+        ...this.availableWallets.map((wallet) => [wallet, true] as const),
+        ...this.unavailableWallets.map((wallet) => [wallet, false] as const),
+      ]);
+      const publishResults = (complete: boolean): void => {
         if (generation !== this.walletAvailabilityGeneration || manager !== this.walletManager) {
           return;
         }
-        this.walletAvailabilityPromise = null;
         if (!this.matchesWalletAvailability(this.getConfiguredWallets(manager))) {
           void this.refreshWalletAvailability();
           return;
         }
-        this.availableWallets = results
-          .filter((result) => result.available)
-          .map(({ wallet }) => wallet);
-        this.unavailableWallets = results
-          .filter((result) => !result.available)
-          .map(({ wallet }) => wallet);
-        this.walletAvailabilityChecked = true;
-        this.walletAvailabilityUpdatedAt = Date.now();
+        this.availableWallets = wallets.filter((wallet) => results.get(wallet) === true);
+        this.unavailableWallets = wallets.filter((wallet) => results.get(wallet) === false);
+        if (complete) {
+          this.walletAvailabilityPromise = null;
+          this.walletAvailabilityChecked = true;
+          this.walletAvailabilityUpdatedAt = Date.now();
+          if (!fresh) this.walletAvailabilityFullRefreshAt = this.walletAvailabilityUpdatedAt;
+        }
         if (this.isOpen && this.viewState === 'list') this.renderWalletAvailability();
-        this.scheduleWalletAvailabilityRefresh();
-      });
+        if (complete) this.scheduleWalletAvailabilityRefresh();
+      };
+      const discovery = Promise.all(
+        walletsToCheck.map(async (wallet) => {
+          results.set(wallet, await checkWalletAvailability(manager, wallet, retryUnavailable));
+          publishResults(false);
+        })
+      ).then(() => publishResults(true));
       this.walletAvailabilityPromise = discovery;
       return discovery;
     }
@@ -984,7 +1020,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.isFirstOpen = true;
       this.updateBodyScrollLock();
       this.render();
-      void this.refreshWalletAvailability();
+      void this.refreshWalletAvailability(true);
       this.dispatchEvent(new CustomEvent('open'));
 
       // Pre-initialize WalletConnect to reduce loading time
