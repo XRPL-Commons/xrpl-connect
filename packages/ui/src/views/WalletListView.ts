@@ -14,13 +14,10 @@ function createWalletButton(wallet: WalletAdapter, primary: boolean): HTMLButton
   button.append(label);
 
   const image = createWalletImage(wallet.icon, wallet.name, {
-    width: primary ? 24 : 28,
-    height: primary ? 24 : 28,
+    width: 28,
+    height: 28,
   });
-  if (image) {
-    if (primary) button.prepend(image);
-    else button.append(image);
-  }
+  if (image) button.prepend(image);
   return button;
 }
 
@@ -45,7 +42,7 @@ function createUnavailableWalletButton(wallet: WalletAdapter): HTMLButtonElement
   button.append(name, installLabel);
 
   const image = createWalletImage(wallet.icon, wallet.name, { width: 28, height: 28 });
-  if (image) button.append(image);
+  if (image) button.prepend(image);
   return button;
 }
 

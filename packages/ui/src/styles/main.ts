@@ -252,8 +252,9 @@ export const mainStyles = `
     cursor: pointer;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 10px;
+    justify-content: flex-start;
+    gap: 12px;
+    text-align: left;
     transition: all 0.2s;
   }
 
@@ -286,7 +287,9 @@ export const mainStyles = `
     cursor: pointer;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
+    gap: 12px;
+    text-align: left;
     transition: background 0.2s;
   }
 
@@ -294,7 +297,9 @@ export const mainStyles = `
     background: var(--xc-secondary-button-hover-background);
   }
 
+  .primary-button img,
   .wallet-button img {
+    flex-shrink: 0;
     border-radius: 6px;
   }
 
@@ -308,23 +313,12 @@ export const mainStyles = `
 
   .wallet-install-label {
     margin-left: auto;
-    margin-right: 8px;
     padding: 2px 8px;
     border-radius: 999px;
     font-size: 12px;
     font-weight: 600;
     background: var(--xc-background-tertiary);
     color: var(--xc-text-muted-color);
-  }
-
-  .social-login-button {
-    justify-content: flex-start;
-    gap: 12px;
-    text-align: left;
-  }
-
-  .social-login-button img {
-    flex-shrink: 0;
   }
 
   .social-login-discovery-error {
