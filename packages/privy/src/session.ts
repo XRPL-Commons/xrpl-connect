@@ -747,7 +747,6 @@ export class PrivySession {
     }
     this.clearPendingMarker(attempt?.id);
     this.stopSessionMonitor();
-    this.cleanupIframe();
     this.currentWallet = undefined;
     const userId = this.currentUserId;
     this.currentUserId = undefined;
@@ -2230,13 +2229,15 @@ export class PrivySession {
   }
 
   private async finishDisconnect(userId: string | undefined): Promise<void> {
-    await this.waitForPendingOperations();
-    if (!this.client) return;
     try {
+      await this.waitForPendingOperations();
+      if (!this.client) return;
+      // SDK logout reloads the iframe and awaits its MFA-clear acknowledgement.
       await this.client.auth.logout(userId ? { userId } : undefined);
     } catch {
-      // Local iframe/session state is already cleaned; logout failures are
-      // isolated after every prior SDK operation has settled.
+      // Local session state is already cleared; provider failures must not block teardown.
+    } finally {
+      this.cleanupIframe();
     }
   }
 

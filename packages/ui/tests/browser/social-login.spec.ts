@@ -4,6 +4,7 @@ const fixturePath = '/packages/ui/tests/browser/social-login.html';
 
 declare global {
   interface Window {
+    useDynamicSocialDiscovery(): void;
     delaySocialLogout(): void;
     finishSocialLogout(): void;
     clearSocialLogins(): void;
@@ -114,6 +115,39 @@ test('cancels pending authorization and ignores its late result', async ({ page 
   expect(await page.evaluate(() => window.getSocialDisconnectCount())).toBeGreaterThan(0);
   expect(await page.locator('#state').textContent()).toBe('idle');
 });
+
+for (const source of ['application', 'component'] as const) {
+  test(`rediscovers providers and logs in again after immediate ${source} logout`, async ({
+    page,
+  }) => {
+    await openWalletDialog(page);
+    await page.evaluate(() => window.useDynamicSocialDiscovery());
+    await page.getByRole('button', { name: 'Sign in with socials', exact: true }).click();
+    await page.getByRole('button', { name: 'Continue with Google', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.getSocialCallCount())).toBe(1);
+    await page.evaluate(() => window.resolveSocial());
+    await expect(page.locator('#state')).toHaveText('connected:rSocial');
+    await page.evaluate(() => window.delaySocialLogout());
+    const trigger = page.locator('#wallet-connector').locator('#connect-wallet-button');
+    if (source === 'application') {
+      await page.locator('#logout').click();
+    } else {
+      await trigger.click();
+      await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+    }
+    await expect(page.locator('#state')).toHaveText('idle');
+    await trigger.click();
+    await page.getByRole('button', { name: 'Sign in with socials', exact: true }).click();
+    const chooser = page.getByRole('dialog', { name: 'Sign in with socials' });
+    await expect(chooser.getByRole('status')).toHaveText('Loading available sign-in methods…');
+    await page.evaluate(() => window.finishSocialLogout());
+    await expect(chooser.getByRole('status')).toHaveCount(0);
+    await chooser.getByRole('button', { name: 'Continue with Google', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.getSocialCallCount())).toBe(2);
+    await page.evaluate(() => window.resolveSocial());
+    await expect(page.locator('#state')).toHaveText('connected:rSocial');
+  });
+}
 
 for (const source of ['application', 'component'] as const) {
   test(`updates the component on ${source} logout before provider cleanup finishes`, async ({

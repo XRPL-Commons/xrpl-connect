@@ -732,7 +732,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       generation: number
     ): Promise<void> {
       try {
-        const methods = await wallet.getLoginMethods!();
+        const methods = await withTimeout<readonly WalletLoginMethod[] | null>(
+          () => wallet.getLoginMethods!(),
+          TIMINGS.SOCIAL_DISCOVERY_TIMEOUT,
+          null
+        );
+        if (methods === null) throw new Error('Sign-in method discovery failed or timed out');
         if (!this.isCurrentSocialDiscovery(manager, generation)) return;
         this.discoveredSocialLogins = [
           ...this.discoveredSocialLogins.filter(({ login }) => login.adapterId !== wallet.id),

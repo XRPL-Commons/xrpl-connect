@@ -154,6 +154,44 @@ describe('WalletConnector wallet availability', () => {
     }
   );
 
+  it('bounds stalled provider discovery and ignores its result after a successful retry', async () => {
+    let release!: (methods: { id: string; label: string }[]) => void;
+    const discover = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          })
+      )
+      .mockResolvedValueOnce([{ id: 'fresh', label: 'Fresh provider' }]);
+    const adapter = {
+      ...createAdapter('social', 'Social', async () => true),
+      getLoginMethods: discover,
+    };
+    element = createElement(new WalletManager({ adapters: [adapter], autoConnect: false }));
+    document.body.append(element);
+    await element.open();
+    await vi.advanceTimersByTimeAsync(0);
+    element.showSocialLoginList();
+    const root = element.getOverlayRoot()!;
+    expect(root.querySelector('[role="status"]')?.textContent).toContain('Loading');
+    await vi.advanceTimersByTimeAsync(TIMINGS.SOCIAL_DISCOVERY_TIMEOUT);
+    expect(root.querySelector('[role="status"]')).toBeNull();
+    expect(
+      root.querySelector('[aria-label="Social sign-in methods"]')?.getAttribute('aria-busy')
+    ).toBe('false');
+    const retry = root.querySelector<HTMLButtonElement>('[data-social-login-retry-id]')!;
+    expect(retry.textContent).toBe('Try again');
+    retry.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.textContent).toContain('Fresh provider');
+    release([{ id: 'stale', label: 'Stale provider' }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.textContent).not.toContain('Stale provider');
+    expect(root.querySelector('[data-social-login-retry-id]')).toBeNull();
+  });
+
   it.each(['manager before mount', 'manager after mount'])(
     'starts passive discovery with %s and opens immediately',
     async (order) => {

@@ -141,12 +141,14 @@ included in this package. See also
   cannot reconnect the manager or trigger a transaction submission.
 - Once a transaction has been submitted, logout cannot cancel it. Its pending
   operation still returns the validated result so the application can track it.
-- `manager.disconnect()` immediately clears the connection and releases the
-  secure iframe and session listeners. SDK logout runs after any already-started
-  SDK requests settle, preventing a late response from restoring authentication.
-  Cleanup waits are bounded by `timeoutMs` (15 seconds by default); a new login
-  waits for the retained cleanup operation. A later login restores the same
-  embedded wallet.
+- `manager.disconnect()` immediately clears the connection and stops session
+  monitoring. SDK logout runs after any already-started SDK requests settle,
+  preventing a late response from restoring authentication. The secure iframe
+  stays available for pending requests and the SDK's logout acknowledgement,
+  then is removed along with its listeners. Caller waits are bounded by
+  `timeoutMs` (15 seconds by default); provider discovery and a new login wait
+  for the retained cleanup operation. A later login restores the same embedded
+  wallet.
 - Authentication failures, blocked storage, iframe readiness failures, and
   signing failures surface as wallet errors. The UI permits retry with the same
   selected social method.

@@ -138,6 +138,7 @@ document.querySelector('#open-wallet-dialog')?.addEventListener('click', () => {
 
 declare global {
   interface Window {
+    useDynamicSocialDiscovery(): void;
     delaySocialLogout(): void;
     finishSocialLogout(): void;
     clearSocialLogins(): void;
@@ -151,6 +152,13 @@ declare global {
   }
 }
 
+window.useDynamicSocialDiscovery = () => {
+  socialWallet.getLoginMethods = async () => {
+    await pendingLogout?.promise;
+    return socialLogins.map(({ id, label, connectOptions }) => ({ id, label, connectOptions }));
+  };
+  connector.socialLogins = [];
+};
 window.delaySocialLogout = () => {
   pendingLogout = createDeferred<void>();
 };

@@ -1195,6 +1195,60 @@ describe('PrivySession', () => {
     expect(document.querySelectorAll('iframe')).toHaveLength(0);
   });
 
+  it('keeps the iframe alive for logout acknowledgement, then discovers providers and logs in again', async () => {
+    configureExistingUser();
+    mocks.fetchPrivyRoute.mockResolvedValue({ google_oauth: true, custom_oauth_providers: [] });
+    const session = makeSession();
+    await session.connect('custom', new AbortController().signal);
+    const firstIframe = document.querySelector('iframe')!;
+    let acknowledgeLogout!: () => void;
+    mocks.logout.mockImplementationOnce(async () => {
+      mocks.getAccessToken.mockResolvedValue(null);
+      const acknowledged = new Promise<void>((resolve) => {
+        acknowledgeLogout = resolve;
+      });
+      mocks.onMessage.mockImplementationOnce((message: { event: string }) => {
+        if (message.event === 'logout-ack') acknowledgeLogout();
+      });
+      const poster = mocks.setMessagePoster.mock.calls.at(-1)![0] as { reload(): void };
+      poster.reload();
+      if (firstIframe.isConnected) {
+        firstIframe.dispatchEvent(new Event('load'));
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            origin: 'https://auth.privy.io',
+            source: firstIframe.contentWindow,
+            data: { id: 'logout-request', event: 'logout-ack' },
+          })
+        );
+      }
+      await acknowledged;
+    });
+
+    const disconnecting = session.disconnect();
+    try {
+      await expect(session.getLoginMethods()).resolves.toContainEqual(
+        expect.objectContaining({ id: 'google' })
+      );
+      await disconnecting;
+      expect(firstIframe.isConnected).toBe(false);
+      expect(mocks.onMessage).toHaveBeenCalledWith({ id: 'logout-request', event: 'logout-ack' });
+      mocks.syncWithToken.mockImplementationOnce(async () => {
+        configureExistingUser();
+        return { user: user() };
+      });
+      await expect(session.connect('custom', new AbortController().signal)).resolves.toMatchObject({
+        id: walletId,
+      });
+      expect(mocks.syncWithToken).toHaveBeenCalledOnce();
+      expect(document.querySelector('iframe')).not.toBe(firstIframe);
+    } finally {
+      acknowledgeLogout?.();
+      await disconnecting;
+      await session.disconnect();
+    }
+  });
+
   it('reuses only the existing embedded XRPL account and excludes external accounts', async () => {
     configureExistingUser();
     mocks.userGet.mockResolvedValue({ user: user([externalAccount(), embeddedAccount()]) });
