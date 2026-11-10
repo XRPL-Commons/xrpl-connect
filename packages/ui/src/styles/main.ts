@@ -346,14 +346,41 @@ export const mainStyles = `
   .auth-prompt-view {
     display: flex;
     flex-direction: column;
+    align-items: center;
     gap: 16px;
     padding: 8px 0 20px;
   }
 
+  .auth-prompt-icon {
+    width: 56px;
+    height: 56px;
+    object-fit: contain;
+    border-radius: 50%;
+    margin: 4px auto 0;
+  }
+
+  .auth-prompt-header-spacer {
+    width: ${SIZES.CLOSE_BUTTON_SIZE}px;
+    height: ${SIZES.CLOSE_BUTTON_SIZE}px;
+  }
+
+  .auth-prompt-title {
+    width: 100%;
+    color: var(--xc-text-color);
+    font-size: 22px;
+    font-weight: ${FONT_WEIGHTS.SEMIBOLD};
+    letter-spacing: -0.3px;
+    line-height: 1.25;
+    text-align: center;
+  }
+
   .auth-prompt-description {
+    width: 100%;
+    max-width: 360px;
     color: var(--xc-text-muted-color);
     font-size: 14px;
     line-height: 1.5;
+    text-align: center;
   }
 
   .auth-prompt-link {
@@ -387,12 +414,20 @@ export const mainStyles = `
     display: flex;
     flex-direction: column;
     gap: 8px;
+    width: 100%;
     color: var(--xc-text-color);
     font-size: 14px;
     font-weight: ${FONT_WEIGHTS.MEDIUM};
   }
 
-  .auth-prompt-field input {
+  #auth-prompt-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+  }
+
+  .auth-prompt-field > input:not(.auth-prompt-code-input) {
     width: 100%;
     padding: 12px 14px;
     border: 1px solid var(--xc-background-tertiary);
@@ -402,25 +437,123 @@ export const mainStyles = `
     font-size: 16px;
   }
 
-  .auth-prompt-field input:focus {
+  .auth-prompt-field > input:not(.auth-prompt-code-input):focus {
     outline: 2px solid var(--xc-focus-color);
     outline-offset: 1px;
   }
 
+  .auth-prompt-field-label {
+    display: block;
+  }
+
+  .auth-prompt-code-input-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 360px;
+  }
+
+  .auth-prompt-code-cells {
+    display: grid;
+    grid-template-columns: repeat(var(--auth-code-length), minmax(0, 1fr));
+    gap: clamp(4px, 1.5vw, 8px);
+    width: 100%;
+  }
+
+  .auth-prompt-code-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    height: 52px;
+    border: 1px solid var(--xc-background-tertiary);
+    border-radius: var(--xc-secondary-button-border-radius);
+    background: var(--xc-background-secondary);
+    color: var(--xc-text-color);
+    font-size: 22px;
+    font-weight: ${FONT_WEIGHTS.SEMIBOLD};
+    line-height: 1;
+    transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  }
+
+  .auth-prompt-code-cell--filled {
+    background: var(--xc-background-tertiary);
+  }
+
+  .auth-prompt-code-cell--active {
+    border-color: var(--xc-focus-color);
+  }
+
+  .auth-prompt-code-input {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: transparent;
+    caret-color: transparent;
+    cursor: text;
+    opacity: 0;
+  }
+
+  .auth-prompt-code-input-wrapper:focus-within .auth-prompt-code-cell {
+    border-color: color-mix(in srgb, var(--xc-focus-color) 60%, var(--xc-background-tertiary));
+  }
+
+  .auth-prompt-code-input-wrapper:focus-within .auth-prompt-code-cell--active {
+    border-color: var(--xc-focus-color);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--xc-focus-color) 25%, transparent);
+  }
+
+  .auth-prompt-code-input:disabled {
+    cursor: default;
+  }
+
   .auth-prompt-error {
+    width: 100%;
     color: var(--xc-danger-color);
     font-size: 14px;
     line-height: 1.5;
+    text-align: center;
   }
 
   .auth-prompt-actions {
     display: flex;
-    gap: 12px;
     width: 100%;
   }
 
   .auth-prompt-actions .error-button {
     flex: 1;
+  }
+
+  .auth-prompt-secondary-action {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    color: var(--xc-text-muted-color);
+    font-size: 14px;
+    line-height: 1.4;
+    text-align: center;
+  }
+
+  .auth-prompt-secondary-button {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--xc-primary-color);
+    font: inherit;
+    font-weight: ${FONT_WEIGHTS.MEDIUM};
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .auth-prompt-secondary-button:disabled {
+    opacity: 0.6;
+    cursor: default;
   }
 
   .qr-view {

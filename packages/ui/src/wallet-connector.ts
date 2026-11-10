@@ -37,6 +37,8 @@ import {
   renderAccountModal,
   renderSocialLoginView,
   renderAuthPromptView,
+  getAuthCodeLength,
+  normalizeAuthCodeValue,
 } from './views';
 import { replaceViewChildren } from './views/dom';
 import { WalletService, EventHandler, type CancelledConnectionAttempt } from './services';
@@ -160,6 +162,7 @@ interface AuthPromptState {
   walletId: string;
   walletName: string;
   walletIcon?: string;
+  values: Record<string, string>;
   busy: boolean;
   error: string | null;
 }
@@ -1165,6 +1168,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         walletId,
         walletName,
         walletIcon,
+        values: Object.create(null) as Record<string, string>,
         busy: false,
         error: null,
       };
@@ -1183,10 +1187,26 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       const form = this.getOverlayRoot()?.querySelector<HTMLFormElement>('#auth-prompt-form');
       if (!form) return;
-      const values: Record<string, string> = {};
+      const values: Record<string, string> = { ...state.values };
       for (const input of form.querySelectorAll<HTMLInputElement>('[data-auth-field]')) {
         if (input.name) values[input.name] = input.value;
       }
+
+      const codeField = (state.prompt.fields ?? []).find(
+        (field) => getAuthCodeLength(field) !== null
+      );
+      if (codeField) {
+        const codeLength = getAuthCodeLength(codeField)!;
+        const code = normalizeAuthCodeValue(values[codeField.name] ?? '').slice(0, codeLength);
+        values[codeField.name] = code;
+        if (code.length !== codeLength) {
+          state.values = values;
+          this.setAuthPromptError(`Enter the ${codeLength}-digit code.`);
+          return;
+        }
+      }
+      state.values = values;
+
       if (state.prompt.captcha) {
         if (!this.authCaptchaToken) {
           this.setAuthPromptError('Complete the CAPTCHA challenge before continuing.');
@@ -1217,6 +1237,11 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       const state = this.authPromptData;
       const run = state?.prompt.secondaryAction?.run;
       if (!state || !run || state.busy) return;
+
+      const form = this.getOverlayRoot()?.querySelector<HTMLFormElement>('#auth-prompt-form');
+      for (const input of form?.querySelectorAll<HTMLInputElement>('[data-auth-field]') ?? []) {
+        if (input.name) state.values[input.name] = input.value;
+      }
 
       state.busy = true;
       state.error = null;
@@ -1872,9 +1897,16 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           this.accountSelectionData.accounts
         );
       } else if (this.viewState === 'auth-prompt' && this.authPromptData) {
-        content = renderAuthPromptView(this.authPromptData.prompt, {
-          busy: this.authPromptData.busy,
-          error: this.authPromptData.error ?? undefined,
+        const authPromptState = this.authPromptData;
+        content = renderAuthPromptView(authPromptState.prompt, {
+          busy: authPromptState.busy,
+          error: authPromptState.error ?? undefined,
+          values: authPromptState.values,
+          onValueChange: (name, value) => {
+            if (this.authPromptData === authPromptState) {
+              authPromptState.values[name] = value;
+            }
+          },
         });
       } else if (this.viewState === 'social-login') {
         content = this.createSocialLoginView();
@@ -2039,7 +2071,11 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       const root = dialog.getRootNode() as ShadowRoot;
       if (root.activeElement && dialog.contains(root.activeElement)) return;
 
-      (this.getDialogFocusables(dialog)[0] ?? dialog).focus();
+      const authField =
+        this.viewState === 'auth-prompt'
+          ? dialog.querySelector<HTMLInputElement>('[data-auth-field]:not([disabled])')
+          : null;
+      (authField ?? this.getDialogFocusables(dialog)[0] ?? dialog).focus();
     }
 
     public handleDialogKeyDown(dialogType: 'wallet' | 'account', event: KeyboardEvent): void {

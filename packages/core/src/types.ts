@@ -248,11 +248,15 @@ export interface WalletAuthField {
   autocomplete?: string;
   inputMode?: 'text' | 'email' | 'tel' | 'numeric';
   placeholder?: string;
+  /** Number of digits for a numeric one-time-code field (4–12). */
+  codeLength?: number;
 }
 
 /** A pending authentication step. Input values stay between the UI and adapter. */
 export interface WalletAuthPrompt {
   title: string;
+  /** Optional provider icon displayed by authentication prompt UIs. */
+  icon?: string;
   description?: string;
   fields?: readonly WalletAuthField[];
   url?: string;
@@ -262,7 +266,11 @@ export interface WalletAuthPrompt {
   captcha?: { provider: 'turnstile' | 'hcaptcha'; siteKey: string };
   submitLabel?: string;
   submit?: (values: Record<string, string>) => Promise<void>;
-  secondaryAction?: { label: string; run: () => Promise<void> };
+  secondaryAction?: {
+    label: string;
+    description?: string;
+    run: () => Promise<void>;
+  };
   cancel: () => void;
 }
 

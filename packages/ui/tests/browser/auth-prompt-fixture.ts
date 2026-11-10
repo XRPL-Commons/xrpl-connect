@@ -60,12 +60,14 @@ let resendCount = 0;
 let lastConnectOptions: Record<string, unknown> | undefined;
 const eventDetailKeys: string[][] = [];
 const AUTH_QR_PAYLOAD = 'farcaster://connect?uri=https%3A%2F%2Fexample.test%2Fauth';
+const AUTH_ICON =
+  'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"%3E%3Ccircle cx="32" cy="32" r="32" fill="%230EA5E9"/%3E%3Cpath d="M20 32h24M32 20v24" stroke="white" stroke-width="6" stroke-linecap="round"/%3E%3C/svg%3E';
 
 function createEmailPrompt(): WalletAuthPrompt {
   return {
     title: 'Sign in with email',
     description: 'Enter your email to receive a verification code.',
-    qrCode: AUTH_QR_PAYLOAD,
+    icon: AUTH_ICON,
     fields: [
       {
         name: 'email',
@@ -89,8 +91,9 @@ function createEmailPrompt(): WalletAuthPrompt {
 
 function createCodePrompt(): WalletAuthPrompt {
   return {
-    title: 'Enter verification code',
-    description: 'Check your email for the six-digit code.',
+    title: 'Enter confirmation code',
+    description: 'We sent a six-digit code to user@example.com.',
+    icon: AUTH_ICON,
     fields: [
       {
         name: 'code',
@@ -98,6 +101,7 @@ function createCodePrompt(): WalletAuthPrompt {
         type: 'text',
         inputMode: 'numeric',
         autocomplete: 'one-time-code',
+        codeLength: 6,
       },
     ],
     submitLabel: 'Verify',
@@ -108,11 +112,24 @@ function createCodePrompt(): WalletAuthPrompt {
       connection.resolve({ address: 'rAuth', network });
     },
     secondaryAction: {
+      description: "Didn't get an email?",
       label: 'Resend code',
       run: async () => {
         resendCount += 1;
       },
     },
+    cancel: () => {
+      cancelCount += 1;
+    },
+  };
+}
+
+function createQrPrompt(): WalletAuthPrompt {
+  return {
+    title: 'Sign in with Farcaster',
+    description: 'Scan this QR code with Farcaster to approve sign-in.',
+    url: 'https://example.test/auth',
+    qrCode: AUTH_QR_PAYLOAD,
     cancel: () => {
       cancelCount += 1;
     },
@@ -194,6 +211,7 @@ declare global {
     getResendCount(): number;
     getSubmittedValues(): Record<string, string>[];
     resolveAuthConnection(): void;
+    showAuthQrPrompt(): void;
   }
 }
 
@@ -225,5 +243,6 @@ window.setDiscoveryMode = (mode) => {
 window.getResendCount = () => resendCount;
 window.getSubmittedValues = () => submittedValues.map((values) => ({ ...values }));
 window.resolveAuthConnection = () => connection.resolve({ address: 'rLate', network });
+window.showAuthQrPrompt = () => authPromptCallback?.(createQrPrompt());
 
 document.body.dataset.ready = 'true';

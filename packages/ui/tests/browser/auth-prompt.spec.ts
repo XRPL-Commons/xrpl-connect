@@ -15,6 +15,7 @@ declare global {
     resolveAuthConnection(): void;
     resolveDelayedDiscovery(): void;
     setDiscoveryMode(mode: 'normal' | 'error' | 'delayed'): void;
+    showAuthQrPrompt(): void;
   }
 }
 
@@ -67,14 +68,27 @@ test('passes the selected non-first discovered method options unchanged', async 
   await expect(page.locator('#status')).toHaveText('connected:rLate');
 });
 
-test('encodes an auth prompt QR payload as a scannable QR', async ({ page }) => {
+test('keeps unused auth resources out of entry prompts and conditionally renders QR prompts', async ({
+  page,
+}) => {
   const dialog = await openWalletDialog(page);
   await dialog.getByRole('button', { name: 'Sign in with socials', exact: true }).click();
   const chooser = page.getByRole('dialog', { name: 'Sign in with socials' });
   await chooser.getByRole('button', { name: 'Email', exact: true }).click();
 
-  const prompt = page.getByRole('dialog', { name: 'Sign in with email' });
+  let prompt = page.getByRole('dialog', { name: 'Sign in with email' });
+  await expect(prompt.locator('.auth-prompt-icon')).toBeVisible();
+  await expect(prompt.locator('.auth-prompt-link')).toHaveCount(0);
+  await expect(prompt.locator('.auth-prompt-qr-container')).toHaveCount(0);
+  await expect(prompt.locator('.auth-prompt-captcha')).toHaveCount(0);
+
+  await page.evaluate(() => window.showAuthQrPrompt());
+  prompt = page.getByRole('dialog', { name: 'Sign in with Farcaster' });
   const qr = prompt.locator('.auth-prompt-qr-container');
+  await expect(prompt.locator('.auth-prompt-link')).toHaveAttribute(
+    'href',
+    'https://example.test/auth'
+  );
   await expect(qr.locator('svg')).toBeVisible();
   await expect
     .poll(async () => {
@@ -140,14 +154,23 @@ test('renders a private email-to-code prompt with retry, resend, and cancel reco
 
   await prompt.getByLabel('Email address').fill('user@example.com');
   await prompt.getByRole('button', { name: 'Send code', exact: true }).click();
-  prompt = page.getByRole('dialog', { name: 'Enter verification code' });
+  prompt = page.getByRole('dialog', { name: 'Enter confirmation code' });
   await expect(prompt.getByLabel('Verification code')).toBeVisible();
+  await expect(prompt.getByLabel('Verification code')).toHaveValue('');
+  await expect(prompt.locator('.auth-prompt-code-cell')).toHaveCount(6);
+  await expect(prompt.getByLabel('Verification code')).toHaveAttribute('maxlength', '6');
+  await expect(prompt.getByLabel('Verification code')).toHaveAttribute(
+    'autocomplete',
+    'one-time-code'
+  );
+  await expect(prompt.getByText("Didn't get an email?", { exact: true })).toBeVisible();
 
   await prompt.getByRole('button', { name: 'Resend code', exact: true }).click();
   expect(await page.evaluate(() => window.getResendCount())).toBe(1);
   await prompt.getByLabel('Verification code').fill('000000');
   await prompt.getByRole('button', { name: 'Verify', exact: true }).click();
   await expect(prompt.getByRole('alert')).toHaveText('Invalid verification code.');
+  await expect(prompt.getByLabel('Verification code')).toHaveValue('000000');
 
   await prompt.getByLabel('Verification code').fill('123456');
   await prompt.getByRole('button', { name: 'Verify', exact: true }).click();
@@ -176,6 +199,7 @@ test('cancels a prompt and ignores a late adapter result', async ({ page }) => {
     .click();
   const prompt = page.getByRole('dialog', { name: 'Sign in with email' });
   await expect(prompt).toBeVisible();
+  await prompt.getByLabel('Email address').fill('stale@example.com');
   await prompt.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Connect Wallet' })).toBeVisible();
   expect(await page.evaluate(() => window.getAuthCancelCount())).toBe(1);
@@ -183,4 +207,13 @@ test('cancels a prompt and ignores a late adapter result', async ({ page }) => {
   await page.evaluate(() => window.resolveAuthConnection());
   await expect(page.locator('#status')).toHaveText('idle');
   await expect(page.getByRole('dialog', { name: 'Connect Wallet' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Sign in with socials', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Sign in with socials' })
+    .getByRole('button', { name: 'Email', exact: true })
+    .click();
+  await expect(
+    page.getByRole('dialog', { name: 'Sign in with email' }).getByLabel('Email address')
+  ).toHaveValue('');
 });
