@@ -1634,6 +1634,37 @@ describe('WalletManager.reconnect()', () => {
     expect(await new Storage(storage).loadState()).toEqual(storedBefore);
   });
 
+  it('completes a redirect login started after a restore timed out', async () => {
+    const storage = new MemoryStorageAdapter();
+    const stored = createFakeAdapter();
+    await new WalletManager({ adapters: [stored], storage }).connect(stored.id);
+    const timedOut = {
+      ...createFakeAdapter(),
+      connect: vi.fn(async () => {
+        throw createWalletError.operationTimeout('Session restore');
+      }),
+    };
+    // The redirect leaves the page, so this connection never settles.
+    const leaving = {
+      ...createFakeAdapter(),
+      id: 'redirect',
+      connect: vi.fn(() => new Promise<AccountInfo>(() => {})),
+    };
+    const manager = new WalletManager({ adapters: [timedOut, leaving], storage });
+    await expect(manager.reconnect()).resolves.toBeNull();
+    expect(await new Storage(storage).loadState()).not.toBeNull();
+
+    void manager.connect('redirect').catch(() => undefined);
+    await vi.waitFor(() => expect(leaving.connect).toHaveBeenCalledOnce());
+    expect(await new Storage(storage).loadState()).toBeNull();
+
+    // Back on the page, the returned authorization is completed.
+    const returned = { ...createFakeAdapter(), id: 'redirect', hasPendingConnection: () => true };
+    const restored = new WalletManager({ adapters: [createFakeAdapter(), returned], storage });
+    await expect(restored.reconnect()).resolves.toEqual(ACCOUNT);
+    expect(restored.wallet).toBe(returned);
+  });
+
   it('returns the active account without clearing its stored session', async () => {
     const storage = new MemoryStorageAdapter();
     const adapter = createRecordingAdapter([]);

@@ -787,7 +787,17 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       discoverySignal.addEventListener('abort', abort, { once: true });
       try {
         const methods = await withTimeout<readonly WalletLoginMethod[] | null>(
-          () => wallet.getLoginMethods!({ signal: controller.signal }),
+          async () => {
+            try {
+              return await wallet.getLoginMethods!({ signal: controller.signal });
+            } catch (error) {
+              // An aborted request is a discovery the user moved away from.
+              if (!controller.signal.aborted) {
+                logger.warn(`Failed to load sign-in methods for ${wallet.id}:`, error);
+              }
+              return null;
+            }
+          },
           TIMINGS.SOCIAL_DISCOVERY_TIMEOUT,
           null
         );

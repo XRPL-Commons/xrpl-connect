@@ -1812,4 +1812,66 @@ describe('PrivySession', () => {
     });
     await session.disconnect();
   });
+
+  it('logs out when a disconnect joins a cleanup that preserves the session', async () => {
+    configureExistingUser();
+    mocks.userGet.mockImplementation(() => new Promise(() => {}));
+    const session = makeSession();
+    await expect(
+      session.connect(undefined, new AbortController().signal, { walletId, userId })
+    ).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+
+    // The preserving cleanup is still waiting for the abandoned request.
+    const preserving = session.disconnect({ preserveProviderSession: true });
+    const explicit = session.disconnect();
+    await Promise.all([preserving, explicit]);
+
+    await vi.waitFor(() => expect(mocks.logout).toHaveBeenCalledOnce());
+  });
+
+  it('keeps a Farcaster login alive across a failed status poll', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValueOnce({
+      farcaster_auth: true,
+      custom_oauth_providers: [],
+    });
+    mocks.farcasterGetStatus
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce({
+        state: 'completed',
+        fid: 123,
+        message: 'Sign in with Farcaster',
+        signature: '0xsignature',
+      });
+    const session = new PrivySession({
+      appId: 'app-216',
+      redirectUri: `${window.location.origin}/wallet/privy`,
+    });
+    session.onAuthPrompt(() => undefined);
+
+    await expect(session.connect('farcaster', new AbortController().signal)).resolves.toMatchObject(
+      { id: walletId }
+    );
+    expect(mocks.farcasterGetStatus).toHaveBeenCalledTimes(2);
+    await session.disconnect();
+  });
+
+  it('fails a Farcaster login once its status poll keeps failing', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValueOnce({
+      farcaster_auth: true,
+      custom_oauth_providers: [],
+    });
+    mocks.farcasterGetStatus.mockRejectedValue(new Error('channel expired'));
+    const session = new PrivySession({
+      appId: 'app-216',
+      redirectUri: `${window.location.origin}/wallet/privy`,
+    });
+    session.onAuthPrompt(() => undefined);
+
+    await expect(session.connect('farcaster', new AbortController().signal)).rejects.toThrow(
+      'channel expired'
+    );
+    expect(mocks.farcasterGetStatus).toHaveBeenCalledTimes(3);
+    expect(mocks.farcasterAuthenticate).not.toHaveBeenCalled();
+    await session.disconnect();
+  }, 10_000);
 });

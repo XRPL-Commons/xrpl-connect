@@ -60,6 +60,8 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   private connectionAttemptGeneration = 0;
   private reconnectGeneration = 0;
   private pendingReconnects = 0;
+  /** A timed-out restore left its stored session in place for a later retry. */
+  private retainedStoredSession = false;
   private stateRevision = 0;
   private storageTail: Promise<void> = Promise.resolve();
   private adapterTeardowns = new Map<WalletAdapter, Promise<void>>();
@@ -208,6 +210,21 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         ...options,
         network: options?.network ?? this.options.network,
       };
+
+      // A new connection replaces the session kept after a timed-out restore.
+      // Left in place it would stay authoritative when a redirect-based login
+      // returns to the page, and the authorization the user just completed
+      // would be discarded.
+      if (this.retainedStoredSession && !expectedState) {
+        this.retainedStoredSession = false;
+        await this.queueStorage(() => this.storage.clearState());
+        if (
+          connectionAttempt !== this.connectionAttemptGeneration ||
+          this.connectingAdapter !== adapter
+        ) {
+          throw createWalletError.notConnected();
+        }
+      }
 
       // Connect
       const account = await adapter.connect(connectOptions);
@@ -491,6 +508,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
 
     const reconnectGeneration = this.reconnectGeneration;
     this.pendingReconnects += 1;
+    this.retainedStoredSession = false;
     let attemptedStateSnapshot: string | null = null;
 
     try {
@@ -549,6 +567,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       // a slow network cost the user a new wallet authorization.
       if (isWalletError(error) && error.code === WalletErrorCode.OPERATION_TIMEOUT) {
         this.logger.warn('Reconnection timed out; keeping the stored session:', error);
+        this.retainedStoredSession = true;
         return null;
       }
       this.logger.warn('Reconnection failed:', error);

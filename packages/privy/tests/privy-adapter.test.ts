@@ -354,4 +354,59 @@ describe('PrivyAdapter', () => {
       code: WalletErrorCode.NOT_CONNECTED,
     });
   });
+
+  it('reports a failed login without waiting for its teardown', async () => {
+    const teardown = deferred<void>();
+    mocks.connect.mockRejectedValueOnce(createWalletError.operationTimeout('Privy login'));
+    mocks.disconnect.mockReturnValueOnce(teardown.promise);
+    const adapter = new PrivyAdapter(options);
+
+    await expect(adapter.connect({ loginMethod: 'google' })).rejects.toMatchObject({
+      code: WalletErrorCode.OPERATION_TIMEOUT,
+    });
+
+    // The next login still waits for the teardown to finish.
+    const retry = adapter.connect({ loginMethod: 'google' });
+    await Promise.resolve();
+    expect(mocks.connect).toHaveBeenCalledTimes(1);
+    teardown.resolve();
+    await expect(retry).resolves.toMatchObject({ address: wallet.address });
+    await adapter.disconnect();
+  });
+
+  it('keeps the Privy session when a restore is rejected for an incomplete identity', async () => {
+    const adapter = new PrivyAdapter(options);
+    await expect(adapter.connect({ privyWalletId: wallet.id })).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_FAILED,
+    });
+    expect(mocks.connect).not.toHaveBeenCalled();
+    expect(mocks.disconnect).toHaveBeenCalledWith({ preserveProviderSession: true });
+  });
+
+  it('logs out when a disconnect joins a teardown that preserves the session', async () => {
+    const teardown = deferred<void>();
+    mocks.connect.mockRejectedValueOnce(createWalletError.operationTimeout('Privy user restore'));
+    mocks.disconnect.mockReturnValueOnce(teardown.promise);
+    const adapter = new PrivyAdapter(options);
+    await expect(
+      adapter.connect({ privyWalletId: wallet.id, privyUserId: wallet.userId })
+    ).rejects.toMatchObject({ code: WalletErrorCode.OPERATION_TIMEOUT });
+    expect(mocks.disconnect).toHaveBeenLastCalledWith({ preserveProviderSession: true });
+
+    const disconnecting = adapter.disconnect();
+    expect(mocks.disconnect).toHaveBeenCalledTimes(2);
+    expect(mocks.disconnect).toHaveBeenLastCalledWith();
+    teardown.resolve();
+    await disconnecting;
+  });
+
+  it('returns a validated submission even when closing the ledger connection fails', async () => {
+    mocks.clientDisconnect.mockRejectedValueOnce(new Error('websocket close failed'));
+    const adapter = new PrivyAdapter(options);
+    await adapter.connect();
+    await expect(adapter.signAndSubmit(transaction)).resolves.toMatchObject({
+      hash: 'validated-hash',
+      transactionResult: 'tesSUCCESS',
+    });
+  });
 });

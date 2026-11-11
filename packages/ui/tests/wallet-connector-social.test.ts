@@ -214,4 +214,24 @@ describe('WalletConnector social login', () => {
     await connector.disconnectFromAccountModal();
     expect(connector.getAccountModalRoot()?.querySelector('[role="dialog"]')).toBeNull();
   });
+
+  it('logs the adapter error behind a failed sign-in method discovery', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const failure = new Error('Origin not allowed');
+    const discover = vi.fn(async () => {
+      throw failure;
+    });
+    const { connector, root } = await mount([
+      createAdapter('social', { getLoginMethods: discover }),
+    ]);
+    connector.showSocialLoginList();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(root.innerHTML).toContain('Unable to load sign-in methods');
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to load sign-in methods for social'),
+      failure
+    );
+    warn.mockRestore();
+  });
 });

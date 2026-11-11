@@ -21,6 +21,7 @@ const OAUTH_MARKER_TTL_MS = 10 * 60_000;
 const PENDING_MARKER_VERSION = 1;
 const FARCASTER_POLL_INTERVAL_MS = 1_000;
 const FARCASTER_POLL_TIMEOUT_MS = 10 * 60_000;
+const FARCASTER_MAX_POLL_FAILURES = 3;
 
 type PrivyClient = InstanceType<typeof Privy>;
 
@@ -483,6 +484,7 @@ export class PrivySession {
   private pendingOAuthOperation: Promise<unknown> | undefined;
   private readonly pendingOperations = new Set<Promise<unknown>>();
   private disconnectPromise: Promise<void> | undefined;
+  private disconnectLogsOut = false;
   private activePromptReject: (() => void) | undefined;
 
   constructor(private readonly options: PrivySessionOptions) {
@@ -752,7 +754,10 @@ export class PrivySession {
    * anyone out.
    */
   async disconnect(options?: { preserveProviderSession?: boolean }): Promise<void> {
+    const logout = options?.preserveProviderSession !== true;
     if (this.disconnectPromise) {
+      // A logout request joining a cleanup that preserves the session upgrades it.
+      if (logout) this.disconnectLogsOut = true;
       await this.settleWithin(this.disconnectPromise, this.timeoutMs);
       return;
     }
@@ -772,13 +777,9 @@ export class PrivySession {
     this.currentUserId = undefined;
     this.sessionLost = false;
 
-    const cleanup = this.finishDisconnect(userId, options?.preserveProviderSession !== true);
+    this.disconnectLogsOut = logout;
+    const cleanup = this.finishDisconnect(userId);
     this.disconnectPromise = cleanup;
-    cleanup
-      .finally(() => {
-        if (this.disconnectPromise === cleanup) this.disconnectPromise = undefined;
-      })
-      .catch(() => undefined);
     await this.settleWithin(cleanup, this.timeoutMs);
   }
 
@@ -1605,24 +1606,36 @@ export class PrivySession {
     generation: number
   ): Promise<void> {
     const deadline = Date.now() + FARCASTER_POLL_TIMEOUT_MS;
+    let failures = 0;
     try {
       while (controls.isActive(step) && Date.now() < deadline) {
-        const status = asRecord(
-          await controls.run(step, () =>
-            this.runOperation(
-              () => client.auth.farcaster.getFarcasterStatus({ channel_token: channelToken }),
-              signal,
-              generation,
-              'Privy Farcaster status'
+        let status: UnknownRecord | null = null;
+        try {
+          status = asRecord(
+            await controls.run(step, () =>
+              this.runOperation(
+                () => client.auth.farcaster.getFarcasterStatus({ channel_token: channelToken }),
+                signal,
+                generation,
+                'Privy Farcaster status'
+              )
             )
-          )
-        );
+          );
+          failures = 0;
+        } catch (error) {
+          // The user is mid-scan: one dropped poll must not cost them the
+          // channel. Only a poll that keeps failing ends the login.
+          if (!controls.isActive(step)) return;
+          failures += 1;
+          if (failures >= FARCASTER_MAX_POLL_FAILURES) throw error;
+        }
         if (!controls.isActive(step)) return;
         if (status?.state === 'completed') {
+          const { message, signature, fid } = status;
           if (
-            typeof status.message !== 'string' ||
-            typeof status.signature !== 'string' ||
-            typeof status.fid !== 'number'
+            typeof message !== 'string' ||
+            typeof signature !== 'string' ||
+            typeof fid !== 'number'
           ) {
             throw new Error('Privy Farcaster status response is incomplete');
           }
@@ -1631,9 +1644,9 @@ export class PrivySession {
               () =>
                 client.auth.farcaster.authenticate({
                   channel_token: channelToken,
-                  message: status.message as string,
-                  signature: status.signature as string,
-                  fid: status.fid as number,
+                  message,
+                  signature,
+                  fid,
                 }),
               signal,
               generation,
@@ -2288,11 +2301,17 @@ export class PrivySession {
    * settles must not keep `disconnectPromise` set and block each later
    * connection.
    */
-  private async finishDisconnect(userId: string | undefined, logout: boolean): Promise<void> {
+  private async finishDisconnect(userId: string | undefined): Promise<void> {
     try {
       const abandoned = await this.waitForPendingOperations();
       const client = this.client;
-      if (!logout || !client) return;
+      // Read and release in the same tick, so a logout request either upgrades
+      // this cleanup before the check or starts a cleanup of its own after it.
+      const logout = this.disconnectLogsOut;
+      if (!logout || !client) {
+        this.disconnectPromise = undefined;
+        return;
+      }
       // SDK logout reloads the iframe and awaits its MFA-clear acknowledgement.
       // Local session state is already cleared; provider failures must not block teardown.
       const providerLogout = (): Promise<unknown> =>
@@ -2307,6 +2326,7 @@ export class PrivySession {
           .catch(() => undefined);
       }
     } finally {
+      this.disconnectPromise = undefined;
       this.cleanupIframe();
     }
   }

@@ -108,7 +108,7 @@ export class PrivyAdapter implements WalletAdapter {
     const network = resolveNetwork(options?.network);
     const controller = new AbortController();
     this.controller = controller;
-    let restore: { walletId: string; userId: string } | undefined;
+    const restoring = Boolean(options?.privyWalletId || options?.privyUserId);
     try {
       if (this.teardown) await this.teardown;
       this.assertActive(controller);
@@ -117,7 +117,7 @@ export class PrivyAdapter implements WalletAdapter {
       if (Boolean(options?.privyWalletId) !== Boolean(options?.privyUserId)) {
         throw new Error('Restoring Privy requires both the wallet and user identity');
       }
-      restore =
+      const restore =
         options?.privyWalletId && options.privyUserId
           ? { walletId: options.privyWalletId, userId: options.privyUserId }
           : undefined;
@@ -139,7 +139,9 @@ export class PrivyAdapter implements WalletAdapter {
       if (this.controller === controller) {
         // A failed restore signed nobody in, so it leaves the Privy session
         // alone: a transient failure can then be retried without a new login.
-        await this.endSession(restore === undefined);
+        // The teardown is not awaited: it waits for abandoned SDK work, and the
+        // caller should see the failure now. The next connect waits for it.
+        void this.endSession(!restoring).catch(() => undefined);
       }
       if (cancelled) throw createWalletError.notConnected();
       if (isWalletError(error)) throw error;
@@ -157,7 +159,13 @@ export class PrivyAdapter implements WalletAdapter {
     this.controller = null;
     this.wallet = null;
     this.account = null;
-    if (this.teardown) return this.teardown;
+    if (this.teardown) {
+      const joined = this.teardown;
+      // The teardown in flight may be preserving the Privy session after a
+      // failed restore; an explicit logout must still reach the session.
+      if (logout) await Promise.all([joined, this.session.disconnect()]);
+      return joined;
+    }
     const teardown = this.session.disconnect({ preserveProviderSession: !logout });
     this.teardown = teardown;
     try {
@@ -279,7 +287,9 @@ export class PrivyAdapter implements WalletAdapter {
       await client.connect();
       return await operation(client);
     } finally {
-      await client.disconnect();
+      // Closing the socket must not replace the operation's outcome: a failed
+      // close after a validated submission would invite a duplicate retry.
+      await client.disconnect().catch(() => undefined);
     }
   }
 }
