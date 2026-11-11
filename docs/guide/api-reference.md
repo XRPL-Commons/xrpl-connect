@@ -674,6 +674,11 @@ fails with `OPERATION_TIMEOUT` then keeps the stored session, so a later
 as Xaman, have their stored session cleared, because their timeout can also mean
 an authorization the user never answered.
 
+The kept session lasts until it is restored, replaced by another connection, or
+ended with `disconnect()`. A login that is rejected or fails leaves it in place.
+A redirect login started in the meantime replaces it when it returns: a stored
+session is otherwise authoritative over a pending authorization.
+
 ### ConnectOptions
 
 ```typescript

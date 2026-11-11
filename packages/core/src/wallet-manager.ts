@@ -60,7 +60,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   private connectionAttemptGeneration = 0;
   private reconnectGeneration = 0;
   private pendingReconnects = 0;
-  /** A timed-out restore left its stored session in place for a later retry. */
+  /** A reconnect left a stored session it could not restore in place for a later retry. */
   private retainedStoredSession = false;
   private stateRevision = 0;
   private storageTail: Promise<void> = Promise.resolve();
@@ -211,14 +211,12 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         network: options?.network ?? this.options.network,
       };
 
-      // A redirect-based login leaves the page before it can commit. The
-      // session kept after a timed-out restore would stay authoritative when
-      // it returns, and the authorization the user just completed would be
-      // discarded, so it is cleared up front. Every other connection replaces
-      // it on commit, and keeps it for a later retry when it fails.
+      // A redirect-based login leaves the page before it can commit. When it
+      // returns, it has to replace the session a failed restore left behind,
+      // so that session is marked as awaiting it. Marking instead of clearing
+      // keeps the session for a later retry if the login is cancelled or fails.
       if (this.retainedStoredSession && !expectedState && supportsPendingConnection(adapter)) {
-        this.retainedStoredSession = false;
-        await this.queueStorage(() => this.storage.clearState());
+        await this.markPendingAuthorization(adapter.id);
         if (
           connectionAttempt !== this.connectionAttemptGeneration ||
           this.connectingAdapter !== adapter
@@ -514,28 +512,39 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     this.retainedStoredSession = false;
     let attemptedStateSnapshot: string | null = null;
     let restoringAdapter: WalletAdapter | undefined;
+    let completingAuthorization = false;
 
     try {
       const stored = await this.storage.loadState();
       if (reconnectGeneration !== this.reconnectGeneration) return null;
       attemptedStateSnapshot = stored ? JSON.stringify(stored) : null;
       restoringAdapter = stored ? this.adapters.get(stored.walletId) : undefined;
-      if (!stored) {
-        for (const adapter of this.adapters.values()) {
-          let pending = false;
-          try {
-            pending =
-              supportsPendingConnection(adapter) &&
-              isAdapterConfigured(adapter) &&
-              adapter.hasPendingConnection();
-          } catch (error) {
-            this.logger.warn(`Failed to check pending authorization for ${adapter.name}:`, error);
-          }
-          if (reconnectGeneration !== this.reconnectGeneration) return null;
-          if (pending) return await this.connectInternal(adapter.id);
+
+      // A stored session stays authoritative over a returned authorization,
+      // unless it was marked as awaiting that authorization.
+      const awaited = stored?.pendingAuthorization;
+      const candidates = !stored
+        ? [...this.adapters.values()]
+        : awaited !== undefined && this.adapters.has(awaited)
+          ? [this.adapters.get(awaited)!]
+          : [];
+      for (const adapter of candidates) {
+        let pending = false;
+        try {
+          pending =
+            supportsPendingConnection(adapter) &&
+            isAdapterConfigured(adapter) &&
+            adapter.hasPendingConnection();
+        } catch (error) {
+          this.logger.warn(`Failed to check pending authorization for ${adapter.name}:`, error);
         }
-        return null;
+        if (reconnectGeneration !== this.reconnectGeneration) return null;
+        if (pending) {
+          completingAuthorization = true;
+          return await this.connectInternal(adapter.id);
+        }
       }
+      if (!stored) return null;
       if (!this.isStateValid(stored)) {
         this.logger.debug('Stored state expired; clearing it');
         await this.clearStateIfSnapshotMatches(reconnectGeneration, attemptedStateSnapshot);
@@ -566,6 +575,13 @@ export class WalletManager extends EventEmitter<WalletEvent> {
           error.code === WalletErrorCode.CONFIGURATION_REQUIRED)
       ) {
         throw error;
+      }
+      // A failed authorization says nothing about the stored session it would
+      // have replaced, so that session stays for a later retry.
+      if (completingAuthorization) {
+        this.logger.warn('Returned wallet authorization failed:', error);
+        this.retainedStoredSession = attemptedStateSnapshot !== null;
+        return null;
       }
       // For adapters that restore without user interaction, a timeout says
       // nothing about whether the session is still valid. Keep it until it
@@ -916,6 +932,15 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     return result;
   }
 
+  /** Record that a login on `walletId` may return to replace the stored session. */
+  private markPendingAuthorization(walletId: WalletIdentifier): Promise<void> {
+    return this.queueStorage(async () => {
+      const stored = await this.storage.loadState();
+      if (!stored || stored.pendingAuthorization === walletId) return;
+      await this.storage.saveState({ ...stored, pendingAuthorization: walletId });
+    });
+  }
+
   /** Clear only the state this reconnect attempt actually loaded. */
   private clearStateIfSnapshotMatches(
     reconnectGeneration: number,
@@ -982,6 +1007,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         network: snapshot.network,
         timestamp: Date.now(),
       };
+      delete state.pendingAuthorization;
       if (replaceReconnectOptions) {
         if (reconnectOptions) state.connectOptions = reconnectOptions;
         else delete state.connectOptions;

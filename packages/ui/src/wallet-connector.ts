@@ -1809,9 +1809,13 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     private cancelPendingConnection(): CancelledConnectionAttempt | null {
       const cancelledAttempt = this.walletService?.cancelPendingWork() ?? null;
-      if (!this.walletManager || this.walletManager.connected) return cancelledAttempt;
+      // Only an attempt in flight is cancelled. Disconnecting an idle manager
+      // would end a session it kept for a later reconnect, although the user
+      // only closed or navigated the modal.
+      const manager = this.walletManager;
+      if (!manager || manager.connected || !manager.connectingWallet) return cancelledAttempt;
 
-      void this.walletManager.disconnect().catch((error) => {
+      void manager.disconnect().catch((error) => {
         logger.warn('Failed to cancel pending wallet connection:', error);
       });
       return cancelledAttempt;

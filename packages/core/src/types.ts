@@ -468,6 +468,11 @@ export interface StoredState {
    * Arbitrary caller-provided connection options are never stored.
    */
   connectOptions?: ReconnectOptions;
+  /**
+   * Wallet whose login was started while this session could not be restored.
+   * If that login returns from a redirect, it replaces this session.
+   */
+  pendingAuthorization?: WalletIdentifier;
 }
 
 /**

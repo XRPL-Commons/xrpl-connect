@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
-import { WalletManager } from '@xrpl-connect/core';
+import {
+  createWalletError,
+  MemoryStorageAdapter,
+  Storage,
+  WalletManager,
+} from '@xrpl-connect/core';
 import type { NetworkInfo, WalletAdapter, WalletAuthPrompt } from '@xrpl-connect/core';
 import type { SocialLogin } from '../src/types';
 
@@ -38,6 +43,7 @@ type Connector = HTMLElement & {
   openAccountModal(): void;
   disconnectFromAccountModal(): Promise<void>;
   showSocialLoginList(): void;
+  showWalletList(): void;
   showAuthPrompt(prompt: WalletAuthPrompt, walletId: string, walletName: string): void;
   submitAuthPrompt(): Promise<void>;
 };
@@ -131,6 +137,38 @@ describe('WalletConnector social login', () => {
     expect(empty.root.querySelector('#social-login-button')).toBeNull();
     expect(discover).not.toHaveBeenCalled();
   });
+
+  it.each(['close', 'showWalletList', 'disconnectedCallback'] as const)(
+    'keeps a session retained after a timed-out restore on idle %s',
+    async (action) => {
+      const storage = new MemoryStorageAdapter();
+      await new WalletManager({ adapters: [createAdapter('social')], storage }).connect('social');
+      const storedBefore = await new Storage(storage).loadState();
+      const adapter = createAdapter('social', {
+        keepsSessionOnRestoreTimeout: true,
+        connect: vi.fn(async () => {
+          throw createWalletError.operationTimeout('Session restore');
+        }),
+      });
+      const manager = new WalletManager({ adapters: [adapter], storage });
+      await expect(manager.reconnect()).resolves.toBeNull();
+      const connector = document.createElement('xrpl-wallet-connector') as Connector;
+      connector.setWalletManager(manager);
+      document.body.append(connector);
+      element = connector;
+
+      await connector.open();
+      await vi.advanceTimersByTimeAsync(0);
+      const disconnect = vi.spyOn(manager, 'disconnect');
+      connector[action]();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(disconnect).not.toHaveBeenCalled();
+      expect(await new Storage(storage).loadState()).toEqual(storedBefore);
+      await manager.disconnect();
+      expect(await new Storage(storage).loadState()).toBeNull();
+    }
+  );
 
   it('aborts pending discovery when the chooser closes', async () => {
     const signals: AbortSignal[] = [];
