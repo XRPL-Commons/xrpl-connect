@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vite-plus/test';
 import type { WalletAdapter } from '@xrpl-connect/core';
 import { mainStyles } from '../src/styles/main';
-import type { SocialLogin } from '../src/types';
 import { renderSocialLoginView, renderWalletListView } from '../src/views/WalletListView';
 
 const wallet = (id: string, url?: string): WalletAdapter =>
@@ -11,11 +10,17 @@ function renderWallets(
   primaryWallet: WalletAdapter | null,
   otherWallets: WalletAdapter[],
   unavailableWalletIds: ReadonlySet<string> = new Set(),
-  socialLogins: readonly SocialLogin[] = []
+  socialLoginAvailable = false
 ): HTMLDivElement {
   const host = document.createElement('div');
   host.append(
-    renderWalletListView(primaryWallet, otherWallets, unavailableWalletIds, false, socialLogins)
+    renderWalletListView(
+      primaryWallet,
+      otherWallets,
+      unavailableWalletIds,
+      false,
+      socialLoginAvailable
+    )
   );
   return host;
 }
@@ -29,10 +34,7 @@ describe('renderWalletListView', () => {
   });
 
   it('renders one social sign-in entry without exposing adapter IDs', () => {
-    const host = renderWallets(null, [], new Set(), [
-      { id: 'google', label: 'Continue with Google', adapterId: 'privy' },
-      { id: 'apple', label: 'Continue with Apple', adapterId: 'privy' },
-    ]);
+    const host = renderWallets(null, [], new Set(), true);
 
     expect(host.querySelectorAll('[data-social-login-id]')).toHaveLength(0);
     expect(host.querySelector('#social-login-button')?.textContent).toBe('Sign in with socials');

@@ -1470,6 +1470,7 @@ export class PrivySession {
       throw new Error('Privy passkey response did not include algorithms');
     const excludeCredentials = passkeyCredentialDescriptors(options.exclude_credentials);
     const extensions = passkeyExtensions(options.extensions);
+    const selection = asRecord(options.authenticator_selection);
     return {
       challenge: base64UrlToBytes(options.challenge) as unknown as ArrayBuffer,
       rp: {
@@ -1486,35 +1487,23 @@ export class PrivySession {
       ...(isNonEmptyString(options.attestation)
         ? { attestation: options.attestation as AttestationConveyancePreference }
         : {}),
-      ...(asRecord(options.authenticator_selection)
+      ...(selection
         ? {
             authenticatorSelection: {
-              ...(isNonEmptyString(
-                asRecord(options.authenticator_selection)!.authenticator_attachment
-              )
+              ...(isNonEmptyString(selection.authenticator_attachment)
                 ? {
-                    authenticatorAttachment: asRecord(options.authenticator_selection)!
-                      .authenticator_attachment as AuthenticatorAttachment,
+                    authenticatorAttachment:
+                      selection.authenticator_attachment as AuthenticatorAttachment,
                   }
                 : {}),
-              ...(typeof asRecord(options.authenticator_selection)!.require_resident_key ===
-              'boolean'
-                ? {
-                    requireResidentKey: asRecord(options.authenticator_selection)!
-                      .require_resident_key as boolean,
-                  }
+              ...(typeof selection.require_resident_key === 'boolean'
+                ? { requireResidentKey: selection.require_resident_key }
                 : {}),
-              ...(isNonEmptyString(asRecord(options.authenticator_selection)!.resident_key)
-                ? {
-                    residentKey: asRecord(options.authenticator_selection)!
-                      .resident_key as ResidentKeyRequirement,
-                  }
+              ...(isNonEmptyString(selection.resident_key)
+                ? { residentKey: selection.resident_key as ResidentKeyRequirement }
                 : {}),
-              ...(isNonEmptyString(asRecord(options.authenticator_selection)!.user_verification)
-                ? {
-                    userVerification: asRecord(options.authenticator_selection)!
-                      .user_verification as UserVerificationRequirement,
-                  }
+              ...(isNonEmptyString(selection.user_verification)
+                ? { userVerification: selection.user_verification as UserVerificationRequirement }
                 : {}),
             },
           }

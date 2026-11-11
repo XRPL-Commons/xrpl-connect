@@ -702,13 +702,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       return this.getAllSocialLogins().filter((login) => availableAdapterIds.has(login.adapterId));
     }
 
-    private getAvailableSocialLoginSourceCount(manager: WalletManager): number {
-      const availableAdapterIds = new Set(this.availableWallets.map((wallet) => wallet.id));
-      const explicitCount = this.getAvailableSocialLogins().length;
-      const discoveredAdapterCount = this.getLoginAdapters(manager).filter((wallet) =>
-        availableAdapterIds.has(wallet.id)
-      ).length;
-      return Math.max(explicitCount, discoveredAdapterCount);
+    /** Whether anything can be offered behind the social sign-in entry. */
+    private hasAvailableSocialLogin(manager: WalletManager): boolean {
+      return (
+        this.getAvailableLoginAdapters(manager).length > 0 ||
+        this.getAvailableSocialLogins().length > 0
+      );
     }
 
     private getSingleSocialLoginAdapter(): WalletAdapter | undefined {
@@ -1057,20 +1056,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         wallets.filter((wallet) => wallet !== primaryWallet),
         unavailableWalletIds,
         !!this.walletManager && !this.walletAvailabilityChecked,
-        this.getAvailableSocialLogins(),
-        this.walletManager
-          ? this.getAvailableSocialLoginSourceCount(this.walletManager) > 0
-          : false,
+        !!this.walletManager && this.hasAvailableSocialLogin(this.walletManager),
         this.getSingleSocialLoginAdapter()?.icon
       );
     }
 
     private createSocialLoginView(): DocumentFragment {
-      const socialLogins = this.getAvailableSocialLogins();
-      const errors = [...this.socialDiscoveryErrors.values()];
-      return renderSocialLoginView(socialLogins, {
+      return renderSocialLoginView(this.getAvailableSocialLogins(), {
         loading: this.socialDiscoveryPending.size > 0,
-        errors,
+        errors: [...this.socialDiscoveryErrors.values()],
       });
     }
 
@@ -1543,7 +1537,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     public showSocialLoginList(): void {
       const manager = this.walletManager;
-      if (!manager || this.getAvailableSocialLoginSourceCount(manager) === 0) return;
+      if (!manager || !this.hasAvailableSocialLogin(manager)) return;
       this.clearWalletAvailabilityTimer();
       this.invalidateSocialDiscovery();
       const generation = this.socialDiscoveryGeneration;

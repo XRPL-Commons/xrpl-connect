@@ -93,7 +93,6 @@ export function renderWalletListView(
   otherWallets: WalletAdapter[],
   unavailableWalletIds: ReadonlySet<string> = new Set(),
   loading = false,
-  socialLogins: readonly SocialLogin[] = [],
   socialLoginAvailable = false,
   socialLoginIcon?: string
 ): DocumentFragment {
@@ -124,13 +123,7 @@ export function renderWalletListView(
   }
 
   if (primaryWallet) content.prepend(createWalletButton(primaryWallet, true));
-  if (
-    !loading &&
-    !primaryWallet &&
-    otherWallets.length === 0 &&
-    socialLogins.length === 0 &&
-    !socialLoginAvailable
-  ) {
+  if (!loading && !primaryWallet && otherWallets.length === 0 && !socialLoginAvailable) {
     const emptyMessage = document.createElement('p');
     emptyMessage.className = 'wallet-empty';
     emptyMessage.textContent = 'No wallets are currently available.';
@@ -143,7 +136,7 @@ export function renderWalletListView(
           : createWalletButton(wallet, false)
       );
     }
-    if (socialLoginAvailable || socialLogins.length > 0) {
+    if (socialLoginAvailable) {
       walletList.append(createSocialLoginGroupButton(socialLoginIcon));
     }
   }
