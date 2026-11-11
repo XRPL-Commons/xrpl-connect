@@ -260,8 +260,8 @@ describe('PrivyAdapter', () => {
     expect(mocks.clientConnect).not.toHaveBeenCalled();
     await adapter.sign({ TransactionType: 'AccountSet', Account: wallet.address });
     expect(mocks.autofill).toHaveBeenCalledTimes(1);
-    expect(mocks.clientDisconnect).toHaveBeenCalledTimes(1);
     await adapter.disconnect();
+    expect(mocks.clientDisconnect).toHaveBeenCalledTimes(1);
   });
 
   it('returns validated ledger results, including tec failures, with their hash', async () => {
@@ -280,8 +280,10 @@ describe('PrivyAdapter', () => {
       id: 'failed',
       transactionResult: 'tecUNFUNDED_PAYMENT',
     });
-    expect(mocks.clientDisconnect).toHaveBeenCalledTimes(2);
+    expect(mocks.clientConnect).toHaveBeenCalledTimes(1);
+    expect(mocks.clientDisconnect).not.toHaveBeenCalled();
     await adapter.disconnect();
+    expect(mocks.clientDisconnect).toHaveBeenCalledTimes(1);
   });
 
   it('never submits a signature that finishes after disconnect', async () => {
@@ -408,5 +410,41 @@ describe('PrivyAdapter', () => {
       hash: 'validated-hash',
       transactionResult: 'tesSUCCESS',
     });
+    await adapter.disconnect();
+  });
+
+  it('closes an idle ledger connection and opens a new one for the next signature', async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new PrivyAdapter(options);
+      await adapter.connect();
+      await adapter.signAndSubmit(transaction);
+      await adapter.signAndSubmit(transaction);
+      expect(mocks.clientConnect).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(mocks.clientDisconnect).toHaveBeenCalledTimes(1);
+
+      await adapter.signAndSubmit(transaction);
+      expect(mocks.clientConnect).toHaveBeenCalledTimes(2);
+      await adapter.disconnect();
+      expect(mocks.clientDisconnect).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('opens a new ledger connection after one fails', async () => {
+    mocks.clientConnect.mockRejectedValueOnce(new Error('websocket unreachable'));
+    const adapter = new PrivyAdapter(options);
+    await adapter.connect();
+    await expect(adapter.signAndSubmit(transaction)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    await expect(adapter.signAndSubmit(transaction)).resolves.toMatchObject({
+      hash: 'validated-hash',
+    });
+    expect(mocks.clientConnect).toHaveBeenCalledTimes(2);
+    await adapter.disconnect();
   });
 });

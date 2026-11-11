@@ -24,6 +24,16 @@ import { prepareSigningInput, signPreparedTransaction, validateWallet } from './
 
 export type PrivyAdapterOptions = PrivySessionOptions;
 
+/** How long an unused ledger connection stays open for the next signature. */
+const LEDGER_IDLE_MS = 30_000;
+
+interface LedgerConnection {
+  readonly client: Client;
+  readonly ready: Promise<void>;
+  users: number;
+  idleTimer?: ReturnType<typeof setTimeout>;
+}
+
 export interface PrivyConnectOptions {
   /** ID of one of the adapter's configured login methods. */
   loginMethod?: string;
@@ -50,6 +60,7 @@ export class PrivyAdapter implements WalletAdapter {
   private wallet: PrivyWallet | null = null;
   private account: AccountInfo | null = null;
   private teardown: Promise<void> | null = null;
+  private ledger: LedgerConnection | null = null;
 
   constructor(private readonly options: PrivyAdapterOptions) {
     this.session = new PrivySession(options);
@@ -159,6 +170,7 @@ export class PrivyAdapter implements WalletAdapter {
     this.controller = null;
     this.wallet = null;
     this.account = null;
+    this.releaseLedger();
     if (this.teardown) {
       const joined = this.teardown;
       // The teardown in flight may be preserving the Privy session after a
@@ -282,14 +294,47 @@ export class PrivyAdapter implements WalletAdapter {
     network: NetworkInfo,
     operation: (client: Client) => Promise<T>
   ): Promise<T> {
-    const client = new Client(network.wss);
-    try {
-      await client.connect();
-      return await operation(client);
-    } finally {
-      // Closing the socket must not replace the operation's outcome: a failed
-      // close after a validated submission would invite a duplicate retry.
-      await client.disconnect().catch(() => undefined);
+    // Signatures tend to come in bursts, so one connection serves the session
+    // and closes once it has been idle, instead of a handshake per signature.
+    let ledger = this.ledger;
+    if (!ledger) {
+      const client = new Client(network.wss);
+      ledger = { client, ready: client.connect(), users: 0 };
+      ledger.ready.catch(() => undefined);
+      this.ledger = ledger;
     }
+    clearTimeout(ledger.idleTimer);
+    ledger.users += 1;
+    try {
+      await ledger.ready;
+      return await operation(ledger.client);
+    } catch (error) {
+      // The connection may be what failed; the next operation opens a new one.
+      if (this.ledger === ledger) this.ledger = null;
+      throw error;
+    } finally {
+      ledger.users -= 1;
+      if (ledger.users === 0) {
+        if (this.ledger === ledger) {
+          ledger.idleTimer = setTimeout(() => this.releaseLedger(ledger), LEDGER_IDLE_MS);
+        } else {
+          this.closeLedger(ledger);
+        }
+      }
+    }
+  }
+
+  /** Stop sharing a connection, closing it once no operation is using it. */
+  private releaseLedger(ledger = this.ledger): void {
+    if (!ledger) return;
+    if (this.ledger === ledger) this.ledger = null;
+    clearTimeout(ledger.idleTimer);
+    if (ledger.users === 0) this.closeLedger(ledger);
+  }
+
+  private closeLedger(ledger: LedgerConnection): void {
+    // Closing the socket must not replace an operation's outcome: a failed
+    // close after a validated submission would invite a duplicate retry.
+    void ledger.client.disconnect().catch(() => undefined);
   }
 }
