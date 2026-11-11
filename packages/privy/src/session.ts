@@ -17,6 +17,8 @@ import type {
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const SESSION_CHECK_INTERVAL_MS = 60_000;
+/** How long a verified signer is trusted, so a burst of signatures verifies once. */
+const SIGNER_VERIFICATION_TTL_MS = 30_000;
 const OAUTH_MARKER_TTL_MS = 10 * 60_000;
 const PENDING_MARKER_VERSION = 1;
 const FARCASTER_POLL_INTERVAL_MS = 1_000;
@@ -478,6 +480,7 @@ export class PrivySession {
   private lifecycleGeneration = 0;
   private currentUserId: string | undefined;
   private currentWallet: PrivyWallet | undefined;
+  private verifiedSigner: { wallet: PrivyWallet; expiresAt: number } | undefined;
   private sessionLost = false;
   private sessionCheckTimer: ReturnType<typeof setInterval> | undefined;
   private visibilityListener: (() => void) | undefined;
@@ -659,11 +662,12 @@ export class PrivySession {
       let user: PrivyUser;
       const explicit = method.explicit;
       if (method.kind === 'custom-token' && explicit && 'getCustomToken' in explicit) {
-        const token = await this.runOperation(
+        // The application's callback may wait on its own backend or on the
+        // user, so only cancellation bounds it, and no teardown waits for it.
+        const token = await this.untilAborted(
           () => explicit.getCustomToken(signal),
           signal,
-          generation,
-          'Privy custom-token login'
+          generation
         );
         if (typeof token !== 'string' || token.trim() === '') {
           throw new Error('Privy custom-token login returned an empty token');
@@ -708,30 +712,45 @@ export class PrivySession {
     if (signal.aborted) throw createWalletError.notConnected();
     const expectedGeneration = this.lifecycleGeneration;
     const client = await this.ensureClient(signal, expectedGeneration);
+    const connected = this.currentWallet;
     if (
-      !this.currentWallet ||
-      this.currentWallet.id !== wallet.id ||
-      this.currentWallet.userId !== wallet.userId ||
-      this.currentWallet.address !== wallet.address
+      !connected ||
+      connected.id !== wallet.id ||
+      connected.userId !== wallet.userId ||
+      connected.address !== wallet.address
     ) {
       throw createWalletError.notConnected();
     }
 
-    const user = await this.requireAuthenticatedUser(client, signal, expectedGeneration);
-    this.assertUserIdentity(user, wallet.userId);
-    const account = this.findOwnedXrplAccount(user, wallet.id);
-    if (!account || account.address !== wallet.address) {
-      throw new Error('Privy wallet is no longer owned by the authenticated user');
+    // Signatures come in bursts. One verification covers the burst; the session
+    // monitor and Privy's own authorization of each signature cover the rest.
+    const verified =
+      this.verifiedSigner?.wallet === connected && Date.now() < this.verifiedSigner.expiresAt;
+    if (!verified) {
+      const user = await this.requireAuthenticatedUser(client, signal, expectedGeneration);
+      this.assertUserIdentity(user, wallet.userId);
+      const account = this.findOwnedXrplAccount(user, wallet.id);
+      if (!account || account.address !== wallet.address) {
+        throw new Error('Privy wallet is no longer owned by the authenticated user');
+      }
+      const current = await this.fetchWallet(client, account.id, signal, expectedGeneration);
+      if (
+        current.address !== wallet.address ||
+        current.publicKey.toLowerCase() !== wallet.publicKey.toLowerCase()
+      ) {
+        throw new Error('Privy wallet identity changed while signing');
+      }
     }
-    const current = await this.fetchWallet(client, account.id, signal, expectedGeneration);
-    if (
-      current.address !== wallet.address ||
-      current.publicKey.toLowerCase() !== wallet.publicKey.toLowerCase()
-    ) {
-      throw new Error('Privy wallet identity changed while signing');
+    if (!verified || !this.iframe?.loaded) {
+      await this.ensureIframeReady(client, signal, expectedGeneration);
+    }
+    if (!verified) {
+      this.verifiedSigner = {
+        wallet: connected,
+        expiresAt: Date.now() + SIGNER_VERIFICATION_TTL_MS,
+      };
     }
 
-    await this.ensureIframeReady(client, signal, expectedGeneration);
     const result = await this.runOperation(
       () =>
         rawSign(client, (request) => client.embeddedWallet.signWithUserSigner(request), {
@@ -741,7 +760,11 @@ export class PrivySession {
       signal,
       expectedGeneration,
       'Privy hash signing'
-    );
+    ).catch((error: unknown) => {
+      // Whatever failed may be what the verification covers; check again next time.
+      this.verifiedSigner = undefined;
+      throw error;
+    });
     if (result.data.encoding !== 'hex' || !/^0x[0-9a-f]+$/i.test(result.data.signature)) {
       throw new Error('Privy returned an invalid raw signature');
     }
@@ -2266,6 +2289,27 @@ export class PrivySession {
     } finally {
       if (abortHandler) signal.removeEventListener('abort', abortHandler);
       if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
+    }
+  }
+
+  /** Wait for application work that only cancellation may interrupt. */
+  private async untilAborted<T>(
+    operation: () => Promise<T>,
+    signal: AbortSignal,
+    generation: number
+  ): Promise<T> {
+    this.assertGeneration(generation, signal);
+    let abortHandler: (() => void) | undefined;
+    const aborted = new Promise<never>((_, reject) => {
+      abortHandler = () => reject(createWalletError.notConnected());
+      signal.addEventListener('abort', abortHandler, { once: true });
+    });
+    try {
+      const value = await Promise.race([Promise.resolve().then(operation), aborted]);
+      this.assertGeneration(generation, signal);
+      return value;
+    } finally {
+      if (abortHandler) signal.removeEventListener('abort', abortHandler);
     }
   }
 

@@ -218,7 +218,10 @@ export const WalletConnector = defineComponent({
       () => props.socialLogins,
       (socialLogins) => {
         if (registered) registered.socialLogins = socialLogins ?? [];
-      }
+      },
+      // In-place edits of a reactive array keep its reference; the element
+      // compares structurally, so unchanged lists are still ignored.
+      { deep: true }
     );
 
     onActivated(activateConnector);

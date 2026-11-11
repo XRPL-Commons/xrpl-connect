@@ -12,16 +12,14 @@
 import type {
   ConnectOptions,
   WalletAdapter,
+  WalletAuthField,
+  WalletAuthPrompt,
   WalletIdentifier,
+  WalletLoginMethod,
   WalletManager,
 } from '@xrpl-connect/core';
 
-export type WalletLoginMethod = Awaited<
-  ReturnType<NonNullable<WalletAdapter['getLoginMethods']>>
->[number];
-type WalletAuthPromptCallback = Parameters<NonNullable<WalletAdapter['onAuthPrompt']>>[0];
-export type WalletAuthPrompt = Exclude<Parameters<WalletAuthPromptCallback>[0], null>;
-export type WalletAuthField = NonNullable<WalletAuthPrompt['fields']>[number];
+export type { WalletAuthField, WalletAuthPrompt, WalletLoginMethod };
 
 /**
  * A user-configured social sign-in method backed by a registered wallet

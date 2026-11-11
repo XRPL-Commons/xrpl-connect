@@ -137,6 +137,33 @@ describe('WalletConnectorElement availability rendering', () => {
     expect(connector.getOverlayRoot()?.querySelector('[data-install-url]')).not.toBeNull();
   });
 
+  it('probes a wallet that becomes configured while a check is in flight', async () => {
+    vi.useFakeTimers();
+    let resolveSlow!: (available: boolean) => void;
+    const slow = createWallet('slow', true);
+    slow.isAvailable = vi
+      .fn(async () => true)
+      .mockReturnValueOnce(new Promise<boolean>((resolve) => (resolveSlow = resolve)));
+    let missing: readonly string[] = ['appId'];
+    const late = createWallet('late', true);
+    late.getMissingConfiguration = () => missing;
+    const connector = mount([slow, late]);
+    connector.setAttribute('wallets', 'slow,late');
+    await connector.open();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(late.isAvailable).not.toHaveBeenCalled();
+
+    missing = [];
+    resolveSlow(true);
+    await vi.advanceTimersByTimeAsync(0);
+
+    const root = connector.getOverlayRoot();
+    expect(late.isAvailable).toHaveBeenCalledOnce();
+    expect(root?.querySelector('[data-wallet-id="late"]')).not.toBeNull();
+    expect(root?.querySelector('[data-wallet-id="slow"]')).not.toBeNull();
+    expect(root?.querySelector('[role="region"]')?.getAttribute('aria-busy')).toBe('false');
+  });
+
   it('rechecks a cached unavailable extension immediately when opening', async () => {
     vi.useFakeTimers();
     let installed = false;

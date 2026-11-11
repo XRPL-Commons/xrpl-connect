@@ -447,4 +447,19 @@ describe('PrivyAdapter', () => {
     expect(mocks.clientConnect).toHaveBeenCalledTimes(2);
     await adapter.disconnect();
   });
+
+  it('does not reuse a ledger connection across a lost session and a network change', async () => {
+    const adapter = new PrivyAdapter(options);
+    await adapter.connect({ network: 'testnet' });
+    await adapter.signAndSubmit(transaction);
+    expect(mocks.clientConnect).toHaveBeenCalledTimes(1);
+
+    mocks.lost?.();
+    expect(mocks.clientDisconnect).toHaveBeenCalledTimes(1);
+
+    await adapter.connect({ network: 'mainnet' });
+    await adapter.signAndSubmit(transaction);
+    expect(mocks.clientConnect).toHaveBeenCalledTimes(2);
+    await adapter.disconnect();
+  });
 });

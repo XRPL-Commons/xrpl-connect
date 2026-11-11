@@ -198,6 +198,33 @@ describe('WalletConnector social login', () => {
     expect(captcha.mounts).toHaveLength(2);
   });
 
+  it('keeps a solved CAPTCHA across a render unrelated to the prompt', async () => {
+    const submit = vi.fn(async () => {});
+    const { connector, root } = await mount([createAdapter('social')]);
+    connector.showAuthPrompt(
+      {
+        title: 'Verify',
+        captcha: { provider: 'turnstile', siteKey: 'site' },
+        submit,
+        cancel: vi.fn(),
+      },
+      'social',
+      'Social'
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    captcha.mounts[0].onToken('token');
+    const form = root.querySelector('#auth-prompt-form');
+
+    connector.setAttribute('primary-wallet', 'social');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(root.querySelector('#auth-prompt-form')).toBe(form);
+    expect(captcha.mounts).toHaveLength(1);
+    expect(captcha.mounts[0].cleanup).not.toHaveBeenCalled();
+    await connector.submitAuthPrompt();
+    expect(submit).toHaveBeenCalledWith({ captchaToken: 'token' });
+  });
+
   it('closes the account modal when disconnect ends without a disconnect event', async () => {
     const { connector, manager } = await mount([createAdapter('xaman')]);
     connector.close();

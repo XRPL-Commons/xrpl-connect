@@ -29,6 +29,7 @@ const LEDGER_IDLE_MS = 30_000;
 
 interface LedgerConnection {
   readonly client: Client;
+  readonly wss: string;
   readonly ready: Promise<void>;
   users: number;
   idleTimer?: ReturnType<typeof setTimeout>;
@@ -53,6 +54,7 @@ export class PrivyAdapter implements WalletAdapter {
   readonly loginBranding = { label: 'Protected by Privy', logo: PRIVY_ATTRIBUTION } as const;
   readonly url = 'https://privy.io';
   readonly capabilities = { sign: true, signAndSubmit: true, signMessage: false } as const;
+  readonly keepsSessionOnRestoreTimeout = true;
 
   private readonly session: PrivySession;
   private readonly listeners = new Map<WalletAdapterEvent, Set<(data: unknown) => void>>();
@@ -70,6 +72,7 @@ export class PrivyAdapter implements WalletAdapter {
       this.controller = null;
       this.account = null;
       this.wallet = null;
+      this.releaseLedger();
       if (connected) this.emit('disconnect');
     });
   }
@@ -296,10 +299,11 @@ export class PrivyAdapter implements WalletAdapter {
   ): Promise<T> {
     // Signatures tend to come in bursts, so one connection serves the session
     // and closes once it has been idle, instead of a handshake per signature.
+    if (this.ledger && this.ledger.wss !== network.wss) this.releaseLedger();
     let ledger = this.ledger;
     if (!ledger) {
       const client = new Client(network.wss);
-      ledger = { client, ready: client.connect(), users: 0 };
+      ledger = { client, wss: network.wss, ready: client.connect(), users: 0 };
       ledger.ready.catch(() => undefined);
       this.ledger = ledger;
     }

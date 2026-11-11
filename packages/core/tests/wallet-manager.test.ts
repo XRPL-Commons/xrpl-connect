@@ -1622,6 +1622,7 @@ describe('WalletManager.reconnect()', () => {
     const storedBefore = await new Storage(storage).loadState();
     const adapter = {
       ...createFakeAdapter(),
+      keepsSessionOnRestoreTimeout: true,
       connect: vi.fn(async () => {
         throw createWalletError.operationTimeout('Session restore');
       }),
@@ -1634,12 +1635,98 @@ describe('WalletManager.reconnect()', () => {
     expect(await new Storage(storage).loadState()).toEqual(storedBefore);
   });
 
+  it('clears the stored session when a restore that may wait on the user times out', async () => {
+    const storage = new MemoryStorageAdapter();
+    const stored = createFakeAdapter();
+    await new WalletManager({ adapters: [stored], storage }).connect(stored.id);
+    const adapter = {
+      ...createFakeAdapter(),
+      connect: vi.fn(async () => {
+        throw createWalletError.operationTimeout('Wallet authorization');
+      }),
+    };
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    expect(await new Storage(storage).loadState()).toBeNull();
+  });
+
+  it('keeps the session retained after a timed-out restore when another connection fails', async () => {
+    const storage = new MemoryStorageAdapter();
+    const stored = createFakeAdapter();
+    await new WalletManager({ adapters: [stored], storage }).connect(stored.id);
+    const storedBefore = await new Storage(storage).loadState();
+    const timedOut = {
+      ...createFakeAdapter(),
+      keepsSessionOnRestoreTimeout: true,
+      connect: vi.fn(async () => {
+        throw createWalletError.operationTimeout('Session restore');
+      }),
+    };
+    const rejecting = {
+      ...createFakeAdapter(),
+      id: 'other',
+      connect: vi.fn(async () => {
+        throw createWalletError.connectionRejected('Other');
+      }),
+    };
+    const manager = new WalletManager({ adapters: [timedOut, rejecting], storage });
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    await expect(manager.connect('other')).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_REJECTED,
+    });
+
+    expect(await new Storage(storage).loadState()).toEqual(storedBefore);
+  });
+
+  it('replaces the session retained after a timed-out restore when another wallet connects', async () => {
+    const storage = new MemoryStorageAdapter();
+    const stored = createFakeAdapter();
+    await new WalletManager({ adapters: [stored], storage }).connect(stored.id);
+    const timedOut = {
+      ...createFakeAdapter(),
+      keepsSessionOnRestoreTimeout: true,
+      connect: vi.fn(async () => {
+        throw createWalletError.operationTimeout('Session restore');
+      }),
+    };
+    const other = { ...createFakeAdapter(), id: 'other' };
+    const manager = new WalletManager({ adapters: [timedOut, other], storage });
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    await manager.connect('other');
+
+    expect((await new Storage(storage).loadState())?.walletId).toBe('other');
+  });
+
+  it('clears the session retained after a timed-out restore on disconnect', async () => {
+    const storage = new MemoryStorageAdapter();
+    const stored = createFakeAdapter();
+    await new WalletManager({ adapters: [stored], storage }).connect(stored.id);
+    const timedOut = {
+      ...createFakeAdapter(),
+      keepsSessionOnRestoreTimeout: true,
+      connect: vi.fn(async () => {
+        throw createWalletError.operationTimeout('Session restore');
+      }),
+    };
+    const manager = new WalletManager({ adapters: [timedOut], storage });
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    await manager.disconnect();
+
+    expect(await new Storage(storage).loadState()).toBeNull();
+  });
+
   it('completes a redirect login started after a restore timed out', async () => {
     const storage = new MemoryStorageAdapter();
     const stored = createFakeAdapter();
     await new WalletManager({ adapters: [stored], storage }).connect(stored.id);
     const timedOut = {
       ...createFakeAdapter(),
+      keepsSessionOnRestoreTimeout: true,
       connect: vi.fn(async () => {
         throw createWalletError.operationTimeout('Session restore');
       }),
@@ -1648,6 +1735,7 @@ describe('WalletManager.reconnect()', () => {
     const leaving = {
       ...createFakeAdapter(),
       id: 'redirect',
+      hasPendingConnection: () => false,
       connect: vi.fn(() => new Promise<AccountInfo>(() => {})),
     };
     const manager = new WalletManager({ adapters: [timedOut, leaving], storage });

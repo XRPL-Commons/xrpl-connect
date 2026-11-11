@@ -291,6 +291,15 @@ export interface WalletAdapter {
    */
   readonly capabilities?: WalletCapabilities;
 
+  /**
+   * Declare `true` when restoring a session never waits on the user, so a
+   * restore that times out says nothing about the session's validity. The
+   * manager then keeps the stored session for a later `reconnect()` instead of
+   * clearing it. Leave unset when a timeout can also mean an authorization the
+   * user never answered.
+   */
+  readonly keepsSessionOnRestoreTimeout?: boolean;
+
   // Optional, minimal reconnect-state serialization (never called by adapters
   // that do not opt in).
   serializeReconnectOptions?(options: ConnectOptions): ReconnectOptions | undefined;

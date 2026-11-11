@@ -660,6 +660,20 @@ for its own pending browser attempts. Unrelated rejected-return URLs are ignored
 in registration order through the normal connection validation and persistence path.
 Automatic recovery requires `autoConnect: true`; callers may also reconnect explicitly.
 
+### keepsSessionOnRestoreTimeout
+
+```typescript
+interface WalletAdapter {
+  readonly keepsSessionOnRestoreTimeout?: boolean;
+}
+```
+
+Declare `true` when restoring a session never waits on the user. A restore that
+fails with `OPERATION_TIMEOUT` then keeps the stored session, so a later
+`reconnect()` can retry it. Privy declares it. Adapters that leave it unset, such
+as Xaman, have their stored session cleared, because their timeout can also mean
+an authorization the user never answered.
+
 ### ConnectOptions
 
 ```typescript

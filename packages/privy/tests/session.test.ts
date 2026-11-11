@@ -1555,6 +1555,63 @@ describe('PrivySession', () => {
     await session.disconnect();
   });
 
+  it('verifies the signer once for a burst of signatures and again after a failure', async () => {
+    configureExistingUser();
+    const session = makeSession();
+    const wallet = await session.connect('custom', new AbortController().signal);
+    const hash = `0x${'12'.repeat(32)}` as const;
+    const sign = (): Promise<string> =>
+      session.signHash(wallet, hash, new AbortController().signal);
+    mocks.userGet.mockClear();
+    mocks.getWallet.mockClear();
+    mocks.ping.mockClear();
+
+    await sign();
+    await sign();
+    expect(mocks.userGet).toHaveBeenCalledTimes(1);
+    expect(mocks.getWallet).toHaveBeenCalledTimes(1);
+    expect(mocks.ping).toHaveBeenCalledTimes(1);
+
+    mocks.rawSign.mockRejectedValueOnce(new Error('signing failed'));
+    await expect(sign()).rejects.toThrow('signing failed');
+    await sign();
+    expect(mocks.userGet).toHaveBeenCalledTimes(2);
+    expect(mocks.getWallet).toHaveBeenCalledTimes(2);
+    await session.disconnect();
+  });
+
+  it('does not apply the SDK timeout to the application token callback', async () => {
+    const slowMethod: PrivyLoginMethod = {
+      id: 'slow',
+      getCustomToken: () =>
+        new Promise((resolve) => setTimeout(() => resolve('application-jwt'), 250)),
+    };
+    const session = makeSession([slowMethod]);
+
+    await expect(session.connect('slow', new AbortController().signal)).resolves.toMatchObject({
+      id: walletId,
+    });
+    await session.disconnect();
+  });
+
+  it('stops waiting for the application token callback on cancellation', async () => {
+    const pendingMethod: PrivyLoginMethod = {
+      id: 'pending',
+      getCustomToken: () => new Promise<string>(() => {}),
+    };
+    const session = makeSession([pendingMethod]);
+    const controller = new AbortController();
+    const connecting = session.connect('pending', controller.signal);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    controller.abort();
+    await expect(connecting).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+    const started = Date.now();
+    await session.disconnect();
+    // The callback is not SDK work, so the teardown does not wait out the timeout for it.
+    expect(Date.now() - started).toBeLessThan(90);
+  });
+
   it('does not report transient or configuration refresh errors as session loss, but reports token expiry', async () => {
     configureExistingUser();
     const session = makeSession();

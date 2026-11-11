@@ -211,11 +211,12 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         network: options?.network ?? this.options.network,
       };
 
-      // A new connection replaces the session kept after a timed-out restore.
-      // Left in place it would stay authoritative when a redirect-based login
-      // returns to the page, and the authorization the user just completed
-      // would be discarded.
-      if (this.retainedStoredSession && !expectedState) {
+      // A redirect-based login leaves the page before it can commit. The
+      // session kept after a timed-out restore would stay authoritative when
+      // it returns, and the authorization the user just completed would be
+      // discarded, so it is cleared up front. Every other connection replaces
+      // it on commit, and keeps it for a later retry when it fails.
+      if (this.retainedStoredSession && !expectedState && supportsPendingConnection(adapter)) {
         this.retainedStoredSession = false;
         await this.queueStorage(() => this.storage.clearState());
         if (
@@ -316,6 +317,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       this.stateRevision += 1;
 
       await this.persistState(adapter, generation, this.currentAccount, reconnectOptions, true);
+      this.retainedStoredSession = false;
       if (!this.isActiveSession(adapter, generation) || !this.currentAccount) {
         throw createWalletError.notConnected();
       }
@@ -422,7 +424,8 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         await this.awaitDisconnectOperations();
         return;
       }
-      if (this.pendingReconnects > 0) {
+      if (this.pendingReconnects > 0 || this.retainedStoredSession) {
+        this.retainedStoredSession = false;
         await this.queueStorage(() => this.storage.clearState());
       }
       return;
@@ -510,11 +513,13 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     this.pendingReconnects += 1;
     this.retainedStoredSession = false;
     let attemptedStateSnapshot: string | null = null;
+    let restoringAdapter: WalletAdapter | undefined;
 
     try {
       const stored = await this.storage.loadState();
       if (reconnectGeneration !== this.reconnectGeneration) return null;
       attemptedStateSnapshot = stored ? JSON.stringify(stored) : null;
+      restoringAdapter = stored ? this.adapters.get(stored.walletId) : undefined;
       if (!stored) {
         for (const adapter of this.adapters.values()) {
           let pending = false;
@@ -562,10 +567,15 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       ) {
         throw error;
       }
-      // A timeout says nothing about whether the session is still valid. Keep
-      // it until it expires so a later reconnect can retry, instead of making
-      // a slow network cost the user a new wallet authorization.
-      if (isWalletError(error) && error.code === WalletErrorCode.OPERATION_TIMEOUT) {
+      // For adapters that restore without user interaction, a timeout says
+      // nothing about whether the session is still valid. Keep it until it
+      // expires so a later reconnect can retry, instead of making a slow
+      // network cost the user a new wallet authorization.
+      if (
+        isWalletError(error) &&
+        error.code === WalletErrorCode.OPERATION_TIMEOUT &&
+        restoringAdapter?.keepsSessionOnRestoreTimeout === true
+      ) {
         this.logger.warn('Reconnection timed out; keeping the stored session:', error);
         this.retainedStoredSession = true;
         return null;

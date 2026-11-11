@@ -252,6 +252,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     public errorData: ErrorData | null = null;
     public accountSelectionData: AccountSelectionData | null = null;
     private authPromptData: AuthPromptState | null = null;
+    /** The prompt currently in the overlay; `render()` leaves it in place. */
+    private renderedAuthPrompt: AuthPromptState | null = null;
     private authCaptchaToken: string | null = null;
     private captchaCleanup: (() => void) | null = null;
     private captchaGeneration = 0;
@@ -670,17 +672,24 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       return adapterIds;
     }
 
-    private getLoginAdapters(manager: WalletManager): WalletAdapter[] {
-      const configuredAdapterIds = this.getConfiguredSocialAdapterIds(manager);
+    private getLoginAdapters(
+      manager: WalletManager,
+      configuredAdapterIds = this.getConfiguredSocialAdapterIds(manager)
+    ): WalletAdapter[] {
       return manager.wallets.filter(
         (wallet) =>
           configuredAdapterIds.has(wallet.id) && typeof wallet.getLoginMethods === 'function'
       );
     }
 
-    private getAvailableLoginAdapters(manager: WalletManager): WalletAdapter[] {
+    private getAvailableLoginAdapters(
+      manager: WalletManager,
+      configuredAdapterIds?: Set<string>
+    ): WalletAdapter[] {
       const available = new Set(this.availableWallets);
-      return this.getLoginAdapters(manager).filter((wallet) => available.has(wallet));
+      return this.getLoginAdapters(manager, configuredAdapterIds).filter((wallet) =>
+        available.has(wallet)
+      );
     }
 
     private getAllSocialLogins(): SocialLogin[] {
@@ -703,17 +712,24 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     /** Whether anything can be offered behind the social sign-in entry. */
-    private hasAvailableSocialLogin(manager: WalletManager): boolean {
+    private hasAvailableSocialLogin(
+      manager: WalletManager,
+      configuredAdapterIds?: Set<string>
+    ): boolean {
       return (
-        this.getAvailableLoginAdapters(manager).length > 0 ||
+        this.getAvailableLoginAdapters(manager, configuredAdapterIds).length > 0 ||
         this.getAvailableSocialLogins().length > 0
       );
     }
 
-    private getSingleSocialLoginAdapter(): WalletAdapter | undefined {
+    private getSingleSocialLoginAdapter(
+      configuredAdapterIds?: Set<string>
+    ): WalletAdapter | undefined {
       if (!this.walletManager) return undefined;
       const ids = new Set([
-        ...this.getAvailableLoginAdapters(this.walletManager).map(({ id }) => id),
+        ...this.getAvailableLoginAdapters(this.walletManager, configuredAdapterIds).map(
+          ({ id }) => id
+        ),
         ...this.getAvailableSocialLogins().map(({ adapterId }) => adapterId),
       ]);
       if (ids.size !== 1) return undefined;
@@ -1056,8 +1072,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         wallets.filter((wallet) => wallet !== primaryWallet),
         unavailableWalletIds,
         !!this.walletManager && !this.walletAvailabilityChecked,
-        !!this.walletManager && this.hasAvailableSocialLogin(this.walletManager),
-        this.getSingleSocialLoginAdapter()?.icon
+        !!this.walletManager && this.hasAvailableSocialLogin(this.walletManager, socialAdapterIds),
+        this.getSingleSocialLoginAdapter(socialAdapterIds)?.icon
       );
     }
 
@@ -1351,6 +1367,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         if (this.authPromptData === state) {
           state.busy = false;
           // The submitted CAPTCHA token is single-use; render mounts a fresh challenge.
+          this.renderedAuthPrompt = null;
           this.render();
         }
       }
@@ -2008,8 +2025,17 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     private render() {
       this.clearModalHeightFrame();
-      this.clearCaptchaWidget();
-      this.authQrRenderGeneration += 1;
+      // A render unrelated to the prompt the user is answering (an attribute or
+      // account change) keeps it in place: rebuilding it would discard a solved
+      // CAPTCHA and regenerate its QR code.
+      const authPrompt =
+        this.isOpen && this.viewState === 'auth-prompt' ? this.authPromptData : null;
+      const keepAuthPrompt = authPrompt !== null && authPrompt === this.renderedAuthPrompt;
+      this.renderedAuthPrompt = authPrompt;
+      if (!keepAuthPrompt) {
+        this.clearCaptchaWidget();
+        this.authQrRenderGeneration += 1;
+      }
       // Capture current modal height before re-rendering
       const existingModal = this.overlayPortal?.shadowRoot?.querySelector(
         '.modal'
@@ -2080,7 +2106,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       // Wallet connection overlay — rendered in a portal on document.body to guarantee
       // position: fixed is always relative to the viewport (not a transformed ancestor)
-      if (this.isOpen) {
+      if (keepAuthPrompt) {
+        this.ensureOverlayPortal();
+      } else if (this.isOpen) {
         const overlayRoot = this.ensureOverlayPortal();
         const overlay = document.createElement('div');
         overlay.className = overlayClass;
@@ -2118,8 +2146,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.eventHandler?.attachEventListeners();
       if (this.isOpen) this.ensureDialogFocus('wallet');
       if (this.accountModalOpen) this.ensureDialogFocus('account');
-      if (this.viewState === 'auth-prompt') void this.mountCaptchaWidget();
-      if (this.viewState === 'auth-prompt') void this.mountAuthPromptQRCode();
+      if (authPrompt && !keepAuthPrompt) {
+        void this.mountCaptchaWidget();
+        void this.mountAuthPromptQRCode();
+      }
 
       // Only measure the modal produced by this render; older callbacks can measure
       // a height that a newer transition has temporarily pinned to the previous view.
