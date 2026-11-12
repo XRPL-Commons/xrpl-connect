@@ -4,11 +4,11 @@
       <!-- Preview Panel (Left) -->
       <div class="preview-section">
         <div class="preview-card">
-          <xrpl-wallet-connector
+          <WalletConnector
             id="theme-preview"
-            :style="computedStyles"
+            :css-vars="cssVars"
             primary-wallet="xaman"
-          ></xrpl-wallet-connector>
+          />
 
           <!-- CSS Code Button at Bottom Left -->
           <button class="code-btn-preview" @click="showCodeModal = true" title="View CSS code">
@@ -203,13 +203,11 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted } from 'vue';
-import { useWallet } from '../.vitepress/composables/useWallet';
+import { ref, computed, reactive } from 'vue';
+import { WalletConnector } from '@xrpl-commons/xrpl-connect-vue';
 
 const copied = ref(false);
 const showCodeModal = ref(false);
-
-const { getWalletManager } = useWallet();
 
 const defaultVariables = {
   '--xc-font-family': 'Inter, system-ui, sans-serif',
@@ -241,6 +239,8 @@ const defaultVariables = {
 
 const variables = reactive({ ...defaultVariables });
 
+const cssVars = computed(() => ({ ...variables }));
+
 const colorVariables = computed(() => {
   return Object.fromEntries(
     Object.entries(variables).filter(([key]) =>
@@ -259,12 +259,6 @@ const colorVariables = computed(() => {
       ].includes(key)
     )
   );
-});
-
-const computedStyles = computed(() => {
-  return Object.entries(variables)
-    .map(([key, value]) => `${key}: ${value}`)
-    .join('; ');
 });
 
 const generatedCSS = computed(() => {
@@ -290,20 +284,6 @@ const copyToClipboard = async () => {
   }, 2000);
 };
 
-onMounted(async () => {
-  try {
-    await customElements.whenDefined('xrpl-wallet-connector');
-    const walletManager = await getWalletManager();
-
-    // Set wallet manager on preview connector
-    const connector = document.getElementById('theme-preview');
-    if (connector && walletManager) {
-      connector.setWalletManager(walletManager);
-    }
-  } catch (err) {
-    console.error('Failed to initialize wallet for theme builder:', err);
-  }
-});
 </script>
 
 <style scoped>

@@ -2,11 +2,11 @@
   <div class="container">
     <div class="demo-card">
       <div class="preview-content" :class="`theme-${theme}`">
-        <xrpl-wallet-connector
+        <WalletConnector
           id="demo-connector"
-          :style="computedStyles"
+          :css-vars="themeStyles"
           primary-wallet="xaman"
-        ></xrpl-wallet-connector>
+        />
       </div>
 
       <div class="demo-footer">
@@ -23,11 +23,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { useWallet } from '../.vitepress/composables/useWallet';
+import { computed, ref } from 'vue';
+import { WalletConnector } from '@xrpl-commons/xrpl-connect-vue';
 
 const theme = ref('light');
-const { getWalletManager } = useWallet();
 
 const darkTheme = {
   '--xc-primary-color': '#0EA5E9',
@@ -50,22 +49,6 @@ const lightTheme = {
 };
 
 const themeStyles = computed(() => (theme.value === 'dark' ? darkTheme : lightTheme));
-
-const computedStyles = computed(() => {
-  return Object.entries(themeStyles.value)
-    .map(([key, value]) => `${key}: ${value}`)
-    .join('; ');
-});
-
-onMounted(async () => {
-  try {
-    const walletManager = await getWalletManager();
-    const connector = document.getElementById('demo-connector');
-    if (connector && walletManager) connector.setWalletManager(walletManager);
-  } catch (err) {
-    console.error('Failed to initialize wallet:', err);
-  }
-});
 </script>
 
 <style scoped>
