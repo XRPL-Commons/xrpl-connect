@@ -89,6 +89,16 @@ walletManager.on('disconnect', () => {
   updateUI();
 });
 
+walletManager.on('accountChanged', (account) => {
+  logEvent('Account Changed', account);
+  updateUI();
+});
+
+walletManager.on('networkChanged', (network) => {
+  logEvent('Network Changed', network);
+  updateUI();
+});
+
 walletManager.on('error', (error) => {
   logEvent('Error', error);
   showStatus(error.message, 'error');
@@ -228,16 +238,49 @@ elements.themeButtons.forEach((btn) => {
   });
 });
 
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function setTransactionResultMessage(message, type = 'error') {
+  const result = document.createElement('div');
+  result.className = type;
+  result.textContent = message;
+  elements.txResult.replaceChildren(result);
+}
+
+function setTransactionLoading(message) {
+  const loading = document.createElement('div');
+  loading.className = 'loading';
+  loading.textContent = message;
+  elements.txResult.replaceChildren(loading);
+}
+
+function appendResultValue(container, label, value, code = false) {
+  const paragraph = document.createElement('p');
+  const strong = document.createElement('strong');
+  strong.textContent = `${label}:`;
+  paragraph.append(strong, ' ');
+  if (code) {
+    const codeElement = document.createElement('code');
+    codeElement.textContent = value;
+    paragraph.append(codeElement);
+  } else {
+    paragraph.append(document.createTextNode(value));
+  }
+  container.append(paragraph);
+}
+
 async function runWalletAction(action, loadingMessage) {
   if (actionBusy) return;
 
   actionBusy = true;
-  elements.txResult.innerHTML = `<div class="loading">${loadingMessage}</div>`;
+  setTransactionLoading(loadingMessage);
   updateUI();
   try {
     return await action();
   } catch (error) {
-    elements.txResult.innerHTML = `<div class="error">Failed: ${error.message}</div>`;
+    setTransactionResultMessage(`Failed: ${errorMessage(error)}`);
     logEvent('Wallet Action Failed', error);
     return undefined;
   } finally {
@@ -252,6 +295,9 @@ elements.fundTestnet.addEventListener('click', () =>
   runWalletAction(async () => {
     const account = walletManager.account;
     if (!account) throw new Error('Connect a wallet before requesting testnet funds.');
+    if (account.network.id !== 'testnet') {
+      throw new Error('Testnet funding is only available while connected to the XRPL testnet.');
+    }
     const response = await fetch('https://faucet.altnet.rippletest.net/accounts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -259,13 +305,16 @@ elements.fundTestnet.addEventListener('click', () =>
     });
     if (!response.ok) throw new Error(`Testnet faucet failed (${response.status})`);
     const faucetResult = await response.json();
-    elements.txResult.innerHTML = `
-      <div class="success">
-        <h3>Testnet funds requested</h3>
-        <p><strong>Address:</strong> ${account.address}</p>
-        <p>Wait for the faucet payment to confirm, then sign or submit a transaction.</p>
-      </div>
-    `;
+    const result = document.createElement('div');
+    result.className = 'success';
+    const heading = document.createElement('h3');
+    heading.textContent = 'Testnet funds requested';
+    result.append(heading);
+    appendResultValue(result, 'Address', account.address);
+    const note = document.createElement('p');
+    note.textContent = 'Wait for the faucet payment to confirm, then sign or submit a transaction.';
+    result.append(note);
+    elements.txResult.replaceChildren(result);
     logEvent('Testnet Account Funded', { address: account.address, result: faucetResult });
     return faucetResult;
   }, 'Requesting testnet funds...')
@@ -275,18 +324,29 @@ elements.signTestTransaction.addEventListener('click', () =>
   runWalletAction(async () => {
     const account = walletManager.account;
     if (!account) throw new Error('Connect a wallet before signing a transaction.');
+    if (!walletManager.supports('sign')) {
+      throw new Error('The connected wallet does not support transaction signing.');
+    }
     const signed = await walletManager.sign({
       TransactionType: 'AccountSet',
       Account: account.address,
     });
-    elements.txResult.innerHTML = `
-      <div class="success">
-        <h3>Transaction Signed</h3>
-        <p><strong>Hash:</strong> ${signed.hash || 'Available in the signed blob'}</p>
-        <p><strong>Blob:</strong> <code>${signed.tx_blob?.substring(0, 50) || 'N/A'}...</code></p>
-        <p>This action only signs the transaction; it does not submit it.</p>
-      </div>
-    `;
+    const result = document.createElement('div');
+    result.className = 'success';
+    const heading = document.createElement('h3');
+    heading.textContent = 'Transaction Signed';
+    result.append(heading);
+    appendResultValue(result, 'Hash', signed.hash || 'Available in the signed blob');
+    appendResultValue(
+      result,
+      'Blob',
+      `${signed.tx_blob?.substring(0, 50) || 'N/A'}...`,
+      true
+    );
+    const note = document.createElement('p');
+    note.textContent = 'This action only signs the transaction; it does not submit it.';
+    result.append(note);
+    elements.txResult.replaceChildren(result);
     logEvent('Transaction Signed', signed);
     return signed;
   }, 'Signing transaction (nothing will be submitted)...')
@@ -302,13 +362,17 @@ elements.txForm.addEventListener('submit', async (e) => {
 
   actionBusy = true;
   try {
-    elements.txResult.innerHTML =
-      '<div class="loading">Signing and submitting transaction...</div>';
+    const account = walletManager.account;
+    if (!account) throw new Error('Connect a wallet before submitting a transaction.');
+    if (!walletManager.supports('signAndSubmit')) {
+      throw new Error('The connected wallet does not support transaction submission.');
+    }
+    setTransactionLoading('Signing and submitting transaction...');
     updateUI();
 
     const transaction = {
       TransactionType: 'Payment',
-      Account: walletManager.account.address,
+      Account: account.address,
       Destination: destination,
       Amount: amount,
     };
@@ -328,7 +392,7 @@ elements.txForm.addEventListener('submit', async (e) => {
 
     logEvent('Transaction Submitted', result);
   } catch (error) {
-    elements.txResult.innerHTML = `<div class="error">Failed: ${error.message}</div>`;
+    setTransactionResultMessage(`Failed: ${errorMessage(error)}`);
     logEvent('Transaction Failed', error);
   } finally {
     actionBusy = false;
@@ -378,11 +442,14 @@ function updateUI() {
   const isConnected = walletManager.connected;
 
   elements.cancelReconnect.hidden = !restoring || !completingPrivyLogin;
-  elements.cancelReconnect.disabled = actionBusy;
+  elements.cancelReconnect.disabled = actionBusy || reconnectCancelled;
 
   if (isConnected) {
     const account = walletManager.account;
     const wallet = walletManager.wallet;
+    const canSign = walletManager.supports('sign');
+    const canSignAndSubmit = walletManager.supports('signAndSubmit');
+    const isTestnet = account.network.id === 'testnet';
 
     // Hide connect section
     elements.connectSection.style.display = 'none';
@@ -390,9 +457,10 @@ function updateUI() {
     // Show account section
     elements.accountSection.style.display = 'block';
     elements.transactionSection.style.display = 'block';
-    elements.fundTestnet.disabled = restoring || actionBusy;
-    elements.signTestTransaction.disabled = restoring || actionBusy;
-    elements.txForm.querySelector('button[type="submit"]').disabled = restoring || actionBusy;
+    elements.fundTestnet.disabled = restoring || actionBusy || !isTestnet;
+    elements.signTestTransaction.disabled = restoring || actionBusy || !canSign;
+    elements.txForm.querySelector('button[type="submit"]').disabled =
+      restoring || actionBusy || !canSignAndSubmit;
     const canSignMessage = walletManager.supports('signMessage');
     elements.messageSection.style.display = canSignMessage ? 'block' : 'none';
     if (!canSignMessage) elements.msgResult.innerHTML = '';
@@ -423,10 +491,13 @@ function updateUI() {
 let statusTimer;
 function showStatus(message, type = 'info', persist = false) {
   if (statusTimer) clearTimeout(statusTimer);
-  elements.status.innerHTML = `<div class="status-${type}">${message}</div>`;
+  const status = document.createElement('div');
+  status.className = `status-${type}`;
+  status.textContent = message;
+  elements.status.replaceChildren(status);
   if (!persist) {
     statusTimer = setTimeout(() => {
-      elements.status.innerHTML = '';
+      elements.status.replaceChildren();
       statusTimer = undefined;
     }, 5000);
   }
@@ -437,11 +508,16 @@ function logEvent(event, data) {
   const timestamp = new Date().toLocaleTimeString();
   const eventDiv = document.createElement('div');
   eventDiv.className = 'event-item';
-  eventDiv.innerHTML = `
-    <span class="event-time">${timestamp}</span>
-    <span class="event-name">${event}</span>
-    <span class="event-data">${data ? JSON.stringify(data, null, 2) : ''}</span>
-  `;
+  const eventTime = document.createElement('span');
+  eventTime.className = 'event-time';
+  eventTime.textContent = timestamp;
+  const eventName = document.createElement('span');
+  eventName.className = 'event-name';
+  eventName.textContent = event;
+  const eventData = document.createElement('span');
+  eventData.className = 'event-data';
+  eventData.textContent = data ? JSON.stringify(data, null, 2) : '';
+  eventDiv.append(eventTime, eventName, eventData);
   elements.eventsLog.prepend(eventDiv);
 }
 

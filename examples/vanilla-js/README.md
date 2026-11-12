@@ -61,17 +61,21 @@ The wallet picker discovers enabled methods from the dashboard; no provider list
 configuration is duplicated in this example. The app ID and client ID are public values. Never put
 a Privy app secret or another backend secret in frontend configuration.
 
+For a production deployment, allow the deployed origin and its `/wallet/privy` callback in the
+Privy dashboard, and configure the host to serve the single-page app entry point for that callback
+path (SPA history fallback). The callback must remain on the same origin as the running example.
+
 ### 3. Install Dependencies
 
 From the monorepo root:
 
 ```bash
 pnpm install
-pnpm build
+pnpm --filter vanilla-js-example... build
 ```
 
-`pnpm build` is required before running the example because its XRPL Connect and adapter packages
-are workspace dependencies.
+The trailing `...` builds this example and its workspace dependencies before running it. A full
+`pnpm build` from the repository root is equivalent when you are already building every package.
 
 The monorepo uses workspace links. When copying this example into a standalone project, install the
 published stable package and its XRPL peer explicitly:
