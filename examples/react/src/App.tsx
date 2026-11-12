@@ -1,4 +1,5 @@
 import { useDemo } from './context/DemoContext';
+import { useWallet } from '@xrpl-commons/xrpl-connect-react';
 import { WalletConnector } from './components/WalletConnector';
 import { ThemeSelector } from './components/ThemeSelector';
 import { AccountInfo } from './components/AccountInfo';
@@ -9,6 +10,7 @@ import './App.css';
 
 function App() {
   const { statusMessage } = useDemo();
+  const { connecting, error } = useWallet();
 
   return (
     <div id="app">
@@ -29,7 +31,19 @@ function App() {
             wallet
           </p>
           {statusMessage && (
-            <div className={`status-${statusMessage.type}`}>{statusMessage.message}</div>
+            <div className={`status-${statusMessage.type}`} role="status">
+              {statusMessage.message}
+            </div>
+          )}
+          {connecting && !statusMessage && (
+            <div className="status-info" role="status" aria-live="polite">
+              Restoring a wallet session or finishing sign-in…
+            </div>
+          )}
+          {error && !statusMessage && (
+            <div className="status-error" role="alert">
+              {error.message}
+            </div>
           )}
         </section>
 

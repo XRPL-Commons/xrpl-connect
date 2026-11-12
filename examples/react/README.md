@@ -1,12 +1,15 @@
 # XRPL Connect - React Example
 
 This demo application uses the official XRPL Connect React provider, hooks, and modal component.
+It can also add the optional Privy adapter for social login and an embedded XRPL testnet wallet.
 
 ## Features
 
-- Connect to Xaman, WalletConnect, Crossmark, GemWallet, Xyra, Otsu, and MetaMask Snap
+- Connect to Xaman, WalletConnect, Crossmark, GemWallet, Xyra, Otsu, MetaMask Snap, and (when
+  configured) Privy social login
+- Create or restore a user-owned embedded XRPL wallet through Privy
 - Typed React provider, hooks, and wallet modal integration
-- Sign XRPL transactions
+- Manually request testnet funds, sign XRPL transactions, or sign and submit them
 - Sign arbitrary messages when the connected wallet supports it
 - Dynamic theme customization
 - Real-time event logging
@@ -30,6 +33,17 @@ Before running the example, you need to obtain API keys:
 2. Create a new project
 3. Copy your Project ID
 
+#### Privy app ID (optional)
+
+1. Create a browser app in the [Privy dashboard](https://dashboard.privy.io/)
+2. Enable the login methods you want to show
+3. Add `http://localhost:5173` as an allowed origin and
+   `http://localhost:5173/wallet/privy` as an allowed callback URL
+4. Copy the public app ID. A client ID is optional when the app uses Privy's default client.
+
+The adapter reads the enabled methods from the dashboard when the social-login chooser opens, so
+this example does not maintain a provider list or pass `socialLogins` to the modal.
+
 ### 2. Configure API Keys
 
 Open `src/main.tsx` and add your API keys:
@@ -40,19 +54,38 @@ const XAMAN_API_KEY = 'YOUR_XAMAN_API_KEY'; // Get from https://apps.xumm.dev/
 const WALLETCONNECT_PROJECT_ID = 'YOUR_WALLETCONNECT_PROJECT_ID'; // Get from https://cloud.walletconnect.com
 ```
 
+To enable Privy, copy the example environment file and set the public values:
+
+```bash
+# Run this from examples/react.
+cp .env.example .env.local
+```
+
+```dotenv
+VITE_PRIVY_APP_ID=your_privy_app_id
+# Optional:
+VITE_PRIVY_CLIENT_ID=your_privy_client_id
+# Optional; defaults to http://localhost:5173/wallet/privy.
+VITE_PRIVY_REDIRECT_URI=http://localhost:5173/wallet/privy
+```
+
+Never put a Privy app secret in frontend configuration. Leave `VITE_PRIVY_APP_ID` empty to run the
+existing external-wallet demo without Privy.
+
 ### 3. Install Dependencies
 
 From the monorepo root:
 
 ```bash
 pnpm install
+pnpm build
 ```
 
 The monorepo uses workspace links. When copying this example into a standalone project, install
 the published stable packages explicitly:
 
 ```bash
-pnpm add @xrpl-commons/xrpl-connect-react xrpl-connect xrpl@^4 react react-dom
+pnpm add @xrpl-commons/xrpl-connect-react @xrpl-commons/xrpl-connect-privy xrpl-connect xrpl@^4 react react-dom
 ```
 
 ### 4. Run Development Server
@@ -69,12 +102,34 @@ Or from the monorepo root:
 pnpm --filter react-example dev
 ```
 
-The application will be available at [http://localhost:5173](http://localhost:5173)
+The application will be available at [http://localhost:5173](http://localhost:5173). The same app is
+served at [http://localhost:5173/wallet/privy](http://localhost:5173/wallet/privy) so an OAuth return
+can finish in the React provider. Keep Vite's `strictPort` setting enabled: changing the port changes
+the OAuth origin and callback URL.
+
+### 5. Try the Privy flow
+
+When `VITE_PRIVY_APP_ID` is configured, open the wallet modal and choose **Sign in with socials**.
+Select an enabled dashboard method and complete authentication. The callback route restores the
+same manager session and waits for the embedded XRPL wallet to be ready before showing the account.
+
+After connecting:
+
+1. Click **Fund Testnet Wallet** to request funds manually from the XRPL testnet faucet.
+2. Enter a destination and amount in drops.
+3. Click **Sign Transaction** to inspect a signed transaction without submitting it, or click
+   **Sign & Submit Transaction** to submit it and wait for validation.
+
+Nothing funds an account or signs/submits a transaction automatically. Privy supports XRPL
+transaction signing, but not arbitrary message signing; the message form reports that capability
+instead of offering an action. Reload the page to test session restoration, use the connector button
+to log out, and close a login flow to verify cancellation and retry. Existing external-wallet
+adapters remain available whether or not Privy is configured.
 
 ## React Integration
 
 This example uses the official React provider, hooks, and modal component. No custom JSX
-declarations, element refs, or manual event listeners are required.
+declarations or manual manager wiring are required.
 
 ### 1. Configure the provider once
 
@@ -145,9 +200,9 @@ transaction, message-signing, and error-handling examples.
 
 1. Enter a destination XRPL address (e.g., `rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT`)
 2. Enter an amount in drops (1 XRP = 1,000,000 drops)
-3. Click "Sign & Submit Transaction"
+3. Click "Sign Transaction" to create a signed blob without submitting, or click "Sign & Submit Transaction"
 4. Approve the transaction in your wallet
-5. The signed transaction hash will be displayed
+5. The signed or submitted transaction hash will be displayed
 
 ### Signing a Message
 
@@ -219,6 +274,7 @@ declaration is required.
 - **WalletConnect Adapter** - WalletConnect protocol
 - **Crossmark Adapter** - Crossmark browser extension
 - **GemWallet Adapter** - GemWallet browser extension
+- **Privy Adapter** - Optional social login and embedded XRPL wallet
 - **xrpl.js** - XRPL JavaScript library
 
 ## Learn More

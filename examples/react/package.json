@@ -9,6 +9,7 @@
     "preview": "vp preview"
   },
   "dependencies": {
+    "@xrpl-commons/xrpl-connect-privy": "workspace:*",
     "@xrpl-commons/xrpl-connect-react": "workspace:*",
     "xrpl-connect": "workspace:*",
     "react": "^18.3.1",
