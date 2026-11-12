@@ -85,7 +85,9 @@ function App() {
         <p>Built with XRPL Connect - A framework-agnostic wallet toolkit</p>
       </footer>
 
-      <WalletConnector restoring={restoring} />
+      <div hidden={restoring}>
+        <WalletConnector />
+      </div>
     </div>
   );
 }
