@@ -124,6 +124,60 @@ describe('XrplConnectProvider + hooks', () => {
     await waitFor(() => expect(storage.get).toHaveBeenCalledTimes(1));
   });
 
+  it('reports restoration from the first render until the returned wallet is usable', async () => {
+    const storedState = deferred<string | null>();
+    const pendingWallet = deferred<AccountInfo>();
+    const adapter = {
+      ...makeAdapter(),
+      hasPendingConnection: vi.fn(() => true),
+      connect: vi.fn(() => pendingWallet.promise),
+    };
+    const storage: StorageAdapter = {
+      get: vi.fn(() => storedState.promise),
+      set: vi.fn(async () => {}),
+      remove: vi.fn(async () => {}),
+      clear: vi.fn(async () => {}),
+    };
+    const renders: Array<{ connecting: boolean; connected: boolean; account: AccountInfo | null }> =
+      [];
+    const { result, unmount } = renderHook(
+      () => {
+        const wallet = useWallet();
+        renders.push({
+          connecting: wallet.connecting,
+          connected: wallet.connected,
+          account: wallet.account,
+        });
+        return wallet;
+      },
+      {
+        wrapper: ({ children }) => (
+          <StrictMode>
+            <XrplConnectProvider config={{ adapters: [adapter], autoConnect: true, storage }}>
+              {children}
+            </XrplConnectProvider>
+          </StrictMode>
+        ),
+      }
+    );
+
+    await waitFor(() => expect(storage.get).toHaveBeenCalledOnce());
+    expect(renders.every((state) => state.connecting && !state.connected && !state.account)).toBe(
+      true
+    );
+
+    await act(async () => storedState.resolve(null));
+    await waitFor(() => expect(adapter.connect).toHaveBeenCalledOnce());
+    expect(result.current.connecting).toBe(true);
+    expect(result.current.account).toBeNull();
+
+    await act(async () => pendingWallet.resolve(ACCOUNT));
+    await waitFor(() => expect(result.current.connecting).toBe(false));
+    expect(result.current.connected).toBe(true);
+    expect(result.current.account).toEqual(ACCOUNT);
+    unmount();
+  });
+
   it.each([false, true])(
     'recovers returned authorization only with autoConnect=%s or an explicit call',
     async (autoConnect) => {

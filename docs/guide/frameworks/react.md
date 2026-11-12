@@ -94,6 +94,12 @@ For Next.js, create these adapters inside the client-only boundary described bel
 
 `useWallet()` provides the stable manager, reactive state, and direct connect/disconnect actions.
 
+With `autoConnect: true`, `connecting` is true from the first render until initial
+restoration settles. Show progress during that interval; `connected: false` alone
+does not mean the user needs to start a new login. Keep the connector mounted while
+restoring, since unmounting it cancels its pending work. `useWalletModal().ready`
+means the connector is registered, not that the wallet is connected.
+
 ```tsx
 import { useWallet, useWalletModal } from '@xrpl-commons/xrpl-connect-react';
 
@@ -104,7 +110,7 @@ function Header() {
   if (!connected || !account) {
     return (
       <button onClick={() => void open()} disabled={!ready || connecting}>
-        Connect wallet
+        {connecting ? 'Connecting wallet…' : 'Connect wallet'}
       </button>
     );
   }

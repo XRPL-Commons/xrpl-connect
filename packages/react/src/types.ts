@@ -31,7 +31,7 @@ export interface XrplConnectContextValue {
   connected: boolean;
   account: AccountInfo | null;
   network: NetworkInfo | null;
-  /** True while a `connect()` call (or the modal flow) is in progress. */
+  /** True while restoring a session, connecting, or completing a modal flow. */
   connecting: boolean;
   /** True while at least one `<WalletConnector>` is registered. */
   ready: boolean;
