@@ -2,11 +2,7 @@
   <div class="container">
     <div class="demo-card">
       <div class="preview-content" :class="`theme-${theme}`">
-        <WalletConnector
-          id="demo-connector"
-          :css-vars="themeStyles"
-          primary-wallet="xaman"
-        />
+        <WalletConnector id="demo-connector" :css-vars="themeStyles" primary-wallet="xaman" />
       </div>
 
       <div class="demo-footer">

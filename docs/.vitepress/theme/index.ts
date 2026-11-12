@@ -45,10 +45,7 @@ export default {
         } = await import('xrpl-connect');
 
         const adapters: Parameters<typeof createXrplConnect>[0]['adapters'] = [];
-        const addAdapter = (
-          name: string,
-          create: () => (typeof adapters)[number]
-        ) => {
+        const addAdapter = (name: string, create: () => (typeof adapters)[number]) => {
           try {
             adapters.push(create());
           } catch (err) {
@@ -66,8 +63,9 @@ export default {
 
         const walletConnectProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
         if (walletConnectProjectId) {
-          addAdapter('WalletConnectAdapter', () =>
-            new WalletConnectAdapter({ projectId: walletConnectProjectId })
+          addAdapter(
+            'WalletConnectAdapter',
+            () => new WalletConnectAdapter({ projectId: walletConnectProjectId })
           );
         }
 
@@ -88,7 +86,6 @@ export default {
           })
         );
 
-        // Importing xrpl-connect also registers the wallet connector custom element.
       } catch (err) {
         console.error('Failed to initialize XRPL Connect for the docs demo:', err);
         const message = err instanceof Error ? err.message : String(err);

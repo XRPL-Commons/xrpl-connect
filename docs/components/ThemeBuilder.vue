@@ -4,11 +4,7 @@
       <!-- Preview Panel (Left) -->
       <div class="preview-section">
         <div class="preview-card">
-          <WalletConnector
-            id="theme-preview"
-            :css-vars="cssVars"
-            primary-wallet="xaman"
-          />
+          <WalletConnector id="theme-preview" :css-vars="cssVars" primary-wallet="xaman" />
 
           <!-- CSS Code Button at Bottom Left -->
           <button class="code-btn-preview" @click="showCodeModal = true" title="View CSS code">
@@ -283,7 +279,6 @@ const copyToClipboard = async () => {
     copied.value = false;
   }, 2000);
 };
-
 </script>
 
 <style scoped>

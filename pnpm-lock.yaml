@@ -66,6 +66,9 @@ importers:
 
   docs:
     dependencies:
+      '@xrpl-commons/xrpl-connect-vue':
+        specifier: workspace:*
+        version: link:../packages/vue
       '@xrpl-connect/ui':
         specifier: workspace:*
         version: link:../packages/ui
@@ -76,6 +79,9 @@ importers:
         specifier: workspace:*
         version: link:../packages/xrpl-connect
     devDependencies:
+      buffer:
+        specifier: ^6.0.3
+        version: 6.0.3
       vitepress:
         specifier: ^2.0.0-alpha.18
         version: 2.0.0-alpha.18(@types/node@20.19.21)(esbuild@0.28.1)(idb-keyval@6.2.2)(postcss@8.5.19)(qrcode@1.5.3)(typescript@5.9.3)
@@ -107,9 +113,15 @@ importers:
 
   examples/react:
     dependencies:
+      '@xrpl-commons/xrpl-connect-privy':
+        specifier: workspace:*
+        version: link:../../packages/privy
       '@xrpl-commons/xrpl-connect-react':
         specifier: workspace:*
         version: link:../../packages/react
+      buffer:
+        specifier: ^6.0.3
+        version: 6.0.3
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -141,6 +153,9 @@ importers:
 
   examples/vanilla-js:
     dependencies:
+      '@xrpl-commons/xrpl-connect-privy':
+        specifier: workspace:*
+        version: link:../../packages/privy
       '@xrpl-connect/adapter-crossmark':
         specifier: workspace:*
         version: link:../../packages/adapters/crossmark
@@ -177,6 +192,9 @@ importers:
       xrpl:
         specifier: ^4.0.0
         version: 4.4.2(bufferutil@4.0.9)(utf-8-validate@5.0.10)
+      xrpl-connect:
+        specifier: workspace:*
+        version: link:../../packages/xrpl-connect
     devDependencies:
       buffer:
         specifier: ^6.0.3
@@ -901,15 +919,18 @@ packages:
 
   '@ledgerhq/errors@6.26.0':
     resolution: {integrity: sha512-4OlisaDBafkn7KN5emue08lCGMVREX6T+nxj47C7W30EBA/leLAEDaVvUw5/gFOWrv8Q2A9Scb8aMM3uokyt0w==}
+    deprecated: This package is no longer maintained and will not receive updates. Published versions remain available.
 
   '@ledgerhq/hw-app-xrp@6.32.6':
     resolution: {integrity: sha512-hh3d08JU6BfJCyeoznY3gj7yQTyJD0HhcGsqXMIKZMSpay5PBydeIxayZVYP0PHWSZXRyVxErNRpDd85/gwdfg==}
 
   '@ledgerhq/hw-transport-webhid@6.30.8':
     resolution: {integrity: sha512-2Hc15GjC7BFrpMVJYJ7N2p70A6OzIdcMklwUEYpOcIVYbEWWj84+M5E5pc83ZIBc5j3C8rdtjncPCm2ExGx2LQ==}
+    deprecated: This package is no longer maintained. Use @ledgerhq/device-transport-kit-web-hid instead.
 
   '@ledgerhq/hw-transport-webusb@6.29.12':
     resolution: {integrity: sha512-mMGKPYAUz9MNcURe+hSTSHwqPwCli6D0lCl15Z4hDOpcqhZ26vwoeWVKeQp53NNCetHOl0lauPkN43Gt9pIggg==}
+    deprecated: This package is no longer maintained. Use @ledgerhq/device-transport-kit-web-hid instead.
 
   '@ledgerhq/hw-transport@6.31.12':
     resolution: {integrity: sha512-FO5LRIXYC8ELtaohlO8qK0b3TfHUNBZ3+CXKPHiHj2jJwrxPf4s5kcgBYrmzuf1C/1vfrMOjzyty6OgrMIbU6Q==}

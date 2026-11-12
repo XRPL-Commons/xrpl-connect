@@ -78,7 +78,7 @@ From the monorepo root:
 
 ```bash
 pnpm install
-pnpm build
+pnpm --filter react-example... build
 ```
 
 The monorepo uses workspace links. When copying this example into a standalone project, install
@@ -106,6 +106,10 @@ The application will be available at [http://localhost:5173](http://localhost:51
 served at [http://localhost:5173/wallet/privy](http://localhost:5173/wallet/privy) so an OAuth return
 can finish in the React provider. Keep Vite's `strictPort` setting enabled: changing the port changes
 the OAuth origin and callback URL.
+
+For deployment, configure an SPA history fallback so `/wallet/privy` serves this
+application, and allow the deployed origin and callback in Privy. Restart Vite
+after changing `.env.local`.
 
 ### 5. Try the Privy flow
 

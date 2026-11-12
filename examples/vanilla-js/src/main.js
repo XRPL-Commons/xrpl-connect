@@ -1,3 +1,4 @@
+import './polyfills.js';
 import './style.css';
 import { WalletManager } from '@xrpl-connect/core';
 import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
@@ -337,12 +338,7 @@ elements.signTestTransaction.addEventListener('click', () =>
     heading.textContent = 'Transaction Signed';
     result.append(heading);
     appendResultValue(result, 'Hash', signed.hash || 'Available in the signed blob');
-    appendResultValue(
-      result,
-      'Blob',
-      `${signed.tx_blob?.substring(0, 50) || 'N/A'}...`,
-      true
-    );
+    appendResultValue(result, 'Blob', `${signed.tx_blob?.substring(0, 50) || 'N/A'}...`, true);
     const note = document.createElement('p');
     note.textContent = 'This action only signs the transaction; it does not submit it.';
     result.append(note);

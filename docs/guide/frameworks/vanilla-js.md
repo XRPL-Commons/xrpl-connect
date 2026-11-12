@@ -95,6 +95,24 @@ Here's a complete example with a single HTML file:
 </html>
 ```
 
+## Privy social login
+
+Add the optional `@xrpl-commons/xrpl-connect-privy` package and register a
+`PrivyAdapter` with your public app ID and a same-application callback URL.
+The [social login guide](/guide/social-login#configure-your-application) shows the
+configuration, dashboard setup, and callback handling. The web component discovers
+your enabled login methods from Privy without a `socialLogins` property or React.
+If you use the `wallets` attribute, include `privy` in the allowed adapters.
+
+Set `autoConnect: false`, attach the connector and event listeners, then call
+`await walletManager.reconnect()` once. This lets the UI observe restoration and
+OAuth completion, including wallet preparation after the redirect.
+
+The [runnable vanilla demo](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/examples/vanilla-js)
+includes optional environment configuration, login progress and cancellation,
+testnet funding, and transaction signing. Follow the
+[demo setup instructions](/guide/social-login#run-the-demos) to run it on port 5170.
+
 ## Handling Wallet Events
 
 Listen to wallet events to keep your UI in sync:

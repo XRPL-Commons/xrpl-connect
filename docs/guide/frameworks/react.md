@@ -56,6 +56,40 @@ export function App() {
 }
 ```
 
+## Privy social login
+
+Install `@xrpl-commons/xrpl-connect-privy` and add its `PrivyAdapter` to the stable
+configuration above. For Vite, the optional configuration used by the
+[React demo](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/examples/react) is:
+
+```tsx
+import { PrivyAdapter } from '@xrpl-commons/xrpl-connect-privy';
+
+const privyAppId = import.meta.env.VITE_PRIVY_APP_ID?.trim();
+const privyAdapters = privyAppId
+  ? [
+      new PrivyAdapter({
+        appId: privyAppId,
+        clientId: import.meta.env.VITE_PRIVY_CLIENT_ID?.trim() || undefined,
+        redirectUri:
+          import.meta.env.VITE_PRIVY_REDIRECT_URI?.trim() ||
+          `${window.location.origin}/wallet/privy`,
+      }),
+    ]
+  : [];
+```
+
+Spread `...privyAdapters` into `config.adapters`. If the connector has a `wallets`
+filter, include `'privy'` in it or remove the filter to show every configured
+adapter. The chooser discovers the enabled methods from Privy; no `socialLogins`
+prop is required. Keep `autoConnect: true`: the provider attaches its listeners
+before restoring a session or completing an OAuth callback, including under
+React Strict Mode. Do not add a second reconnect effect.
+
+Allow the origin and callback in Privy and serve the same application at the
+callback path. See [local demo setup and manual testing](/guide/social-login#run-the-demos).
+For Next.js, create these adapters inside the client-only boundary described below.
+
 ## Wallet state
 
 `useWallet()` provides the stable manager, reactive state, and direct connect/disconnect actions.

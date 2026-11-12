@@ -9,8 +9,17 @@ import { EventLog } from './components/EventLog';
 import './App.css';
 
 function App() {
-  const { statusMessage } = useDemo();
-  const { connecting, error } = useWallet();
+  const { statusMessage, showStatus } = useDemo();
+  const { connecting, error, disconnect, account } = useWallet();
+
+  const cancelConnection = async () => {
+    try {
+      await disconnect();
+      showStatus('Connection cancelled. Choose a wallet to retry.', 'info');
+    } catch (error) {
+      showStatus(error instanceof Error ? error.message : String(error), 'error');
+    }
+  };
 
   return (
     <div id="app">
@@ -45,10 +54,17 @@ function App() {
               {error.message}
             </div>
           )}
+          {connecting && (
+            <button type="button" className="btn-secondary" onClick={() => void cancelConnection()}>
+              Cancel connection
+            </button>
+          )}
         </section>
 
         <AccountInfo />
-        <TransactionForm />
+        <TransactionForm
+          key={account ? `${account.address}:${account.network.id}` : 'disconnected'}
+        />
         <MessageSignForm />
         <EventLog />
       </main>

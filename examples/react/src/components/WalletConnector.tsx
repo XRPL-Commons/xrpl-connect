@@ -17,8 +17,17 @@ export function WalletConnector() {
       showStatus('Connection cancelled. Choose a wallet to retry.', 'info');
       addEvent('Connection Cancelled', { source: 'wallet connector' });
     };
+    const onClosed = (event: Event) => {
+      if ((event as CustomEvent<{ connectionAttemptId?: number }>).detail?.connectionAttemptId) {
+        onCancelled();
+      }
+    };
     connector.addEventListener('cancelled', onCancelled);
-    return () => connector.removeEventListener('cancelled', onCancelled);
+    connector.addEventListener('close', onClosed);
+    return () => {
+      connector.removeEventListener('cancelled', onCancelled);
+      connector.removeEventListener('close', onClosed);
+    };
   }, [addEvent, showStatus]);
 
   return (

@@ -27,12 +27,4 @@ export default defineConfig({
     // Force Vite to not pre-bundle workspace packages so changes are reflected immediately
     exclude: ['@xrpl-connect/adapter-ledger', '@xrpl-connect/core', '@xrpl-connect/ui'],
   },
-  build: {
-    rollupOptions: {
-      external: [
-        // Don't try to bundle polyfill shims in production build
-        /^vite-plugin-node-polyfills\//,
-      ],
-    },
-  },
 });

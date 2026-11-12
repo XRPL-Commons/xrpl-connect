@@ -1,3 +1,4 @@
+import './polyfills';
 import { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
 import {
@@ -28,8 +29,7 @@ const privy = PRIVY_APP_ID
       appId: PRIVY_APP_ID,
       clientId: import.meta.env.VITE_PRIVY_CLIENT_ID?.trim() || undefined,
       redirectUri:
-        import.meta.env.VITE_PRIVY_REDIRECT_URI?.trim() ||
-        `${window.location.origin}/wallet/privy`,
+        import.meta.env.VITE_PRIVY_REDIRECT_URI?.trim() || `${window.location.origin}/wallet/privy`,
     })
   : undefined;
 

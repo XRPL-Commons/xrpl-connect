@@ -247,5 +247,11 @@ Keep `config` and its adapter instances stable across renders.
 React is used only by the consuming React application; it is not a dependency of
 this adapter or XRPL Connect's web component.
 
-The [vanilla example](../../examples/privy-vanilla) includes OAuth callback routing,
-testnet funding, signing, submission, restoration, and logout controls.
+The main [vanilla JavaScript demo](../../examples/vanilla-js) and
+[React demo](../../examples/react) include optional Privy configuration alongside
+external wallets, OAuth callback routing, testnet funding, signing, submission,
+restoration, and logout controls. Their READMEs document the public environment
+variables and allowed localhost callback URLs.
+
+The [smaller vanilla integration example](../../examples/privy-vanilla) is also
+available for applications focused on the Privy lifecycle.

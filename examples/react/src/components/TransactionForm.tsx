@@ -36,8 +36,7 @@ export function TransactionForm() {
     };
   };
 
-  const errorMessage = (error: unknown) =>
-    error instanceof Error ? error.message : String(error);
+  const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
   const handleFund = async () => {
     if (!account || busy || account.network.id !== 'testnet') return;
@@ -54,11 +53,11 @@ export function TransactionForm() {
 
       setResult({
         kind: 'success',
-        title: 'Testnet Wallet Funded!',
+        title: 'Testnet Funds Requested',
         details: [{ label: 'Address', value: account.address }],
         info: 'Wait for the faucet payment to validate before signing a transaction.',
       });
-      addEvent('Testnet Wallet Funded', { address: account.address, network: 'testnet' });
+      addEvent('Testnet Funds Requested', { address: account.address, network: 'testnet' });
     } catch (error) {
       const message = errorMessage(error);
       setResult({ kind: 'error', message });
@@ -190,7 +189,9 @@ export function TransactionForm() {
           </button>
         </div>
       </form>
-      {!canSign && <p className="section-description">This wallet cannot sign XRPL transactions.</p>}
+      {!canSign && (
+        <p className="section-description">This wallet cannot sign XRPL transactions.</p>
+      )}
       {!canSubmit && (
         <p className="section-description">This wallet cannot sign and submit XRPL transactions.</p>
       )}
