@@ -45,6 +45,7 @@
             wallet
           </p>
           <div id="status" class="status"></div>
+          <button id="cancel-reconnect" class="btn-secondary" hidden>Cancel Privy sign-in</button>
         </section>
 
         <!-- Account Info Section -->
@@ -70,6 +71,18 @@
         <!-- Transaction Section -->
         <section id="transaction-section" style="display: none">
           <h2>Send Transaction</h2>
+          <p class="section-description">
+            New embedded wallets start unfunded on the XRPL testnet. Request test XRP first, then
+            sign a transaction without submitting it or send a payment manually.
+          </p>
+          <div class="action-row">
+            <button type="button" id="fund-testnet" class="btn-secondary">
+              Fund Testnet Account
+            </button>
+            <button type="button" id="sign-test-transaction" class="btn-secondary">
+              Sign AccountSet Only
+            </button>
+          </div>
           <form id="tx-form" class="tx-form">
             <div class="form-group">
               <label for="destination">Destination Address</label>

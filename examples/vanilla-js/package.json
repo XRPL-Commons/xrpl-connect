@@ -9,6 +9,7 @@
     "preview": "vp preview"
   },
   "dependencies": {
+    "@xrpl-commons/xrpl-connect-privy": "workspace:*",
     "@xrpl-connect/adapter-crossmark": "workspace:*",
     "@xrpl-connect/adapter-gemwallet": "workspace:*",
     "@xrpl-connect/adapter-ledger": "workspace:*",
@@ -20,6 +21,7 @@
     "@xrpl-connect/adapter-otsu": "workspace:*",
     "@xrpl-connect/core": "workspace:*",
     "@xrpl-connect/ui": "workspace:*",
+    "xrpl-connect": "workspace:*",
     "xrpl": "^4.0.0"
   },
   "devDependencies": {

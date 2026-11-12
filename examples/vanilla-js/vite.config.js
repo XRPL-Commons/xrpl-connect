@@ -15,7 +15,9 @@ export default defineConfig({
     }),
   ],
   server: {
+    host: '127.0.0.1',
     port: 5170,
+    strictPort: true,
     fs: {
       // Allow serving files from workspace packages
       allow: ['..', '../..'],
