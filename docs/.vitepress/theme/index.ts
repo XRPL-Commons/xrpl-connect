@@ -3,6 +3,7 @@ import type { Theme } from 'vitepress';
 import DefaultTheme from 'vitepress/theme';
 import { createXrplConnect } from '@xrpl-commons/xrpl-connect-vue';
 import { Buffer as BufferPolyfill } from 'buffer';
+import CopyOrDownloadAsMarkdownButtons from 'vitepress-plugin-llms/vitepress-components/CopyOrDownloadAsMarkdownButtons.vue';
 import DownloadLLMsFullDoc from './DownloadLLMsFullDoc.vue';
 import './custom.css';
 
@@ -12,18 +13,10 @@ export default {
     return h(DefaultTheme.Layout, null, {});
   },
   async enhanceApp({ app }) {
-    if (typeof window !== 'undefined') {
-      // Ledger's browser transport references Buffer while the umbrella SDK is
-      // evaluated, even when Ledger is not selected. Install the browser
-      // implementation before loading that client-only module.
-      globalThis.Buffer ??= BufferPolyfill;
-
-      const { default: CopyOrDownloadAsMarkdownButtons } =
-        await import('vitepress-plugin-llms/vitepress-components/CopyOrDownloadAsMarkdownButtons.vue');
-      app.component('CopyOrDownloadAsMarkdownButtons', CopyOrDownloadAsMarkdownButtons);
-    } else {
-      app.component('CopyOrDownloadAsMarkdownButtons', { render: () => null });
-    }
+    // This component only touches browser APIs from onMounted. Registering the
+    // same implementation during SSR and hydration keeps their initial markup
+    // identical.
+    app.component('CopyOrDownloadAsMarkdownButtons', CopyOrDownloadAsMarkdownButtons);
 
     // Register DownloadLLMsFullDoc component
     app.component('DownloadLLMsFullDoc', DownloadLLMsFullDoc);
@@ -31,6 +24,11 @@ export default {
     // The Vue plugin owns one manager for the docs app. Install it only on the
     // client because adapter constructors and the custom element use browser APIs.
     if (typeof window !== 'undefined') {
+      // Ledger's browser transport references Buffer while the umbrella SDK is
+      // evaluated, even when Ledger is not selected. Install the browser
+      // implementation before loading that client-only module.
+      globalThis.Buffer ??= BufferPolyfill;
+
       try {
         const {
           CrossmarkAdapter,
@@ -85,7 +83,6 @@ export default {
             autoConnect: false,
           })
         );
-
       } catch (err) {
         console.error('Failed to initialize XRPL Connect for the docs demo:', err);
         const message = err instanceof Error ? err.message : String(err);
