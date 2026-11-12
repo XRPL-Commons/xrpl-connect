@@ -40,10 +40,7 @@
         <!-- Connection Status Section -->
         <section id="connect-section">
           <h2>Connection Status</h2>
-          <p class="section-description">
-            Click the <strong>"Connect Wallet"</strong> button above to connect or manage your
-            wallet
-          </p>
+          <p id="connect-instructions" class="section-description"></p>
           <div id="status" class="status"></div>
           <button id="cancel-reconnect" class="btn-secondary" hidden>Cancel Privy sign-in</button>
         </section>
@@ -141,22 +138,24 @@
          - Click to open wallet selection modal
          - Fully customizable via CSS variables (see style.css for theming)
     -->
-    <xrpl-wallet-connector
-      id="wallet-connector"
-      style="
-        --xc-background-color: #1a202c;
-        --xc-background-secondary: #2d3748;
-        --xc-background-tertiary: #4a5568;
-        --xc-text-color: #f5f4e7;
-        --xc-text-muted-color: rgba(245, 244, 231, 0.6);
-        --xc-primary-color: #3b99fc;
-        --xc-font-family: inherit;
-        --xc-border-radius: 12px;
-        --xc-modal-box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-      "
-      primary-wallet="xaman"
-    >
-    </xrpl-wallet-connector>
+    <div id="wallet-connector-shell">
+      <xrpl-wallet-connector
+        id="wallet-connector"
+        style="
+          --xc-background-color: #1a202c;
+          --xc-background-secondary: #2d3748;
+          --xc-background-tertiary: #4a5568;
+          --xc-text-color: #f5f4e7;
+          --xc-text-muted-color: rgba(245, 244, 231, 0.6);
+          --xc-primary-color: #3b99fc;
+          --xc-font-family: inherit;
+          --xc-border-radius: 12px;
+          --xc-modal-box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        "
+        primary-wallet="xaman"
+      >
+      </xrpl-wallet-connector>
+    </div>
 
     <script type="module" src="/src/main.js"></script>
   </body>

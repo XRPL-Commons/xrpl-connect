@@ -5,7 +5,7 @@ import {
 } from '@xrpl-commons/xrpl-connect-react';
 import { useDemo } from '../context/DemoContext';
 
-export function WalletConnector() {
+export function WalletConnector({ restoring = false }: { restoring?: boolean }) {
   const { addEvent, showStatus } = useDemo();
   const connectorRef = useRef<WalletConnectorElement | null>(null);
 
@@ -33,6 +33,7 @@ export function WalletConnector() {
   return (
     <XrplWalletConnector
       ref={connectorRef}
+      hidden={restoring}
       primaryWallet="xaman"
       theme="dark"
       cssVars={{

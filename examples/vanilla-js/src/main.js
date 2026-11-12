@@ -147,6 +147,7 @@ walletConnector.addEventListener('xaman-transaction-complete', (e) => {
 const elements = {
   status: document.getElementById('status'),
   connectSection: document.getElementById('connect-section'),
+  connectInstructions: document.getElementById('connect-instructions'),
   accountSection: document.getElementById('account-section'),
   transactionSection: document.getElementById('transaction-section'),
   messageSection: document.getElementById('message-section'),
@@ -162,6 +163,7 @@ const elements = {
   cancelReconnect: document.getElementById('cancel-reconnect'),
   eventsLog: document.getElementById('events-log'),
   clearLog: document.getElementById('clear-log'),
+  walletConnectorShell: document.getElementById('wallet-connector-shell'),
   currentTheme: document.getElementById('current-theme'),
   themeButtons: document.querySelectorAll('.theme-btn'),
 };
@@ -437,8 +439,14 @@ elements.clearLog.addEventListener('click', () => {
 function updateUI() {
   const isConnected = walletManager.connected;
 
+  elements.walletConnectorShell.hidden = restoring;
   elements.cancelReconnect.hidden = !restoring || !completingPrivyLogin;
   elements.cancelReconnect.disabled = actionBusy || reconnectCancelled;
+  elements.connectInstructions.textContent = restoring
+    ? completingPrivyLogin
+      ? 'Completing Privy sign-in… Your wallet will appear here when it is ready.'
+      : 'Checking for a previous wallet connection…'
+    : 'Click the "Connect Wallet" button above to connect or manage your wallet';
 
   if (isConnected) {
     const account = walletManager.account;
@@ -525,6 +533,7 @@ elements.cancelReconnect.addEventListener('click', async () => {
   elements.cancelReconnect.disabled = true;
   try {
     await walletManager.disconnect();
+    showStatus('Privy sign-in canceled. Choose a wallet to retry.', 'info', true);
   } catch (error) {
     logEvent('Privy Sign-in Cancel Failed', error);
     showStatus(`Could not cancel sign-in: ${error.message}`, 'error', true);
