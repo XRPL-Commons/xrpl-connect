@@ -9,14 +9,26 @@ import { MessageSignForm } from './components/MessageSignForm';
 import { EventLog } from './components/EventLog';
 import './App.css';
 
-function App() {
+function App({ privyRedirectUri }: { privyRedirectUri: string }) {
   const { statusMessage, showStatus } = useDemo();
-  const { connecting, error, disconnect, account } = useWallet();
+  const { connecting, error, disconnect, account, manager } = useWallet();
   const [restoring, setRestoring] = useState(connecting);
 
   useEffect(() => {
     if (!connecting) setRestoring(false);
   }, [connecting]);
+
+  useEffect(() => {
+    if (!account || manager.wallet?.id !== 'privy') return;
+    const callback = new URL(privyRedirectUri);
+    if (
+      window.location.origin === callback.origin &&
+      window.location.pathname === callback.pathname
+    ) {
+      // Leave the callback without reloading the connected wallet session.
+      window.history.replaceState(window.history.state, '', import.meta.env.BASE_URL);
+    }
+  }, [account, manager, privyRedirectUri]);
 
   const cancelConnection = async () => {
     try {

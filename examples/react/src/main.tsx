@@ -20,6 +20,8 @@ import './index.css';
 const XAMAN_API_KEY = '15ba80a8-cba2-4789-a45b-c6a850d9d91b';
 const WALLETCONNECT_PROJECT_ID = '32798b46e13dfb0049706a524cf132d6';
 const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID?.trim();
+const PRIVY_REDIRECT_URI =
+  import.meta.env.VITE_PRIVY_REDIRECT_URI?.trim() || `${window.location.origin}/wallet/privy`;
 
 // Privy is optional so the existing external-wallet demo remains unchanged when
 // no public app ID is configured. The adapter discovers login methods from the
@@ -28,8 +30,7 @@ const privy = PRIVY_APP_ID
   ? new PrivyAdapter({
       appId: PRIVY_APP_ID,
       clientId: import.meta.env.VITE_PRIVY_CLIENT_ID?.trim() || undefined,
-      redirectUri:
-        import.meta.env.VITE_PRIVY_REDIRECT_URI?.trim() || `${window.location.origin}/wallet/privy`,
+      redirectUri: PRIVY_REDIRECT_URI,
     })
   : undefined;
 
@@ -54,7 +55,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <XrplConnectProvider config={config}>
       <DemoProvider>
-        <App />
+        <App privyRedirectUri={PRIVY_REDIRECT_URI} />
       </DemoProvider>
     </XrplConnectProvider>
   </StrictMode>

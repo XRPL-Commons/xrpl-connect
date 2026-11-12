@@ -64,6 +64,9 @@ a Privy app secret or another backend secret in frontend configuration.
 For a production deployment, allow the deployed origin and its `/wallet/privy` callback in the
 Privy dashboard, and configure the host to serve the single-page app entry point for that callback
 path (SPA history fallback). The callback must remain on the same origin as the running example.
+After a successful Privy connection, the demo replaces the callback URL with its home URL without
+reloading, keeping the wallet connected. Failed or cancelled attempts stay on the callback so you
+can retry.
 
 ### 3. Install Dependencies
 

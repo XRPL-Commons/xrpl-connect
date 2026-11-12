@@ -116,6 +116,9 @@ after changing `.env.local`.
 When `VITE_PRIVY_APP_ID` is configured, open the wallet modal and choose **Sign in with socials**.
 Select an enabled dashboard method and complete authentication. The callback route restores the
 same manager session and waits for the embedded XRPL wallet to be ready before showing the account.
+After a successful connection, the demo replaces the callback URL with its home URL without
+reloading, keeping the wallet connected. Failed or cancelled attempts stay on the callback so you
+can retry.
 
 After connecting:
 

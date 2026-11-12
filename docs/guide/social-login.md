@@ -64,6 +64,11 @@ serve the application at `/wallet/privy` using an SPA fallback and allow the
 deployed origin and callback in Privy. Public `VITE_*` values are included in the
 browser bundle; never put an app secret there.
 
+Once the Privy wallet is ready, both demos replace the callback URL with their home URL without
+reloading or resetting the connected session. Failed or cancelled attempts stay on the callback
+so the user can retry. The adapter removes OAuth parameters; navigation after login belongs to
+the application. In an app with a router, replace the callback route after a successful connection.
+
 ### Manual test flow
 
 1. Open a demo and choose **Sign in with socials** from the wallet picker. Confirm

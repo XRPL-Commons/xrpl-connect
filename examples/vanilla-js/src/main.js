@@ -72,6 +72,16 @@ const completingPrivyLogin = privyAdapter?.hasPendingConnection() ?? false;
 
 // Event listeners
 walletManager.on('connect', (account) => {
+  if (walletManager.wallet?.id === 'privy') {
+    const callback = new URL(PRIVY_REDIRECT_URI);
+    if (
+      window.location.origin === callback.origin &&
+      window.location.pathname === callback.pathname
+    ) {
+      // Leave the callback without reloading the connected wallet session.
+      window.history.replaceState(window.history.state, '', import.meta.env.BASE_URL);
+    }
+  }
   logEvent('Connected', account);
   showStatus(
     restoring
