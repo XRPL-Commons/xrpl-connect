@@ -31,6 +31,7 @@
     "ledger",
     "xyra",
     "ghostsig",
+    "clasp",
     "otsu",
     "metamask-snap",
     "wallet-adapter",
@@ -72,6 +73,7 @@
     "clean": "rm -rf dist dist-publish"
   },
   "dependencies": {
+    "@xrpl-connect/adapter-clasp": "workspace:*",
     "@xrpl-connect/adapter-crossmark": "workspace:*",
     "@xrpl-connect/adapter-gemwallet": "workspace:*",
     "@xrpl-connect/adapter-ghostsig": "workspace:*",

@@ -138,6 +138,9 @@ importers:
 
   examples/vanilla-js:
     dependencies:
+      '@xrpl-connect/adapter-clasp':
+        specifier: workspace:*
+        version: link:../../packages/adapters/clasp
       '@xrpl-connect/adapter-crossmark':
         specifier: workspace:*
         version: link:../../packages/adapters/crossmark
@@ -184,6 +187,25 @@ importers:
       vite-plugin-node-polyfills:
         specifier: ^0.24.0
         version: 0.24.0(@voidzero-dev/vite-plus-core@1.5.0(@types/node@22.20.5)(esbuild@0.28.1)(typescript@5.9.3))(rollup@4.62.2)
+
+  packages/adapters/clasp:
+    dependencies:
+      '@xrpl-connect/core':
+        specifier: workspace:*
+        version: link:../../core
+      clasp-connect:
+        specifier: ^0.4.0
+        version: 0.4.0
+      xrpl:
+        specifier: ^3.0.0 || ^4.0.0 || ^5.0.0
+        version: 4.4.2(bufferutil@4.0.9)(utf-8-validate@5.0.10)
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.21
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
 
   packages/adapters/crossmark:
     dependencies:
@@ -485,6 +507,9 @@ importers:
 
   packages/xrpl-connect:
     dependencies:
+      '@xrpl-connect/adapter-clasp':
+        specifier: workspace:*
+        version: link:../adapters/clasp
       '@xrpl-connect/adapter-crossmark':
         specifier: workspace:*
         version: link:../adapters/crossmark
@@ -2260,6 +2285,18 @@ packages:
   cipher-base@1.0.7:
     resolution: {integrity: sha512-Mz9QMT5fJe7bKI7MH31UilT5cEK5EHHRCccw/YRFsRY47AuNgaV6HY3rscp0/I4Q+tTW/5zoqpSeRRI54TkDWA==}
     engines: {node: '>= 0.10'}
+
+  clasp-connect@0.4.0:
+    resolution: {integrity: sha512-0chuUqVAOAzl8JHhBFViwyYfeYuzsm8Yc1J27jMI3ZLT1OIx3ZdbCYS97tTi0k8CUWMDYhTYR8ytYv4zeK+SHg==}
+    engines: {node: '>=20.19'}
+    peerDependencies:
+      '@wagmi/core': ^2.9.0 || ^3.0.0
+      viem: 2.x
+    peerDependenciesMeta:
+      '@wagmi/core':
+        optional: true
+      viem:
+        optional: true
 
   cliui@6.0.0:
     resolution: {integrity: sha512-t6wbgtoCXvAzst7QgXxJYqPt0usEfbgQdftEPbLL/cvv6HPE5VgvqCuAIDR0NgU52ds6rFwqrgakNLrHEjCbrQ==}
@@ -6041,6 +6078,8 @@ snapshots:
       inherits: 2.0.4
       safe-buffer: 5.2.1
       to-buffer: 1.2.2
+
+  clasp-connect@0.4.0: {}
 
   cliui@6.0.0:
     dependencies:

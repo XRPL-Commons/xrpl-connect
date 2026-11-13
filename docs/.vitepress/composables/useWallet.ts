@@ -37,6 +37,7 @@ export const useWallet = () => {
           LedgerAdapter,
           XyraAdapter,
           GhostsigAdapter,
+          ClaspAdapter,
           OtsuAdapter,
           MetaMaskSnapAdapter,
         } = await import('xrpl-connect');
@@ -81,6 +82,12 @@ export const useWallet = () => {
           adapters.push(ghostsig);
         } catch (err) {
           console.warn('Failed to create GhostsigAdapter:', err);
+        }
+        try {
+          const clasp = new ClaspAdapter();
+          adapters.push(clasp);
+        } catch (err) {
+          console.warn('Failed to create ClaspAdapter:', err);
         }
         try {
           const otsu = new OtsuAdapter();

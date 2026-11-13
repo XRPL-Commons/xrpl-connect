@@ -26,6 +26,7 @@ export default defineConfig({
         '@xrpl-connect/adapter-walletconnect',
         '@xrpl-connect/adapter-xyra',
         '@xrpl-connect/adapter-ghostsig',
+        '@xrpl-connect/adapter-clasp',
         '@xrpl-connect/adapter-otsu',
         '@xrpl-connect/adapter-ledger',
       ],

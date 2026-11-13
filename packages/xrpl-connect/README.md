@@ -51,6 +51,7 @@ export * from '@xrpl-connect/adapter-walletconnect';
 export * from '@xrpl-connect/adapter-ledger';
 export * from '@xrpl-connect/adapter-xyra';
 export * from '@xrpl-connect/adapter-ghostsig';
+export * from '@xrpl-connect/adapter-clasp';
 export * from '@xrpl-connect/adapter-otsu';
 export * from '@xrpl-connect/adapter-metamask-snap';
 export * from './adapters';
@@ -92,6 +93,7 @@ import {
   LedgerAdapter,
   XyraAdapter,
   GhostsigAdapter,
+  ClaspAdapter,
   OtsuAdapter,
   MetaMaskSnapAdapter,
   Adapters,
@@ -166,6 +168,7 @@ export {
   LedgerAdapter,
   XyraAdapter,
   GhostsigAdapter,
+  ClaspAdapter,
   OtsuAdapter,
   MetaMaskSnapAdapter,
 
@@ -182,6 +185,9 @@ export {
   XyraConnectOptions,
   GhostsigAdapterOptions,
   GhostsigConnectOptions,
+  ClaspAdapterOptions,
+  ClaspConnectOptions,
+  ClaspReconnectOptions,
   MetaMaskSnapAdapterOptions,
 
   // Enums, constants, and complete upstream APIs
@@ -203,6 +209,7 @@ export const Adapters = {
   Ledger: LedgerAdapter,
   Xyra: XyraAdapter,
   Ghostsig: GhostsigAdapter,
+  Clasp: ClaspAdapter,
   Otsu: OtsuAdapter,
   MetaMaskSnap: MetaMaskSnapAdapter,
 };
@@ -251,6 +258,7 @@ const walletManager = new WalletManager({
     new Adapters.Ledger(),
     new Adapters.Xyra(),
     new Adapters.Ghostsig(),
+    new Adapters.Clasp(),
     new Adapters.Otsu(),
     new Adapters.MetaMaskSnap(),
   ],
@@ -292,6 +300,7 @@ const walletManager = new WalletManager({
     new Adapters.Ledger(),
     new Adapters.Xyra(),
     new Adapters.Ghostsig(),
+    new Adapters.Clasp(),
     new Adapters.Otsu(),
     new Adapters.MetaMaskSnap(),
   ],
@@ -429,6 +438,7 @@ The meta-package depends on:
     "@xrpl-connect/adapter-ledger": "workspace:*",
     "@xrpl-connect/adapter-xyra": "workspace:*",
     "@xrpl-connect/adapter-ghostsig": "workspace:*",
+    "@xrpl-connect/adapter-clasp": "workspace:*",
     "@xrpl-connect/adapter-otsu": "workspace:*",
     "@xrpl-connect/adapter-metamask-snap": "workspace:*"
   }
@@ -462,6 +472,7 @@ xrpl-connect (this package)
       ├── LedgerAdapter
       ├── XyraAdapter
       ├── GhostsigAdapter
+      ├── ClaspAdapter
       ├── OtsuAdapter
       └── MetaMaskSnapAdapter
 ```

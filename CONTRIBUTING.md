@@ -353,6 +353,7 @@ packed candidate in a fresh browser application and record the result for every 
 | Ledger        | Supported browser, connected device, and the XRP app open         |
 | Xyra          | Supported browser with the Xyra wallet installed                  |
 | GHOSTSIG      | Supported browser with a PRF-capable passkey and popups allowed   |
+| Clasp         | Supported browser with a PRF-capable passkey and popups allowed   |
 | Otsu          | Supported browser with the Otsu wallet installed                  |
 | MetaMask Snap | Supported browser with MetaMask and the XRPL Snap installed       |
 

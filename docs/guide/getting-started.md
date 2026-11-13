@@ -53,7 +53,7 @@ The `xrpl-connect` package includes:
 
 - **Core** - WalletManager, event system, and state management
 - **UI** - Beautiful web component for wallet connection
-- **Adapters** - Built-in support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, GHOSTSIG, Otsu, and MetaMask Snap
+- **Adapters** - Built-in support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, GHOSTSIG, Clasp, Otsu, and MetaMask Snap
 - **Framework bindings** - Official packages for React and Vue 3 / Nuxt
 
 > **Note:** The `xrpl` package is required for transaction types and utilities.

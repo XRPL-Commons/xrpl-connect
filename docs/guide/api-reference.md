@@ -492,7 +492,7 @@ const manager = new WalletManager({
 ```
 
 `Adapters` contains `Xaman`, `Crossmark`, `GemWallet`, `WalletConnect`, `Ledger`, `Xyra`,
-`Ghostsig`, `Otsu`, and `MetaMaskSnap`.
+`Ghostsig`, `Clasp`, `Otsu`, and `MetaMaskSnap`.
 
 The corresponding adapter-specific exports are also available from the umbrella package:
 
@@ -505,6 +505,7 @@ The corresponding adapter-specific exports are also available from the umbrella 
 | Ledger        | `LedgerAdapterOptions`, `LedgerConnectOptions`, `LedgerDeviceState`, `LEDGER_STATE_MESSAGES`               |
 | Xyra          | `XyraAdapterOptions`, `XyraConnectOptions`, `XRPL_CONNECT_TO_XYRA_NETWORK`, `XYRA_TO_XRPL_CONNECT_NETWORK` |
 | GHOSTSIG      | `GhostsigAdapterOptions`, `GhostsigConnectOptions`                                                         |
+| Clasp         | `ClaspAdapterOptions`, `ClaspConnectOptions`, `ClaspReconnectOptions`                                      |
 | Otsu          | `OtsuProvider`, `OTSU_NETWORK_MAP`                                                                         |
 | MetaMask Snap | `MetaMaskSnapAdapterOptions`                                                                               |
 

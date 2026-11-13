@@ -1,0 +1,58 @@
+{
+  "name": "@xrpl-connect/adapter-clasp",
+  "version": "1.0.0",
+  "description": "Clasp wallet adapter for XRPL Connect - passkey wallet in a popup on claspwallet.com",
+  "author": "Clasp",
+  "license": "MIT",
+  "homepage": "https://claspwallet.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/XRPL-Commons/xrpl-connect",
+    "directory": "packages/adapters/clasp"
+  },
+  "bugs": {
+    "url": "https://github.com/XRPL-Commons/xrpl-connect/issues"
+  },
+  "keywords": [
+    "xrpl",
+    "clasp",
+    "wallet",
+    "adapter",
+    "web3",
+    "passkey",
+    "popup"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test run",
+    "test:watch": "vp test",
+    "lint": "vp lint src",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@xrpl-connect/core": "workspace:*",
+    "clasp-connect": "^0.4.0"
+  },
+  "peerDependencies": {
+    "xrpl": "^3.0.0 || ^4.0.0 || ^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0"
+  }
+}

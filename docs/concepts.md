@@ -201,6 +201,16 @@ import { GhostsigAdapter } from 'xrpl-connect';
 const adapter = new GhostsigAdapter();
 ```
 
+#### Clasp Adapter
+
+Connect to Clasp, a passkey wallet opened in a popup on claspwallet.com. Nothing to install: every approval shows the whole transaction and takes one passkey touch.
+
+```typescript
+import { ClaspAdapter } from 'xrpl-connect';
+
+const adapter = new ClaspAdapter();
+```
+
 #### Otsu Adapter
 
 Connect to Otsu Wallet, a browser extension XRPL wallet.

@@ -4,8 +4,8 @@
  * This package bundles everything you need for XRPL wallet connections:
  * - Core wallet management
  * - Pre-built UI web component
- * - All nine wallet adapters (Xaman, Crossmark, GemWallet, WalletConnect,
- *   Ledger, Xyra, Otsu, MetaMask Snap, and GHOSTSIG)
+ * - All ten wallet adapters (Xaman, Crossmark, GemWallet, WalletConnect,
+ *   Ledger, Xyra, Otsu, MetaMask Snap, GHOSTSIG, and Clasp)
  *
  * @example
  * ```typescript
@@ -35,6 +35,7 @@ export * from '@xrpl-connect/adapter-walletconnect';
 export * from '@xrpl-connect/adapter-ledger';
 export * from '@xrpl-connect/adapter-xyra';
 export * from '@xrpl-connect/adapter-ghostsig';
+export * from '@xrpl-connect/adapter-clasp';
 export * from '@xrpl-connect/adapter-otsu';
 export * from '@xrpl-connect/adapter-metamask-snap';
 export * from './adapters';
