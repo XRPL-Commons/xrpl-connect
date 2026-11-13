@@ -130,6 +130,7 @@ for transaction signing or submission.
 | Otsu          | XRPL mainnet, testnet, and devnet                                                                                           | Uses Otsu's active network                                | Otsu `getNetwork()`                                                        |
 | Ledger        | Standard networks and custom `NetworkInfo` endpoints                                                                        | Uses mainnet                                              | Application configuration; the XRP Ledger hardware app is network-agnostic |
 | MetaMask Snap | XRPL mainnet, testnet, and devnet                                                                                           | Selects and verifies mainnet                              | Snap active-network API after any requested switch                         |
+| Clasp         | XRPL mainnet and testnet                                                                                                    | Requests mainnet and verifies the wallet response         | Clasp connect response                                                     |
 
 For wallet-selected adapters (Xaman, Crossmark, GemWallet, and Otsu), an explicit request
 must match the live wallet network. Ledger is the exception because the hardware app signs
@@ -665,6 +666,54 @@ const ghostsigAdapter = new GhostsigAdapter();
 - **isAvailable()**: `true` wherever the browser can open a popup.
 - **connect()**: Opens the popup; the user signs in with a passkey and approves sharing the account. A stored account restores without a popup.
 - **sign() / signAndSubmit()**: One request per signature; the popup shows the transaction and the requesting origin. A submission the ledger refused is `SIGN_FAILED`, with the result code in the message.
+- **signMessage()**: Throws `UNSUPPORTED_METHOD`.
+
+### 10. Clasp Adapter
+
+**Package**: `@xrpl-connect/adapter-clasp`
+
+**Export**: `ClaspAdapter`
+
+#### Overview
+
+Signs with [Clasp](https://claspwallet.com), a passkey wallet that runs in the browser. The wallet opens in a popup on claspwallet.com through Clasp's own SDK, [`clasp-connect`](https://github.com/claspwallet/clasp-connect) (MIT, no runtime dependencies), and talks to the app over `postMessage`, pinned to that origin. A passkey derives a standard XRPL family seed, so the same account also opens in Xaman or Joey. Every approval shows the requesting origin and every field of the transaction, and takes one passkey touch.
+
+#### Features
+
+- ✅ Nothing to install: a popup and a passkey
+- ✅ Sign and sign-and-submit; `Account`, `Sequence`, `Fee` and `LastLedgerSequence` are filled in only where the transaction leaves them out
+- ✅ Session restore without a popup; every signature names the address, and Clasp signs only if the passkey opens that account
+- ❌ Message signing (Clasp signs transactions only)
+
+#### Constructor
+
+```typescript
+const claspAdapter = new ClaspAdapter(options?: ClaspAdapterOptions);
+```
+
+```typescript
+interface ClaspAdapterOptions {
+  timeoutMs?: number; // how long one request may wait for the user, defaults to 300000
+}
+```
+
+There is no URL option: a Clasp passkey belongs to claspwallet.com, so a wallet at any other address would hold none of the user's accounts.
+
+#### Example Usage
+
+```typescript
+import { ClaspAdapter } from '@xrpl-connect/adapter-clasp';
+// or: import { ClaspAdapter, Adapters } from 'xrpl-connect';
+
+const claspAdapter = new ClaspAdapter();
+```
+
+#### Implementation Details
+
+- **isAvailable()**: `true` wherever the browser can open a popup.
+- **connect()**: Opens the popup; the user unlocks with a passkey and approves sharing the account. Mainnet and testnet only: `devnet` and custom networks are refused before a popup opens. A stored account restores without a popup.
+- **sign()**: Returns the signed transaction without submitting it; the popup tells the user the app will send it.
+- **signAndSubmit()**: Resolves only on a validated `tesSUCCESS`. A `tec` result or an unconfirmed submission is `SIGN_FAILED`, with the transaction hash in the message and on `originalError.transaction`.
 - **signMessage()**: Throws `UNSUPPORTED_METHOD`.
 
 ---

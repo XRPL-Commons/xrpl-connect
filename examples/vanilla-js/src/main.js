@@ -7,6 +7,7 @@ import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
 import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
 import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
 import { GhostsigAdapter } from '@xrpl-connect/adapter-ghostsig';
+import { ClaspAdapter } from '@xrpl-connect/adapter-clasp';
 import { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
 import { MetaMaskSnapAdapter } from '@xrpl-connect/adapter-metamask-snap';
 
@@ -40,6 +41,7 @@ const walletManager = new WalletManager({
     new LedgerAdapter(),
     new XyraAdapter(),
     new GhostsigAdapter(),
+    new ClaspAdapter(),
     new OtsuAdapter(),
     new MetaMaskSnapAdapter(),
   ],

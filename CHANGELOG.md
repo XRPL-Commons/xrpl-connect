@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New adapter `@xrpl-connect/adapter-clasp`: sign with Clasp, a passkey wallet opened in a popup on claspwallet.com, through Clasp's own SDK `clasp-connect`. Sign and sign-and-submit on mainnet and testnet; message signing is declared unsupported. Wired into the `xrpl-connect` meta-package (`ClaspAdapter`, `Adapters.Clasp`).
+
 ## [1.0.0] - 2026-10-06
 
 ### Added

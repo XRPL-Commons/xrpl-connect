@@ -13,6 +13,7 @@ export const STANDARD_WALLET_IDS = [
   'ledger',
   'xyra',
   'ghostsig',
+  'clasp',
   'otsu',
   'metamask-snap',
 ] as const;

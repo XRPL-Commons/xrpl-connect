@@ -283,6 +283,7 @@ The `primary-wallet` attribute controls which wallet is featured or highlighted 
 | `ledger`        | Ledger hardware       |
 | `xyra`          | Xyra                  |
 | `ghostsig`      | GHOSTSIG              |
+| `clasp`         | Clasp                 |
 | `otsu`          | Otsu                  |
 
 ### Effect
