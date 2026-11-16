@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
-import { STANDARD_NETWORKS, WalletErrorCode } from '@xrpl-connect/core';
+import {
+  MemoryStorageAdapter,
+  STANDARD_NETWORKS,
+  WalletErrorCode,
+  WalletManager,
+} from '@xrpl-connect/core';
 import { OtsuAdapter } from '../src/otsu-adapter';
 
 function makeProvider(overrides: Record<string, unknown> = {}) {
@@ -330,13 +335,13 @@ describe('OtsuAdapter.fetchAccount', () => {
 });
 
 describe('OtsuAdapter.sign', () => {
-  async function connected() {
+  async function connected(options?: { network: 'mainnet' }) {
     const provider = makeProvider({
       connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
     });
     installProvider(provider);
     const adapter = new OtsuAdapter();
-    await adapter.connect();
+    await adapter.connect(options);
     return { adapter, provider };
   }
 
@@ -369,7 +374,7 @@ describe('OtsuAdapter.sign', () => {
     expect(provider.signTransaction).not.toHaveBeenCalled();
   });
 
-  it.each([
+  const observeSwitches = [
     [
       'a network change event',
       async (_adapter: OtsuAdapter, provider: ReturnType<typeof makeProvider>) =>
@@ -383,10 +388,12 @@ describe('OtsuAdapter.sign', () => {
         await adapter.fetchAccount();
       },
     ],
-  ])(
-    'keeps the connect-time network as signing authority after %s',
+  ] as const;
+
+  it.each(observeSwitches)(
+    'keeps a requested network as signing authority after %s',
     async (_label, observeSwitch) => {
-      const { adapter, provider } = await connected();
+      const { adapter, provider } = await connected({ network: 'mainnet' });
       provider.getNetwork.mockResolvedValue({ network: 'testnet' });
       provider.signTransaction.mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' });
       provider.signAndSubmit.mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' });
@@ -413,6 +420,43 @@ describe('OtsuAdapter.sign', () => {
       });
     }
   );
+
+  it.each(observeSwitches)(
+    'follows the wallet network after %s when no network was requested',
+    async (_label, observeSwitch) => {
+      const { adapter, provider } = await connected();
+      provider.getNetwork.mockResolvedValue({ network: 'testnet' });
+      provider.signTransaction.mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' });
+      provider.signAndSubmit.mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' });
+
+      await observeSwitch(adapter, provider);
+      await expect(adapter.getNetwork()).resolves.toEqual(STANDARD_NETWORKS.testnet);
+
+      await expect(adapter.sign({ TransactionType: 'Payment' } as never)).resolves.toMatchObject({
+        hash: 'H',
+      });
+      await expect(
+        adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+      ).resolves.toMatchObject({ hash: 'H' });
+
+      // An unobserved switch away from the followed network is still refused.
+      provider.getNetwork.mockResolvedValue({ network: 'devnet' });
+      await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+        code: WalletErrorCode.NETWORK_MISMATCH,
+        message: 'Network mismatch. Expected "testnet" but wallet is connected to "devnet".',
+      });
+    }
+  );
+
+  it('emits networkChanged when following a wallet network switch', async () => {
+    const { adapter, provider } = await connected();
+    const networkChanged = vi.fn();
+    adapter.on('networkChanged', networkChanged);
+
+    emitProviderEvent(provider, 'networkChanged', 'testnet');
+
+    expect(networkChanged).toHaveBeenCalledExactlyOnceWith(STANDARD_NETWORKS.testnet);
+  });
 
   it('maps a user rejection to a sign-rejected error', async () => {
     const { adapter, provider } = await connected();
@@ -454,6 +498,51 @@ describe('OtsuAdapter.signMessage', () => {
       code: WalletErrorCode.INVALID_MESSAGE,
     });
     expect(provider.signMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('OtsuAdapter with WalletManager', () => {
+  async function managedSession(network?: 'mainnet') {
+    const provider = makeProvider({
+      connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      signTransaction: vi.fn().mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' }),
+    });
+    installProvider(provider);
+    const manager = new WalletManager({
+      adapters: [new OtsuAdapter()],
+      network,
+      storage: new MemoryStorageAdapter(),
+    });
+    await manager.connect('otsu');
+    const onError = vi.fn();
+    manager.on('error', onError);
+
+    provider.getNetwork.mockResolvedValue({ network: 'testnet' });
+    emitProviderEvent(provider, 'networkChanged', 'testnet');
+    return { manager, provider, onError };
+  }
+
+  it('signs on the network the wallet switched to when no network is configured', async () => {
+    const { manager, provider, onError } = await managedSession();
+
+    expect(manager.account?.network).toEqual(STANDARD_NETWORKS.testnet);
+    await expect(manager.sign({ TransactionType: 'Payment' } as never)).resolves.toMatchObject({
+      hash: 'H',
+    });
+    expect(provider.signTransaction).toHaveBeenCalledOnce();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('blocks signing after the wallet leaves the configured network', async () => {
+    const { manager, provider, onError } = await managedSession('mainnet');
+
+    await expect(manager.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    expect(provider.signTransaction).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ code: WalletErrorCode.NETWORK_MISMATCH })
+    );
   });
 });
 

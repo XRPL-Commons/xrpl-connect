@@ -308,12 +308,12 @@ describe('GemWalletAdapter.connect', () => {
 });
 
 describe('GemWalletAdapter.sign', () => {
-  async function connected() {
+  async function connected(options?: { network: 'mainnet' }) {
     api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
     api.getPublicKey.mockResolvedValue({ result: { address: 'rGem', publicKey: 'PK' } });
     mockLiveNetwork();
     const adapter = new GemWalletAdapter();
-    await adapter.connect();
+    await adapter.connect(options);
     api.getNetwork.mockClear();
     return adapter;
   }
@@ -341,8 +341,8 @@ describe('GemWalletAdapter.sign', () => {
     expect(api.submitTransaction).not.toHaveBeenCalled();
   });
 
-  it('keeps the connect-time network as signing authority after a live refresh', async () => {
-    const adapter = await connected();
+  it('keeps a requested network as signing authority after a live refresh', async () => {
+    const adapter = await connected({ network: 'mainnet' });
     mockLiveNetwork({ network: 'Testnet', websocket: 'wss://testnet.example' });
     api.signTransaction.mockResolvedValue({ result: { signature: 'SIG' } });
 
@@ -361,6 +361,29 @@ describe('GemWalletAdapter.sign', () => {
     mockLiveNetwork();
     await expect(adapter.sign({ TransactionType: 'Payment' } as never)).resolves.toMatchObject({
       tx_blob: 'SIG',
+    });
+  });
+
+  it('follows the refreshed network when no network was requested', async () => {
+    const adapter = await connected();
+    mockLiveNetwork({ network: 'Testnet', websocket: 'wss://testnet.example' });
+    api.signTransaction.mockResolvedValue({ result: { signature: 'SIG' } });
+    api.submitTransaction.mockResolvedValue({ result: { hash: 'HASH' } });
+
+    await expect(adapter.fetchAccount()).resolves.toMatchObject({ network: { id: 'testnet' } });
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).resolves.toMatchObject({
+      tx_blob: 'SIG',
+    });
+    await expect(
+      adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+    ).resolves.toMatchObject({ hash: 'HASH' });
+
+    // An unrefreshed switch away from the followed network is still refused.
+    mockLiveNetwork({ network: 'Devnet', websocket: 'wss://devnet.example' });
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+      message: 'Network mismatch. Expected "testnet" but wallet is connected to "devnet".',
     });
   });
 

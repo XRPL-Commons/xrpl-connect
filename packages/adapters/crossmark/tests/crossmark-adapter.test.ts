@@ -496,16 +496,30 @@ describe('CrossmarkAdapter.connect', () => {
 });
 
 describe('CrossmarkAdapter.sign', () => {
-  async function connected() {
+  async function connected(options?: { network: 'mainnet' }) {
     sdk.sync.isInstalled.mockReturnValue(true);
     sdk.methods.signInAndWait.mockResolvedValue({
       response: { data: { address: 'rUser', publicKey: 'PK' } },
     });
     mockLiveNetwork();
     const adapter = new CrossmarkAdapter();
-    await adapter.connect();
+    await adapter.connect(options);
     sdk.api.awaitRequest.mockClear();
     return adapter;
+  }
+
+  function refreshOnto(type: string) {
+    sdk.api.awaitRequest.mockImplementation(({ command }: { command: string }) =>
+      Promise.resolve(
+        command === 'address'
+          ? { response: { data: { address: 'rUser' } } }
+          : {
+              response: {
+                data: { network: { type, label: 'xrp ledger', wss: `wss://${type}.example` } },
+              },
+            }
+      )
+    );
   }
 
   it('returns tx_blob on success', async () => {
@@ -533,21 +547,9 @@ describe('CrossmarkAdapter.sign', () => {
     expect(sdk.methods.signAndSubmitAndWait).not.toHaveBeenCalled();
   });
 
-  it('keeps the connect-time network as signing authority after a live refresh', async () => {
-    const adapter = await connected();
-    sdk.api.awaitRequest.mockImplementation(({ command }: { command: string }) =>
-      Promise.resolve(
-        command === 'address'
-          ? { response: { data: { address: 'rUser' } } }
-          : {
-              response: {
-                data: {
-                  network: { type: 'testnet', label: 'xrp ledger', wss: 'wss://testnet.example' },
-                },
-              },
-            }
-      )
-    );
+  it('keeps a requested network as signing authority after a live refresh', async () => {
+    const adapter = await connected({ network: 'mainnet' });
+    refreshOnto('testnet');
     sdk.methods.signAndWait.mockResolvedValue({ response: { data: { txBlob: 'DEADBEEF' } } });
 
     await expect(adapter.fetchAccount()).resolves.toMatchObject({ network: { id: 'testnet' } });
@@ -565,6 +567,31 @@ describe('CrossmarkAdapter.sign', () => {
     mockLiveNetwork();
     await expect(adapter.sign({ TransactionType: 'Payment' } as never)).resolves.toMatchObject({
       tx_blob: 'DEADBEEF',
+    });
+  });
+
+  it('follows the refreshed network when no network was requested', async () => {
+    const adapter = await connected();
+    refreshOnto('testnet');
+    sdk.methods.signAndWait.mockResolvedValue({ response: { data: { txBlob: 'DEADBEEF' } } });
+    sdk.methods.signAndSubmitAndWait.mockResolvedValue({
+      response: { data: { resp: { result: { hash: 'HASH' } } } },
+    });
+
+    await expect(adapter.fetchAccount()).resolves.toMatchObject({ network: { id: 'testnet' } });
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).resolves.toMatchObject({
+      tx_blob: 'DEADBEEF',
+    });
+    await expect(
+      adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+    ).resolves.toMatchObject({ hash: 'HASH' });
+
+    // An unrefreshed switch away from the followed network is still refused.
+    refreshOnto('devnet');
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+      message: 'Network mismatch. Expected "testnet" but wallet is connected to "devnet".',
     });
   });
 

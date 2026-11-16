@@ -70,10 +70,12 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
 
   private currentAccount: AccountInfo | null = null;
   /**
-   * Network validated at connect. Signing is only allowed while Crossmark is
-   * on it; live refreshes update `currentAccount` but never this.
+   * Network requested at connect, once validated against Crossmark. While set,
+   * signing is only allowed on it: live refreshes update `currentAccount` but
+   * never this. Without a requested network, signing follows the network in
+   * `currentAccount`.
    */
-  private signingNetwork: NetworkInfo | null = null;
+  private pinnedNetwork: NetworkInfo | null = null;
   private connectionGeneration = 0;
   private accountRefreshRevision = 0;
 
@@ -148,7 +150,7 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
         publicKey,
         network,
       };
-      this.signingNetwork = network;
+      this.pinnedNetwork = requestedNetwork ? network : null;
 
       return this.currentAccount;
     } catch (error) {
@@ -166,7 +168,7 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
   async disconnect(): Promise<void> {
     this.connectionGeneration += 1;
     this.currentAccount = null;
-    this.signingNetwork = null;
+    this.pinnedNetwork = null;
   }
 
   /**
@@ -252,17 +254,20 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
     });
   }
 
-  /** Verify that Crossmark is still on the network validated at connect. */
+  /**
+   * Verify that Crossmark is on the requested network, or on the last network
+   * it reported when none was requested.
+   */
   private async assertCurrentNetwork(): Promise<void> {
-    const signingNetwork = this.signingNetwork;
-    if (!this.currentAccount || !signingNetwork) throw createWalletError.notConnected();
+    if (!this.currentAccount) throw createWalletError.notConnected();
     const generation = this.connectionGeneration;
     const liveNetwork = await this.getLiveNetwork();
     if (generation !== this.connectionGeneration || !this.currentAccount) {
       throw createWalletError.notConnected();
     }
-    if (liveNetwork.id !== signingNetwork.id) {
-      throw createWalletError.networkMismatch(signingNetwork.id, liveNetwork.id);
+    const expected = this.pinnedNetwork ?? this.currentAccount.network;
+    if (liveNetwork.id !== expected.id) {
+      throw createWalletError.networkMismatch(expected.id, liveNetwork.id);
     }
   }
 

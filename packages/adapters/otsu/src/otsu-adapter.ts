@@ -70,10 +70,12 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
 
   private currentAccount: AccountInfo | null = null;
   /**
-   * Network validated at connect. Signing is only allowed while the wallet is
-   * on it; wallet-reported switches update `currentAccount` but never this.
+   * Network requested at connect, once validated against the wallet. While
+   * set, signing is only allowed on it: wallet-reported switches update
+   * `currentAccount` but never this. Without a requested network, signing
+   * follows the wallet-reported network in `currentAccount`.
    */
-  private signingNetwork: NetworkInfo | null = null;
+  private pinnedNetwork: NetworkInfo | null = null;
   private connectionGeneration = 0;
   private stateRevision = 0;
   private listeners: Map<WalletAdapterEvent, Set<(data?: unknown) => void>> = new Map();
@@ -129,7 +131,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
         address: response.address,
         network: networkInfo,
       };
-      this.signingNetwork = networkInfo;
+      this.pinnedNetwork = requestedNetwork ? networkInfo : null;
       this.stateRevision += 1;
 
       this.setupProviderListeners(provider);
@@ -159,7 +161,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
     this.connectionGeneration += 1;
     this.stateRevision += 1;
     this.currentAccount = null;
-    this.signingNetwork = null;
+    this.pinnedNetwork = null;
 
     const provider = this.providerListenerOwner ?? this.getProviderSafe();
     if (this.providerListenerOwner) this.removeProviderListeners(this.providerListenerOwner);
@@ -475,14 +477,15 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
   }
 
   /**
-   * Verify that the provider is still on the network validated at connect
-   * before asking it to sign. Otsu's signing methods do not accept a network
-   * argument, so this live check prevents signing on any other network,
-   * whether or not the wallet reported the switch.
+   * Verify the provider's live network before asking it to sign. Otsu's
+   * signing methods do not accept a network argument, so this check prevents
+   * signing on a network other than the requested one, whether or not the
+   * wallet reported the switch. Without a requested network, the expected
+   * network is the last one the wallet reported, which catches unobserved
+   * switches.
    */
   private async assertCurrentNetwork(provider: OtsuProvider): Promise<void> {
-    const signingNetwork = this.signingNetwork;
-    if (!this.currentAccount || !signingNetwork) throw createWalletError.notConnected();
+    if (!this.currentAccount) throw createWalletError.notConnected();
     const generation = this.connectionGeneration;
 
     const response: unknown = await provider.getNetwork();
@@ -494,8 +497,9 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
         ? (response as { network?: unknown }).network
         : undefined;
     const networkInfo = this.toNetworkInfo(network);
-    if (networkInfo.id !== signingNetwork.id) {
-      throw createWalletError.networkMismatch(signingNetwork.id, networkInfo.id);
+    const expected = this.pinnedNetwork ?? this.currentAccount.network;
+    if (networkInfo.id !== expected.id) {
+      throw createWalletError.networkMismatch(expected.id, networkInfo.id);
     }
   }
 

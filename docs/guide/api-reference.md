@@ -86,11 +86,14 @@ While the reported network differs, `sign()`, `signAndSubmit()`, and `signMessag
 reject with `NETWORK_MISMATCH`; they work again once the wallet is back on the requested
 network. Without a requested network the manager adopts the reported network as before.
 
-Extension wallets (Otsu, Crossmark, GemWallet) additionally sign only on the network they
-connected on, even when used without a requested network: after the user switches networks
-in the wallet, signing rejects with `NETWORK_MISMATCH` until the user switches back or the
-app reconnects. `MetaMaskSnapAdapter.switchNetwork()` emits `networkChanged`, so switching
-away from the requested network blocks manager signing too.
+The extension adapters (Otsu, Crossmark, GemWallet) apply the same policy on their own, so
+it also holds when they are used without `WalletManager`. When a network was requested at
+connect, they check the wallet's live network before every signature and sign only on the
+requested network, whatever the wallet has reported since. Without a requested network,
+they follow the network the wallet reports (updating the account and emitting
+`networkChanged`) and keep signing after a switch; the live check still refuses a switch the
+wallet has not reported yet. `MetaMaskSnapAdapter.switchNetwork()` emits `networkChanged`,
+so switching away from the requested network blocks manager signing too.
 
 #### sign()
 
