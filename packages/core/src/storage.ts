@@ -2,7 +2,7 @@
  * Storage layer for persisting wallet connection state
  */
 
-import type { StorageAdapter, StoredState } from './types';
+import type { PendingConnection, StorageAdapter, StoredState } from './types';
 import { isStandardNetworkId } from './types';
 import { createLogger } from './logger';
 
@@ -18,6 +18,12 @@ const logger = createLogger('[Storage]');
  * version's payload to the new shape.
  */
 export const STORED_STATE_VERSION = 2;
+
+/**
+ * Schema version of the {@link PendingConnection} record. It is stored under
+ * its own key, so it is versioned independently of the session state.
+ */
+const PENDING_CONNECTION_VERSION = 1;
 
 /**
  * Versioned envelope written to storage. Older callers that read the raw
@@ -160,6 +166,7 @@ export interface StorageOptions {
  */
 export class Storage {
   private static readonly STATE_KEY = 'wallet-state';
+  private static readonly PENDING_CONNECTION_KEY = 'pending-connection';
   private adapter: StorageAdapter;
   private version: number;
   private migrations: Record<number, StoredStateMigration>;
@@ -227,13 +234,62 @@ export class Storage {
   }
 
   /**
-   * Clear wallet connection state
+   * Clear wallet connection state, including any pending connection.
    */
   async clearState(): Promise<void> {
     try {
       await this.adapter.remove(Storage.STATE_KEY);
     } catch (error) {
       logger.warn('Failed to clear state:', error);
+    }
+    await this.clearPendingConnection();
+  }
+
+  /**
+   * Save the login whose authorization may return to a later page load.
+   */
+  async savePendingConnection(connection: PendingConnection): Promise<void> {
+    try {
+      const envelope: StoredStateEnvelope<PendingConnection> = {
+        version: PENDING_CONNECTION_VERSION,
+        payload: connection,
+      };
+      await this.adapter.set(Storage.PENDING_CONNECTION_KEY, JSON.stringify(envelope));
+    } catch (error) {
+      logger.warn('Failed to save pending connection:', error);
+    }
+  }
+
+  /**
+   * Load the pending connection. An unrecognized record is cleared, never thrown.
+   */
+  async loadPendingConnection(): Promise<PendingConnection | null> {
+    try {
+      const serialized = await this.adapter.get(Storage.PENDING_CONNECTION_KEY);
+      if (!serialized) return null;
+      const envelope = parseEnvelope(JSON.parse(serialized) as unknown);
+      if (
+        envelope?.version === PENDING_CONNECTION_VERSION &&
+        isPendingConnection(envelope.payload)
+      ) {
+        return envelope.payload;
+      }
+      logger.warn('Pending connection is not recognized; discarding');
+    } catch (error) {
+      logger.warn('Failed to load pending connection:', error);
+    }
+    await this.safeRemove(Storage.PENDING_CONNECTION_KEY);
+    return null;
+  }
+
+  /**
+   * Clear the pending connection.
+   */
+  async clearPendingConnection(): Promise<void> {
+    try {
+      await this.adapter.remove(Storage.PENDING_CONNECTION_KEY);
+    } catch (error) {
+      logger.warn('Failed to clear pending connection:', error);
     }
   }
 
@@ -276,13 +332,27 @@ export class Storage {
     return payload as StoredState;
   }
 
-  private async safeRemove(): Promise<void> {
+  private async safeRemove(key = Storage.STATE_KEY): Promise<void> {
     try {
-      await this.adapter.remove(Storage.STATE_KEY);
+      await this.adapter.remove(key);
     } catch (error) {
       logger.warn('Failed to remove invalid stored state:', error);
     }
   }
+}
+
+function isPendingConnection(value: unknown): value is PendingConnection {
+  if (value === null || typeof value !== 'object') return false;
+  const { walletId, requestedNetwork, timestamp } = value as Partial<PendingConnection>;
+  return (
+    typeof walletId === 'string' &&
+    typeof timestamp === 'number' &&
+    (requestedNetwork === undefined ||
+      typeof requestedNetwork === 'string' ||
+      (typeof requestedNetwork === 'object' &&
+        requestedNetwork !== null &&
+        typeof requestedNetwork.id === 'string'))
+  );
 }
 
 function createDefaultStorageAdapter(): StorageAdapter {

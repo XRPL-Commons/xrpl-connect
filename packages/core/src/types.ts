@@ -525,6 +525,19 @@ export interface StoredState {
 }
 
 /**
+ * A login started on a wallet whose authorization can return to a later page
+ * load through a redirect (see `SupportsPendingConnection`). Completing that
+ * authorization requests the network the login was requested on.
+ */
+export interface PendingConnection {
+  walletId: WalletIdentifier;
+  /** Network the login was requested on. Omitted when none was requested. */
+  requestedNetwork?: NetworkConfig;
+  /** When the login started, in milliseconds since the epoch. */
+  timestamp: number;
+}
+
+/**
  * Supported log levels.
  * `'silent'` disables all output; `'none'` is a deprecated alias kept for backwards compatibility.
  */

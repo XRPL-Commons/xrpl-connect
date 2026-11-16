@@ -19,6 +19,7 @@ import type {
   ConnectOptionsFor,
   NetworkConfig,
   NetworkInfo,
+  PendingConnection,
   StoredState,
   WalletCapabilities,
   ReconnectOptions,
@@ -200,7 +201,8 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   private async connectInternal(
     walletId: WalletIdentifier,
     options?: ConnectOptions,
-    expectedState?: StoredState
+    expectedState?: StoredState,
+    completingAuthorization = false
   ): Promise<AccountInfo> {
     this.logger.info(`Connecting to wallet: ${walletId}`);
 
@@ -287,12 +289,11 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         network: options?.network ?? this.options.network,
       };
 
-      // A redirect-based login leaves the page before it can commit. When it
-      // returns, it has to replace the session a failed restore left behind,
-      // so that session is marked as awaiting it. Marking instead of clearing
-      // keeps the session for a later retry if the login is cancelled or fails.
-      if (this.retainedStoredSession && !expectedState && supportsPendingConnection(adapter)) {
-        await this.markPendingAuthorization(adapter.id);
+      // A redirect-based login leaves the page before it can commit, and its
+      // returned authorization completes on a later page load. Record the
+      // network it was requested on so that completion requests the same one.
+      if (!expectedState && !completingAuthorization && supportsPendingConnection(adapter)) {
+        await this.recordPendingConnection(adapter.id, connectOptions.network);
         if (
           connectionAttempt !== this.connectionAttemptGeneration ||
           this.connectingAdapter !== adapter
@@ -566,7 +567,16 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         if (reconnectGeneration !== this.reconnectGeneration) return null;
         if (pending) {
           completingAuthorization = true;
-          return await this.connectInternal(adapter.id);
+          // Request the network the login was requested on, with the same
+          // precedence as a restore.
+          const requestedNetwork = await this.loadPendingConnectionNetwork(adapter.id);
+          if (reconnectGeneration !== this.reconnectGeneration) return null;
+          return await this.connectInternal(
+            adapter.id,
+            { network: this.options.network ?? requestedNetwork },
+            undefined,
+            true
+          );
         }
       }
       if (!stored) return null;
@@ -1013,13 +1023,44 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     return result;
   }
 
-  /** Record that a login on `walletId` may return to replace the stored session. */
-  private markPendingAuthorization(walletId: WalletIdentifier): Promise<void> {
+  /**
+   * Record a login on `walletId` whose authorization may return to a later page
+   * load. When a failed restore left a session behind, the returning login has
+   * to replace it, so that session is marked as awaiting it. Marking instead of
+   * clearing keeps the session for a later retry if the login is cancelled or fails.
+   */
+  private recordPendingConnection(
+    walletId: WalletIdentifier,
+    requestedNetwork: NetworkConfig | undefined
+  ): Promise<void> {
+    const connection: PendingConnection = { walletId, timestamp: Date.now() };
+    if (requestedNetwork !== undefined) {
+      connection.requestedNetwork = cloneNetworkConfig(requestedNetwork);
+    }
+    const replacesRetainedSession = this.retainedStoredSession;
     return this.queueStorage(async () => {
+      await this.storage.savePendingConnection(connection);
+      if (!replacesRetainedSession) return;
       const stored = await this.storage.loadState();
       if (!stored || stored.pendingAuthorization === walletId) return;
       await this.storage.saveState({ ...stored, pendingAuthorization: walletId });
     });
+  }
+
+  /**
+   * The network a login on `walletId` was requested on, while its record is
+   * recent enough to belong to the authorization returning now.
+   */
+  private async loadPendingConnectionNetwork(
+    walletId: WalletIdentifier
+  ): Promise<NetworkConfig | undefined> {
+    const connection = await this.storage.loadPendingConnection();
+    if (!connection || connection.walletId !== walletId) return undefined;
+    const age = Date.now() - connection.timestamp;
+    if (!Number.isFinite(age) || age < 0 || age >= TIME.PENDING_CONNECTION_MAX_AGE) {
+      return undefined;
+    }
+    return connection.requestedNetwork;
   }
 
   /** Clear only the state this reconnect attempt actually loaded. */
@@ -1068,13 +1109,17 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     return teardown;
   }
 
-  /** Persist an immutable session snapshot without restoring stale state. */
+  /**
+   * Persist an immutable session snapshot without restoring stale state. A new
+   * session also replaces the stored reconnect options and ends the pending
+   * connection, which it either completed or replaced.
+   */
   private persistState(
     adapter: WalletAdapter,
     generation: number,
     account: AccountInfo,
     reconnectOptions?: ReconnectOptions,
-    replaceReconnectOptions = false
+    newSession = false
   ): Promise<void> {
     const snapshot = this.cloneAccount(account);
     const requestedNetwork = cloneNetworkConfig(this.sessionNetwork);
@@ -1092,11 +1137,12 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       delete state.pendingAuthorization;
       if (requestedNetwork === undefined) delete state.requestedNetwork;
       else state.requestedNetwork = requestedNetwork;
-      if (replaceReconnectOptions) {
+      if (newSession) {
         if (reconnectOptions) state.connectOptions = reconnectOptions;
         else delete state.connectOptions;
       }
       await this.storage.saveState(state);
+      if (newSession) await this.storage.clearPendingConnection();
     });
   }
 

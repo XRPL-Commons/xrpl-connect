@@ -171,6 +171,45 @@ describe('Storage v1 to v2 migration', () => {
   });
 });
 
+describe('Storage pending connection', () => {
+  const PENDING_KEY = 'pending-connection';
+
+  it('keeps the pending connection apart from the session and clears both on clearState', async () => {
+    const adapter = new MemoryStorageAdapter();
+    const storage = new Storage(adapter);
+    const connection = { walletId: 'privy', requestedNetwork: 'testnet', timestamp: 1 };
+
+    await storage.saveState(makeState());
+    await storage.savePendingConnection(connection);
+
+    await expect(storage.loadPendingConnection()).resolves.toEqual(connection);
+    await expect(storage.loadState()).resolves.toEqual(makeState());
+    await storage.clearState();
+    await expect(storage.loadPendingConnection()).resolves.toBeNull();
+    await expect(storage.loadState()).resolves.toBeNull();
+  });
+
+  it.each([
+    ['malformed JSON', 'not-json{'],
+    ['an unversioned record', JSON.stringify({ walletId: 'privy', timestamp: 1 })],
+    ['an unknown version', JSON.stringify({ version: 2, payload: { walletId: 'privy' } })],
+    ['a record without a wallet', JSON.stringify({ version: 1, payload: { timestamp: 1 } })],
+    [
+      'a malformed network',
+      JSON.stringify({
+        version: 1,
+        payload: { walletId: 'privy', requestedNetwork: { wss: 'wss://x' }, timestamp: 1 },
+      }),
+    ],
+  ])('discards %s', async (_name, raw) => {
+    const adapter = new MemoryStorageAdapter();
+    await adapter.set(PENDING_KEY, raw);
+
+    await expect(new Storage(adapter).loadPendingConnection()).resolves.toBeNull();
+    expect(await adapter.get(PENDING_KEY)).toBeNull();
+  });
+});
+
 describe('Storage defaults', () => {
   it('falls back to memory when the localStorage getter throws', async () => {
     const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');

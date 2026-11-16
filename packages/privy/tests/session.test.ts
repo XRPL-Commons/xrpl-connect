@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { secp256k1 } from '@noble/curves/secp256k1';
+import { deriveAddress } from 'xrpl';
+import { MemoryStorageAdapter, Storage, WalletManager } from 'xrpl-connect';
 import { LOGIN_ICONS } from '../src/login-icons';
+import { PrivyAdapter } from '../src/privy-adapter';
 import { PrivySession } from '../src/session';
 import type { PrivyLoginMethod, PrivyWallet } from '../src/session-types';
 
@@ -2214,4 +2218,60 @@ describe('PrivySession', () => {
     expect(mocks.farcasterAuthenticate).not.toHaveBeenCalled();
     await session.disconnect();
   }, 10_000);
+});
+
+describe('PrivyAdapter OAuth return through WalletManager', () => {
+  // The adapter validates the wallet as an XRPL secp256k1 key pair.
+  const validPublicKey = Array.from(secp256k1.getPublicKey('1'.padStart(64, '0')), (byte) =>
+    byte.toString(16).padStart(2, '0')
+  ).join('');
+  const validAddress = deriveAddress(validPublicKey);
+
+  function configureValidWallet(): void {
+    const account = { ...embeddedAccount(), address: validAddress, public_key: validPublicKey };
+    mocks.loginWithCode.mockResolvedValue({ user: user([account]) });
+    mocks.userGet.mockResolvedValue({ user: user([account]) });
+    mocks.refreshUser.mockResolvedValue({ user: user([account]) });
+    mocks.getWallet.mockResolvedValue({
+      ...walletApi(),
+      address: validAddress,
+      public_key: validPublicKey,
+    });
+  }
+
+  it('completes a first login on the network it was requested on', async () => {
+    // No manager network: the login alone asks for testnet.
+    const storage = new MemoryStorageAdapter();
+    const leaving = new WalletManager({
+      adapters: [new PrivyAdapter(options([oauthMethod]))],
+      storage,
+      autoConnect: false,
+    });
+    const login = leaving.connect('privy', { network: 'testnet', loginMethod: 'google' });
+    void login.catch(() => undefined);
+    await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledOnce());
+
+    // The OAuth provider redirects back to a fresh page with empty manager state.
+    resetURL(
+      '/wallet/privy?privy_oauth_code=oauth-code&privy_oauth_state=oauth-state&privy_oauth_provider=google'
+    );
+    configureExistingUser();
+    configureValidWallet();
+    const manager = new WalletManager({
+      adapters: [new PrivyAdapter(options([oauthMethod]))],
+      storage,
+      autoConnect: false,
+    });
+
+    await expect(manager.reconnect()).resolves.toMatchObject({
+      address: validAddress,
+      network: { id: 'testnet' },
+    });
+    expect(mocks.loginWithCode).toHaveBeenCalledWith('oauth-code', 'oauth-state', 'google');
+    expect((await new Storage(storage).loadState())?.requestedNetwork).toBe('testnet');
+
+    await manager.disconnect();
+    await leaving.disconnect();
+    await expect(login).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+  });
 });

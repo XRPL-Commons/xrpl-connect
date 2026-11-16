@@ -76,6 +76,17 @@ and is never requested again, so a wallet that moved to another network fails to
 instead of restoring there. Sessions connected without any requested network restore on
 whatever network the wallet reports.
 
+A login that can return through a redirect (an adapter implementing
+[`SupportsPendingConnection`](#supportspendingconnection), such as Privy OAuth or Xaman's
+mobile sign-in) is recorded in the manager's storage with the network it was requested on,
+for up to `TIME.PENDING_CONNECTION_MAX_AGE` (one hour). Completing the returned
+authorization requests the manager's configured `network`, or else that recorded network,
+with the same `NETWORK_MISMATCH` check, including on a first login with empty storage. So
+`connect('privy', { network: 'testnet', loginMethod: 'google' })` ends on testnet after the
+OAuth redirect. Without a recorded network (none was requested, or the record expired) the
+authorization completes on whatever network the wallet reports. A committed session or
+`disconnect()` removes the record.
+
 #### Network policy
 
 When a network is requested (the manager's `network` option or `connect(id, { network })`),

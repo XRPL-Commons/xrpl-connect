@@ -1027,6 +1027,37 @@ describe('BrowserOAuthClient', () => {
     expect(storedValues(nextLoad).filter((value) => value.includes(token))).toEqual([]);
   });
 
+  it('completes a first callback only on the network its login requested', async () => {
+    // No manager network: the login alone asks for testnet, and Xaman signs in on mainnet.
+    const shared = new SharedStorage();
+    const storage = new MemoryStorageAdapter();
+    const originalTab = makeTab(shared);
+    installBrowser(originalTab);
+    const leaving = new WalletManager({
+      adapters: [new XamanAdapter({ apiKey: API_KEY })],
+      storage,
+      autoConnect: false,
+    });
+    track(leaving.connect('xaman', { network: 'testnet' }));
+    await vi.waitFor(() => expect(originalTab.open).toHaveBeenCalledOnce());
+    const state = new URL(originalTab.opened[0].url).searchParams.get('state')!;
+
+    const returnTab = makeTab(shared, callbackHref(state, jwt()));
+    installBrowser(returnTab);
+    const adapter = new XamanAdapter({ apiKey: API_KEY });
+    const manager = new WalletManager({ adapters: [adapter], storage, autoConnect: false });
+    expect(adapter.hasPendingConnection()).toBe(true);
+
+    await expect(manager.reconnect()).resolves.toBeNull();
+    expect(manager.connected).toBe(false);
+    await expect(
+      manager.signAndSubmit({ TransactionType: 'AccountSet', Account: ACCOUNT })
+    ).rejects.toMatchObject({ code: WalletErrorCode.NOT_CONNECTED });
+    expect(fetchMock).toHaveBeenCalledWith('https://oauth2.xumm.app/token', expect.anything());
+
+    await leaving.disconnect();
+  });
+
   it.each([
     ['an access token', () => `?access_token=${jwt({ sub: 'attacker' })}`],
     ['an authorization code', () => '?authorization_code=attacker-code'],

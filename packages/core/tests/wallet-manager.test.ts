@@ -140,7 +140,8 @@ describe('WalletManager.disconnect()', () => {
       set: vi.fn(async (_key, next) => {
         value = next;
       }),
-      remove: vi.fn(async () => {
+      remove: vi.fn(async (key) => {
+        if (key !== 'wallet-state') return;
         markRemoveStarted();
         await removeBlocked;
         value = null;
@@ -2185,6 +2186,162 @@ describe('WalletManager.reconnect()', () => {
 
     await expect(manager.reconnect()).resolves.toEqual(ACCOUNT);
     expect(received).toEqual([{ network: 'testnet' }]);
+  });
+});
+
+describe('WalletManager redirect logins', () => {
+  const PAYMENT = { TransactionType: 'Payment' } as Transaction;
+
+  /** The wallet on the page its authorization returned to. */
+  function returnedLogin(account: AccountInfo = ACCOUNT) {
+    return {
+      ...createFakeAdapter(),
+      id: 'redirect',
+      hasPendingConnection: () => true,
+      connect: vi.fn<WalletAdapter['connect']>(async () => account),
+    };
+  }
+
+  /**
+   * Start a login that leaves the page: its connect() never settles there, and
+   * the authorization returns to the next page load.
+   */
+  async function leavePageForLogin(
+    storage: StorageAdapter,
+    options?: ConnectOptions,
+    adapters: WalletAdapter[] = []
+  ): Promise<WalletManager> {
+    const leaving = {
+      ...createFakeAdapter(),
+      id: 'redirect',
+      hasPendingConnection: () => false,
+      connect: vi.fn<WalletAdapter['connect']>(() => new Promise<AccountInfo>(() => {})),
+    };
+    const manager = new WalletManager({ adapters: [...adapters, leaving], storage });
+    if (adapters.length > 0) await manager.reconnect();
+    void manager.connect('redirect', options).catch(() => undefined);
+    await vi.waitFor(() => expect(leaving.connect).toHaveBeenCalledOnce());
+    return manager;
+  }
+
+  it('completes a first login on the network it was requested on', async () => {
+    const storage = new MemoryStorageAdapter();
+    await leavePageForLogin(storage, { network: 'testnet' });
+
+    const returned = returnedLogin();
+    const manager = new WalletManager({ adapters: [returned], storage });
+    await expect(manager.reconnect()).resolves.toEqual(ACCOUNT);
+
+    expect(returned.connect).toHaveBeenCalledExactlyOnceWith({ network: 'testnet' });
+    expect(await new Storage(storage).loadState()).toMatchObject({
+      walletId: 'redirect',
+      requestedNetwork: 'testnet',
+    });
+    expect(await new Storage(storage).loadPendingConnection()).toBeNull();
+
+    // The network stays the session's: a later switch blocks signing.
+    returned.emitAdapterEvent('networkChanged', MAINNET);
+    await expect(manager.sign(PAYMENT)).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    expect(returned.sign).not.toHaveBeenCalled();
+  });
+
+  it('refuses a returned login whose wallet is on another network than requested', async () => {
+    const storage = new MemoryStorageAdapter();
+    await leavePageForLogin(storage, { network: 'testnet' });
+
+    const returned = returnedLogin({ ...ACCOUNT, network: MAINNET });
+    const manager = new WalletManager({ adapters: [returned], storage });
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    expect(returned.connect).toHaveBeenCalledExactlyOnceWith({ network: 'testnet' });
+    expect(returned.disconnect).toHaveBeenCalledOnce();
+    expect(manager.connected).toBe(false);
+    await expect(manager.sign(PAYMENT)).rejects.toMatchObject({
+      code: WalletErrorCode.NOT_CONNECTED,
+    });
+    expect(await new Storage(storage).loadState()).toBeNull();
+  });
+
+  it('completes a login that replaces a retained session on the network it was requested on', async () => {
+    const storage = new MemoryStorageAdapter();
+    const stored = createFakeAdapter();
+    await new WalletManager({ adapters: [stored], storage }).connect(stored.id);
+    const timedOut = {
+      ...createFakeAdapter(),
+      keepsSessionOnRestoreTimeout: true,
+      connect: vi.fn(async () => {
+        throw createWalletError.operationTimeout('Session restore');
+      }),
+    };
+    await leavePageForLogin(storage, { network: 'testnet' }, [timedOut]);
+    expect((await new Storage(storage).loadState())?.pendingAuthorization).toBe('redirect');
+
+    const retained = createFakeAdapter();
+    const returned = returnedLogin();
+    const manager = new WalletManager({ adapters: [retained, returned], storage });
+    await expect(manager.reconnect()).resolves.toEqual(ACCOUNT);
+
+    expect(manager.wallet).toBe(returned);
+    expect(retained.connect).not.toHaveBeenCalled();
+    expect(returned.connect).toHaveBeenCalledExactlyOnceWith({ network: 'testnet' });
+    expect(await new Storage(storage).loadState()).toMatchObject({
+      walletId: 'redirect',
+      requestedNetwork: 'testnet',
+    });
+  });
+
+  it('requests the configured network first, as a restore does', async () => {
+    const storage = new MemoryStorageAdapter();
+    await leavePageForLogin(storage, { network: 'devnet' });
+
+    const returned = returnedLogin();
+    const manager = new WalletManager({ adapters: [returned], storage, network: 'testnet' });
+    await expect(manager.reconnect()).resolves.toEqual(ACCOUNT);
+
+    expect(returned.connect).toHaveBeenCalledExactlyOnceWith({ network: 'testnet' });
+  });
+
+  it.each([
+    ['expired', { walletId: 'redirect', timestamp: Date.now() - TIME.PENDING_CONNECTION_MAX_AGE }],
+    ['for another wallet', { walletId: 'other', timestamp: Date.now() }],
+    ['absent', null],
+  ])('completes without a network when the pending login is %s', async (_reason, attempt) => {
+    const storage = new MemoryStorageAdapter();
+    if (attempt) {
+      await new Storage(storage).savePendingConnection({ ...attempt, requestedNetwork: 'testnet' });
+    }
+
+    const returned = returnedLogin({ ...ACCOUNT, network: MAINNET });
+    const manager = new WalletManager({ adapters: [returned], storage });
+    await expect(manager.reconnect()).resolves.toEqual({ ...ACCOUNT, network: MAINNET });
+
+    expect(returned.connect).toHaveBeenCalledExactlyOnceWith({ network: undefined });
+  });
+
+  it('forgets a pending login when it is cancelled', async () => {
+    const storage = new MemoryStorageAdapter();
+    const manager = await leavePageForLogin(storage, { network: 'testnet' });
+    expect(await new Storage(storage).loadPendingConnection()).toMatchObject({
+      walletId: 'redirect',
+      requestedNetwork: 'testnet',
+    });
+
+    await manager.disconnect();
+
+    expect(await new Storage(storage).loadPendingConnection()).toBeNull();
+  });
+
+  it('forgets a pending login once a session connects in its place', async () => {
+    const storage = new MemoryStorageAdapter();
+    const pending = { ...createFakeAdapter(), id: 'redirect', hasPendingConnection: () => false };
+    const manager = new WalletManager({ adapters: [pending], storage });
+
+    await manager.connect('redirect', { network: 'testnet' });
+
+    expect(await new Storage(storage).loadPendingConnection()).toBeNull();
+    expect(await new Storage(storage).loadState()).toMatchObject({ requestedNetwork: 'testnet' });
   });
 });
 

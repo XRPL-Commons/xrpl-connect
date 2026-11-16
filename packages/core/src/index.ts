@@ -35,6 +35,7 @@ export type {
   WalletAdapterEvent,
   StorageAdapter,
   StoredState,
+  PendingConnection,
   LoggerOptions,
   LoggerInstance,
   LogLevel,

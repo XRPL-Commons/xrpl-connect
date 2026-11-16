@@ -169,6 +169,15 @@ check as `connect()`. The wallet's last-reported network and endpoint
 (`StoredState.network`) are never requested again. A session connected without
 any requested network restores on whatever network the wallet reports.
 
+A login on an adapter implementing `SupportsPendingConnection` (Privy OAuth,
+Xaman's mobile sign-in) can return through a redirect, so the manager records it
+(`PendingConnection`) with the network it was requested on, for up to
+`TIME.PENDING_CONNECTION_MAX_AGE` (one hour). Completing the returned
+authorization requests the manager's configured `network`, or else that recorded
+network, including on a first login with empty storage. Without one (none was
+requested, or the record expired) it completes on whatever network the wallet
+reports. A committed session or `disconnect()` removes the record.
+
 #### Network policy
 
 A requested network stays the session's network. When the wallet later reports
