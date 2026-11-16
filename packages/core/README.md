@@ -6,6 +6,12 @@
 
 **Key Responsibility**: Act as the single source of truth for wallet state and provide a unified interface to interact with any connected XRPL wallet.
 
+`@xrpl-connect/core` is a workspace package and is not published to npm. Applications install `xrpl-connect`, which re-exports everything documented here together with the UI and the packaged adapters:
+
+```bash
+npm install xrpl-connect xrpl@^4
+```
+
 ---
 
 ## Architecture
@@ -25,9 +31,7 @@ The `WalletManager` is an event emitter that manages all wallet interactions and
 ### Initialization
 
 ```typescript
-import { LocalStorageAdapter, WalletManager } from '@xrpl-connect/core';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+import { CrossmarkAdapter, LocalStorageAdapter, WalletManager, XamanAdapter } from 'xrpl-connect';
 
 const walletManager = new WalletManager({
   adapters: [new XamanAdapter({ apiKey: 'YOUR_API_KEY' }), new CrossmarkAdapter()],
@@ -346,8 +350,9 @@ Account refresh is currently implemented by the Crossmark, GemWallet, Ledger,
 Otsu, and Xaman adapters. Freshness is adapter-specific: Xaman checks its OAuth
 session subject and retains the session network, not the mobile app's current
 account or network selection. A successful refresh is not proof of the wallet's
-current network. WalletConnect, Xyra, and custom adapters without
-`SupportsFetchAccount` reject with `WalletErrorCode.UNSUPPORTED_METHOD`; an
+current network. GHOSTSIG, MetaMask Snap, Privy, WalletConnect, Xyra, and
+custom adapters without `SupportsFetchAccount` reject with
+`WalletErrorCode.UNSUPPORTED_METHOD`; an
 unsupported adapter is never queried through its cached `getAccount()` method.
 Calling `fetchAccount()` without an active connection rejects with
 `WalletErrorCode.NOT_CONNECTED`. If the wallet reports no active account, the
@@ -449,6 +454,13 @@ manager. This is distinct from `wallet`, which only exposes a committed session.
 
 ---
 
+#### `defaultNetwork: NetworkConfig | undefined`
+
+The `network` passed to the `WalletManager` constructor, or `undefined` when none was
+configured.
+
+---
+
 #### `networkMismatch: WalletError | null`
 
 The `NETWORK_MISMATCH` error that `sign()`, `signAndSubmit()`, and `signMessage()`
@@ -469,9 +481,9 @@ walletManager.on('networkChanged', () => {
 All registered adapters (both available and unavailable).
 
 ```typescript
-walletManager.wallets.forEach((adapter) => {
-  console.log(`${adapter.name} - Available: ${adapter.isAvailable()}`);
-});
+for (const adapter of walletManager.wallets) {
+  console.log(`${adapter.name} - Available: ${await adapter.isAvailable()}`);
+}
 ```
 
 ---
@@ -600,7 +612,8 @@ function adapterSupports(adapter: WalletAdapter, capability: keyof WalletCapabil
 
 An omitted `capabilities` object or omitted flag resolves through
 `CAPABILITY_DEFAULTS`. Declare a flag as `false` only when the operation cannot
-succeed. Crossmark, Ledger, WalletConnect, and Xaman declare `signMessage: false`.
+succeed. Crossmark, GHOSTSIG, Ledger, Privy, WalletConnect, and Xaman declare
+`signMessage: false`.
 
 `adapterSupports()` applies the same defaulting independently of connection
 state. `WalletManager.supports()` uses it for the connected or explicitly
@@ -622,7 +635,57 @@ function supportsFetchAccount(
 ```
 
 Crossmark, GemWallet, Ledger, Otsu, and Xaman implement this interface.
-WalletConnect and Xyra do not currently expose a reliable live account query.
+GHOSTSIG, MetaMask Snap, Privy, WalletConnect, and Xyra do not currently expose
+a live account query.
+
+### Login Methods and Authentication Prompts
+
+Adapters that sign users in through an authentication provider (the Privy
+adapter) implement two optional `WalletAdapter` methods that the wallet
+connector UI consumes:
+
+```typescript
+interface WalletAdapter {
+  // ...
+  getLoginMethods?(options?: { signal?: AbortSignal }): Promise<readonly WalletLoginMethod[]>;
+  onAuthPrompt?(callback: (prompt: WalletAuthPrompt | null) => void): () => void;
+}
+
+interface WalletLoginMethod {
+  id: string;
+  label: string;
+  icon?: string;
+  connectOptions?: ConnectOptions<Record<string, unknown>>; // Passed to connect() for this method
+}
+
+interface WalletAuthPrompt {
+  title: string;
+  icon?: string;
+  description?: string;
+  fields?: readonly WalletAuthField[]; // Inputs such as an email or a one-time code
+  url?: string;
+  qrCode?: string; // Payload to render as a QR code
+  captcha?: { provider: 'turnstile' | 'hcaptcha'; siteKey: string }; // Token goes in values.captchaToken
+  submitLabel?: string;
+  submit?: (values: Record<string, string>) => Promise<void>;
+  secondaryAction?: { label: string; description?: string; run: () => Promise<void> };
+  cancel: () => void;
+  review?: WalletTransactionReview; // Set while a transaction waits for approval
+}
+
+interface WalletTransactionReview {
+  action: 'sign' | 'signAndSubmit';
+  network: NetworkInfo;
+  transaction: Transaction; // Copy of the exact transaction signed once approved
+  details: readonly WalletTransactionReviewDetail[]; // { name, label, value }, key fields first
+}
+```
+
+`getLoginMethods()` returns the sign-in methods the provider currently enables.
+`onAuthPrompt()` reports input, QR, or CAPTCHA steps during a connection attempt
+and, while connected, transaction reviews (`prompt.review`): `submit` approves
+the transaction and `cancel` rejects it. The callback receives `null` when the
+prompt closes; the returned function unsubscribes.
 
 ### ConnectOptions
 
@@ -647,7 +710,6 @@ interface NetworkInfo {
   wss: string; // WebSocket endpoint URL
   rpc?: string; // Optional HTTP RPC endpoint
   walletConnectId?: string; // Optional WalletConnect network ID (e.g., 'xrpl:0')
-  chainId?: number; // Optional chain ID
 }
 ```
 
@@ -730,9 +792,10 @@ All errors thrown by WalletManager are instances of `WalletError`.
 
 ```typescript
 class WalletError extends Error {
-  code: WalletErrorCode; // Specific error code
-  walletId?: string; // ID of the wallet where error occurred
-  originalError?: Error; // Original error from adapter/wallet
+  constructor(code: WalletErrorCode, message: string, originalError?: Error);
+  readonly code: WalletErrorCode; // Specific error code
+  readonly category: WalletErrorCategory; // High-level category derived from the code
+  readonly originalError?: Error; // Original error from adapter/wallet
 }
 
 enum WalletErrorCode {
@@ -741,22 +804,35 @@ enum WalletErrorCode {
   WALLET_NOT_AVAILABLE = 'WALLET_NOT_AVAILABLE',
   CONNECTION_FAILED = 'CONNECTION_FAILED',
   CONNECTION_REJECTED = 'CONNECTION_REJECTED',
+  CONFIGURATION_REQUIRED = 'CONFIGURATION_REQUIRED',
   SIGN_FAILED = 'SIGN_FAILED',
   SIGN_REJECTED = 'SIGN_REJECTED',
+  OPERATION_TIMEOUT = 'OPERATION_TIMEOUT',
+  INVALID_MESSAGE = 'INVALID_MESSAGE',
   NETWORK_NOT_SUPPORTED = 'NETWORK_NOT_SUPPORTED',
   NETWORK_MISMATCH = 'NETWORK_MISMATCH',
   NOT_CONNECTED = 'NOT_CONNECTED',
   ALREADY_CONNECTED = 'ALREADY_CONNECTED',
   UNSUPPORTED_METHOD = 'UNSUPPORTED_METHOD',
-  INVALID_MESSAGE = 'INVALID_MESSAGE',
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
+
+enum WalletErrorCategory {
+  USER_ACTION = 'USER_ACTION', // CONNECTION_REJECTED, SIGN_REJECTED
+  WALLET_UNAVAILABLE = 'WALLET_UNAVAILABLE', // WALLET_NOT_*, NETWORK_NOT_SUPPORTED, NETWORK_MISMATCH
+  NETWORK = 'NETWORK', // CONNECTION_FAILED, OPERATION_TIMEOUT
+  INVALID_INPUT = 'INVALID_INPUT', // CONFIGURATION_REQUIRED, NOT_CONNECTED, ALREADY_CONNECTED, UNSUPPORTED_METHOD, INVALID_MESSAGE
+  INTERNAL = 'INTERNAL', // SIGN_FAILED, UNKNOWN_ERROR
+}
 ```
+
+Branch on `category` for user-facing decisions and on `code` when finer
+granularity is needed.
 
 **Example Error Handling**:
 
 ```typescript
-import { WalletError, WalletErrorCode } from '@xrpl-connect/core';
+import { WalletError, WalletErrorCode } from 'xrpl-connect';
 
 try {
   await walletManager.connect('xaman', { apiKey: 'key' });
@@ -778,6 +854,54 @@ try {
   }
 }
 ```
+
+---
+
+## Adapter Helpers
+
+These exports serve adapter implementations that treat wallet responses as
+untrusted input.
+
+### `decodeMessage(message: string | Uint8Array): string`
+
+Returns the exact text a wallet must sign for a `signMessage()` request. Strings
+are returned unchanged; bytes must be valid UTF-8 and are decoded without lossy
+replacement or byte-order-mark stripping. Invalid bytes throw a `WalletError`
+with `INVALID_MESSAGE`.
+
+### Signed Transaction Verification
+
+```typescript
+function canonicalizeTransaction(transaction: Transaction): Transaction;
+
+function assertSignedTransaction(
+  transaction: Transaction, // Decoded from blob
+  blob: string,
+  expected: SignedTransactionExpectation // { walletName, account, networkId, multisign? }
+): void;
+
+function assertRequestedTransaction(
+  request: Transaction,
+  actual: Record<string, unknown> | undefined,
+  policy: RequestedTransactionPolicy // { walletName, maxLastLedgerSequenceExtension? }
+): void;
+```
+
+- `canonicalizeTransaction()` returns the binary-codec form of a transaction
+  (a Payment's `DeliverMax` becomes `Amount`, `Flags` objects become a number,
+  X-addresses become classic addresses with tags). It throws when the
+  transaction cannot be serialized.
+- `assertSignedTransaction()` throws unless the signed transaction is valid for
+  `networkId`, is signed by the connected `account` (or, with `multisign`,
+  includes it in `Signers`), and carries valid signatures.
+- `assertRequestedTransaction()` throws unless the signed transaction preserves
+  every requested field, compared in canonical form. The wallet may add omitted
+  fields such as `Fee` or `Sequence`; `LastLedgerSequence` may grow by at most
+  `maxLastLedgerSequenceExtension` (default `0`, always exact for multisigning
+  and Batch requests).
+
+These helpers throw plain `Error`s, so the calling adapter decides which
+`WalletError` to report.
 
 ---
 
@@ -910,7 +1034,7 @@ receives only warnings and errors outside `NODE_ENV === 'development'` unless it
 sets `level` (see below):
 
 ```typescript
-import type { LoggerInstance } from '@xrpl-connect/core';
+import type { LoggerInstance } from 'xrpl-connect';
 
 const appLogger: LoggerInstance = {
   debug: (msg, ...args) => myLogger.trace({ msg, args }),
@@ -944,7 +1068,7 @@ const manager = new WalletManager({
 The core exports standard network configurations for convenience:
 
 ```typescript
-import { STANDARD_NETWORKS } from '@xrpl-connect/core';
+import { STANDARD_NETWORKS } from 'xrpl-connect';
 
 const mainnetManager = new WalletManager({
   adapters: [...],
@@ -1032,7 +1156,12 @@ packages/core/src/
 ├── errors.ts                # WalletError class and error codes
 ├── storage.ts               # StorageAdapter implementations
 ├── logger.ts                # Logger utility
-└── constants.ts             # Constants (standard networks, etc.)
+├── message.ts               # decodeMessage
+├── transaction-verification.ts # Signed transaction verification helpers
+├── network.ts               # resolveNetwork
+├── device.ts                # isMobile
+├── async.ts                 # withTimeout
+└── constants.ts             # Timing constants (TIME)
 ```
 
 ---
@@ -1042,9 +1171,7 @@ packages/core/src/
 ### Basic Setup
 
 ```typescript
-import { WalletManager, STANDARD_NETWORKS } from '@xrpl-connect/core';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+import { CrossmarkAdapter, STANDARD_NETWORKS, WalletManager, XamanAdapter } from 'xrpl-connect';
 
 const walletManager = new WalletManager({
   adapters: [new XamanAdapter({ apiKey: process.env.XUMM_API_KEY }), new CrossmarkAdapter()],

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The packages under `@xrpl-connect/adapter-*` enable the core `WalletManager` to interact with different XRPL wallet providers. There is no combined `@xrpl-connect/adapters` package; applications can import an individual adapter package or use the exports from `xrpl-connect`.
+The workspace packages under `@xrpl-connect/adapter-*` enable the core `WalletManager` to interact with different XRPL wallet providers. They are not published to npm individually, and there is no combined `@xrpl-connect/adapters` package: applications install `xrpl-connect`, which re-exports every adapter class, its option types, and the `Adapters` map.
 
 **Key Responsibility**: Provide adapters that implement a unified interface for wallet operations while handling wallet-specific nuances (OAuth flows, browser extensions, QR codes, etc.).
 
@@ -130,6 +130,7 @@ for transaction signing or submission.
 | Otsu          | XRPL mainnet, testnet, and devnet                                                                                           | Uses Otsu's active network                                | Otsu `getNetwork()`                                                        |
 | Ledger        | Standard networks and custom `NetworkInfo` endpoints                                                                        | Uses mainnet                                              | Application configuration; the XRP Ledger hardware app is network-agnostic |
 | MetaMask Snap | XRPL mainnet, testnet, and devnet                                                                                           | Selects and verifies mainnet                              | Snap active-network API after any requested switch                         |
+| GHOSTSIG      | XRPL mainnet, testnet, and devnet                                                                                           | Uses mainnet                                              | Application configuration; GHOSTSIG signs through its own nodes            |
 
 For wallet-selected adapters (Xaman, Crossmark, GemWallet, and Otsu), an explicit request
 must match the live wallet network. Ledger is the exception because the hardware app signs
@@ -138,7 +139,7 @@ autofill and submission.
 
 ### 1. Xaman Adapter
 
-**Package**: `@xrpl-connect/adapter-xaman`
+**Workspace package**: `@xrpl-connect/adapter-xaman`
 
 **Export**: `XamanAdapter`
 
@@ -173,14 +174,14 @@ interface XamanAdapterOptions {
     app?: string; // URL or deep link opened from the Xaman app
     web?: string; // URL opened from Xaman's browser flow
   };
+  maxLastLedgerSequenceExtension?: number; // Max increase to a supplied LastLedgerSequence in sign() results (default: 50; 0 = exact)
 }
 ```
 
 #### Example Usage
 
 ```typescript
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { WalletManager } from '@xrpl-connect/core';
+import { WalletManager, XamanAdapter } from 'xrpl-connect';
 
 const xamanAdapter = new XamanAdapter({
   apiKey: process.env.XUMM_API_KEY,
@@ -209,7 +210,8 @@ adapter directly, `xamanAdapter.connect()` can override `returnUrl` for that ses
 #### Implementation Details
 
 - **isAvailable()**: Always returns `true`
-- **connect()**: Returns sign-in URL and waits for user approval via polling
+- **connect()**: Opens Xaman's OAuth sign-in window and uses the authorization code flow with PKCE (S256); only the callback of a sign-in started in this browser completes, so a link carrying another account's credentials never signs the visitor in. The token exchange needs `https://oauth2.xumm.app` in a CSP `connect-src`. Sessions saved under the legacy `XummPkceJwt` key are not restored; affected users sign in once more.
+- **sign()**: The signed result may raise a supplied absolute `LastLedgerSequence` by at most `maxLastLedgerSequenceExtension` ledgers; this does not apply to `signAndSubmit()`, multisigning, Batch, or an omitted `LastLedgerSequence`
 - **Networks**: Verifies the authorized session's live network against any explicit request
 - **Metadata**: Includes Xaman branding and official URL
 - **Event Handling**: Emits `connect`, `disconnect`, `accountChanged` events
@@ -218,7 +220,7 @@ adapter directly, `xamanAdapter.connect()` can override `returnUrl` for that ses
 
 ### 2. Crossmark Adapter
 
-**Package**: `@xrpl-connect/adapter-crossmark`
+**Workspace package**: `@xrpl-connect/adapter-crossmark`
 
 **Export**: `CrossmarkAdapter`
 
@@ -253,8 +255,7 @@ interface CrossmarkAdapterOptions {
 #### Example Usage
 
 ```typescript
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
-import { WalletManager } from '@xrpl-connect/core';
+import { CrossmarkAdapter, WalletManager } from 'xrpl-connect';
 
 const crossmarkAdapter = new CrossmarkAdapter();
 
@@ -282,7 +283,7 @@ if (available) {
 
 ### 3. GemWallet Adapter
 
-**Package**: `@xrpl-connect/adapter-gemwallet`
+**Workspace package**: `@xrpl-connect/adapter-gemwallet`
 
 **Export**: `GemWalletAdapter`
 
@@ -316,7 +317,7 @@ interface GemWalletAdapterOptions {
 #### Example Usage
 
 ```typescript
-import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
+import { GemWalletAdapter, WalletManager } from 'xrpl-connect';
 
 const gemwalletAdapter = new GemWalletAdapter();
 
@@ -334,7 +335,7 @@ an omitted request uses the wallet-reported network without assigning a default 
 
 ### 4. WalletConnect Adapter
 
-**Package**: `@xrpl-connect/adapter-walletconnect`
+**Workspace package**: `@xrpl-connect/adapter-walletconnect`
 
 **Export**: `WalletConnectAdapter`
 
@@ -355,22 +356,33 @@ WalletConnect is a multi-wallet connection protocol supporting dozens of mobile 
 #### Constructor
 
 ```typescript
-const wcAdapter = new WalletConnectAdapter(options: WalletConnectAdapterOptions);
+const wcAdapter = new WalletConnectAdapter(options?: WalletConnectAdapterOptions);
 ```
 
 **Options**:
 
 ```typescript
 interface WalletConnectAdapterOptions {
-  projectId: string; // WalletConnect project ID (required)
+  projectId?: string; // WalletConnect/Reown project ID
+  metadata?: SignClientTypes.Metadata; // App metadata shown in the wallet
   onQRCode?: (uri: string) => void; // Callback when QR code is generated
+  onDeepLink?: (uri: string) => string; // Transform URI for deep linking
+
+  // Modal options
+  useModal?: boolean; // Use the WalletConnect modal instead of a custom QR (default: false)
+  modalMode?: 'mobile-only' | 'always' | 'never'; // When to show the modal (default: 'mobile-only')
+  themeMode?: 'dark' | 'light'; // Modal theme (default: 'dark')
 }
 ```
+
+`projectId` is optional in the constructor because `connect()` options can supply it, but
+one of the two is required: connecting without it fails with `CONFIGURATION_REQUIRED`, and
+`preInitialize()` does nothing without a constructor `projectId`.
 
 #### Example Usage
 
 ```typescript
-import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
+import { WalletConnectAdapter, WalletManager } from 'xrpl-connect';
 
 const wcAdapter = new WalletConnectAdapter({
   projectId: 'your-walletconnect-project-id',
@@ -404,12 +416,15 @@ This eagerly initializes the WalletConnect infrastructure, reducing latency when
 - **Multi-wallet**: Shows wallet selection after QR scan
 - **Namespace**: Uses `xrpl` namespace for XRPL networks
 - **Validation**: Accepts only a valid XRPL classic address whose CAIP-10 chain matches the requested network; invalid approved sessions are disconnected
+- **sign() / signAndSubmit()**: Send the transaction in canonical codec form (a Payment's `DeliverMax` becomes `Amount`) and verify the wallet's result before returning it: single-signed by the connected account on the requested network, every requested field preserved, and a reported hash that matches the signed blob (`signAndSubmit()` requires one). The result carries the verified `tx_blob`, its `hash`, and `tx_json` decoded from that blob. A `signAndSubmit()` result that fails verification may already have been broadcast, so its error carries `transactionHash` when the returned transaction could be serialized; check the ledger before retrying
+- **Multisigning**: Requests with `SigningPubKey: ''` or `Signers` reject with `UNSUPPORTED_METHOD`
+- **signMessage()**: Throws `UNSUPPORTED_METHOD`
 
 ---
 
 ### 5. Xyra Adapter
 
-**Package**: `@xrpl-connect/adapter-xyra`
+**Workspace package**: `@xrpl-connect/adapter-xyra`
 
 **Export**: `XyraAdapter`
 
@@ -450,8 +465,7 @@ interface XyraAdapterOptions {
 #### Example Usage
 
 ```typescript
-import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
-import { WalletManager } from '@xrpl-connect/core';
+import { WalletManager, XyraAdapter } from 'xrpl-connect';
 
 const xyraAdapter = new XyraAdapter();
 
@@ -479,7 +493,7 @@ console.log('Connected:', account.address);
 
 ### 6. Otsu Adapter
 
-**Package**: `@xrpl-connect/adapter-otsu`
+**Workspace package**: `@xrpl-connect/adapter-otsu`
 
 **Export**: `OtsuAdapter`
 
@@ -510,8 +524,7 @@ const otsuAdapter = new OtsuAdapter();
 #### Example Usage
 
 ```typescript
-import { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
-import { WalletManager } from '@xrpl-connect/core';
+import { OtsuAdapter, WalletManager } from 'xrpl-connect';
 
 const otsuAdapter = new OtsuAdapter();
 
@@ -542,7 +555,7 @@ if (available) {
 
 ### 7. Ledger Adapter
 
-**Package**: `@xrpl-connect/adapter-ledger`
+**Workspace package**: `@xrpl-connect/adapter-ledger`
 
 **Export**: `LedgerAdapter`
 
@@ -551,8 +564,7 @@ if (available) {
 Connects Ledger hardware wallets through WebHID or WebUSB. The adapter supports configurable BIP44 account paths, device-state reporting, single-signature transactions, and signer-bound parallel multisign contributions.
 
 ```typescript
-import { LedgerAdapter, LedgerDeviceState } from '@xrpl-connect/adapter-ledger';
-// or: import { LedgerAdapter, LedgerDeviceState } from 'xrpl-connect';
+import { LedgerAdapter, LedgerDeviceState } from 'xrpl-connect';
 
 const ledger = new LedgerAdapter({ accountIndex: 0, preferWebHID: true });
 const state = await ledger.getDeviceState();
@@ -579,7 +591,7 @@ and `signAndSubmit()` does not accept multisign input.
 
 ### 8. MetaMask Snap Adapter
 
-**Package**: `@xrpl-connect/adapter-metamask-snap`
+**Workspace package**: `@xrpl-connect/adapter-metamask-snap`
 
 **Export**: `MetaMaskSnapAdapter`
 
@@ -603,27 +615,27 @@ const metaMaskSnapAdapter = new MetaMaskSnapAdapter(options?: MetaMaskSnapAdapte
 ```typescript
 interface MetaMaskSnapAdapterOptions {
   snapId?: string; // defaults to 'npm:xrpl-snap'
+  snapVersion?: string; // semver range MetaMask must install; defaults to '^1.0.3' for the default snapId, none for a custom one
 }
 ```
 
 #### Example Usage
 
 ```typescript
-import { MetaMaskSnapAdapter } from '@xrpl-connect/adapter-metamask-snap';
-// or: import { MetaMaskSnapAdapter, Adapters } from 'xrpl-connect';
+import { MetaMaskSnapAdapter } from 'xrpl-connect'; // also available as Adapters.MetaMaskSnap
 
 const metaMaskSnapAdapter = new MetaMaskSnapAdapter();
 ```
 
 #### Implementation Details
 
-- **isAvailable()**: Discovers MetaMask through EIP-6963 first, falls back to `window.ethereum`, and returns `true` only when the provider identifies as MetaMask and `wallet_getSnaps` succeeds.
-- **connect()**: Installs/connects the snap (`wallet_requestSnaps`), switches network, then reads the account via `xrpl_getAccount`.
+- **isAvailable()**: Discovers MetaMask only through EIP-6963 announcements with the exact identifiers `io.metamask` or `io.metamask.flask` (preferred in that order), and returns `true` only when that provider identifies as MetaMask and `wallet_getSnaps` succeeds. `window.ethereum` is never used, because other wallets also set `isMetaMask`.
+- **connect()**: Installs/connects the snap within the `snapVersion` range (`wallet_requestSnaps`; MetaMask refuses a release outside it), switches network, then reads the account via `xrpl_getAccount`.
 - **sign() / signAndSubmit() / signMessage()**: Invoke the snap's `xrpl_sign`, `xrpl_signAndSubmit`, `xrpl_signMessage` methods.
 
 ### 9. GHOSTSIG Adapter
 
-**Package**: `@xrpl-connect/adapter-ghostsig`
+**Workspace package**: `@xrpl-connect/adapter-ghostsig`
 
 **Export**: `GhostsigAdapter`
 
@@ -654,8 +666,7 @@ interface GhostsigAdapterOptions {
 #### Example Usage
 
 ```typescript
-import { GhostsigAdapter } from '@xrpl-connect/adapter-ghostsig';
-// or: import { GhostsigAdapter, Adapters } from 'xrpl-connect';
+import { GhostsigAdapter } from 'xrpl-connect'; // also available as Adapters.Ghostsig
 
 const ghostsigAdapter = new GhostsigAdapter();
 ```
@@ -705,6 +716,7 @@ import {
   SupportsFetchAccount,
   WalletError,
   WalletErrorCode,
+  decodeMessage,
 } from '@xrpl-connect/core';
 
 export class YourWalletAdapter implements WalletAdapter, SupportsFetchAccount {
@@ -730,7 +742,7 @@ export class YourWalletAdapter implements WalletAdapter, SupportsFetchAccount {
   async connect(options?: any): Promise<AccountInfo> {
     try {
       if (!(await this.isAvailable())) {
-        throw new WalletError('Your Wallet is not available', WalletErrorCode.WALLET_NOT_AVAILABLE);
+        throw new WalletError(WalletErrorCode.WALLET_NOT_AVAILABLE, 'Your Wallet is not available');
       }
 
       // Implement wallet-specific connection logic
@@ -814,7 +826,7 @@ export class YourWalletAdapter implements WalletAdapter, SupportsFetchAccount {
 
   async sign(transaction: any): Promise<SignedTransaction> {
     if (!this.account) {
-      throw new WalletError('Not connected', WalletErrorCode.NOT_CONNECTED);
+      throw new WalletError(WalletErrorCode.NOT_CONNECTED, 'Not connected');
     }
 
     try {
@@ -831,7 +843,7 @@ export class YourWalletAdapter implements WalletAdapter, SupportsFetchAccount {
 
   async signAndSubmit(transaction: any): Promise<SubmittedTransaction> {
     if (!this.account) {
-      throw new WalletError('Not connected', WalletErrorCode.NOT_CONNECTED);
+      throw new WalletError(WalletErrorCode.NOT_CONNECTED, 'Not connected');
     }
 
     try {
@@ -849,11 +861,12 @@ export class YourWalletAdapter implements WalletAdapter, SupportsFetchAccount {
 
   async signMessage(message: string | Uint8Array): Promise<SignedMessage> {
     if (!this.account) {
-      throw new WalletError('Not connected', WalletErrorCode.NOT_CONNECTED);
+      throw new WalletError(WalletErrorCode.NOT_CONNECTED, 'Not connected');
     }
 
     try {
-      const messageStr = typeof message === 'string' ? message : new TextDecoder().decode(message);
+      // Exact UTF-8 text; invalid bytes throw INVALID_MESSAGE instead of signing altered text
+      const messageStr = decodeMessage(message);
 
       const signed = await this.signMessageWithWallet(messageStr);
 
@@ -943,7 +956,11 @@ export class YourWalletAdapter implements WalletAdapter, SupportsFetchAccount {
       code = WalletErrorCode.NOT_CONNECTED;
     }
 
-    return new WalletError(`${context}: ${message}`, code);
+    return new WalletError(
+      code,
+      `${context}: ${message}`,
+      error instanceof Error ? error : undefined
+    );
   }
 }
 ```
@@ -974,7 +991,7 @@ export class YourWalletAdapter implements WalletAdapter, SupportsFetchAccount {
     "@xrpl-connect/core": "workspace:*"
   },
   "peerDependencies": {
-    "xrpl": "^3.0.0 || ^4.0.0"
+    "xrpl": "^3.0.0 || ^4.0.0 || ^5.0.0"
   }
 }
 ```
@@ -996,7 +1013,7 @@ Users can now use your adapter:
 
 ```typescript
 import { YourWalletAdapter } from '@your-scope/xrpl-adapter-your-wallet';
-import { WalletManager } from '@xrpl-connect/core';
+import { WalletManager } from 'xrpl-connect';
 
 const walletManager = new WalletManager({
   adapters: [new YourWalletAdapter()],
@@ -1020,23 +1037,25 @@ async connect(options?: any): Promise<AccountInfo> {
     // Map specific errors
     if (error.code === 'USER_REJECTED') {
       throw new WalletError(
+        WalletErrorCode.CONNECTION_REJECTED,
         'Connection rejected by user',
-        WalletErrorCode.CONNECTION_REJECTED
+        error
       );
     }
 
     if (error.code === 'NOT_INSTALLED') {
       throw new WalletError(
+        WalletErrorCode.WALLET_NOT_INSTALLED,
         'Wallet extension not found',
-        WalletErrorCode.WALLET_NOT_INSTALLED
+        error
       );
     }
 
-    // Generic error
+    // Generic error: keep the wallet's error as originalError
     throw new WalletError(
-      `Connection failed: ${error.message}`,
       WalletErrorCode.CONNECTION_FAILED,
-      { originalError: error }
+      `Connection failed: ${error.message}`,
+      error
     );
   }
 }
@@ -1075,19 +1094,21 @@ describe('YourWalletAdapter', () => {
 
   describe('signMessage', () => {
     it('should throw if not connected', async () => {
-      await expect(adapter.signMessage('test')).rejects.toThrow(WalletErrorCode.NOT_CONNECTED);
+      await expect(adapter.signMessage('test')).rejects.toMatchObject({
+        code: WalletErrorCode.NOT_CONNECTED,
+      });
     });
   });
 
   describe('events', () => {
-    it('should emit connect event', (done) => {
-      adapter.on('connect', (account) => {
-        expect(account.address).toBeDefined();
-        done();
-      });
+    it('should emit connect event', async () => {
+      const onConnect = vi.fn();
+      adapter.on('connect', onConnect);
 
-      // Trigger connection
-      adapter.connect();
+      // Stub the wallet so connect() succeeds, then trigger the connection
+      const account = await adapter.connect();
+
+      expect(onConnect).toHaveBeenCalledWith(account);
     });
   });
 });
@@ -1101,6 +1122,7 @@ describe('YourWalletAdapter', () => {
 packages/adapters/
 ├── crossmark/                # Crossmark extension adapter
 ├── gemwallet/                # GemWallet extension adapter
+├── ghostsig/                 # GHOSTSIG passkey popup adapter
 ├── ledger/                   # Ledger hardware adapter
 ├── metamask-snap/            # MetaMask Snap adapter
 ├── otsu/                     # Otsu extension adapter
