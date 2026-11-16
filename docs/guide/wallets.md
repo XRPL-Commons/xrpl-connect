@@ -1,10 +1,10 @@
 ---
-description: Choose and configure the wallet adapters included with XRPL Connect v1.0.
+description: Choose and configure the wallet adapters included with XRPL Connect v1.
 ---
 
 # Wallets and capabilities
 
-XRPL Connect v1.0 ships nine adapters behind one `WalletManager` API. Register only the wallets your application intends to support; the connector checks availability before presenting them.
+XRPL Connect v1 ships nine adapters behind one `WalletManager` API. Register only the wallets your application intends to support; the connector checks availability before presenting them.
 
 | Adapter ID      | Wallet        | Requirement                     | Sign | Submit | Messages | Live account refresh |
 | --------------- | ------------- | ------------------------------- | :--: | :----: | :------: | :------------------: |

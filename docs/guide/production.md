@@ -1,5 +1,5 @@
 ---
-description: Production, security, SSR, persistence, and browser guidance for XRPL Connect v1.0.
+description: Production, security, SSR, persistence, and browser guidance for XRPL Connect v1.
 ---
 
 # Production and security

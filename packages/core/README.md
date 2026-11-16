@@ -9,7 +9,7 @@
 `@xrpl-connect/core` is a workspace package and is not published to npm. Applications install `xrpl-connect`, which re-exports everything documented here together with the UI and the packaged adapters:
 
 ```bash
-npm install xrpl-connect xrpl@^4
+npm install xrpl-connect@rc xrpl@^4
 ```
 
 ---

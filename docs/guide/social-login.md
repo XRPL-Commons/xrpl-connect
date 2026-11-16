@@ -104,7 +104,7 @@ does not automatically send a transaction.
 Install the Privy package alongside `xrpl-connect`:
 
 ```bash
-npm install xrpl-connect @xrpl-commons/xrpl-connect-privy xrpl@^4
+npm install xrpl-connect@rc @xrpl-commons/xrpl-connect-privy@rc xrpl@^4
 ```
 
 Keep both packages on the same release: the Privy package requires the matching

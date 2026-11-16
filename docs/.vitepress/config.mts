@@ -6,7 +6,7 @@ const repository = 'https://github.com/XRPL-Commons/xrpl-connect';
 
 // Version of the documentation served at the site root, shown in the version menu. Update it when
 // the current documentation moves to another release.
-const CURRENT_VERSION = '1.0.0';
+const CURRENT_VERSION = '1.1.0-rc.0';
 
 const currentNav = [
   {
@@ -15,7 +15,7 @@ const currentNav = [
       { text: 'Introduction', link: '/' },
       { text: 'Getting Started', link: '/guide/getting-started' },
       { text: 'API Reference', link: '/guide/api-reference' },
-      { text: 'Migrate from 0.8.2', link: '/guide/migration-v1' },
+      { text: 'Migration Guide', link: '/guide/migration-v1' },
     ],
   },
   {
@@ -46,6 +46,7 @@ const currentSidebar = [
       { text: 'Social Login', link: '/guide/social-login' },
       { text: 'Transactions & Signing', link: '/guide/transactions' },
       { text: 'Production & Security', link: '/guide/production' },
+      { text: 'Dependency Audit', link: '/security/dependency-audit' },
     ],
   },
   {
@@ -75,7 +76,7 @@ const currentSidebar = [
     text: 'Reference',
     items: [
       { text: 'API Reference', link: '/guide/api-reference' },
-      { text: 'Migrating from 0.8.2', link: '/guide/migration-v1' },
+      { text: 'Migration Guide', link: '/guide/migration-v1' },
     ],
   },
 ];

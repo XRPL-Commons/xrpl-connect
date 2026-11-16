@@ -97,7 +97,7 @@ Here's a complete example with a single HTML file:
 Install the optional Privy package from the same release as `xrpl-connect`:
 
 ```bash
-npm install @xrpl-commons/xrpl-connect-privy
+npm install @xrpl-commons/xrpl-connect-privy@rc
 ```
 
 Register a `PrivyAdapter` with your public app ID and a same-application callback URL.

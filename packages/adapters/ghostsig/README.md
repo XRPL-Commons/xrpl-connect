@@ -21,9 +21,9 @@ The GHOSTSIG adapter ships in the `xrpl-connect` package, which re-exports every
 `@xrpl-connect/adapter-ghostsig` workspace package is not published to npm.
 
 ```bash
-npm install xrpl-connect xrpl@^4
+npm install xrpl-connect@rc xrpl@^4
 # or
-pnpm add xrpl-connect xrpl@^4
+pnpm add xrpl-connect@rc xrpl@^4
 ```
 
 ## Usage

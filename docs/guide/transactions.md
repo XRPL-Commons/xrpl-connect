@@ -1,5 +1,5 @@
 ---
-description: Safely sign transactions, submit transactions, and sign messages with XRPL Connect v1.0.
+description: Safely sign transactions, submit transactions, and sign messages with XRPL Connect v1.
 ---
 
 # Transactions and signing

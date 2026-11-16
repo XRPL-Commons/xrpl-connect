@@ -11,13 +11,13 @@ Vue composables must also run only on the client.
 ## Installation
 
 ```bash
-npm install @xrpl-commons/xrpl-connect-vue xrpl-connect xrpl@^4 vue
+npm install @xrpl-commons/xrpl-connect-vue@rc xrpl-connect@rc xrpl@^4 vue
 ```
 
 ## Client plugin
 
-The install command selects the coordinated stable v1 packages. Keep the Vue binding and
-`xrpl-connect` on the same release line.
+The install command selects the coordinated `1.1.0-rc.0` release candidate from npm's `rc` tag.
+Keep the Vue binding and `xrpl-connect` on the same release.
 
 For Xaman OAuth, also check the served
 [popup security headers](/guide/production#xaman-oauth-popups-and-security-headers).
@@ -70,7 +70,7 @@ needed. `@xrpl-commons/xrpl-connect-vue` itself remains safe to import in univer
 Install the optional Privy package from the same release as `xrpl-connect`:
 
 ```bash
-npm install @xrpl-commons/xrpl-connect-privy
+npm install @xrpl-commons/xrpl-connect-privy@rc
 ```
 
 Create the adapter in the same client-only plugin, so it never runs during server rendering:

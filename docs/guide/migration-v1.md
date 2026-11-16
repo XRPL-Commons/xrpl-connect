@@ -1,17 +1,17 @@
 ---
-description: Upgrade XRPL Connect applications from 0.8.2 to the 1.0 release line.
+description: Upgrade XRPL Connect applications from 0.8.2 to the v1 release line, and from 1.0.0 to 1.1.
 ---
 
-# Migrating from 0.8.2 to 1.0.0
+# Migration Guide
 
-XRPL Connect 1.0 keeps the `WalletManager` and adapter model from 0.8.2, while tightening signing results, wallet capabilities, persistence, UI lifecycle, and framework integration.
+XRPL Connect v1 keeps the `WalletManager` and adapter model from 0.8.2, while tightening signing results, wallet capabilities, persistence, UI lifecycle, and framework integration.
 
 Already on 1.0.0? See [Upgrading from 1.0.0](#upgrading-from-1-0-0).
 
 ::: info Current release channel
-The current stable release is `1.0.0`. Install the coordinated packages by their bare names.
-The previous `1.0.0-rc.2` candidate used the `rc` tag; applications already on that candidate
-can upgrade with the commands below.
+This guide tracks the `1.1.0-rc.0` release candidate, published under npm's `rc` tag; the
+commands below install it with `@rc`. The stable `1.0.0` packages remain on npm's default
+channel.
 :::
 
 ## Choose the packages you use
@@ -20,25 +20,27 @@ Do not install both framework bindings. Upgrade the umbrella package and only th
 
 ```bash
 # Vanilla JavaScript or a custom framework integration
-pnpm add xrpl-connect xrpl@^4
+pnpm add xrpl-connect@rc xrpl@^4
 
 # React
-pnpm add xrpl-connect @xrpl-commons/xrpl-connect-react xrpl@^4 react react-dom
+pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-react@rc xrpl@^4 react react-dom
 
 # Vue 3 or Nuxt
-pnpm add xrpl-connect @xrpl-commons/xrpl-connect-vue xrpl@^4 vue
+pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-vue@rc xrpl@^4 vue
 ```
 
-The coordinated 1.0.0 release contains these three artifacts:
+The coordinated release contains these packages:
 
-| Package                            | 0.8.2 line    | Current 1.0 release                  |
-| ---------------------------------- | ------------- | ------------------------------------ |
-| `xrpl-connect`                     | `0.8.2`       | `1.0.0`                              |
-| `@xrpl-commons/xrpl-connect-react` | Not available | `1.0.0` (new)                        |
-| `@xrpl-commons/xrpl-connect-vue`   | Not available | `1.0.0` (new)                        |
-| Standalone core/UI/adapters        | `0.8.2` line  | Not part of this coordinated release |
+| Package                            | 0.8.2 line    | 1.0.0 (stable) | Current release              |
+| ---------------------------------- | ------------- | -------------- | ---------------------------- |
+| `xrpl-connect`                     | `0.8.2`       | `1.0.0`        | `1.1.0-rc.0`                 |
+| `@xrpl-commons/xrpl-connect-react` | Not available | `1.0.0`        | `1.1.0-rc.0`                 |
+| `@xrpl-commons/xrpl-connect-vue`   | Not available | `1.0.0`        | `1.1.0-rc.0`                 |
+| `@xrpl-commons/xrpl-connect-privy` | Not available | Not available  | `1.1.0-rc.0` (new, optional) |
 
-If an application imports `@xrpl-connect/core`, `@xrpl-connect/ui`, or individual adapter packages directly, it can remain on the compatible 0.8.2 modular line. To adopt the complete 1.0 release, move those imports to the umbrella package:
+The `@xrpl-connect/core`, `@xrpl-connect/ui`, and individual `@xrpl-connect/adapter-*` packages are
+internal workspace packages and are not published to npm. Import everything from the umbrella
+package:
 
 ```ts
 // 0.8.2 modular imports

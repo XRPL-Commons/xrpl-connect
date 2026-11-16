@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0-rc.0] - 2026-11-16
+
 ### Added
 
 - New package `@xrpl-commons/xrpl-connect-privy` (`PrivyAdapter`): Privy social login with user-owned native XRPL embedded wallets, in the browser and without an application backend. Login methods come from the Privy dashboard each time the chooser opens (email, phone, OAuth, passkeys, Farcaster, and application-defined methods such as custom JWT through `loginMethods`); email and phone codes and any dashboard CAPTCHA are requested through authentication prompts. Every signature requires a transaction review: the wallet connector shows it by default, `transactionReview` accepts a custom review function or `'none'` for headless signing, and signing fails when nothing can show the review. Every fee, including one supplied by the application, is limited to 2 XRP. Guest login requires `allowGuestLogin: true`, because a guest wallet is lost on logout, and a login that completes after disconnect never replaces a newer session.

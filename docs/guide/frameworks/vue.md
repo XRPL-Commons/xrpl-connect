@@ -11,13 +11,13 @@ in the application.
 ## Installation
 
 ```bash
-npm install @xrpl-commons/xrpl-connect-vue xrpl-connect xrpl@^4 vue
+npm install @xrpl-commons/xrpl-connect-vue@rc xrpl-connect@rc xrpl@^4 vue
 ```
 
 ## Configure the plugin
 
-The install command selects the coordinated stable v1 packages. Keep the Vue binding and
-`xrpl-connect` on the same release line.
+The install command selects the coordinated `1.1.0-rc.0` release candidate from npm's `rc` tag.
+Keep the Vue binding and `xrpl-connect` on the same release.
 
 Import adapters from `xrpl-connect` in the browser entry point. Evaluating that package entry
 also registers the wallet connector custom element. Then install the Vue plugin before mounting
@@ -51,7 +51,7 @@ from other Vue applications on the same page and are released when the app unmou
 Install the optional Privy package from the same release as `xrpl-connect`:
 
 ```bash
-npm install @xrpl-commons/xrpl-connect-privy
+npm install @xrpl-commons/xrpl-connect-privy@rc
 ```
 
 Create the `PrivyAdapter` once in the browser entry point and add it to the plugin's adapters:
