@@ -35,6 +35,7 @@ const DOCUMENTED_INSTALL_PATHS = [
   'README.md',
   'packages/react/README.md',
   'packages/vue/README.md',
+  'packages/privy/README.md',
   'examples/react/README.md',
   'examples/vanilla-js/README.md',
   'docs/guide/getting-started.md',
@@ -42,6 +43,7 @@ const DOCUMENTED_INSTALL_PATHS = [
   'docs/guide/frameworks/vue.md',
   'docs/guide/frameworks/nuxt.md',
   'docs/guide/migration-v1.md',
+  'docs/guide/social-login.md',
 ];
 const inheritedPnpmConfig = [
   'npm_config_dir',
