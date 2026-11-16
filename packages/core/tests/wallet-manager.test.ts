@@ -2029,9 +2029,11 @@ describe('WalletManager.reconnect()', () => {
     expect(await new Storage(storage).loadState()).toBeNull();
   });
 
-  it('rejects and cleans up a restored network that differs from stored state', async () => {
+  it('rejects and cleans up a restored network that differs from the requested network', async () => {
     const storage = new MemoryStorageAdapter();
-    await new WalletManager({ adapters: [createRecordingAdapter([])], storage }).connect('ledger');
+    await new WalletManager({ adapters: [createRecordingAdapter([])], storage }).connect('ledger', {
+      network: 'testnet',
+    });
 
     const restoredAdapter = createRecordingAdapter([], { ...ACCOUNT, network: MAINNET });
     restoredAdapter.disconnect = vi.fn(async () => {});
@@ -2049,6 +2051,7 @@ describe('WalletManager.reconnect()', () => {
       walletId: 'fake',
       account: ACCOUNT,
       network: NETWORK,
+      requestedNetwork: 'testnet',
       timestamp: Date.now(),
     });
     const adapter = createFakeAdapter();
@@ -2081,17 +2084,206 @@ describe('WalletManager.reconnect()', () => {
     expect(await new Storage(storage).loadState()).toBeNull();
   });
 
-  it('keeps stored network state authoritative over malformed adapter options', async () => {
+  it('keeps the requested network authoritative over malformed adapter options', async () => {
     const storage = new MemoryStorageAdapter();
     const initialAdapter = createRecordingAdapter([]);
     initialAdapter.serializeReconnectOptions = () =>
       ({ network: MAINNET }) as unknown as ReconnectOptions;
-    await new WalletManager({ adapters: [initialAdapter], storage }).connect('ledger');
+    await new WalletManager({ adapters: [initialAdapter], storage }).connect('ledger', {
+      network: 'testnet',
+    });
 
     const received: Array<ConnectOptions | undefined> = [];
     const restoredAdapter = createRecordingAdapter(received);
     await new WalletManager({ adapters: [restoredAdapter], storage }).reconnect();
 
-    expect(received.at(-1)?.network).toEqual(NETWORK);
+    expect(received.at(-1)?.network).toBe('testnet');
+  });
+
+  it('persists the requested network as session policy, not the wallet-reported network', async () => {
+    const storage = new MemoryStorageAdapter();
+    const adapter = createFakeAdapter();
+    const manager = new WalletManager({ adapters: [adapter], storage, network: 'testnet' });
+    await manager.connect('fake');
+
+    adapter.emitAdapterEvent('networkChanged', MAINNET);
+
+    await vi.waitFor(async () => {
+      expect(await new Storage(storage).loadState()).toMatchObject({
+        network: MAINNET,
+        requestedNetwork: 'testnet',
+      });
+    });
+  });
+
+  it('does not restore onto the network the wallet switched to after a reload', async () => {
+    const storage = new MemoryStorageAdapter();
+    const adapter = createFakeAdapter();
+    await new WalletManager({ adapters: [adapter], storage, network: 'testnet' }).connect('fake');
+    adapter.emitAdapterEvent('networkChanged', MAINNET);
+    await vi.waitFor(async () => {
+      expect(await new Storage(storage).loadState()).toMatchObject({ network: MAINNET });
+    });
+
+    const reloaded = createFakeAdapter();
+    reloaded.connect = vi.fn(async () => ({ ...ACCOUNT, network: MAINNET }));
+    const manager = new WalletManager({ adapters: [reloaded], storage, network: 'testnet' });
+
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    expect(reloaded.connect).toHaveBeenCalledExactlyOnceWith({ network: 'testnet' });
+    expect(manager.connected).toBe(false);
+    expect(await new Storage(storage).loadState()).toBeNull();
+  });
+
+  it('restores with the configured network instead of a persisted network or endpoint', async () => {
+    const storage = new MemoryStorageAdapter();
+    const tampered: NetworkInfo = { ...NETWORK, wss: 'wss://attacker.example' };
+    await new Storage(storage).saveState({
+      walletId: 'ledger',
+      account: { ...ACCOUNT, network: tampered },
+      network: tampered,
+      requestedNetwork: tampered,
+      timestamp: Date.now(),
+    });
+    const received: Array<ConnectOptions | undefined> = [];
+    const manager = new WalletManager({
+      adapters: [createRecordingAdapter(received)],
+      storage,
+      network: 'testnet',
+    });
+
+    await expect(manager.reconnect()).resolves.toEqual(ACCOUNT);
+
+    expect(received).toEqual([{ network: 'testnet' }]);
+  });
+
+  it('restores without a network when none was requested and adopts the wallet network', async () => {
+    const storage = new MemoryStorageAdapter();
+    await new WalletManager({ adapters: [createRecordingAdapter([])], storage }).connect('ledger');
+    expect((await new Storage(storage).loadState())?.requestedNetwork).toBeUndefined();
+
+    const received: Array<ConnectOptions | undefined> = [];
+    const restored = createRecordingAdapter(received, { ...ACCOUNT, network: MAINNET });
+    const manager = new WalletManager({ adapters: [restored], storage });
+
+    await expect(manager.reconnect()).resolves.toEqual({ ...ACCOUNT, network: MAINNET });
+    expect(received).toEqual([{ network: undefined }]);
+  });
+
+  it('restores a version 1 session on the network it was stored with', async () => {
+    const storage = new MemoryStorageAdapter();
+    await storage.set(
+      'wallet-state',
+      JSON.stringify({
+        version: 1,
+        payload: { walletId: 'ledger', account: ACCOUNT, network: NETWORK, timestamp: Date.now() },
+      })
+    );
+    const received: Array<ConnectOptions | undefined> = [];
+    const manager = new WalletManager({ adapters: [createRecordingAdapter(received)], storage });
+
+    await expect(manager.reconnect()).resolves.toEqual(ACCOUNT);
+    expect(received).toEqual([{ network: 'testnet' }]);
+  });
+});
+
+describe('WalletManager network policy', () => {
+  const PAYMENT = { TransactionType: 'Payment' } as Transaction;
+
+  async function connectedOnTestnet(options: { configured: boolean } = { configured: true }) {
+    const adapter = createFakeAdapter();
+    const manager = new WalletManager({
+      adapters: [adapter],
+      network: options.configured ? 'testnet' : undefined,
+    });
+    await manager.connect('fake', options.configured ? undefined : { network: 'testnet' });
+    const onNetworkChanged = vi.fn();
+    const onError = vi.fn();
+    manager.on('networkChanged', onNetworkChanged);
+    manager.on('error', onError);
+    return { adapter, manager, onNetworkChanged, onError };
+  }
+
+  async function expectSigningBlocked(
+    manager: WalletManager,
+    adapter: ReturnType<typeof createFakeAdapter>
+  ) {
+    const mismatch = {
+      code: WalletErrorCode.NETWORK_MISMATCH,
+      message: 'Network mismatch. Expected "testnet" but wallet is connected to "mainnet".',
+    };
+    await expect(manager.sign(PAYMENT)).rejects.toMatchObject(mismatch);
+    await expect(manager.signAndSubmit(PAYMENT)).rejects.toMatchObject(mismatch);
+    await expect(manager.signMessage('hello')).rejects.toMatchObject(mismatch);
+    expect(adapter.sign).not.toHaveBeenCalled();
+    expect(adapter.signAndSubmit).not.toHaveBeenCalled();
+    expect(adapter.signMessage).not.toHaveBeenCalled();
+  }
+
+  it.each([
+    ['the configured network', { configured: true }],
+    ['a network requested for this connection', { configured: false }],
+  ])(
+    'blocks signing after the wallet leaves %s and recovers when it returns',
+    async (_label, options) => {
+      const { adapter, manager, onNetworkChanged, onError } = await connectedOnTestnet(options);
+
+      adapter.emitAdapterEvent('networkChanged', MAINNET);
+
+      expect(manager.connected).toBe(true);
+      expect(manager.account?.network).toEqual(MAINNET);
+      expect(onNetworkChanged).toHaveBeenCalledWith(MAINNET);
+      expect(onError).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ code: WalletErrorCode.NETWORK_MISMATCH })
+      );
+      await expectSigningBlocked(manager, adapter);
+
+      adapter.emitAdapterEvent('networkChanged', NETWORK);
+
+      await expect(manager.sign(PAYMENT)).resolves.toMatchObject({ hash: '0xhash' });
+      await expect(manager.signMessage('hello')).resolves.toMatchObject({ signature: '0xsig' });
+      expect(onError).toHaveBeenCalledOnce();
+    }
+  );
+
+  it('applies the requested network to account events that carry a network', async () => {
+    const { adapter, manager, onError } = await connectedOnTestnet();
+
+    adapter.emitAdapterEvent('accountChanged', { ...ACCOUNT, network: MAINNET });
+
+    expect(onError).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ code: WalletErrorCode.NETWORK_MISMATCH })
+    );
+    await expectSigningBlocked(manager, adapter);
+  });
+
+  it('applies the requested network to live account refreshes', async () => {
+    const { adapter, manager, onNetworkChanged, onError } = await connectedOnTestnet();
+    adapter.fetchAccount = vi.fn(async () => ({ ...ACCOUNT, network: MAINNET }));
+
+    await expect(manager.fetchAccount()).resolves.toEqual({ ...ACCOUNT, network: MAINNET });
+
+    expect(onNetworkChanged).toHaveBeenCalledWith(MAINNET);
+    expect(onError).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ code: WalletErrorCode.NETWORK_MISMATCH })
+    );
+    await expectSigningBlocked(manager, adapter);
+  });
+
+  it('keeps adopting wallet network changes when no network was requested', async () => {
+    const adapter = createFakeAdapter();
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+    const onNetworkChanged = vi.fn();
+    const onError = vi.fn();
+    manager.on('networkChanged', onNetworkChanged);
+    manager.on('error', onError);
+
+    adapter.emitAdapterEvent('networkChanged', MAINNET);
+
+    expect(onNetworkChanged).toHaveBeenCalledWith(MAINNET);
+    expect(onError).not.toHaveBeenCalled();
+    await expect(manager.sign(PAYMENT)).resolves.toMatchObject({ hash: '0xhash' });
   });
 });

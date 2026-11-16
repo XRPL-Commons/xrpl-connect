@@ -63,6 +63,11 @@ testnet, and devnet options are supported, as are custom `NetworkInfo` objects w
 WebSocket endpoint. If the option is omitted, mainnet is used. The selected endpoint is used
 for transaction autofill and submission; the hardware device only signs the resulting bytes.
 
+When `WalletManager` restores a Ledger session after a reload, it passes the manager's
+configured `network` (or the network the session was requested on), never the endpoint
+saved in browser storage. Configure `network` on the manager so the endpoint always comes
+from your application code.
+
 ### Sign a Transaction
 
 ```typescript

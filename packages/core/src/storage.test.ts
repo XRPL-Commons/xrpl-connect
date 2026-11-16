@@ -137,6 +137,40 @@ describe('Storage versioning', () => {
   });
 });
 
+describe('Storage v1 to v2 migration', () => {
+  it('records a standard v1 network as the requested network by id', async () => {
+    const adapter = new MemoryStorageAdapter();
+    const v1State = makeState();
+    await adapter.set(STATE_KEY, JSON.stringify({ version: 1, payload: v1State }));
+
+    await expect(new Storage(adapter).loadState()).resolves.toEqual({
+      ...v1State,
+      requestedNetwork: 'mainnet',
+    });
+  });
+
+  it('records a custom v1 network as the requested network', async () => {
+    const adapter = new MemoryStorageAdapter();
+    const custom = { id: 'xahau-mainnet', name: 'Xahau', wss: 'wss://xahau.example' };
+    const v1State = makeState({ network: custom, account: { address: 'rX', network: custom } });
+    await adapter.set(STATE_KEY, JSON.stringify({ version: 1, payload: v1State }));
+
+    await expect(new Storage(adapter).loadState()).resolves.toEqual({
+      ...v1State,
+      requestedNetwork: custom,
+    });
+  });
+
+  it('discards a v1 state without a network', async () => {
+    const adapter = new MemoryStorageAdapter();
+    const { network: _network, ...withoutNetwork } = makeState();
+    await adapter.set(STATE_KEY, JSON.stringify({ version: 1, payload: withoutNetwork }));
+
+    await expect(new Storage(adapter).loadState()).resolves.toBeNull();
+    expect(await adapter.get(STATE_KEY)).toBeNull();
+  });
+});
+
 describe('Storage defaults', () => {
   it('falls back to memory when the localStorage getter throws', async () => {
     const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');

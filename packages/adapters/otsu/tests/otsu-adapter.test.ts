@@ -369,6 +369,51 @@ describe('OtsuAdapter.sign', () => {
     expect(provider.signTransaction).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [
+      'a network change event',
+      async (_adapter: OtsuAdapter, provider: ReturnType<typeof makeProvider>) =>
+        emitProviderEvent(provider, 'networkChanged', 'testnet'),
+    ],
+    [
+      'a live account refresh',
+      async (adapter: OtsuAdapter, provider: ReturnType<typeof makeProvider>) => {
+        provider.isConnected.mockReturnValue(true);
+        provider.getAddress.mockResolvedValue({ address: 'rOtsuUser' });
+        await adapter.fetchAccount();
+      },
+    ],
+  ])(
+    'keeps the connect-time network as signing authority after %s',
+    async (_label, observeSwitch) => {
+      const { adapter, provider } = await connected();
+      provider.getNetwork.mockResolvedValue({ network: 'testnet' });
+      provider.signTransaction.mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' });
+      provider.signAndSubmit.mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' });
+
+      await observeSwitch(adapter, provider);
+      await expect(adapter.getNetwork()).resolves.toEqual(STANDARD_NETWORKS.testnet);
+
+      const mismatch = {
+        code: WalletErrorCode.NETWORK_MISMATCH,
+        message: 'Network mismatch. Expected "mainnet" but wallet is connected to "testnet".',
+      };
+      await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject(
+        mismatch
+      );
+      await expect(
+        adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+      ).rejects.toMatchObject(mismatch);
+      expect(provider.signTransaction).not.toHaveBeenCalled();
+      expect(provider.signAndSubmit).not.toHaveBeenCalled();
+
+      provider.getNetwork.mockResolvedValue({ network: 'mainnet' });
+      await expect(adapter.sign({ TransactionType: 'Payment' } as never)).resolves.toMatchObject({
+        hash: 'H',
+      });
+    }
+  );
+
   it('maps a user rejection to a sign-rejected error', async () => {
     const { adapter, provider } = await connected();
     provider.signTransaction.mockRejectedValue(new Error('User rejected the signing'));

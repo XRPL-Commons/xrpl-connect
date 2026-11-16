@@ -475,8 +475,15 @@ export interface StorageAdapter {
 export interface StoredState {
   walletId: WalletIdentifier;
   account: AccountInfo;
+  /** Network the wallet last reported. Informational: restores never request it. */
   network: NetworkInfo;
   timestamp: number;
+  /**
+   * Network the session was requested on: the manager's `network` option or the
+   * `network` passed to `connect()`. Omitted when none was requested. Restores
+   * request the manager's configured network first, then this one.
+   */
+  requestedNetwork?: NetworkConfig;
   /**
    * Adapter-selected, JSON-safe options required to restore the same account.
    * Arbitrary caller-provided connection options are never stored.

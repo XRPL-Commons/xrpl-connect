@@ -162,6 +162,22 @@ stored session or pending authorization can be restored.
 
 Failed reconnection attempts clear invalid stored state and resolve to `null`.
 
+The network is connection policy, not restored data: a restore requests the
+manager's configured `network`, or else the network the session was requested
+on (`StoredState.requestedNetwork`), and applies the same `NETWORK_MISMATCH`
+check as `connect()`. The wallet's last-reported network and endpoint
+(`StoredState.network`) are never requested again. A session connected without
+any requested network restores on whatever network the wallet reports.
+
+#### Network policy
+
+A requested network stays the session's network. When the wallet later reports
+another network (adapter event or `fetchAccount()`), the manager updates
+`account.network`, emits `networkChanged`, and then emits `error` with a
+`NETWORK_MISMATCH` `WalletError`. Until the wallet is back on the requested
+network, `sign()`, `signAndSubmit()`, and `signMessage()` reject with
+`NETWORK_MISMATCH`. Without a requested network, reported networks are adopted.
+
 **Example**:
 
 ```typescript
@@ -507,9 +523,26 @@ walletManager.on('networkChanged', (network: NetworkInfo) => {
 
 ---
 
+### `error` Event
+
+Emitted with a `NETWORK_MISMATCH` `WalletError` after a `networkChanged` (or a
+network carried by `accountChanged`) leaves the network the session was
+requested on. Signing stays blocked until the wallet returns to it; see
+[Network policy](#network-policy).
+
+```typescript
+walletManager.on('error', (error: WalletError) => {
+  if (error.code === WalletErrorCode.NETWORK_MISMATCH) promptNetworkSwitch();
+});
+```
+
+**Event Data**: `WalletError`
+
+---
+
 Connection, signing, refresh, and disconnection errors reject their operation
-promises with `WalletError` where applicable. `WalletManager` does not emit a
-general-purpose `error` event.
+promises with `WalletError` where applicable. The `error` event is reserved for
+the network policy above.
 
 ---
 

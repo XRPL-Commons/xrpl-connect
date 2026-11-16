@@ -3,6 +3,7 @@
  */
 
 import type { StorageAdapter, StoredState } from './types';
+import { isStandardNetworkId } from './types';
 import { createLogger } from './logger';
 
 /**
@@ -16,7 +17,7 @@ const logger = createLogger('[Storage]');
  * and add a matching entry to `STATE_MIGRATIONS` that maps the previous
  * version's payload to the new shape.
  */
-export const STORED_STATE_VERSION = 1;
+export const STORED_STATE_VERSION = 2;
 
 /**
  * Versioned envelope written to storage. Older callers that read the raw
@@ -40,11 +41,25 @@ export type StoredStateMigration = (payload: unknown) => unknown;
  * upgrades a payload from version `N` to version `N + 1`. Migrations run
  * sequentially until the payload reaches the current version.
  *
- * v1 is the first versioned schema, so there are no upgrades yet. Anything
- * written before versioning was introduced is treated as unrecognized and
- * cleared rather than silently coerced.
+ * Anything written before versioning was introduced is treated as
+ * unrecognized and cleared rather than silently coerced.
  */
-export const STATE_MIGRATIONS: Record<number, StoredStateMigration> = {};
+export const STATE_MIGRATIONS: Record<number, StoredStateMigration> = {
+  // v2 records the network a session was requested on. v1 did not, and v1
+  // restores required the wallet to still be on the stored network, so that
+  // network becomes the session's requested network. A standard network is
+  // kept by id, so restores use its canonical endpoints, not stored ones.
+  1: (payload) => {
+    const state = payload as StoredState;
+    if (typeof state?.network?.id !== 'string') {
+      throw new Error('Stored v1 state has no network');
+    }
+    return {
+      ...state,
+      requestedNetwork: isStandardNetworkId(state.network.id) ? state.network.id : state.network,
+    };
+  },
+};
 
 /**
  * LocalStorage-based storage adapter

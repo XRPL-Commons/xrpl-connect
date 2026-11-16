@@ -69,6 +69,29 @@ Reconnect to the previously connected wallet using stored state. When storage is
 configured adapters can also complete an authorization returned to this page, such as
 Xaman's first mobile OAuth login. Returns `null` when neither can be restored.
 
+A restore requests the manager's configured `network`, or else the network the session
+was originally requested on, and applies the same `NETWORK_MISMATCH` check as `connect()`.
+The network the wallet last reported (including its endpoint) is stored for reference only
+and is never requested again, so a wallet that moved to another network fails to restore
+instead of restoring there. Sessions connected without any requested network restore on
+whatever network the wallet reports.
+
+#### Network policy
+
+When a network is requested (the manager's `network` option or `connect(id, { network })`),
+it stays the session's network for its whole lifetime. If the wallet later reports another
+network through an event or `fetchAccount()`, the manager still updates `account.network`
+and emits `networkChanged`, then emits `error` with a `NETWORK_MISMATCH` `WalletError`.
+While the reported network differs, `sign()`, `signAndSubmit()`, and `signMessage()`
+reject with `NETWORK_MISMATCH`; they work again once the wallet is back on the requested
+network. Without a requested network the manager adopts the reported network as before.
+
+Extension wallets (Otsu, Crossmark, GemWallet) additionally sign only on the network they
+connected on, even when used without a requested network: after the user switches networks
+in the wallet, signing rejects with `NETWORK_MISMATCH` until the user switches back or the
+app reconnects. `MetaMaskSnapAdapter.switchNetwork()` emits `networkChanged`, so switching
+away from the requested network blocks manager signing too.
+
 #### sign()
 
 ```typescript
@@ -868,6 +891,18 @@ Emitted when the network changes.
 ```javascript
 walletManager.on('networkChanged', (network: NetworkInfo) => {
   console.log('Network changed:', network.name);
+});
+```
+
+#### error
+
+Emitted with a `NETWORK_MISMATCH` `WalletError` when the wallet reports a network other
+than the one the session was requested on. Signing stays blocked until the wallet returns
+to the requested network (see [Network policy](#network-policy)).
+
+```javascript
+walletManager.on('error', (error: WalletError) => {
+  if (error.code === WalletErrorCode.NETWORK_MISMATCH) showSwitchNetworkPrompt();
 });
 ```
 

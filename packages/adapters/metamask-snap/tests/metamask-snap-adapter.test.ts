@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vite-plus/test';
-import { WalletErrorCode } from '@xrpl-connect/core';
+import {
+  MemoryStorageAdapter,
+  STANDARD_NETWORKS,
+  WalletErrorCode,
+  WalletManager,
+} from '@xrpl-connect/core';
 import { MetaMaskSnapAdapter } from '../src/metamask-snap-adapter';
 
 const SNAP_ID = 'npm:xrpl-snap';
@@ -493,6 +498,57 @@ describe('MetaMaskSnapAdapter network switching', () => {
 
     await expect(adapter.switchNetwork('testnet')).resolves.toMatchObject({ id: 'testnet' });
     await expect(adapter.getNetwork()).resolves.toMatchObject({ id: 'testnet' });
+  });
+
+  function switchableProvider(sign: () => unknown) {
+    let chainId = 0;
+    const provider = mockProvider({
+      snapHandlers: {
+        xrpl_getActiveNetwork: () => ({ chainId, name: 'Network', nodeUrl: '' }),
+        xrpl_changeNetwork: (params) => {
+          chainId = (params as { chainId: number }).chainId;
+          return {};
+        },
+        xrpl_getAccount: () => ({ account: 'rSNAP', publicKey: 'PUBKEY' }),
+        xrpl_sign: sign,
+      },
+    });
+    setProvider(provider);
+    return provider;
+  }
+
+  it('emits networkChanged only when switchNetwork changes the network', async () => {
+    switchableProvider(() => ({ hash: 'HASH', tx_blob: 'BLOB' }));
+    const adapter = new MetaMaskSnapAdapter();
+    await adapter.connect();
+    const onNetworkChanged = vi.fn();
+    adapter.on('networkChanged', onNetworkChanged);
+
+    await adapter.switchNetwork('mainnet');
+    await adapter.switchNetwork('testnet');
+
+    expect(onNetworkChanged).toHaveBeenCalledExactlyOnceWith(STANDARD_NETWORKS.testnet);
+    await expect(adapter.getAccount()).resolves.toMatchObject({ network: { id: 'testnet' } });
+  });
+
+  it('lets the manager block signing after switchNetwork leaves the configured network', async () => {
+    const sign = vi.fn(() => ({ hash: 'HASH', tx_blob: 'BLOB' }));
+    switchableProvider(sign);
+    const adapter = new MetaMaskSnapAdapter();
+    const manager = new WalletManager({
+      adapters: [adapter],
+      network: 'mainnet',
+      storage: new MemoryStorageAdapter(),
+    });
+    await manager.connect('metamask-snap');
+
+    await adapter.switchNetwork('testnet');
+
+    expect(manager.account?.network.id).toBe('testnet');
+    await expect(manager.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    expect(sign).not.toHaveBeenCalled();
   });
 
   it('does not hide a rejected network change during connect', async () => {

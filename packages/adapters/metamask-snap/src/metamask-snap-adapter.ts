@@ -16,8 +16,10 @@ import type {
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
+  WalletAdapterEvent,
 } from '@xrpl-connect/core';
 import {
+  createLogger,
   createWalletError,
   decodeMessage,
   isStandardNetworkId,
@@ -26,6 +28,8 @@ import {
   resolveNetwork,
 } from '@xrpl-connect/core';
 import iconSvg from './assets/icon.svg';
+
+const logger = createLogger('[MetaMask]');
 
 /**
  * Minimal EIP-1193 provider surface (MetaMask) used by this adapter.
@@ -95,6 +99,7 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
   private provider: Eip1193Provider | null = null;
   private currentAccount: AccountInfo | null = null;
   private connectionGeneration = 0;
+  private listeners = new Map<WalletAdapterEvent, Set<(data?: unknown) => void>>();
 
   constructor(options: MetaMaskSnapAdapterOptions = {}) {
     this.snapId = options.snapId || DEFAULT_SNAP_ID;
@@ -249,14 +254,43 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
     return this.readActiveNetwork();
   }
 
-  /** Switch the Snap network and verify the active network before returning. */
+  /**
+   * Switch the Snap network and verify the active network before returning.
+   * Emits `networkChanged` so a `WalletManager` applies its network policy:
+   * leaving the network the session was requested on blocks manager signing.
+   */
   async switchNetwork(network: NetworkConfig): Promise<NetworkInfo> {
     if (!this.currentAccount) {
       throw createWalletError.notConnected();
     }
+    const generation = this.connectionGeneration;
     const applied = await this.selectNetwork(this.resolveSupportedNetwork(network));
-    this.currentAccount.network = applied;
+    if (generation !== this.connectionGeneration || !this.currentAccount) {
+      throw createWalletError.notConnected();
+    }
+    const changed = applied.id !== this.currentAccount.network.id;
+    this.currentAccount = { ...this.currentAccount, network: applied };
+    if (changed) this.emit('networkChanged', applied);
     return applied;
+  }
+
+  /**
+   * Register an event listener.
+   */
+  on(event: WalletAdapterEvent, callback: (data?: unknown) => void): void {
+    let callbacks = this.listeners.get(event);
+    if (!callbacks) {
+      callbacks = new Set();
+      this.listeners.set(event, callbacks);
+    }
+    callbacks.add(callback);
+  }
+
+  /**
+   * Remove an event listener.
+   */
+  off(event: WalletAdapterEvent, callback: (data?: unknown) => void): void {
+    this.listeners.get(event)?.delete(callback);
   }
 
   /**
@@ -368,6 +402,19 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
       }
       throw createWalletError.signFailed(error as Error);
     }
+  }
+
+  /**
+   * Notify listeners, isolating the adapter from listener failures.
+   */
+  private emit(event: WalletAdapterEvent, data?: unknown): void {
+    this.listeners.get(event)?.forEach((callback) => {
+      try {
+        callback(data);
+      } catch (error) {
+        logger.error(`Error in ${event} listener`, error);
+      }
+    });
   }
 
   /**

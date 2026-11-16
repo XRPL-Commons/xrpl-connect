@@ -69,6 +69,11 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
   // ==================== Private State ====================
 
   private currentAccount: AccountInfo | null = null;
+  /**
+   * Network validated at connect. Signing is only allowed while the wallet is
+   * on it; wallet-reported switches update `currentAccount` but never this.
+   */
+  private signingNetwork: NetworkInfo | null = null;
   private connectionGeneration = 0;
   private stateRevision = 0;
   private listeners: Map<WalletAdapterEvent, Set<(data?: unknown) => void>> = new Map();
@@ -124,6 +129,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
         address: response.address,
         network: networkInfo,
       };
+      this.signingNetwork = networkInfo;
       this.stateRevision += 1;
 
       this.setupProviderListeners(provider);
@@ -153,6 +159,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
     this.connectionGeneration += 1;
     this.stateRevision += 1;
     this.currentAccount = null;
+    this.signingNetwork = null;
 
     const provider = this.providerListenerOwner ?? this.getProviderSafe();
     if (this.providerListenerOwner) this.removeProviderListeners(this.providerListenerOwner);
@@ -468,13 +475,14 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
   }
 
   /**
-   * Verify that the provider is still on the network represented by the
-   * cached account before asking it to sign. Otsu's signing methods do not
-   * accept a network argument, so this live check prevents signing after an
-   * unobserved wallet network switch.
+   * Verify that the provider is still on the network validated at connect
+   * before asking it to sign. Otsu's signing methods do not accept a network
+   * argument, so this live check prevents signing on any other network,
+   * whether or not the wallet reported the switch.
    */
   private async assertCurrentNetwork(provider: OtsuProvider): Promise<void> {
-    if (!this.currentAccount) throw createWalletError.notConnected();
+    const signingNetwork = this.signingNetwork;
+    if (!this.currentAccount || !signingNetwork) throw createWalletError.notConnected();
     const generation = this.connectionGeneration;
 
     const response: unknown = await provider.getNetwork();
@@ -486,8 +494,8 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
         ? (response as { network?: unknown }).network
         : undefined;
     const networkInfo = this.toNetworkInfo(network);
-    if (networkInfo.id !== this.currentAccount.network.id) {
-      throw createWalletError.networkMismatch(this.currentAccount.network.id, networkInfo.id);
+    if (networkInfo.id !== signingNetwork.id) {
+      throw createWalletError.networkMismatch(signingNetwork.id, networkInfo.id);
     }
   }
 

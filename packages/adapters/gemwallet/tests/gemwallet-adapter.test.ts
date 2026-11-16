@@ -341,6 +341,29 @@ describe('GemWalletAdapter.sign', () => {
     expect(api.submitTransaction).not.toHaveBeenCalled();
   });
 
+  it('keeps the connect-time network as signing authority after a live refresh', async () => {
+    const adapter = await connected();
+    mockLiveNetwork({ network: 'Testnet', websocket: 'wss://testnet.example' });
+    api.signTransaction.mockResolvedValue({ result: { signature: 'SIG' } });
+
+    await expect(adapter.fetchAccount()).resolves.toMatchObject({ network: { id: 'testnet' } });
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+      message: 'Network mismatch. Expected "mainnet" but wallet is connected to "testnet".',
+    });
+    await expect(
+      adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+    ).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_MISMATCH });
+    expect(api.signTransaction).not.toHaveBeenCalled();
+    expect(api.submitTransaction).not.toHaveBeenCalled();
+
+    mockLiveNetwork();
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).resolves.toMatchObject({
+      tx_blob: 'SIG',
+    });
+  });
+
   it('throws notConnected when no session exists', async () => {
     const adapter = new GemWalletAdapter();
     await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({

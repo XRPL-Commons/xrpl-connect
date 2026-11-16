@@ -533,6 +533,41 @@ describe('CrossmarkAdapter.sign', () => {
     expect(sdk.methods.signAndSubmitAndWait).not.toHaveBeenCalled();
   });
 
+  it('keeps the connect-time network as signing authority after a live refresh', async () => {
+    const adapter = await connected();
+    sdk.api.awaitRequest.mockImplementation(({ command }: { command: string }) =>
+      Promise.resolve(
+        command === 'address'
+          ? { response: { data: { address: 'rUser' } } }
+          : {
+              response: {
+                data: {
+                  network: { type: 'testnet', label: 'xrp ledger', wss: 'wss://testnet.example' },
+                },
+              },
+            }
+      )
+    );
+    sdk.methods.signAndWait.mockResolvedValue({ response: { data: { txBlob: 'DEADBEEF' } } });
+
+    await expect(adapter.fetchAccount()).resolves.toMatchObject({ network: { id: 'testnet' } });
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+      message: 'Network mismatch. Expected "mainnet" but wallet is connected to "testnet".',
+    });
+    await expect(
+      adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+    ).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_MISMATCH });
+    expect(sdk.methods.signAndWait).not.toHaveBeenCalled();
+    expect(sdk.methods.signAndSubmitAndWait).not.toHaveBeenCalled();
+
+    mockLiveNetwork();
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).resolves.toMatchObject({
+      tx_blob: 'DEADBEEF',
+    });
+  });
+
   it('throws notConnected when no account is set', async () => {
     const adapter = new CrossmarkAdapter();
     await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({

@@ -69,6 +69,11 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
   readonly capabilities: WalletCapabilities = { signMessage: false };
 
   private currentAccount: AccountInfo | null = null;
+  /**
+   * Network validated at connect. Signing is only allowed while Crossmark is
+   * on it; live refreshes update `currentAccount` but never this.
+   */
+  private signingNetwork: NetworkInfo | null = null;
   private connectionGeneration = 0;
   private accountRefreshRevision = 0;
 
@@ -143,6 +148,7 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
         publicKey,
         network,
       };
+      this.signingNetwork = network;
 
       return this.currentAccount;
     } catch (error) {
@@ -160,6 +166,7 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
   async disconnect(): Promise<void> {
     this.connectionGeneration += 1;
     this.currentAccount = null;
+    this.signingNetwork = null;
   }
 
   /**
@@ -245,15 +252,17 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
     });
   }
 
+  /** Verify that Crossmark is still on the network validated at connect. */
   private async assertCurrentNetwork(): Promise<void> {
-    if (!this.currentAccount) throw createWalletError.notConnected();
+    const signingNetwork = this.signingNetwork;
+    if (!this.currentAccount || !signingNetwork) throw createWalletError.notConnected();
     const generation = this.connectionGeneration;
     const liveNetwork = await this.getLiveNetwork();
     if (generation !== this.connectionGeneration || !this.currentAccount) {
       throw createWalletError.notConnected();
     }
-    if (liveNetwork.id !== this.currentAccount.network.id) {
-      throw createWalletError.networkMismatch(this.currentAccount.network.id, liveNetwork.id);
+    if (liveNetwork.id !== signingNetwork.id) {
+      throw createWalletError.networkMismatch(signingNetwork.id, liveNetwork.id);
     }
   }
 
