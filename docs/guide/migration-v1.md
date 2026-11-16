@@ -6,6 +6,8 @@ description: Upgrade XRPL Connect applications from 0.8.2 to the 1.0 release lin
 
 XRPL Connect 1.0 keeps the `WalletManager` and adapter model from 0.8.2, while tightening signing results, wallet capabilities, persistence, UI lifecycle, and framework integration.
 
+Already on 1.0.0? See [Upgrading from 1.0.0](#upgrading-from-1-0-0).
+
 ::: info Current release channel
 The current stable release is `1.0.0`. Install the coordinated packages by their bare names.
 The previous `1.0.0-rc.2` candidate used the `rc` tag; applications already on that candidate
@@ -97,8 +99,8 @@ try {
 ### Wallet-specific result changes
 
 - Xaman now keeps `sign()` sign-only, verifies the returned blob and signer, and exposes `tx_blob`, `tx_json`, and `signature` when supplied. Use `signAndSubmit()` when Xaman should dispatch to the ledger.
-- WalletConnect returns a signed `tx_json` and `signature`; it does not mislabel `TxnSignature` as a serialized `tx_blob`.
-- Crossmark, Ledger, WalletConnect, and Xaman do not support arbitrary message signing. Check capabilities instead of displaying an action that will fail.
+- WalletConnect verifies the wallet's signed result and returns the verified `tx_blob`, its `hash`, the `signature`, and `tx_json` decoded from the blob in canonical form. It never reports `TxnSignature` as `tx_blob`, and multi-signing requests reject with `UNSUPPORTED_METHOD`. See [WalletConnect result verification](/guide/transactions#walletconnect-result-verification).
+- Crossmark, GHOSTSIG, Ledger, Privy, WalletConnect, and Xaman do not support arbitrary message signing. Check capabilities instead of displaying an action that will fail.
 
 ## Capabilities and fresh account data
 
@@ -160,7 +162,7 @@ Use `useWallet()` for connection state, `useSigner()` for signing, and `useWalle
 
 ## Vue 3 and Nuxt
 
-Install `createXRPLConnect()` once, then use `useWallet()`, `useSigner()`, and `useWalletModal()` below that plugin. In Nuxt, the plugin and every component that calls these composables must be client-only. A `<ClientOnly>` wrapper in a universal component does not prevent that component's setup function from running during SSR.
+Install `createXrplConnect()` once, then use `useWallet()`, `useSigner()`, and `useWalletModal()` below that plugin. In Nuxt, the plugin and every component that calls these composables must be client-only. A `<ClientOnly>` wrapper in a universal component does not prevent that component's setup function from running during SSR.
 
 ```ts
 // plugins/xrpl-connect.client.ts
@@ -185,3 +187,20 @@ Before shipping the upgrade, verify:
 - React Strict Mode and Vue/Nuxt unmount paths do not leave duplicate listeners or pending connections;
 - SSR imports and server rendering complete without browser globals; and
 - production-origin restrictions are configured for Xaman and WalletConnect browser identifiers.
+
+## Upgrading from 1.0.0
+
+Releases after 1.0.0 keep the 1.0 API. These changes, mostly security fixes, can require action:
+
+- **Xaman and CSP:** sign-in redeems an authorization code with PKCE at `https://oauth2.xumm.app/token`. Add `https://oauth2.xumm.app` to `connect-src`; under an enforced policy without it, sign-in fails. See [Xaman OAuth popups and security headers](/guide/production#xaman-oauth-popups-and-security-headers).
+- **Legacy Xaman sessions:** sessions saved under the Xaman SDK's `XummPkceJwt` key are no longer restored, so those users sign in once more.
+- **Stored connection record:** the record moves to schema version 2 and version 1 records are upgraded on load. A 1.0.0 runtime discards a version 2 record, so downgrading after the upgrade signs users out once.
+- **Custom loggers:** a custom `LoggerInstance` receives only `warn` and `error` output unless it sets `level` (or `NODE_ENV` is `'development'`). Set `level: 'debug'` to keep receiving all output.
+- **Network enforcement:** a requested network stays the session's network, including restores and logins that return through a redirect. When the wallet switches to another network, the manager emits `error` with `NETWORK_MISMATCH`, and signing rejects with `NETWORK_MISMATCH` until the wallet returns. Handle the event or check `manager.networkMismatch`; see [Network policy](/guide/api-reference#network-policy).
+- **Message bytes:** `signMessage()` rejects a `Uint8Array` that is not valid UTF-8 with `INVALID_MESSAGE`.
+- **WalletConnect results:** `tx_json` is decoded from the verified `tx_blob` in canonical form (a Payment's `DeliverMax` becomes `Amount`). Multi-signing requests reject with `UNSUPPORTED_METHOD`, and a `signAndSubmit()` that fails verification carries `transactionHash` for reconciliation.
+- **MetaMask Snap:** the adapter no longer falls back to `window.ethereum`; MetaMask must announce itself through EIP-6963 (extension v11 or later). The default Snap is requested with the version range `^1.0.3`; set `snapVersion` to change it.
+- **Otsu:** signing uses the provider approved at connect. If another script replaces `window.xrpl`, signing rejects with `CONNECTION_FAILED` until the user reconnects.
+- **Privy social login** (new, optional package): guest login requires `allowGuestLogin: true`, and every signature needs a transaction review, which the wallet connector shows by default. Keep a connector mounted or set `transactionReview`. See [Social login](/guide/social-login).
+
+The [changelog](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/CHANGELOG.md) lists every change.
