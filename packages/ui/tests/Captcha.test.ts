@@ -115,6 +115,62 @@ describe('CAPTCHA lifecycle', () => {
     expect(() => cleanup()).not.toThrow();
   });
 
+  it('loads the provider script when a page element clobbers the provider global', async () => {
+    vi.resetModules();
+    const { renderCaptchaWidget } = await import('../src/services/Captcha');
+    // Browsers expose an element with id="hcaptcha" as window.hcaptcha; the
+    // test DOM does not implement named access, so define it the same way.
+    const clobber = document.createElement('div');
+    clobber.id = 'hcaptcha';
+    document.body.append(clobber);
+    Object.defineProperty(window, 'hcaptcha', { configurable: true, value: clobber });
+    const container = document.createElement('div');
+    document.body.append(container);
+
+    const attempt = renderCaptchaWidget(
+      container,
+      'hcaptcha',
+      'site-key',
+      undefined,
+      vi.fn(),
+      vi.fn(),
+      vi.fn()
+    );
+    const script = document.querySelector<HTMLScriptElement>(
+      'script[data-xrpl-captcha-provider="hcaptcha"]'
+    );
+    expect(script?.src).toBe('https://js.hcaptcha.com/1/api.js?render=explicit');
+
+    const render = vi.fn(() => 'widget');
+    setCaptchaApi('hcaptcha', { render });
+    script!.dispatchEvent(new Event('load'));
+    const cleanup = await attempt;
+    expect(render).toHaveBeenCalledOnce();
+    cleanup();
+  });
+
+  it('rejects a provider without a known script before touching the page', async () => {
+    vi.resetModules();
+    const { renderCaptchaWidget } = await import('../src/services/Captcha');
+    const container = document.createElement('div');
+    document.body.append(container);
+
+    for (const provider of ['constructor', '__proto__', 'toString']) {
+      await expect(
+        renderCaptchaWidget(
+          container,
+          provider as 'turnstile',
+          'site-key',
+          undefined,
+          vi.fn(),
+          vi.fn(),
+          vi.fn()
+        )
+      ).rejects.toThrow('Unsupported CAPTCHA provider.');
+    }
+    expect(document.querySelector('script')).toBeNull();
+  });
+
   it('isolates provider cleanup failures and uses reset only as a fallback', async () => {
     vi.resetModules();
     const { renderCaptchaWidget } = await import('../src/services/Captcha');
