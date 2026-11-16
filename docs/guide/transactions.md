@@ -123,6 +123,38 @@ Use `sign()` followed by application submission when you need the expiry policy
 enforced before broadcasting. A `signAndSubmit()` error is not proof that nothing
 was submitted; reconcile the outcome before asking the user to sign again.
 
+### WalletConnect result verification
+
+A WalletConnect wallet returns signed transaction JSON, which the adapter treats as
+untrusted. Before `sign()` or `signAndSubmit()` resolves, the adapter serializes it
+and requires that:
+
+- `Account` is the connected account, and `TxnSignature` is a valid single signature
+  for the transaction's `SigningPubKey`;
+- `NetworkID` matches the connected chain (it is required above network ID 1024);
+- every field you supplied is unchanged. The wallet may only fill omitted fields such
+  as `Fee`, `Sequence`, `LastLedgerSequence`, and `NetworkID`; a supplied
+  `LastLedgerSequence` must be signed exactly;
+- the hash the wallet reports matches the serialized transaction. `signAndSubmit()`
+  requires the wallet to report one.
+
+The result contains the verified `tx_blob`, its `hash`, the `signature`, and
+`tx_json` decoded from the blob. A failed check rejects with `SIGN_FAILED`; after
+`signAndSubmit()`, the wallet may already have broadcast the transaction, so
+reconcile before asking the user to sign again. Multi-signing requests
+(`SigningPubKey: ''` or `Signers`) reject with `UNSUPPORTED_METHOD` before the
+wallet is contacted.
+
+Fields are compared with the decoded signed transaction, so supply them in the
+form the XRPL codec produces: classic addresses, numeric `Flags`, uppercase hex,
+and issued-currency values without trailing zeros.
+
+`SigningPubKey` may be the account's master key or its RegularKey, and only the
+ledger knows which keys control the account. When a signature serves as proof
+of account ownership, also confirm that `deriveAddress(SigningPubKey)` equals
+`Account` with the master key enabled, or that the key is the account's
+`RegularKey`.
+
 ### Ledger multisign contributions
 
 Ledger supports parallel multisigning through `sign()`. Prepare the transaction

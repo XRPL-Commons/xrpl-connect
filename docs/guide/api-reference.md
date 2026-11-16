@@ -441,7 +441,9 @@ const adapter = new WalletConnectAdapter({
 ```
 
 **Supported Features:** Transaction signing and mobile wallets. Arbitrary
-message signing and live account refresh are not supported.
+message signing, multi-signing, and live account refresh are not supported.
+Signing results are verified against the request and connected account; see
+[WalletConnect result verification](/guide/transactions#walletconnect-result-verification).
 
 **Get Project ID:** [https://cloud.walletconnect.com/](https://cloud.walletconnect.com/)
 
