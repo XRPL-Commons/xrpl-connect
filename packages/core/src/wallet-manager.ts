@@ -1018,12 +1018,17 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     if (!this.isActiveSession(adapter, generation) || !this.currentAccount) return;
 
     this.logger.info('Network changed', network);
+    const previousNetwork = this.currentAccount.network;
     const nextAccount = this.cloneAccount({ ...this.currentAccount, network });
     this.currentAccount = nextAccount;
     this.stateRevision += 1;
     void this.persistState(adapter, generation, nextAccount);
     this.emit('networkChanged', { ...nextAccount.network });
-    this.reportNetworkMismatch(adapter, generation, nextAccount.network);
+    // A wallet may report one switch through accountChanged and then
+    // networkChanged (WalletConnect does); its mismatch is reported once.
+    if (!this.networksEqual(previousNetwork, nextAccount.network)) {
+      this.reportNetworkMismatch(adapter, generation, nextAccount.network);
+    }
   }
 
   /** Serialize storage mutations so cleanup is always the final old-session write. */

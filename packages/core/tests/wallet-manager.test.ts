@@ -2425,6 +2425,30 @@ describe('WalletManager network policy', () => {
     await expectSigningBlocked(manager, adapter);
   });
 
+  it('reports one switch once when the wallet emits it as an account and a network change', async () => {
+    const { adapter, manager, onNetworkChanged, onError } = await connectedOnTestnet();
+
+    // WalletConnect reports a chain switch through both events.
+    adapter.emitAdapterEvent('accountChanged', { ...ACCOUNT, network: MAINNET });
+    adapter.emitAdapterEvent('networkChanged', MAINNET);
+
+    expect(onNetworkChanged).toHaveBeenCalledWith(MAINNET);
+    expect(onError).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ code: WalletErrorCode.NETWORK_MISMATCH })
+    );
+    await expectSigningBlocked(manager, adapter);
+
+    // A switch to yet another network is a new mismatch.
+    const devnet: NetworkInfo = { id: 'devnet', name: 'Devnet', wss: 'wss://devnet' };
+    adapter.emitAdapterEvent('networkChanged', devnet);
+    expect(onError).toHaveBeenCalledTimes(2);
+    expect(onError).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        message: 'Network mismatch. Expected "testnet" but wallet is connected to "devnet".',
+      })
+    );
+  });
+
   it('applies the requested network to live account refreshes', async () => {
     const { adapter, manager, onNetworkChanged, onError } = await connectedOnTestnet();
     adapter.fetchAccount = vi.fn(async () => ({ ...ACCOUNT, network: MAINNET }));

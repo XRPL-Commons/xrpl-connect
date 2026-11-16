@@ -552,8 +552,9 @@ walletManager.on('networkChanged', (network: NetworkInfo) => {
 
 Emitted with a `NETWORK_MISMATCH` `WalletError` after a `networkChanged` (or a
 network carried by `accountChanged`) leaves the network the session was
-requested on. Signing stays blocked until the wallet returns to it; see
-[Network policy](#network-policy).
+requested on. It fires once per change of the reported network, even when the
+wallet reports one switch through both events. Signing stays blocked until the
+wallet returns to it; see [Network policy](#network-policy).
 
 ```typescript
 walletManager.on('error', (error: WalletError) => {

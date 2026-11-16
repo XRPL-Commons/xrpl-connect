@@ -102,8 +102,10 @@ network through an event or `fetchAccount()`, the manager still updates `account
 and emits `networkChanged`, then emits `error` with a `NETWORK_MISMATCH` `WalletError`.
 While the reported network differs, `sign()`, `signAndSubmit()`, and `signMessage()`
 reject with `NETWORK_MISMATCH`; they work again once the wallet is back on the requested
-network. `manager.networkMismatch` exposes that error while it applies. Without a requested
-network the manager adopts the reported network as before.
+network. `manager.networkMismatch` exposes that error while it applies. The `error` event
+fires once per change of the reported network, even when the wallet reports one switch
+through both `accountChanged` and `networkChanged`. Without a requested network the manager
+adopts the reported network as before.
 
 The extension adapters (Otsu, Crossmark, GemWallet) apply the same policy on their own, so
 it also holds when they are used without `WalletManager`. When a network was requested at
