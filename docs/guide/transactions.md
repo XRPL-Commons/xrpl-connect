@@ -157,6 +157,8 @@ because one contribution may not satisfy the account's signer quorum.
 
 Not every XRPL wallet supports arbitrary messages. Gate the UI with `manager.supports('signMessage')` and include domain, origin, purpose, nonce, and expiry in authentication messages to prevent replay.
 
+Wallets sign text. A `Uint8Array` message must be valid UTF-8; otherwise the call rejects with `INVALID_MESSAGE` before the wallet is opened. The result's `message` is the text you requested, and a wallet-reported signer other than the connected account rejects with `SIGN_FAILED`. When the wallet does not report a signer, `signerAddress` is the connected account as asserted by the wallet session, so a server authenticating users must still verify the signature against the account's public key.
+
 ## Safety checklist
 
 - Validate destination, amount, flags, network, and transaction type before opening the wallet.

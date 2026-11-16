@@ -379,6 +379,39 @@ describe('OtsuAdapter.sign', () => {
   });
 });
 
+describe('OtsuAdapter.signMessage', () => {
+  async function connected() {
+    const provider = makeProvider({
+      connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      signMessage: vi.fn().mockResolvedValue({ signature: 'SIG' }),
+    });
+    installProvider(provider);
+    const adapter = new OtsuAdapter();
+    await adapter.connect();
+    return { adapter, provider };
+  }
+
+  it('signs the exact text encoded by valid UTF-8 bytes', async () => {
+    const { adapter, provider } = await connected();
+
+    await expect(adapter.signMessage(new TextEncoder().encode('sign in ✓'))).resolves.toEqual({
+      message: 'sign in ✓',
+      signature: 'SIG',
+      publicKey: '',
+    });
+    expect(provider.signMessage).toHaveBeenCalledWith('sign in ✓');
+  });
+
+  it('rejects invalid UTF-8 bytes before asking Otsu to sign', async () => {
+    const { adapter, provider } = await connected();
+
+    await expect(adapter.signMessage(Uint8Array.from([0xc3, 0x28]))).rejects.toMatchObject({
+      code: WalletErrorCode.INVALID_MESSAGE,
+    });
+    expect(provider.signMessage).not.toHaveBeenCalled();
+  });
+});
+
 describe('OtsuAdapter.disconnect', () => {
   it('calls provider.disconnect and clears state', async () => {
     const provider = makeProvider({

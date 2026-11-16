@@ -102,16 +102,30 @@ export interface SignedTransaction {
  * Result of signing a message
  */
 export interface SignedMessage {
-  message: string; // Original message
+  message: string; // The requested message, exactly as signed
   signature: string; // Signature
   publicKey: string; // Public key used for signing
   signerAddress?: string; // Address of the account that produced the signature
 }
 
-/** Transaction signature returned by WalletManager with a known signer. */
+/**
+ * Transaction signature returned by WalletManager with a known signer.
+ *
+ * The manager rejects a result whose wallet-reported `signerAddress` differs from
+ * the connected account. When the wallet does not report a signer,
+ * `signerAddress` is the connected account as asserted by the wallet session when
+ * the request started; it is not cryptographically verified against the signature.
+ */
 export type ManagedSignedTransaction = SignedTransaction & { signerAddress: string };
 
-/** Message signature returned by WalletManager with a known signer. */
+/**
+ * Message signature returned by WalletManager with a known signer.
+ *
+ * The manager rejects a result whose wallet-reported `signerAddress` differs from
+ * the connected account. When the wallet does not report a signer,
+ * `signerAddress` is the connected account as asserted by the wallet session when
+ * the request started; it is not cryptographically verified against the signature.
+ */
 export type ManagedSignedMessage = SignedMessage & { signerAddress: string };
 
 /**
@@ -524,6 +538,7 @@ export enum WalletErrorCode {
   SIGN_FAILED = 'SIGN_FAILED',
   SIGN_REJECTED = 'SIGN_REJECTED',
   OPERATION_TIMEOUT = 'OPERATION_TIMEOUT',
+  INVALID_MESSAGE = 'INVALID_MESSAGE',
 
   // Network errors
   NETWORK_NOT_SUPPORTED = 'NETWORK_NOT_SUPPORTED',

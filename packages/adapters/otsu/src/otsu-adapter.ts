@@ -25,6 +25,7 @@ import type {
 } from '@xrpl-connect/core';
 import {
   createWalletError,
+  decodeMessage,
   isWalletError,
   isStandardNetworkId,
   STANDARD_NETWORKS,
@@ -339,11 +340,10 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
       throw createWalletError.notConnected();
     }
 
+    const messageStr = decodeMessage(message);
     const provider = this.getProvider();
 
     try {
-      const messageStr = typeof message === 'string' ? message : new TextDecoder().decode(message);
-
       logger.debug('Signing message', { length: messageStr.length });
 
       const response = await provider.signMessage(messageStr);

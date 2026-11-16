@@ -186,6 +186,12 @@ Signs a transaction without submitting it to the network.
 the account that produced the signature. The result may also contain `tx_blob`,
 `tx_json`, `signature`, and wallet-specific fields.
 
+`signerAddress` is bound to the account connected when the request started. A
+wallet-reported signer that differs from it rejects with `SIGN_FAILED`. When the
+wallet does not report a signer, the manager fills in the connected account as
+asserted by the wallet session; it is not cryptographically verified against the
+signature.
+
 These artifacts are not always ready for direct submission. A multisign-capable
 adapter can return one signer contribution whose `tx_json`/`tx_blob` contains a
 `Signers` entry. Combine all contributions according to that adapter's contract
@@ -256,13 +262,16 @@ Signs an arbitrary message (not a transaction).
 
 **Parameters**:
 
-- `message` (string | Uint8Array): The message to sign
+- `message` (string | Uint8Array): The message to sign. Bytes must be valid
+  UTF-8; they are never decoded lossily.
 
-**Returns**: A `SignedMessage` containing the signature, message, public key,
-and required `signerAddress`
+**Returns**: A `SignedMessage` containing the signature, the requested message,
+public key, and required `signerAddress` (bound to the connected account as for
+`sign()`)
 
 **Throws**: `WalletError` with `SIGN_FAILED`, `SIGN_REJECTED`,
-`NOT_CONNECTED`, or `UNSUPPORTED_METHOD` error codes
+`NOT_CONNECTED`, `UNSUPPORTED_METHOD`, or `INVALID_MESSAGE` (invalid UTF-8
+bytes) error codes
 
 **Example**:
 
@@ -677,6 +686,7 @@ enum WalletErrorCode {
   NOT_CONNECTED = 'NOT_CONNECTED',
   ALREADY_CONNECTED = 'ALREADY_CONNECTED',
   UNSUPPORTED_METHOD = 'UNSUPPORTED_METHOD',
+  INVALID_MESSAGE = 'INVALID_MESSAGE',
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
 ```

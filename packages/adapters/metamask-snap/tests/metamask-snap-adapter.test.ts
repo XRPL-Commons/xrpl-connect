@@ -344,7 +344,7 @@ describe('MetaMaskSnapAdapter signing', () => {
     const adapter = await connected({ xrpl_signMessage: signMessage });
 
     await expect(adapter.signMessage(Uint8Array.from([0xc3, 0x28]))).rejects.toMatchObject({
-      code: WalletErrorCode.SIGN_FAILED,
+      code: WalletErrorCode.INVALID_MESSAGE,
     });
     expect(signMessage).not.toHaveBeenCalled();
   });

@@ -23,6 +23,7 @@ import type {
 } from '@xrpl-connect/core';
 import {
   createWalletError,
+  decodeMessage,
   isStandardNetworkId,
   isWalletError,
   resolveNetwork,
@@ -339,9 +340,8 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
       throw createWalletError.notConnected();
     }
 
+    const messageStr = decodeMessage(message);
     try {
-      const messageStr = typeof message === 'string' ? message : new TextDecoder().decode(message);
-
       // Sign message with GemWallet
       const signResponse = await signMessage(messageStr);
 

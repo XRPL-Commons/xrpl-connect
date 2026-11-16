@@ -89,6 +89,9 @@ export { TIME } from './constants';
 // Network helpers
 export { resolveNetwork } from './network';
 
+// Message helpers
+export { decodeMessage } from './message';
+
 // Device detection
 export { isMobile } from './device';
 

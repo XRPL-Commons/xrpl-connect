@@ -11,6 +11,8 @@ import type {
   Transaction,
   ManagedSignedTransaction,
   ManagedSignedMessage,
+  SignedTransaction,
+  SignedMessage,
   SubmittedTransaction,
   WalletEvent,
   ConnectOptions,
@@ -622,11 +624,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     const adapter = this.currentAdapter;
     const signerAddress = this.currentAccount.address;
     try {
-      const result = await adapter.sign(transaction);
-      const signed: ManagedSignedTransaction = {
-        ...result,
-        signerAddress: result.signerAddress ?? signerAddress,
-      };
+      const signed = this.bindSigner(await adapter.sign(transaction), signerAddress);
       this.logger.info('Transaction signed', {
         type: transaction.TransactionType,
         hash: signed.hash,
@@ -684,11 +682,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     const adapter = this.currentAdapter;
     const signerAddress = this.currentAccount.address;
     try {
-      const result = await adapter.signMessage(message);
-      const signed: ManagedSignedMessage = {
-        ...result,
-        signerAddress: result.signerAddress ?? signerAddress,
-      };
+      const signed = this.bindSigner(await adapter.signMessage(message), signerAddress);
       this.logger.info('Message signed');
       return signed;
     } catch (error) {
@@ -863,6 +857,21 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    */
   get defaultNetwork(): NetworkConfig | undefined {
     return this.options.network;
+  }
+
+  /**
+   * Bind a signature to the account that started the request. A signer the
+   * wallet reports must be that account; when the wallet reports none, the
+   * account asserted by the wallet session is stamped (not verified).
+   */
+  private bindSigner<Result extends SignedTransaction | SignedMessage>(
+    result: Result,
+    signerAddress: string
+  ): Result & { signerAddress: string } {
+    if (result.signerAddress !== undefined && result.signerAddress !== signerAddress) {
+      throw createWalletError.signerMismatch(signerAddress, result.signerAddress);
+    }
+    return { ...result, signerAddress };
   }
 
   /**

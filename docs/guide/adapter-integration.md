@@ -196,6 +196,7 @@ import {
   Transaction,
   ConnectOptions,
   createWalletError,
+  decodeMessage,
 } from '@xrpl-connect/core';
 
 export class MyWalletAdapter implements WalletAdapter {
@@ -275,7 +276,8 @@ export class MyWalletAdapter implements WalletAdapter {
 
   async signMessage(message: string | Uint8Array): Promise<SignedMessage> {
     this.assertConnected();
-    const text = typeof message === 'string' ? message : new TextDecoder().decode(message);
+    // Rejects invalid UTF-8 with INVALID_MESSAGE instead of signing U+FFFD substitutes.
+    const text = decodeMessage(message);
     const result = await (window as any).myWallet.signMessage(text);
     return {
       message: text,

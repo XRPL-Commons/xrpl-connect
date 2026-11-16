@@ -19,6 +19,7 @@ import type {
 } from '@xrpl-connect/core';
 import {
   createWalletError,
+  decodeMessage,
   isStandardNetworkId,
   isWalletError,
   STANDARD_NETWORKS,
@@ -324,12 +325,8 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
       throw createWalletError.notConnected();
     }
 
+    const messageStr = decodeMessage(message);
     try {
-      const messageStr =
-        typeof message === 'string'
-          ? message
-          : new TextDecoder('utf-8', { fatal: true }).decode(message);
-
       const result = (await this.invokeSnap('xrpl_signMessage', { message: messageStr })) as {
         signature: string;
       };

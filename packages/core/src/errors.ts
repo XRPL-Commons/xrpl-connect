@@ -26,6 +26,7 @@ const CODE_TO_CATEGORY: Record<WalletErrorCode, WalletErrorCategory> = {
   [WalletErrorCode.NOT_CONNECTED]: WalletErrorCategory.INVALID_INPUT,
   [WalletErrorCode.ALREADY_CONNECTED]: WalletErrorCategory.INVALID_INPUT,
   [WalletErrorCode.UNSUPPORTED_METHOD]: WalletErrorCategory.INVALID_INPUT,
+  [WalletErrorCode.INVALID_MESSAGE]: WalletErrorCategory.INVALID_INPUT,
 
   [WalletErrorCode.SIGN_FAILED]: WalletErrorCategory.INTERNAL,
   [WalletErrorCode.UNKNOWN_ERROR]: WalletErrorCategory.INTERNAL,
@@ -154,6 +155,15 @@ export const createWalletError = {
 
   operationTimeout: (operation: string, originalError?: Error): WalletError =>
     new WalletError(WalletErrorCode.OPERATION_TIMEOUT, `${operation} timed out.`, originalError),
+
+  invalidMessage: (reason: string, originalError?: Error): WalletError =>
+    new WalletError(WalletErrorCode.INVALID_MESSAGE, `Invalid message. ${reason}`, originalError),
+
+  signerMismatch: (expected: string, actual: string): WalletError =>
+    new WalletError(
+      WalletErrorCode.SIGN_FAILED,
+      `Signer mismatch. Expected "${expected}" but the wallet signed with "${actual}".`
+    ),
 
   networkNotSupported: (networkId: string, walletName: string): WalletError =>
     new WalletError(

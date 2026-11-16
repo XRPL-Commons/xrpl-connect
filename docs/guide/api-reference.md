@@ -77,7 +77,7 @@ async sign(
 ): Promise<ManagedSignedTransaction>
 ```
 
-Sign a transaction without submitting it to the ledger. Depending on the adapter, the result contains signed transaction JSON (`tx_json`), a serialized transaction blob (`tx_blob`), and/or the raw signature. These artifacts can represent either a complete single-sign transaction or one multisign contribution; inspect the adapter contract before submitting them. Manager results always contain the address that started the signing request as `signerAddress`, unless the adapter supplies a more specific signer address.
+Sign a transaction without submitting it to the ledger. Depending on the adapter, the result contains signed transaction JSON (`tx_json`), a serialized transaction blob (`tx_blob`), and/or the raw signature. These artifacts can represent either a complete single-sign transaction or one multisign contribution; inspect the adapter contract before submitting them. Manager results always contain `signerAddress`. When the wallet reports the signer, it must be the account connected when the request started, or the call rejects with `SIGN_FAILED`. When the wallet does not report one, `signerAddress` is that connected account as asserted by the wallet session; it is not cryptographically verified against the signature.
 
 #### signAndSubmit()
 
@@ -96,7 +96,10 @@ async signMessage(
 ```
 
 Sign a message using the connected wallet. The manager result always contains a
-required `signerAddress`.
+required `signerAddress`, bound to the connected account exactly as for `sign()`, and
+`message` is the requested text. `Uint8Array` input must be valid UTF-8: wallets sign
+text, so invalid bytes reject with `INVALID_MESSAGE` before the wallet is asked to sign
+instead of being replaced with U+FFFD.
 
 #### supports()
 
@@ -886,6 +889,7 @@ All error codes are exposed by the `WalletErrorCode` enum.
 | `NOT_CONNECTED`         | `INVALID_INPUT`      | A connection is required but none is active                | Connect before calling the method            |
 | `ALREADY_CONNECTED`     | `INVALID_INPUT`      | A wallet is already connected or connecting                | Disconnect first                             |
 | `UNSUPPORTED_METHOD`    | `INVALID_INPUT`      | The wallet does not implement this method                  | Use a wallet that supports it                |
+| `INVALID_MESSAGE`       | `INVALID_INPUT`      | Message bytes passed to `signMessage()` are not UTF-8      | Pass a string or valid UTF-8 bytes           |
 | `SIGN_FAILED`           | `INTERNAL`           | Signing failed for an unspecified reason                   | Retry or surface the original error          |
 | `UNKNOWN_ERROR`         | `INTERNAL`           | Unhandled error from the adapter                           | Inspect `originalError`                      |
 

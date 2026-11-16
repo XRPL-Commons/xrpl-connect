@@ -663,18 +663,45 @@ describe('WalletManager signerAddress stamping', () => {
     expectTypeOf(message.signerAddress).toEqualTypeOf<string>();
   });
 
-  it('does not overwrite a signerAddress the adapter already provided', async () => {
+  it('keeps a wallet-reported signer that matches the connected account', async () => {
     const adapter: WalletAdapter = {
       ...createFakeAdapter(),
       sign: vi.fn(
-        async () => ({ hash: '0xhash', signerAddress: 'rExplicit' }) as SignedTransaction
+        async () => ({ hash: '0xhash', signerAddress: ACCOUNT.address }) as SignedTransaction
       ),
     };
     const manager = new WalletManager({ adapters: [adapter] });
     await manager.connect('fake');
 
     const signed = await manager.sign({} as Transaction);
-    expect(signed.signerAddress).toBe('rExplicit');
+    expect(signed.signerAddress).toBe(ACCOUNT.address);
+  });
+
+  it('rejects transaction and message signatures from a signer other than the connected account', async () => {
+    const adapter: WalletAdapter = {
+      ...createFakeAdapter(),
+      sign: vi.fn(
+        async () => ({ hash: '0xhash', signerAddress: 'rOtherSigner' }) as SignedTransaction
+      ),
+      signMessage: vi.fn(
+        async () =>
+          ({
+            message: 'hello',
+            signature: '0xsig',
+            publicKey: 'PK',
+            signerAddress: 'rOtherSigner',
+          }) as SignedMessage
+      ),
+    };
+    const manager = new WalletManager({ adapters: [adapter] });
+    await manager.connect('fake');
+    const expected = {
+      code: WalletErrorCode.SIGN_FAILED,
+      message: `Signer mismatch. Expected "${ACCOUNT.address}" but the wallet signed with "rOtherSigner".`,
+    };
+
+    await expect(manager.sign({} as Transaction)).rejects.toMatchObject(expected);
+    await expect(manager.signMessage('hello')).rejects.toMatchObject(expected);
   });
 
   it('stamps the account that started the signing request when the account changes in flight', async () => {

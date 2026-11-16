@@ -230,27 +230,57 @@ describe('XyraAdapter.sign', () => {
 });
 
 describe('XyraAdapter.signMessage', () => {
-  it('preserves the signer address reported by Xyra', async () => {
+  async function connected() {
     mockSdk.connect.mockResolvedValue({
       address: 'rConnected',
       publicKey: 'CONNECTED_PK',
       network: 'xrpl-mainnet',
     });
+    const adapter = new XyraAdapter();
+    await adapter.connect({ network: 'mainnet' });
+    return adapter;
+  }
+
+  it('returns the requested message signed by the connected account', async () => {
+    const adapter = await connected();
+    mockSdk.signMessage.mockResolvedValue({
+      address: 'rConnected',
+      message: 'a different message',
+      signature: 'SIG',
+      publicKey: 'CONNECTED_PK',
+    });
+
+    await expect(adapter.signMessage('hello')).resolves.toEqual({
+      signerAddress: 'rConnected',
+      message: 'hello',
+      signature: 'SIG',
+      publicKey: 'CONNECTED_PK',
+    });
+    expect(mockSdk.signMessage).toHaveBeenCalledWith({ message: 'hello' });
+  });
+
+  it('rejects a signature from an account other than the connected one', async () => {
+    const adapter = await connected();
     mockSdk.signMessage.mockResolvedValue({
       address: 'rSigner',
       message: 'hello',
       signature: 'SIG',
       publicKey: 'SIGNER_PK',
     });
-    const adapter = new XyraAdapter();
-    await adapter.connect({ network: 'mainnet' });
 
-    await expect(adapter.signMessage('hello')).resolves.toMatchObject({
-      signerAddress: 'rSigner',
-      message: 'hello',
-      signature: 'SIG',
-      publicKey: 'SIGNER_PK',
+    await expect(adapter.signMessage('hello')).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+      message: 'Signer mismatch. Expected "rConnected" but the wallet signed with "rSigner".',
     });
+  });
+
+  it('rejects invalid UTF-8 bytes before opening the wallet', async () => {
+    const adapter = await connected();
+
+    await expect(adapter.signMessage(Uint8Array.from([0xc3, 0x28]))).rejects.toMatchObject({
+      code: WalletErrorCode.INVALID_MESSAGE,
+    });
+    expect(mockSdk.signMessage).not.toHaveBeenCalled();
   });
 });
 
