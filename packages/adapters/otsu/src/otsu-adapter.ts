@@ -180,7 +180,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
     if (!this.currentAccount) return null;
     const generation = this.connectionGeneration;
     const startingRevision = this.stateRevision;
-    const provider = this.getProvider();
+    const provider = this.getSessionProvider();
     let connected: boolean;
     try {
       connected = provider.isConnected();
@@ -262,7 +262,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
       throw createWalletError.notConnected();
     }
 
-    const provider = this.getProvider();
+    const provider = this.getSessionProvider();
 
     try {
       logger.debug('Signing transaction', {
@@ -303,7 +303,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
       throw createWalletError.notConnected();
     }
 
-    const provider = this.getProvider();
+    const provider = this.getSessionProvider();
 
     try {
       logger.debug('Signing and submitting transaction', {
@@ -341,7 +341,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
     }
 
     const messageStr = decodeMessage(message);
-    const provider = this.getProvider();
+    const provider = this.getSessionProvider();
 
     try {
       logger.debug('Signing message', { length: messageStr.length });
@@ -396,6 +396,23 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
       throw createWalletError.notInstalled('Otsu Wallet');
     }
     return window.xrpl;
+  }
+
+  /**
+   * Get the provider this session connected through. Requests never follow a
+   * replaced `window.xrpl`: another script or extension could install an
+   * object that also reports `isOtsu`, so the session fails instead.
+   */
+  private getSessionProvider(): OtsuProvider {
+    const provider = this.providerListenerOwner;
+    if (!provider) throw createWalletError.notConnected();
+    if (typeof window === 'undefined' || window.xrpl !== provider) {
+      throw createWalletError.connectionFailed(
+        this.name,
+        new Error('The injected Otsu provider changed after connecting. Reconnect to continue.')
+      );
+    }
+    return provider;
   }
 
   /**

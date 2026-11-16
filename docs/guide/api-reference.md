@@ -468,6 +468,10 @@ const adapter = new OtsuAdapter();
 **Supported Features:** Transaction signing, message signing, and live account
 refresh
 
+The session stays bound to the `window.xrpl` provider object it connected
+through. If another script or extension replaces `window.xrpl`, signing and
+account refresh reject with `CONNECTION_FAILED` until the user reconnects.
+
 ### MetaMask Snap Adapter
 
 ```typescript

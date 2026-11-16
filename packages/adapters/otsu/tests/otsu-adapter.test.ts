@@ -412,6 +412,72 @@ describe('OtsuAdapter.signMessage', () => {
   });
 });
 
+describe('OtsuAdapter provider pinning', () => {
+  async function connectedThenReplaced() {
+    const provider = makeProvider({
+      isConnected: vi.fn(() => true),
+      connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      getAddress: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      signTransaction: vi.fn().mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' }),
+      signAndSubmit: vi.fn().mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' }),
+      signMessage: vi.fn().mockResolvedValue({ signature: 'SIG' }),
+    });
+    installProvider(provider);
+    const adapter = new OtsuAdapter();
+    await adapter.connect();
+
+    const replacement = makeProvider({
+      isConnected: vi.fn(() => true),
+      getAddress: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      signTransaction: vi.fn().mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' }),
+      signAndSubmit: vi.fn().mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' }),
+      signMessage: vi.fn().mockResolvedValue({ signature: 'SIG' }),
+    });
+    (globalThis as unknown as { window: { xrpl: unknown } }).window.xrpl = replacement;
+    return { adapter, provider, replacement };
+  }
+
+  it.each([
+    ['sign', (adapter: OtsuAdapter) => adapter.sign({ TransactionType: 'Payment' } as never)],
+    [
+      'signAndSubmit',
+      (adapter: OtsuAdapter) => adapter.signAndSubmit({ TransactionType: 'Payment' } as never),
+    ],
+    ['signMessage', (adapter: OtsuAdapter) => adapter.signMessage('hello')],
+    ['fetchAccount', (adapter: OtsuAdapter) => adapter.fetchAccount()],
+  ])(
+    'does not %s through a provider that replaced the connected one',
+    async (_operation, operation) => {
+      const { adapter, provider, replacement } = await connectedThenReplaced();
+      provider.getNetwork.mockClear();
+
+      await expect(operation(adapter)).rejects.toMatchObject({
+        code: WalletErrorCode.CONNECTION_FAILED,
+      });
+
+      for (const candidate of [provider, replacement]) {
+        expect(candidate.isConnected).not.toHaveBeenCalled();
+        expect(candidate.getNetwork).not.toHaveBeenCalled();
+        expect(candidate.signTransaction).not.toHaveBeenCalled();
+        expect(candidate.signAndSubmit).not.toHaveBeenCalled();
+        expect(candidate.signMessage).not.toHaveBeenCalled();
+      }
+      await expect(adapter.getAccount()).resolves.toMatchObject({ address: 'rOtsuUser' });
+    }
+  );
+
+  it('keeps signing through the connected provider while it is still injected', async () => {
+    const { adapter, provider } = await connectedThenReplaced();
+    (globalThis as unknown as { window: { xrpl: unknown } }).window.xrpl = provider;
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).resolves.toEqual({
+      hash: 'H',
+      tx_blob: 'BLOB',
+    });
+    expect(provider.signTransaction).toHaveBeenCalledOnce();
+  });
+});
+
 describe('OtsuAdapter.disconnect', () => {
   it('calls provider.disconnect and clears state', async () => {
     const provider = makeProvider({
