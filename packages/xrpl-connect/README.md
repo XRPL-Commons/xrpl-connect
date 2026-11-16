@@ -330,7 +330,7 @@ export const initializeWallet = () => {
 Include the web component easily:
 
 ```html
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <script type="module">
     import { WalletManager, Adapters } from 'xrpl-connect';

@@ -1,38 +1,71 @@
-# Production dependency audit
+# Dependency security audit
 
-Audit date: 2026-08-17
+Last verified: 2026-11-06
 
-Last reverified: 2026-09-02
-
-This audit covers the production dependency graph reported by:
+This audit covers all 59 open GitHub Dependabot alerts and the complete workspace
+dependency graph, including development tools:
 
 ```sh
+pnpm audit
 pnpm audit --prod
 ```
 
 ## Result
 
-| Severity | Before | After |
-| -------- | -----: | ----: |
-| Critical |      0 |     0 |
-| High     |     10 |     0 |
-| Moderate |      8 |     0 |
-| Low      |      1 |     1 |
+| Severity | Before (all dependencies) | After (all dependencies) |
+| -------- | ------------------------: | -----------------------: |
+| Critical |                         2 |                        0 |
+| High     |                        38 |                        0 |
+| Moderate |                        27 |                        0 |
+| Low      |                        11 |                        1 |
 
-The lockfile refresh updates the WalletConnect 2.x packages from 2.22.3 to 2.23.10. Narrow pnpm overrides also keep vulnerable transitive ranges out of the graph while respecting each upstream package's declared major-version range:
+The updated lockfile excludes the vulnerable versions for **58 of 59** open
+Dependabot alerts. Both audit commands report only the remaining low-severity
+`elliptic` advisory. Alerts are not dismissed; GitHub reevaluates the dependency
+graph after the changes reach the default branch.
 
-- WalletConnect runtime graph: `ws` 7.5.13, `h3` 1.15.11, and `defu` 6.1.7.
-- Crossmark declarations graph: `node-forge` 1.4.0, `lodash` 4.18.1, `bn.js` 4.12.5, and `bn.js` 5.2.5.
-- Documentation graph: `ws` 8.21.1 through `xrpl` and `@xrplf/isomorphic`.
+## Dependency changes
 
-## Reachability classification
+- Upgrade the coordinated Vite+ packages to 1.5.0, including Vitest 5.1.0 and
+  Tinypool 2.2.0, and Vue to 3.5.45.
+- Constrain affected transitive ranges to patched releases of Babel, URI and
+  query-string parsers, CSS and Markdown tooling, browser mappings, multipart
+  handling, cryptographic helpers, and glob expansion. Upgrade `node-forge` to
+  1.4.3, including the fixes published after its original alert.
+- Keep `gray-matter` on the compatible `js-yaml` 3.x API with a patched minimum
+  of 3.15.2. Its parent-specific override must also be updated because it takes
+  precedence over the general `js-yaml` override.
+- Require the patched Zod 4.6.6 range for `abitype`'s optional peer. `abitype`
+  already supports Zod 4; no application code uses that peer, so resolving the
+  updated constraint removes Zod from the lockfile. This does not claim that
+  Zod 4's legacy `zod/v3` entry point is patched.
+- Upgrade the two tooling paths using Minimatch 10 to the patched 11.x line.
+  API Extractor and `vitepress-plugin-llms` use the retained named `minimatch`
+  function, not the removed `AST` or `makeRe` exports. Verify this override with
+  the React declaration build and documentation build.
 
-WalletConnect is bundled browser runtime code. Its vulnerable websocket, storage, and utility paths were upgraded even where an advisory described a Node-only server API.
+Vite+ now requires Node.js 22.18+, 24.11+, or 26+ for development. Published
+packages retain their Node.js 20.19 support: CI builds the Node 20 consumer lane
+with Node 22, then switches to Node 20 to run the packed-package compatibility
+suite. The other lanes exercise consumers on Node 22 and 24.
 
-Crossmark's `@crossmarkio/typings` package is required by the published declaration surface. Its dependency graph includes `@transia/xrpl`, `xrpl` 2.14.1, `node-forge`, `lodash`, `bn.js`, and `elliptic`, but these paths are declarations-only for XRPL Connect: the Crossmark adapter imports `@crossmarkio/typings/sdk` with `import type`, and neither the Crossmark SDK's JavaScript artifacts nor the built XRPL Connect browser artifacts import those packages at runtime.
+## Remaining upstream dependency
 
-The `ws` 8.x path under `docs` is documentation tooling rather than a published XRPL Connect package dependency. It is still constrained to a patched release so a workspace production audit stays clean at high and moderate severities.
+[GHSA-848j-6mx2-7j84](https://github.com/advisories/GHSA-848j-6mx2-7j84)
+remains open for `elliptic` 6.6.1. There is no public patched release. Its paths
+include:
 
-## Accepted residual risk
+- Crossmark's `@crossmarkio/typings` through the legacy `@transia/xrpl` and
+  `xrpl` dependency trees, including `ripple-keypairs` and `tiny-secp256k1`.
+  XRPL Connect imports those Crossmark declarations with `import type` and
+  bundles the required declarations into published artifacts.
+- The browser build tooling through `vite-plugin-node-polyfills` →
+  `node-stdlib-browser` → `crypto-browserify` → `browserify-sign` → `elliptic`.
+  The vanilla example actively uses this polyfill plugin. This dependency
+  graph must not be described as exclusively declarations-only.
 
-`GHSA-848j-6mx2-7j84` remains as a low-severity advisory for `elliptic` 6.6.1 through `@crossmarkio/typings > @transia/xrpl > @transia/ripple-keypairs`. The same installation also has parallel paths through `@crossmarkio/typings > xrpl@2.14.1 > ripple-keypairs` and `@crossmarkio/typings > xrpl@2.14.1 > bip32 > tiny-secp256k1`. The advisory has no patched release. XRPL Connect does not execute these dependency paths: they are installed to resolve Crossmark's public declarations and are absent from the adapter and meta-package browser JavaScript bundles. Replacing them would require an upstream Crossmark typings release; overriding `elliptic` cannot remove the advisory because every published version is affected.
+Current upstream Crossmark typings and browser crypto polyfills still require
+these dependencies. Forcing newer XRPL, keypair, or secp256k1 major versions would
+break their declared API contracts. Removing the polyfills or Crossmark support
+would change supported functionality. Keep this finding visible until a compatible
+upstream fix or a separately validated replacement is available.
