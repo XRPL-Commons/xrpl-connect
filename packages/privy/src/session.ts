@@ -910,7 +910,11 @@ export class PrivySession {
       add({ id: 'passkey', label: 'Passkey', kind: 'passkey' });
     }
     if (config.farcaster_auth) add({ id: 'farcaster', label: 'Farcaster', kind: 'farcaster' });
-    if (config.guest_auth) add({ id: 'guest', label: 'Guest', kind: 'guest' });
+    // A guest wallet is lost for good with its browser-held credential, so the
+    // dashboard switch alone does not offer it: the application must opt in.
+    if (config.guest_auth && this.options.allowGuestLogin === true) {
+      add({ id: 'guest', label: 'Guest', kind: 'guest' });
+    }
 
     // Native Telegram authentication is only exposed when the page is hosted
     // by Telegram and has its signed launch data. The ordinary dashboard OAuth

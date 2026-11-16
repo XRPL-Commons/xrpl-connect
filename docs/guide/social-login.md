@@ -14,6 +14,14 @@ Enable the desired authentication methods in the Privy dashboard. The integratio
 does not render Privy's “connect wallet” or “use your own wallet” options. External wallets
 continue to connect through the other XRPL Connect adapters.
 
+Guest login also needs `allowGuestLogin: true` on the `PrivyAdapter`; the
+dashboard setting alone does not offer it. A guest's only credential is a random
+secret in the browser's storage. The guest account and its XRPL wallet, with any
+funds sent to it, are lost for good on disconnect, when anyone signs in with a
+login method in the same browser, when a connection attempt fails, or when site
+data is cleared. Offer it only for disposable use; see the
+[guest login notes](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/packages/privy#guest-login).
+
 With a configured Privy adapter, the wallet picker shows one **Sign in with
 socials** button alongside the XRPL wallet options. Opening it fetches the current
 Privy dashboard settings and displays the enabled authentication methods. Changes

@@ -529,6 +529,7 @@ describe('PrivySession', () => {
       appId: 'app-216',
       redirectUri: `${window.location.origin}/wallet/privy`,
       loginMethods: [{ id: 'github-alias', oauthProvider: 'github' }],
+      allowGuestLogin: true,
     });
 
     const methods = await session.getLoginMethods();
@@ -543,6 +544,36 @@ describe('PrivySession', () => {
     );
     await session.disconnect();
     delete (window as unknown as { Telegram?: unknown }).Telegram;
+  });
+
+  it('neither offers nor performs dashboard guest login unless the application opts in', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValue({ guest_auth: true, custom_oauth_providers: [] });
+    const session = makeSession([]);
+
+    await expect(session.getLoginMethods()).resolves.toEqual([]);
+    await expect(session.connect('guest', new AbortController().signal)).rejects.toThrow(
+      'Privy login method "guest" is not configured'
+    );
+    expect(mocks.guestCreate).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+    await session.disconnect();
+  });
+
+  it('offers and performs dashboard guest login once the application opts in', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValue({ guest_auth: true, custom_oauth_providers: [] });
+    const session = new PrivySession({ ...options([]), allowGuestLogin: true });
+
+    await expect(session.getLoginMethods()).resolves.toEqual([
+      expect.objectContaining({ id: 'guest', connectOptions: { loginMethod: 'guest' } }),
+    ]);
+    await expect(session.connect('guest', new AbortController().signal)).resolves.toEqual({
+      id: walletId,
+      address,
+      publicKey,
+      userId,
+    });
+    expect(mocks.guestCreate).toHaveBeenCalledOnce();
+    await session.disconnect();
   });
 
   it('waits for email input and code verification outside the SDK request timeout', async () => {

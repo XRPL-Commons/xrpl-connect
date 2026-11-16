@@ -70,8 +70,8 @@ logout lifecycle belong to the adapter.
 ## Dashboard methods
 
 The chooser supports the dashboard's email and phone authentication, built-in and
-custom OAuth providers, passkeys, Farcaster, and guest login. It shows only enabled
-methods. Phone authentication follows the dashboard's SMS or WhatsApp setting;
+custom OAuth providers, passkeys, Farcaster, and, when the application opts in,
+[guest login](#guest-login). It shows only enabled methods. Phone authentication follows the dashboard's SMS or WhatsApp setting;
 WhatsApp must be enabled for the app. Native Telegram authentication requires the
 signed launch context from a Telegram Mini App and seamless login enabled in the
 dashboard. Telegram OAuth works through the normal redirect flow.
@@ -97,6 +97,36 @@ Privy session is still present, for example because an earlier logout could not
 complete, it is ended first and is never handed to the next person who signs in.
 Calling `manager.connect('privy')` without a `loginMethod` resumes the current
 session instead.
+
+### Guest login
+
+Enabling guest login in the Privy dashboard is not enough to offer it. The
+adapter shows and accepts the `guest` method only when the application opts in:
+
+```js
+const privy = new PrivyAdapter({
+  appId: 'YOUR_PUBLIC_APP_ID',
+  redirectUri: `${window.location.origin}/wallet/privy`,
+  allowGuestLogin: true,
+});
+```
+
+A guest receives a real XRPL wallet, but the guest account's only credential is a
+random secret that Privy keeps in this browser's storage. The guest account and
+its XRPL wallet, including any XRP or tokens sent to its address, are lost for
+good when:
+
+- the guest disconnects, because `manager.disconnect()` logs out of Privy and
+  logout deletes the secret;
+- anyone signs in with a login method in the same browser, including **Guest**
+  again, because the previous session is ended first;
+- a connection attempt fails, because the adapter then logs out of the session it
+  started;
+- the browser's site data is cleared, or the guest switches browser or device.
+
+Neither the application nor Privy can recover the account. Offer guest login only
+for disposable use, such as testnet demos, and warn users not to fund a guest
+wallet they want to keep.
 
 ## Signing and submission
 

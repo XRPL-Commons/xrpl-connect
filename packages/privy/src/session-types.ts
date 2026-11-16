@@ -57,5 +57,13 @@ export interface PrivySessionOptions {
    * these entries extend them and replace a dashboard entry with the same id.
    */
   loginMethods?: readonly PrivyLoginMethod[];
+  /**
+   * Offer Privy guest login when the dashboard enables it. Off by default: a
+   * guest's only credential is a random secret in this browser's storage, so
+   * the guest account and its XRPL wallet, with any funds sent to it, are lost
+   * for good on logout, on signing in with another method, or when site data is
+   * cleared.
+   */
+  allowGuestLogin?: boolean;
   timeoutMs?: number;
 }
