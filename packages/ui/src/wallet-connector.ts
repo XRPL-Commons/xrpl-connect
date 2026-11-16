@@ -465,10 +465,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     attributeChangedCallback(name: string, oldValue: string, newValue: string) {
       if (name === 'wallets' && oldValue !== newValue) {
+        this.invalidateSocialDiscovery();
         this.resetWalletAvailability();
         if (this.isConnected || this.isOpen) void this.refreshWalletAvailability();
         if (this.isOpen) {
           if (this.viewState === 'list') this.renderWalletAvailability();
+          else if (this.viewState === 'social-login') {
+            this.viewState = 'list';
+            this.render();
+          }
           return;
         }
       }
@@ -1274,10 +1279,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     public connectSocialLogin(socialLoginId: string): void {
       const socialLogin = this.getAllSocialLogins().find(({ id }) => id === socialLoginId);
+      const manager = this.walletManager;
       const wallet = socialLogin
-        ? this.walletManager?.wallets.find(({ id }) => id === socialLogin.adapterId)
+        ? manager?.wallets.find(({ id }) => id === socialLogin.adapterId)
         : undefined;
-      if (!socialLogin || !wallet || !this.walletService) return;
+      const configuredAdapterIds = manager
+        ? this.getConfiguredSocialAdapterIds(manager)
+        : new Set<string>();
+      if (!socialLogin || !wallet || !configuredAdapterIds.has(wallet.id) || !this.walletService)
+        return;
 
       void this.walletService.connectWallet(socialLogin.adapterId, socialLogin.connectOptions, {
         socialLoginId: socialLogin.id,

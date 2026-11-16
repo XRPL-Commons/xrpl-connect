@@ -138,6 +138,71 @@ describe('WalletConnector social login', () => {
     expect(discover).not.toHaveBeenCalled();
   });
 
+  it('returns to the wallet list and blocks a stale dynamic method after filtering it out', async () => {
+    const discover = vi.fn(async () => [{ id: 'email', label: 'Email' }]);
+    const connect = vi.fn(async () => ({ address: 'rSocial', network: NETWORK }));
+    const social = createAdapter('social', { getLoginMethods: discover, connect });
+    const external = createAdapter('external');
+    const { connector, root } = await mount([external, social]);
+
+    connector.showSocialLoginList();
+    await vi.advanceTimersByTimeAsync(0);
+    const staleButton = root.querySelector<HTMLButtonElement>('[data-social-login-id]');
+    expect(staleButton?.dataset.socialLoginId).toBe('discovered:social:email');
+
+    connector.setAttribute('wallets', 'external');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(root.querySelector('[aria-label="Social sign-in methods"]')).toBeNull();
+    expect(root.querySelector('[data-wallet-id="external"]')).not.toBeNull();
+    staleButton?.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it('rediscovers a dynamic provider when the wallets filter still allows it', async () => {
+    const discover = vi.fn(async () => [{ id: 'email', label: 'Email' }]);
+    const social = createAdapter('social', { getLoginMethods: discover });
+    const external = createAdapter('external');
+    const { connector, root } = await mount([external, social]);
+
+    connector.showSocialLoginList();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(discover).toHaveBeenCalledTimes(1);
+
+    connector.setAttribute('wallets', 'social');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.querySelector('#social-login-button')).not.toBeNull();
+
+    root.querySelector<HTMLButtonElement>('#social-login-button')?.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(root.textContent).toContain('Email');
+    expect(discover).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores a discovery result that resolves after its adapter is filtered out', async () => {
+    let resolveDiscovery!: (methods: readonly { id: string; label: string }[]) => void;
+    const discover = vi.fn(
+      () =>
+        new Promise<readonly { id: string; label: string }[]>((resolve) => {
+          resolveDiscovery = resolve;
+        })
+    );
+    const social = createAdapter('social', { getLoginMethods: discover });
+    const external = createAdapter('external');
+    const { connector, root } = await mount([external, social]);
+
+    connector.showSocialLoginList();
+    expect(root.querySelector('[aria-label="Social sign-in methods"]')).not.toBeNull();
+    connector.setAttribute('wallets', 'external');
+    await vi.advanceTimersByTimeAsync(0);
+    resolveDiscovery([{ id: 'email', label: 'Email' }]);
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(root.querySelector('[data-social-login-id]')).toBeNull();
+    expect(root.querySelector('#social-login-button')).toBeNull();
+  });
+
   it.each(['close', 'showWalletList', 'disconnectedCallback'] as const)(
     'keeps a session retained after a timed-out restore on idle %s',
     async (action) => {
