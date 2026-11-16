@@ -413,6 +413,21 @@ function userFromResponse(value: unknown): PrivyUser {
   return { id: candidate.id, linked_accounts: candidate.linked_accounts };
 }
 
+/**
+ * The user a Privy access token was issued to, from its documented `sub`
+ * claim. It is read locally, without verification, only to tell whose stored
+ * session the SDK holds; it never authenticates anyone.
+ */
+function accessTokenUserId(token: string): string | undefined {
+  try {
+    const payload = new TextDecoder().decode(base64UrlToBytes(token.split('.')[1] ?? ''));
+    const claims = asRecord(JSON.parse(payload));
+    return isNonEmptyString(claims?.sub) ? claims.sub : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const OAUTH_CALLBACK_PARAMS = [
   'privy_oauth_code',
   'privy_oauth_state',
@@ -2358,17 +2373,59 @@ export class PrivySession {
         client.auth.logout(userId ? { userId } : undefined);
       await this.settleWithin(Promise.resolve().then(providerLogout), this.timeoutMs);
       if (abandoned.length > 0) {
-        // A login that outlived the wait can still complete and sign the user
-        // back in after the logout above, so log out again once it settles,
-        // unless a newer connection owns the session by then.
+        // A login that outlived the wait can still complete and sign its user
+        // in after the logout above, so log out again once it settles. A newer
+        // connection by then only loses a stale user that replaced it.
         void Promise.allSettled(abandoned)
-          .then(() => (this.activeAttempt || this.currentWallet ? undefined : providerLogout()))
+          .then((results) =>
+            this.activeAttempt || this.currentWallet
+              ? this.endStaleSession(client, results, userId)
+              : providerLogout()
+          )
           .catch(() => undefined);
       }
     } finally {
       this.disconnectPromise = undefined;
       this.cleanupIframe();
     }
+  }
+
+  /**
+   * A newer connection exists, but abandoned work may still have signed in a
+   * stale user: the one it authenticated, or the disconnected user through a
+   * token refresh. The SDK holds one active session, so that user replaced the
+   * newer connection's. Log the stale user out and end the replaced connection
+   * rather than let it continue as someone else. A newer connection whose own
+   * user is active is left alone.
+   */
+  private async endStaleSession(
+    client: PrivyClient,
+    results: readonly PromiseSettledResult<unknown>[],
+    disconnectedUserId: string | undefined
+  ): Promise<void> {
+    const staleUserIds = new Set<string>(disconnectedUserId ? [disconnectedUserId] : []);
+    for (const result of results) {
+      if (result.status !== 'fulfilled') continue;
+      try {
+        staleUserIds.add(userFromResponse(result.value).id);
+      } catch {
+        // Only an authentication result names the user it signed in.
+      }
+    }
+    if (staleUserIds.size === 0) return;
+    const token = await client.getAccessToken();
+    const activeUserId = token ? accessTokenUserId(token) : undefined;
+    if (
+      activeUserId === undefined ||
+      !staleUserIds.has(activeUserId) ||
+      activeUserId === this.currentWallet?.userId
+    ) {
+      return;
+    }
+    await client.auth.logout({ userId: activeUserId });
+    // A connection still in progress signs its own user in afterwards, or
+    // fails at its next SDK request if it had picked up the stale session.
+    if (this.currentWallet) await this.notifySessionLost();
   }
 
   /** Wait for in-flight SDK work, returning whatever is still pending at the deadline. */

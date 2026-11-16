@@ -188,8 +188,12 @@ included in this package. See also
   then is removed along with its listeners. Every wait is bounded by
   `timeoutMs` (15 seconds by default): a request that never settles is
   abandoned so it cannot block later logins, and if it completes afterwards
-  the adapter logs out once more. Provider discovery and a new login wait for
-  the cleanup operation. A later login restores the same embedded wallet.
+  the adapter logs out once more. Privy keeps one signed-in user per browser,
+  so if such a late login replaces a newer connection's user, the adapter logs
+  the late user out and ends the newer connection with a `disconnect` event
+  rather than let it continue as someone else; that user signs in again.
+  Provider discovery and a new login wait for the cleanup operation. A later
+  login restores the same embedded wallet.
 - A restore that times out, for example on a slow network, leaves both the
   saved connection and the Privy session in place, so the next
   `manager.reconnect()` can retry without a new login.
