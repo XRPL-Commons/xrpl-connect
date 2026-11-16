@@ -1721,6 +1721,68 @@ describe('PrivySession', () => {
     await session.disconnect();
   });
 
+  it('retries SDK initialization after cancellation and disconnect', async () => {
+    mocks.initialize.mockImplementationOnce(() => new Promise<void>(() => undefined));
+    const session = makeSession();
+    const controller = new AbortController();
+    const firstConnect = session.connect('custom', controller.signal);
+    await vi.waitFor(() => expect(mocks.initialize).toHaveBeenCalledTimes(1));
+
+    controller.abort();
+    await expect(firstConnect).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+    await session.disconnect();
+
+    await expect(session.connect('custom', new AbortController().signal)).resolves.toMatchObject({
+      id: walletId,
+    });
+    expect(mocks.initialize).toHaveBeenCalledTimes(2);
+    await session.disconnect();
+  });
+
+  it('does not clear a newer initialization when an abandoned one rejects late', async () => {
+    let rejectFirst: ((error: unknown) => void) | undefined;
+    mocks.initialize
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectFirst = reject;
+          })
+      )
+      .mockImplementationOnce(async () => undefined);
+    const session = makeSession();
+    const controller = new AbortController();
+    const firstConnect = session.connect('custom', controller.signal);
+    await vi.waitFor(() => expect(mocks.initialize).toHaveBeenCalledTimes(1));
+
+    controller.abort();
+    await expect(firstConnect).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+    await session.disconnect();
+
+    const secondConnect = session.connect('custom', new AbortController().signal);
+    await vi.waitFor(() => expect(mocks.initialize).toHaveBeenCalledTimes(2));
+    rejectFirst?.(new Error('abandoned initialization failed'));
+
+    await expect(secondConnect).resolves.toMatchObject({ id: walletId });
+    await session.getLoginMethods();
+    expect(mocks.initialize).toHaveBeenCalledTimes(2);
+    await session.disconnect();
+  });
+
+  it('retries SDK initialization after discovery cancellation', async () => {
+    mocks.initialize.mockImplementationOnce(() => new Promise<void>(() => undefined));
+    const session = makeSession();
+    const controller = new AbortController();
+    const discovery = session.getLoginMethods(controller.signal);
+    await vi.waitFor(() => expect(mocks.initialize).toHaveBeenCalledTimes(1));
+
+    controller.abort();
+    await expect(discovery).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+
+    await expect(session.getLoginMethods()).resolves.toHaveLength(1);
+    expect(mocks.initialize).toHaveBeenCalledTimes(2);
+    await session.disconnect();
+  });
+
   it('ends a leftover session before authenticating with an explicitly chosen method', async () => {
     configureExistingUser();
     const order: string[] = [];

@@ -1771,10 +1771,11 @@ export class PrivySession {
         () => this.client!.initialize(),
         () => this.assertGeneration(generation, signal)
       );
-      this.initializePromise = initialize.catch((error: unknown) => {
-        this.initializePromise = undefined;
+      const initialization: Promise<void> = initialize.catch((error: unknown) => {
+        if (this.initializePromise === initialization) this.initializePromise = undefined;
         throw error;
       });
+      this.initializePromise = initialization;
     }
     const initialize = this.initializePromise;
     try {
@@ -1783,7 +1784,9 @@ export class PrivySession {
       // An initialization that never settles must not be awaited by every later call.
       if (
         isWalletError(error) &&
-        error.code === WalletErrorCode.OPERATION_TIMEOUT &&
+        (error.code === WalletErrorCode.OPERATION_TIMEOUT ||
+          (error.code === WalletErrorCode.NOT_CONNECTED &&
+            (signal.aborted || generation !== this.lifecycleGeneration))) &&
         this.initializePromise === initialize
       ) {
         this.initializePromise = undefined;
