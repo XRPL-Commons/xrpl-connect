@@ -9,6 +9,7 @@ import {
   CONNECTION_TIMEOUT_MS,
   type XamanClient,
 } from './browser-oauth';
+import { randomHex } from './pkce';
 import {
   decode,
   encodeForMultiSigning,
@@ -1075,9 +1076,10 @@ export class XamanAdapter
     const left = window.screen.width / 2 - width / 2;
     const top = window.screen.height / 2 - height / 2;
 
+    // A random name: a fixed one would let any frame on the page navigate the signing window.
     window.open(
       url,
-      'Xaman Sign',
+      `xaman-sign-${randomHex(window.crypto, 16)}`,
       `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
     );
   }

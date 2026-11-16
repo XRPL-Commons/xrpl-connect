@@ -858,6 +858,32 @@ describe('XamanAdapter.sign', () => {
     });
   });
 
+  it('opens each signing window under its own random name', async () => {
+    const open = vi.fn();
+    const screen = { width: 1280, height: 800 };
+    vi.stubGlobal('window', Object.assign(new EventTarget(), { open, screen, crypto }));
+    try {
+      mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
+      mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false));
+      const adapter = new XamanAdapter({ apiKey: 'test-key' });
+      await adapter.connect();
+      for (const count of [1, 2]) {
+        const subscription = createSubscriptionHarness();
+        const signing = adapter.sign(REQUESTED_TRANSACTION);
+        await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(count));
+        await subscription.emit({ signed: true });
+        await expect(signing).resolves.toMatchObject({ hash: SIGNED_TX_HASH });
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    const [first, second] = open.mock.calls.map(([url, name]) => ({ url, name }));
+    expect(first.url).toBe('https://xaman.app/sign/payload-uuid');
+    expect(first.name).toMatch(/^xaman-sign-[0-9a-f]{32}$/);
+    expect(second.name).toMatch(/^xaman-sign-[0-9a-f]{32}$/);
+    expect(second.name).not.toBe(first.name);
+  });
+
   it('bounds payload creation when the SDK never resolves it', async () => {
     vi.useFakeTimers();
     try {
