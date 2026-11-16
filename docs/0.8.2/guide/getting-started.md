@@ -5,8 +5,7 @@ description: Install XRPL-Connect, get your API keys, and set up basic wallet co
 <!-- Generated from v0.8.2; do not edit. -->
 
 ::: warning Archived documentation
-You are reading the XRPL Connect 0.8.2 documentation. [Switch to 1.0.0](/) or follow
-the [0.8.2 → 1.0.0 migration guide](/guide/migration-v1).
+You are reading the XRPL Connect 0.8.2 documentation. [Switch to the current documentation](/) or follow the [migration guide from 0.8.2](/guide/migration-v1).
 :::
 
 

@@ -28,7 +28,7 @@
     "docs:dev": "vp exec vitepress dev docs",
     "docs:build": "vp run -F '{./docs}^...' build && vp exec vitepress build docs",
     "docs:preview": "vp exec vitepress preview docs",
-    "docs:snapshot:0.8.2": "node docs/scripts/prepare-versioned-docs.mjs",
+    "docs:snapshot": "node docs/scripts/prepare-versioned-docs.mjs",
     "docs:snapshot:check": "node docs/scripts/prepare-versioned-docs.mjs --check"
   },
   "devDependencies": {
