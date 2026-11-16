@@ -1448,6 +1448,134 @@ describe.each(['sign', 'signAndSubmit'] as const)(
       });
     });
 
+    describe('with a Payment DeliverMax', () => {
+      // DeliverMax is the API v2 JSON alias of a Payment's Amount; it is never signed.
+      const DELIVER_MAX_ERROR =
+        'PaymentTransaction: Amount and DeliverMax fields must be identical when both are provided';
+      const ISSUED = { ...ISSUED_AMOUNT, value: '1.5' };
+      const REORDERED_ISSUED = { value: '1.5', issuer: ISSUED.issuer, currency: ISSUED.currency };
+
+      function reportingDeliverMax(
+        report: (fields: Record<string, unknown>) => Record<string, unknown>,
+        tamper?: (transaction: Transaction) => Transaction
+      ) {
+        return async (request: SignTransactionRequest) => {
+          const { tx_json } = await walletResponse(MAINNET_WALLET, tamper)(request);
+          return { tx_json: report(tx_json as Record<string, unknown>) };
+        };
+      }
+
+      it.each([
+        ['in place of Amount', { DeliverMax: '1000000' }, { Amount: '1000000' }],
+        [
+          'equal to an issued Amount in another key order',
+          { Amount: ISSUED, DeliverMax: REORDERED_ISSUED },
+          { Amount: ISSUED },
+        ],
+      ])('sends a request with DeliverMax %s as its Amount', async (_description, fields, sent) => {
+        const adapter = await connected();
+        mockClient.request.mockImplementation(walletResponse(MAINNET_WALLET));
+        const request = { TransactionType: 'Payment', Destination: DESTINATION, ...fields };
+        const snapshot = structuredClone(request);
+
+        const result = await adapter[method](request as Transaction);
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.objectContaining({
+            request: expect.objectContaining({
+              params: expect.objectContaining({
+                tx_json: { ...PAYMENT, Account: MAINNET_ADDRESS, ...sent },
+              }),
+            }),
+          })
+        );
+        expect(result.tx_json).toMatchObject(sent);
+        expect(result.tx_json).not.toHaveProperty('DeliverMax');
+        expect(request).toEqual(snapshot);
+      });
+
+      it('rejects a request whose DeliverMax differs from Amount before contacting the wallet', async () => {
+        const adapter = await connected();
+
+        await expect(
+          adapter[method]({ ...PAYMENT, DeliverMax: '1' } as Transaction)
+        ).rejects.toMatchObject({
+          code: WalletErrorCode.SIGN_FAILED,
+          message: expect.stringContaining(DELIVER_MAX_ERROR),
+        });
+        expect(mockClient.request).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        [
+          'in place of Amount (API v2)',
+          ({ Amount, ...fields }: Record<string, unknown>) => ({ ...fields, DeliverMax: Amount }),
+        ],
+        [
+          'next to Amount (API v1)',
+          (fields: Record<string, unknown>) => ({ ...fields, DeliverMax: fields.Amount }),
+        ],
+      ])(
+        'accepts a result that reports the signed Amount as DeliverMax %s',
+        async (_description, report) => {
+          const adapter = await connected();
+          let signedHash: unknown;
+          mockClient.request.mockImplementation(
+            reportingDeliverMax((fields) => {
+              signedHash = fields.hash;
+              return report(fields);
+            })
+          );
+
+          const result = await adapter[method](PAYMENT);
+
+          expect(result.hash).toBe(signedHash);
+          expect(result.hash).toBe(hashes.hashSignedTx(result.tx_blob!));
+          expect(result.tx_json).toEqual(decode(result.tx_blob!));
+          expect(result.tx_json).toMatchObject({ Amount: '1000000' });
+          expect(result.tx_json).not.toHaveProperty('DeliverMax');
+        }
+      );
+
+      it('rejects a result that reports another amount as DeliverMax in place of Amount', async () => {
+        const adapter = await connected();
+        mockClient.request.mockImplementation(
+          reportingDeliverMax(
+            ({ Amount, ...fields }) => ({ ...fields, DeliverMax: Amount }),
+            (tx) => ({ ...tx, Amount: '1' }) as Transaction
+          )
+        );
+
+        await expect(adapter[method](PAYMENT)).rejects.toMatchObject({
+          code: WalletErrorCode.SIGN_FAILED,
+          message: expect.stringContaining('did not match the signing request'),
+        });
+      });
+
+      it('rejects a result whose DeliverMax differs from the signed Amount', async () => {
+        const adapter = await connected();
+        let signedHash: unknown;
+        mockClient.request.mockImplementation(
+          reportingDeliverMax((fields) => {
+            signedHash = fields.hash;
+            return { ...fields, DeliverMax: '1' };
+          })
+        );
+
+        const error = await adapter[method](PAYMENT).catch((caught: unknown) => caught);
+
+        expect(error).toMatchObject({
+          code: WalletErrorCode.SIGN_FAILED,
+          message: expect.stringContaining(`${VERIFICATION_FAILURE[method]}${DELIVER_MAX_ERROR}`),
+        });
+        // The blob carries the signed Amount, so a possible submission can be reconciled.
+        expect(signedHash).toMatch(/^[0-9A-F]{64}$/);
+        if (method === 'signAndSubmit')
+          expect(error).toMatchObject({ transactionHash: signedHash });
+        else expect(error).not.toHaveProperty('transactionHash');
+      });
+    });
+
     it.each([
       ['an invalid field value', { Amount: 5 }],
       ['an unknown flag', { Flags: { tfUnknown: true } }],

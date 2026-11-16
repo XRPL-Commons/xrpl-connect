@@ -96,10 +96,10 @@ through `4_294_967_295`; invalid configuration throws `RangeError` at constructi
 The adapter checks the expiry in both the resolved request and the decoded,
 cryptographically verified signed blob. Other supplied transaction fields remain
 strictly compared, in the canonical form the XRPL binary codec produces: Xaman
-receives that form, so equivalent encodings such as lowercase hex or an X-address
-are accepted, and a transaction that cannot be serialized rejects with
-`SIGN_FAILED` before a signing request is opened. The original caller object is
-not modified. Use the returned
+receives that form, so equivalent encodings such as lowercase hex, an X-address,
+or a Payment `DeliverMax` in place of `Amount` are accepted, and a transaction that
+cannot be serialized rejects with `SIGN_FAILED` before a signing request is opened.
+The original caller object is not modified. Use the returned
 `signed.tx_json.LastLedgerSequence` (or decode `signed.tx_blob`) when recording
 the actual deadline; do not record the originally requested expiry as the signed one.
 
@@ -133,8 +133,11 @@ The adapter sends your transaction in the canonical form the XRPL binary codec
 produces, so the wallet signs exactly what is later verified. Equivalent encodings
 are accepted: a flag-interface `Flags` object becomes a number, an X-address becomes
 a classic address with its tag, hex becomes uppercase, and issued-currency values
-are normalized (`"1.50"` becomes `"1.5"`). A transaction that cannot be serialized
-rejects with `SIGN_FAILED` before the wallet is contacted.
+are normalized (`"1.50"` becomes `"1.5"`). A Payment's `DeliverMax`, the API v2 alias
+of `Amount`, is resolved as xrpl's `autofill()` resolves it: it becomes `Amount`, and
+if both are supplied they must be the same amount. A transaction that cannot be
+serialized, or whose `Amount` and `DeliverMax` differ, rejects with `SIGN_FAILED`
+before the wallet is contacted.
 
 A WalletConnect wallet returns signed transaction JSON, which the adapter treats as
 untrusted. Before `sign()` or `signAndSubmit()` resolves, the adapter serializes it
@@ -147,7 +150,10 @@ and requires that:
   as `Fee`, `Sequence`, `LastLedgerSequence`, and `NetworkID`; a supplied
   `LastLedgerSequence` must be signed exactly;
 - the hash the wallet reports matches the serialized transaction. `signAndSubmit()`
-  requires the wallet to report one.
+  requires the wallet to report one;
+- a Payment's `DeliverMax`, which API v2 reports in place of `Amount`, is the signed
+  amount. It is serialized as `Amount` when reported alone, and must equal `Amount`
+  when both are reported.
 
 The result contains the verified `tx_blob`, its `hash`, the `signature`, and
 `tx_json` decoded from the blob, all in canonical form. A failed check rejects with

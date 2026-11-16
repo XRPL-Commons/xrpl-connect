@@ -1344,6 +1344,32 @@ describe('XamanAdapter.sign', () => {
     expect(requested.Memos).toEqual([{ Memo: { MemoData: 'cafe' } }]);
   });
 
+  it('sends and verifies a Payment DeliverMax as the Amount it stands for', async () => {
+    // DeliverMax is the API v2 JSON alias of Amount, which the binary codec does not define.
+    const requested = {
+      TransactionType: 'Payment',
+      Account: CONNECTED_ACCOUNT,
+      Destination: 'rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe',
+      DeliverMax: '1000000',
+      Fee: '10',
+      Sequence: 1,
+      Flags: 0,
+    } as Transaction;
+    const snapshot = structuredClone(requested);
+    let sent: Transaction | undefined;
+    const { adapter, subscription } = await signedAdapter('mainnet', {}, (body) => {
+      sent = structuredClone(body.txjson);
+      mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false, {}, {}, body.txjson));
+    });
+
+    const signPromise = adapter.sign(requested);
+    await subscription.emit({ signed: true });
+
+    await expect(signPromise).resolves.toMatchObject({ hash: SIGNED_TX_HASH });
+    expect(sent).toEqual(REQUESTED_TRANSACTION);
+    expect(requested).toEqual(snapshot);
+  });
+
   it.each([false, true])(
     'rejects a request the XRPL codec cannot serialize before creating a payload (submit: %s)',
     async (submit) => {

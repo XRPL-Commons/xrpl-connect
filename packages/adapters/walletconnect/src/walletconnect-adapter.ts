@@ -104,6 +104,8 @@ type VerifiedSignedTransaction = {
 type SerializedSignTransactionResult = {
   hash: string;
   reportedHash: unknown;
+  /** The returned transaction JSON, without its hash */
+  reported: Transaction;
   tx_blob: string;
   tx_json: Transaction;
 };
@@ -226,7 +228,11 @@ function selectAccountForChain(
 
 /**
  * Serialize an untrusted `xrpl_signTransaction` result into its signed blob,
- * decoded transaction, and hash, keeping the hash the wallet reported.
+ * decoded transaction, and hash, keeping what the wallet reported.
+ *
+ * API v2 reports a Payment's `Amount` as `DeliverMax`, a JSON alias that is not
+ * signed. The blob carries `Amount`, or the alias when it is reported alone, so
+ * its hash is known even when verification rejects an alias that differs.
  */
 function serializeSignTransactionResult(result: unknown): SerializedSignTransactionResult {
   const signedTxJson = (result as { tx_json?: unknown } | null | undefined)?.tx_json;
@@ -235,10 +241,17 @@ function serializeSignTransactionResult(result: unknown): SerializedSignTransact
   }
 
   const { hash: reportedHash, ...fields } = signedTxJson as Record<string, unknown>;
-  const tx_blob = encode(fields as Transaction);
+  const reported = fields as Transaction;
+  let signedFields = reported;
+  if (reported.TransactionType === 'Payment' && reported.DeliverMax != null) {
+    const { DeliverMax: deliverMax, ...payment } = reported;
+    signedFields = { ...payment, Amount: payment.Amount ?? deliverMax };
+  }
+  const tx_blob = encode(signedFields);
   return {
     hash: hashes.hashSignedTx(tx_blob),
     reportedHash,
+    reported,
     tx_blob,
     tx_json: decode(tx_blob) as Transaction,
   };
@@ -249,6 +262,7 @@ function serializeSignTransactionResult(result: unknown): SerializedSignTransact
  * fields the request omitted, but the signed transaction must be single-signed
  * for the connected account on the requested chain, preserve every requested
  * field, and match the hash the wallet reports. A submission must report one.
+ * A reported `DeliverMax` must be the signed `Amount`.
  */
 function verifySignTransactionResult(
   signed: SerializedSignTransactionResult,
@@ -257,7 +271,9 @@ function verifySignTransactionResult(
   chainId: string,
   submit: boolean
 ): VerifiedSignedTransaction {
-  const { hash, reportedHash, tx_blob, tx_json } = signed;
+  const { hash, reported, reportedHash, tx_blob, tx_json } = signed;
+  // Resolving the reported JSON like a request rejects a DeliverMax that differs from Amount.
+  canonicalizeTransaction(reported);
   assertSignedTransaction(tx_json, tx_blob, {
     walletName: 'WalletConnect',
     account,

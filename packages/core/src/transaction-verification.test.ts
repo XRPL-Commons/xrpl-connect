@@ -325,6 +325,15 @@ describe('assertRequestedTransaction', () => {
       'Test Wallet signing request is not a valid XRPL transaction'
     );
   });
+
+  it('compares a requested DeliverMax as the Amount it stands for', () => {
+    const requested = { ...REQUEST, DeliverMax: '1000000' } as Transaction;
+
+    expect(() => assertRequestedTransaction(requested, SIGNED, POLICY)).not.toThrow();
+    expect(() => assertRequestedTransaction(requested, { ...SIGNED, Amount: '1' }, POLICY)).toThrow(
+      'Test Wallet returned a transaction that did not match the signing request'
+    );
+  });
 });
 
 describe('canonicalizeTransaction', () => {
@@ -353,6 +362,69 @@ describe('canonicalizeTransaction', () => {
     ['an unknown field', { Unknown: 'value' }],
   ])('throws for %s', (_description, fields) => {
     expect(() => canonicalizeTransaction({ ...REQUEST, ...fields } as Transaction)).toThrow();
+  });
+
+  describe('with a Payment DeliverMax', () => {
+    // The issued amount in another key order and encoding.
+    const REORDERED_ISSUED_AMOUNT = {
+      value: '1.5',
+      issuer: ISSUED_AMOUNT.issuer,
+      currency: ISSUED_AMOUNT.currency,
+    };
+
+    it('uses DeliverMax as the omitted Amount without modifying the input', () => {
+      const request = {
+        TransactionType: 'Payment',
+        Account: ACCOUNT,
+        Destination: 'rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe',
+        DeliverMax: '1000000',
+      } as Transaction;
+      const snapshot = JSON.stringify(request);
+
+      expect(canonicalizeTransaction(request)).toEqual(REQUEST);
+      expect(JSON.stringify(request)).toBe(snapshot);
+    });
+
+    it.each([
+      ['XRP amount', '1000000', '1000000'],
+      ['issued amount, in any key order and encoding', ISSUED_AMOUNT, REORDERED_ISSUED_AMOUNT],
+    ])('drops a DeliverMax equal to Amount for an %s', (_description, Amount, DeliverMax) => {
+      const request = { ...REQUEST, Amount, DeliverMax } as Transaction;
+      const snapshot = JSON.stringify(request);
+
+      expect(canonicalizeTransaction(request)).toEqual(
+        canonicalizeTransaction({ ...REQUEST, Amount } as Transaction)
+      );
+      expect(JSON.stringify(request)).toBe(snapshot);
+    });
+
+    it.each([
+      ['XRP amount', '1000000', '1000001'],
+      ['issued amount', ISSUED_AMOUNT, { ...REORDERED_ISSUED_AMOUNT, value: '1.6' }],
+    ])(
+      'rejects a DeliverMax that differs from Amount for an %s',
+      (_description, Amount, DeliverMax) => {
+        expect(() =>
+          canonicalizeTransaction({ ...REQUEST, Amount, DeliverMax } as Transaction)
+        ).toThrow(
+          'PaymentTransaction: Amount and DeliverMax fields must be identical when both are provided'
+        );
+      }
+    );
+
+    it('leaves DeliverMax on other transaction types to the codec, which rejects it', () => {
+      const check = {
+        TransactionType: 'CheckCash',
+        Account: ACCOUNT,
+        CheckID: 'A'.repeat(64),
+        Amount: '1000000',
+        DeliverMax: '1000000',
+      } as unknown as Transaction;
+
+      expect(() => canonicalizeTransaction(check)).toThrow(
+        'Field DeliverMax is not defined in the definitions'
+      );
+    });
   });
 
   it('converts flag objects with xrpl versions that lack convertTxFlagsToNumber', async () => {

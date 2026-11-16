@@ -11,6 +11,7 @@ import {
   decode,
   encode,
   encodeForMultiSigning,
+  ValidationError,
   verifyKeypairSignature,
   verifySignature,
 } from 'xrpl';
@@ -52,21 +53,48 @@ export interface RequestedTransactionPolicy {
 
 /**
  * Return a transaction in the canonical form the XRPL binary codec produces,
- * which is the form a decoded signed transaction takes: flag-interface `Flags`
- * become a number, X-addresses become classic addresses with tags, hex is
- * uppercase, and issued-currency values are normalized. The input is not
- * modified.
+ * which is the form a decoded signed transaction takes: a Payment's `DeliverMax`
+ * becomes `Amount`, flag-interface `Flags` become a number, X-addresses become
+ * classic addresses with tags, hex is uppercase, and issued-currency values are
+ * normalized. The input is not modified.
  *
  * @param transaction - The transaction to canonicalize
- * @throws If the transaction cannot be serialized
+ * @throws If the transaction cannot be serialized, or is a Payment whose
+ * `Amount` and `DeliverMax` differ
  */
 export function canonicalizeTransaction(transaction: Transaction): Transaction {
-  const flags = transaction.Flags;
+  const resolved = resolveDeliverMax(transaction);
+  const flags = resolved.Flags;
   const serializable =
     flags !== null && typeof flags === 'object'
-      ? { ...transaction, Flags: convertFlagsToNumber(transaction) }
-      : transaction;
+      ? { ...resolved, Flags: convertFlagsToNumber(resolved) }
+      : resolved;
   return decode(encode(serializable)) as Transaction;
+}
+
+/**
+ * Resolve `DeliverMax`, the API v2 JSON alias of a Payment's `Amount` that the
+ * binary codec does not define, as xrpl's `autofill` does: an omitted `Amount`
+ * takes its value and the alias is dropped. Where xrpl compares the two by
+ * identity, they are compared in codec form here, so equal issued-currency
+ * objects match regardless of key order.
+ */
+function resolveDeliverMax(transaction: Transaction): Transaction {
+  if (transaction.TransactionType !== 'Payment' || transaction.DeliverMax == null) {
+    return transaction;
+  }
+  const { DeliverMax: deliverMax, ...payment } = transaction;
+  if (payment.Amount != null && !isSameAmount(payment.Amount, deliverMax)) {
+    throw new ValidationError(
+      'PaymentTransaction: Amount and DeliverMax fields must be identical when both are provided'
+    );
+  }
+  return { ...payment, Amount: payment.Amount ?? deliverMax };
+}
+
+function isSameAmount(amount: unknown, other: unknown): boolean {
+  // The codec serializes a lone field; a transaction type is not required.
+  return encode({ Amount: amount } as Transaction) === encode({ Amount: other } as Transaction);
 }
 
 function convertFlagsToNumber(transaction: Transaction): number {
