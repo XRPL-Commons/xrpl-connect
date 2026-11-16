@@ -10,13 +10,7 @@ import {
   type XamanClient,
 } from './browser-oauth';
 import { randomHex } from './pkce';
-import {
-  decode,
-  encodeForMultiSigning,
-  hashes,
-  verifyKeypairSignature,
-  verifySignature,
-} from 'xrpl';
+import { decode, hashes } from 'xrpl';
 import {
   WalletAdapter,
   AccountInfo,
@@ -33,6 +27,8 @@ import {
   WalletConnectionOptionsById,
 } from '@xrpl-connect/core';
 import {
+  assertRequestedTransaction,
+  assertSignedTransaction,
   createWalletError,
   createLogger,
   isWalletError,
@@ -48,7 +44,6 @@ const PAYLOAD_CREATION_TIMEOUT_MS = 30_000;
 const PAYLOAD_CANCELLATION_TIMEOUT_MS = 30_000;
 const RESOLVED_PAYLOAD_RETRY_MAX_MS = 5_000;
 const RESOLVED_PAYLOAD_RETRY_TIMEOUT_MS = 30_000;
-const SIGNING_OUTPUT_FIELDS = new Set(['TxnSignature']);
 const MAX_LEDGER_SEQUENCE = 0xffffffff;
 const MIN_ABSOLUTE_LEDGER_SEQUENCE = 32570;
 
@@ -1171,68 +1166,26 @@ export class XamanAdapter
     responseMultisignAccount: string | null,
     network: XamanNetwork
   ): void {
-    if (
-      (network.networkId > 1024 && transaction.NetworkID !== network.networkId) ||
-      (transaction.NetworkID !== undefined && transaction.NetworkID !== network.networkId)
-    ) {
-      throw new Error('Xaman signed a transaction for a different network');
-    }
+    assertSignedTransaction(transaction, blob, {
+      walletName: this.name,
+      account: expectedAccount,
+      networkId: network.networkId,
+      multisign,
+    });
 
-    const signers = transaction.Signers;
-
+    // Xaman also reports the signing accounts; they must agree with the blob.
     if (!multisign) {
-      if (Array.isArray(signers) && signers.length > 0) {
-        throw new Error('Xaman returned unexpected multi-signatures');
-      }
-      if (transaction.Account !== expectedAccount || responseAccount !== expectedAccount) {
+      if (responseAccount !== expectedAccount) {
         throw new Error('Xaman signed with an account other than the connected account');
       }
       if (responseMultisignAccount !== null && responseMultisignAccount !== '') {
         throw new Error('Xaman returned unexpected multi-signing account data');
       }
-      if (!verifySignature(blob)) {
-        throw new Error('Xaman returned an invalid transaction signature');
-      }
-      return;
-    }
-
-    if (
-      transaction.SigningPubKey !== '' ||
-      (typeof transaction.TxnSignature === 'string' && transaction.TxnSignature.length > 0) ||
-      !Array.isArray(signers) ||
-      signers.length === 0
+    } else if (
+      responseMultisignAccount !== expectedAccount ||
+      responseAccount !== transaction.Account
     ) {
-      throw new Error('Xaman returned an invalid multi-signed transaction');
-    }
-    if (responseMultisignAccount !== expectedAccount || responseAccount !== transaction.Account) {
       throw new Error('Xaman multi-signed with an account other than the connected account');
-    }
-
-    let expectedSignerFound = false;
-    for (const signerEntry of signers) {
-      const signer = signerEntry.Signer;
-      if (
-        typeof signer.Account !== 'string' ||
-        typeof signer.SigningPubKey !== 'string' ||
-        signer.SigningPubKey.length === 0 ||
-        typeof signer.TxnSignature !== 'string' ||
-        signer.TxnSignature.length === 0
-      ) {
-        throw new Error('Xaman returned malformed multi-signature data');
-      }
-      if (
-        !verifyKeypairSignature(
-          encodeForMultiSigning(transaction, signer.Account),
-          signer.TxnSignature,
-          signer.SigningPubKey
-        )
-      ) {
-        throw new Error('Xaman returned an invalid transaction multi-signature');
-      }
-      if (signer.Account === expectedAccount) expectedSignerFound = true;
-    }
-    if (!expectedSignerFound) {
-      throw new Error('Xaman multi-signature did not include the connected account');
     }
   }
 
@@ -1240,66 +1193,9 @@ export class XamanAdapter
     requested: Transaction,
     actual: Record<string, unknown> | undefined
   ): void {
-    if (!actual) {
-      throw new Error('Xaman returned a transaction that did not match the signing request');
-    }
-    let expected = requested;
-    const requestedExpiry = requested.LastLedgerSequence;
-    if (requestedExpiry !== undefined) {
-      const actualExpiry = actual.LastLedgerSequence;
-      const maxExtension =
-        requested.SigningPubKey === '' || requested.TransactionType === 'Batch'
-          ? 0
-          : this.maxLastLedgerSequenceExtension;
-      if (
-        typeof actualExpiry !== 'number' ||
-        !Number.isSafeInteger(actualExpiry) ||
-        actualExpiry > MAX_LEDGER_SEQUENCE ||
-        actualExpiry < requestedExpiry ||
-        actualExpiry - requestedExpiry > maxExtension
-      ) {
-        throw new Error(
-          'Xaman returned LastLedgerSequence outside the permitted signing expiry range'
-        );
-      }
-      expected = { ...requested, LastLedgerSequence: actualExpiry };
-    }
-    if (!this.containsRequestedValue(expected, actual)) {
-      throw new Error('Xaman returned a transaction that did not match the signing request');
-    }
-  }
-
-  private containsRequestedValue(expected: unknown, actual: unknown, field?: string): boolean {
-    if (field && SIGNING_OUTPUT_FIELDS.has(field)) return true;
-    if (field === 'Signers') return this.containsRequestedSigners(expected, actual);
-    if (Array.isArray(expected)) {
-      return (
-        Array.isArray(actual) &&
-        expected.length === actual.length &&
-        expected.every((value, index) => this.containsRequestedValue(value, actual[index]))
-      );
-    }
-    if (expected !== null && typeof expected === 'object') {
-      if (actual === null || typeof actual !== 'object' || Array.isArray(actual)) return false;
-      const actualRecord = actual as Record<string, unknown>;
-      return Object.entries(expected).every(([key, value]) =>
-        this.containsRequestedValue(value, actualRecord[key], key)
-      );
-    }
-    return Object.is(expected, actual);
-  }
-
-  private containsRequestedSigners(expected: unknown, actual: unknown): boolean {
-    if (!Array.isArray(expected) || !Array.isArray(actual)) return false;
-    const matchedIndexes = new Set<number>();
-    return expected.every((expectedSigner) => {
-      const matchingIndex = actual.findIndex(
-        (actualSigner, index) =>
-          !matchedIndexes.has(index) && this.containsRequestedValue(expectedSigner, actualSigner)
-      );
-      if (matchingIndex === -1) return false;
-      matchedIndexes.add(matchingIndex);
-      return true;
+    assertRequestedTransaction(requested, actual, {
+      walletName: this.name,
+      maxLastLedgerSequenceExtension: this.maxLastLedgerSequenceExtension,
     });
   }
 
