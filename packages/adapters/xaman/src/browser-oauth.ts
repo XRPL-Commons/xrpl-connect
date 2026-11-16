@@ -14,6 +14,8 @@ export type XamanClient = Pick<Xumm, 'authorize' | 'logout'> & {
 const PREFIX = 'xrpl-connect:xaman:';
 const STATE_PREFIX = 'xrpl-connect-';
 const OAUTH_ORIGIN = 'https://oauth2.xumm.app';
+// Written by the universal Xumm SDK; earlier versions of this client copied it.
+const LEGACY_SESSION_KEY = 'XummPkceJwt';
 const POPUP_CLOSE_GRACE_MS = 750;
 export const CONNECTION_TIMEOUT_MS = 5 * 60 * 1000;
 const CALLBACK_PARAMS = [
@@ -162,27 +164,36 @@ export class BrowserOAuthClient implements XamanClient {
 
   private readSaved(): { jwt: string } | undefined {
     const saved = this.read<{ jwt?: unknown; state?: unknown }>(this.sessionKey);
+    if (typeof saved?.jwt !== 'string') return undefined;
     // Restore only sessions from this client's state-bound sign-in. Entries without
     // a state were adopted from the universal SDK, which accepts tokens from any link.
-    if (
-      typeof saved?.jwt !== 'string' ||
-      typeof saved.state !== 'string' ||
-      !saved.state.startsWith(STATE_PREFIX) ||
-      this.read(`${PREFIX}${saved.state}:cancelled`) ||
-      this.read<{ jwt?: unknown }>(`${this.sessionKey}:ignored`)?.jwt === saved.jwt
-    ) {
+    const state =
+      typeof saved.state === 'string' && saved.state.startsWith(STATE_PREFIX)
+        ? saved.state
+        : undefined;
+    if (!state || this.read(`${PREFIX}${state}:cancelled`)) {
+      // Earlier versions kept such tokens after logout; do not leave them at rest.
+      this.invalidateSession(saved.jwt, state);
       return undefined;
     }
-    this.saved = { jwt: saved.jwt, state: saved.state };
+    this.saved = { jwt: saved.jwt, state };
     return { jwt: saved.jwt };
   }
 
+  /** Ends a session in every tab and deletes the stored copies of its token. */
   private invalidateSession(jwt: string, state?: string): void {
     try {
       if (state) this.write(`${PREFIX}${state}:cancelled`, true);
-      this.write(`${this.sessionKey}:ignored`, { jwt });
+      const copies = [this.sessionKey, LEGACY_SESSION_KEY];
+      if (state) copies.push(`${PREFIX}${state}:result`);
+      for (const key of copies) {
+        // Compare first: another tab may have saved a newer session under the same key.
+        if (this.read<{ jwt?: unknown }>(key)?.jwt === jwt) this.remove(key);
+      }
+      // Earlier versions kept the last logged-out token here.
+      this.remove(`${this.sessionKey}:ignored`);
     } catch {
-      // Do not delete shared session storage: another tab may have replaced it.
+      /* Storage may be unavailable; the session still ends in this tab. */
     }
   }
 
@@ -192,6 +203,10 @@ export class BrowserOAuthClient implements XamanClient {
 
   private write(key: string, value: unknown): void {
     this.browser.localStorage.setItem(key, JSON.stringify(value));
+  }
+
+  private remove(key: string): void {
+    this.browser.localStorage.removeItem(key);
   }
 
   private attempt(): Attempt | undefined {

@@ -71,6 +71,10 @@ attempts cannot be adopted by a later login. Unanswered connections time out aft
 five minutes with `OPERATION_TIMEOUT`. A suspended tab checks its deadline when it
 resumes. Other tabs that did not initiate a connection remain idle.
 
+Disconnecting deletes the saved Xaman token from local storage, along with copies that
+earlier versions left after logout. A session that another tab saved in the meantime is
+kept.
+
 Persist checkout/order state separately so the return page can resume the payment
 step. Recovering a wallet session does not restore application state.
 

@@ -298,6 +298,12 @@ function saveSession(tab: FakeWindow, token: string, state = 'xrpl-connect-saved
   tab.localStorage.setItem(SESSION_KEY, JSON.stringify({ jwt: token, state }));
 }
 
+function storedValues(tab: FakeWindow): string[] {
+  return Array.from({ length: tab.localStorage.length }, (_, index) =>
+    tab.localStorage.getItem(tab.localStorage.key(index)!)!
+  );
+}
+
 function resultFor(tab: FakeWindow, state: string): Record<string, unknown> | undefined {
   const value = tab.localStorage.getItem(`xrpl-connect:xaman:${state}:result`);
   return value ? (JSON.parse(value) as Record<string, unknown>) : undefined;
@@ -898,22 +904,28 @@ describe('BrowserOAuthClient', () => {
     await expect(client.user.account).resolves.toBe(ACCOUNT);
   });
 
-  it('logs out without reviving an older legacy token or deleting the shared session pointer', async () => {
-    const shared = new SharedStorage();
-    const tab = makeTab(shared);
+  it('removes every stored copy of its token on logout', async () => {
+    const tab = makeTab(new SharedStorage());
     installBrowser(tab);
     const token = jwt();
     const savedState = 'xrpl-connect-saved-session-state';
-    tab.localStorage.setItem(SESSION_KEY, JSON.stringify({ jwt: token, state: savedState }));
-    tab.localStorage.setItem('XummPkceJwt', JSON.stringify({ jwt: jwt({ sub: 'older-session' }) }));
+    saveSession(tab, token, savedState);
+    tab.localStorage.setItem(
+      `xrpl-connect:xaman:${savedState}:result`,
+      JSON.stringify({ jwt: token })
+    );
+    // Left by earlier versions: an SDK copy and the raw token of an older logout.
+    tab.localStorage.setItem('XummPkceJwt', JSON.stringify({ jwt: token, me: ME }));
+    tab.localStorage.setItem(
+      `${SESSION_KEY}:ignored`,
+      JSON.stringify({ jwt: jwt({ sub: 'old' }) })
+    );
     const client = new BrowserOAuthClient(API_KEY);
     clients.push(client);
 
     await expect(client.authorize()).resolves.toMatchObject({ jwt: token });
     await client.logout();
-    expect(tab.localStorage.getItem(SESSION_KEY)).toBe(
-      JSON.stringify({ jwt: token, state: savedState })
-    );
+    expect(storedValues(tab).filter((value) => value.includes('.test-signature'))).toEqual([]);
     expect(tab.localStorage.getItem(`xrpl-connect:xaman:${savedState}:cancelled`)).toBe('true');
 
     const restoredAfterLogout = new BrowserOAuthClient(API_KEY);
@@ -923,6 +935,30 @@ describe('BrowserOAuthClient', () => {
     expect(tab.open).toHaveBeenCalledOnce();
     restoredAfterLogout.cancelAuthorization();
     await expect(retry).rejects.toThrow(/cancelled/i);
+  });
+
+  it('keeps a session that another tab saved before this one logs out', async () => {
+    const tab = makeTab(new SharedStorage());
+    installBrowser(tab);
+    saveSession(tab, jwt(), 'xrpl-connect-first');
+    const client = new BrowserOAuthClient(API_KEY);
+    clients.push(client);
+    await client.authorize();
+    const newer = jwt({ sub: 'newer' });
+    saveSession(tab, newer, 'xrpl-connect-second');
+    const unrelated = JSON.stringify({ jwt: jwt({ sub: 'application-sdk' }) });
+    tab.localStorage.setItem('XummPkceJwt', unrelated);
+
+    await client.logout();
+    expect(JSON.parse(tab.localStorage.getItem(SESSION_KEY)!)).toEqual({
+      jwt: newer,
+      state: 'xrpl-connect-second',
+    });
+    expect(tab.localStorage.getItem('XummPkceJwt')).toBe(unrelated);
+    const next = new BrowserOAuthClient(API_KEY);
+    clients.push(next);
+    await expect(next.authorize()).resolves.toMatchObject({ jwt: newer });
+    expect(tab.open).not.toHaveBeenCalled();
   });
 
   it('does not restore a token that did not come from its own state-bound sign-in', async () => {
@@ -937,6 +973,7 @@ describe('BrowserOAuthClient', () => {
     clients.push(client);
 
     await expect(client.user.account).resolves.toBeUndefined();
+    expect(storedValues(tab)).toEqual([]);
     const retry = track(client.authorize());
     await settleMicrotasks();
     expect(tab.open).toHaveBeenCalledOnce();
@@ -985,6 +1022,9 @@ describe('BrowserOAuthClient', () => {
     });
     await expect(restored.reconnect()).resolves.toMatchObject({ address: ACCOUNT });
     expect(nextLoad.open).not.toHaveBeenCalled();
+
+    await restored.disconnect();
+    expect(storedValues(nextLoad).filter((value) => value.includes(token))).toEqual([]);
   });
 
   it.each([
@@ -1125,6 +1165,7 @@ describe('BrowserOAuthClient', () => {
     const waiting = track(client.authorize());
     await vi.advanceTimersByTimeAsync(CONNECTION_TIMEOUT_MS);
     await expect(waiting).rejects.toMatchObject({ code: WalletErrorCode.OPERATION_TIMEOUT });
+    expect(tab.localStorage.getItem(SESSION_KEY)).toBeNull();
     const next = new BrowserOAuthClient(API_KEY);
     clients.push(next);
     const retry = track(next.authorize());
