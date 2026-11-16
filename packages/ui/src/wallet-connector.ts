@@ -2032,7 +2032,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       const generation = ++this.qrRenderGeneration;
       const openGeneration = this.openGeneration;
       const managerGeneration = this.managerGeneration;
-      logger.debug('renderQRCode called with URI:', uri.substring(0, 60) + '...');
+      // The URI is a pairing secret or a signing link, so it stays out of logs.
+      logger.debug('renderQRCode called:', { walletId: this.qrCodeData?.walletId });
       const container = this.overlayPortal?.shadowRoot?.querySelector('#qr-container');
       if (!container || !uri) {
         logger.warn('No container or URI for QR code rendering');

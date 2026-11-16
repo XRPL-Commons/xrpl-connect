@@ -1063,7 +1063,8 @@ export class XamanAdapter
    * Open popup window for signing or trigger QR code callback
    */
   private openSignWindow(url: string): void {
-    logger.debug('openSignWindow called with URL:', url.substring(0, 50) + '...');
+    // The URL opens this signing request, so it stays out of logs.
+    logger.debug('openSignWindow called');
     const onQRCode = this.activeCallbacks.onQRCode || this.options.onQRCode;
     logger.debug('onQRCode callback exists:', !!onQRCode);
 

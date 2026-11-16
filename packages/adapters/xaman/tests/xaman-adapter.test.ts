@@ -1,5 +1,6 @@
 import { describe, it, expect, expectTypeOf, vi, beforeEach, afterEach } from 'vite-plus/test';
 import {
+  configureLogger,
   MemoryStorageAdapter,
   WalletManager,
   WalletErrorCode,
@@ -1073,6 +1074,25 @@ describe('XamanAdapter.sign', () => {
     expectTypeOf(result.tx_blob).toEqualTypeOf<string | undefined>();
     expectTypeOf(result.signature).toEqualTypeOf<string | undefined>();
     expectTypeOf(result.tx_json).toEqualTypeOf<Transaction | undefined>();
+  });
+
+  it('keeps the signing link out of debug logs', async () => {
+    const records: unknown[][] = [];
+    const record = (...args: unknown[]) => void records.push(args);
+    configureLogger({ level: 'debug', debug: record, info: record, warn: record, error: record });
+    try {
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false));
+
+      const signPromise = adapter.sign(REQUESTED_TRANSACTION);
+      await subscription.emit({ signed: true });
+      await expect(signPromise).resolves.toMatchObject({ hash: SIGNED_TX_HASH });
+
+      expect(records.some(([message]) => String(message).includes('openSignWindow'))).toBe(true);
+      expect(JSON.stringify(records)).not.toContain('xaman.app/sign');
+    } finally {
+      configureLogger(undefined);
+    }
   });
 
   it('accepts the default 50-ledger expiry extension in request JSON and the signed blob', async () => {

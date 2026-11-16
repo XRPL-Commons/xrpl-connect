@@ -1,5 +1,5 @@
 import { afterEach, describe, it, expect, vi } from 'vite-plus/test';
-import { TIME } from '@xrpl-connect/core';
+import { configureLogger, TIME } from '@xrpl-connect/core';
 import { WalletService } from '../src/services/WalletService';
 
 afterEach(() => {
@@ -66,6 +66,38 @@ describe('WalletService', () => {
     const connecting = lifecycleEvents.find((event) => event.type === 'connecting');
     const error = lifecycleEvents.find((event) => event.type === 'error');
     expect(error?.detail.connectionAttemptId).toBe(connecting?.detail.connectionAttemptId);
+  });
+
+  it('keeps the WalletConnect pairing URI out of logs when its QR code arrives', async () => {
+    const records: unknown[][] = [];
+    const record = (...args: unknown[]) => void records.push(args);
+    configureLogger({ level: 'debug', debug: record, info: record, warn: record, error: record });
+    const topic = 'c'.repeat(64);
+    const mockWalletManager = {
+      wallets: [{ id: 'walletconnect', name: 'WalletConnect' }],
+      connect: vi.fn(async (_walletId: string, options: { onQRCode(uri: string): void }) => {
+        options.onQRCode(`wc:${topic}@2?relay-protocol=irn&symKey=${'d'.repeat(64)}`);
+      }),
+    };
+    const mockComponent = {
+      showLoadingView: vi.fn(),
+      showQRCodeView: vi.fn(),
+      showAccountSelectionView: vi.fn(),
+      showErrorView: vi.fn(),
+      dispatchEvent: vi.fn(),
+      setQRCode: vi.fn(),
+      close: vi.fn(),
+    };
+    try {
+      const walletService = new WalletService(mockWalletManager as any, mockComponent as any);
+      await walletService.connectWallet('walletconnect');
+
+      expect(mockComponent.setQRCode).toHaveBeenCalledOnce();
+      expect(records.some(([message]) => String(message).includes('QR code callback'))).toBe(true);
+      expect(JSON.stringify(records)).not.toContain(topic.slice(0, 16));
+    } finally {
+      configureLogger(undefined);
+    }
   });
 
   it('should connect to a wallet', async () => {

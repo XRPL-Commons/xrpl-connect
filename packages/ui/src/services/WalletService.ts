@@ -388,7 +388,7 @@ export class WalletService {
             ...options,
             onQRCode: (uri: string) => {
               if (!this.isCurrentAttempt(uiAttempt)) return;
-              logger.debug('QR code callback received:', uri.substring(0, 50) + '...');
+              logger.debug('QR code callback received:', { walletId });
               this.component.setQRCode(walletId, uri);
             },
           };

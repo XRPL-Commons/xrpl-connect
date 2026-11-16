@@ -241,4 +241,29 @@ describe('safe wallet connector rendering', () => {
       configureLogger(undefined);
     }
   });
+
+  it('keeps a signing link out of debug logs when its QR code renders', async () => {
+    vi.useFakeTimers();
+    const records: unknown[][] = [];
+    const record = (...args: unknown[]) => void records.push(args);
+    configureLogger({ level: 'debug', debug: record, info: record, warn: record, error: record });
+    try {
+      const connector = document.createElement('xrpl-wallet-connector') as HTMLElement & {
+        open(): Promise<void>;
+        showQRCodeView(walletId: string, uri?: string): void;
+        setQRCode(walletId: string, uri: string): void;
+      };
+      document.body.append(connector);
+      await connector.open();
+      connector.showQRCodeView('xaman');
+      const payload = '8b4c5d6e-1f2a-4b3c-9d8e-7f6a5b4c3d2e';
+      connector.setQRCode('xaman', `https://xumm.app/sign/${payload}`);
+      await vi.advanceTimersByTimeAsync(TIMINGS.QR_RENDER_DELAY);
+
+      expect(records.some(([message]) => String(message).includes('renderQRCode'))).toBe(true);
+      expect(JSON.stringify(records)).not.toContain(payload.slice(0, 8));
+    } finally {
+      configureLogger(undefined);
+    }
+  });
 });
