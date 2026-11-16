@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vite-plus/test';
-import { decode, ECDSA, encode, Wallet } from 'xrpl';
-import { assertRequestedTransaction, assertSignedTransaction } from './transaction-verification';
+import { describe, expect, it, vi } from 'vite-plus/test';
+import { classicAddressToXAddress, decode, ECDSA, encode, Wallet } from 'xrpl';
+import {
+  assertRequestedTransaction,
+  assertSignedTransaction,
+  canonicalizeTransaction,
+} from './transaction-verification';
 import type { Transaction } from './types';
 
 const ACCOUNT_WALLET = Wallet.generate(ECDSA.secp256k1);
@@ -19,6 +23,20 @@ const MULTISIGN_REQUEST = {
   ...AUTOFILLED,
   Account: MULTISIGN_SOURCE.address,
   SigningPubKey: '',
+} as Transaction;
+const ISSUED_AMOUNT = {
+  currency: 'USD',
+  issuer: 'rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe',
+  value: '1.50',
+};
+// Valid but not in the form a decoded signed transaction takes.
+const NON_CANONICAL_REQUEST = {
+  TransactionType: 'Payment',
+  Account: ACCOUNT,
+  Destination: classicAddressToXAddress(ISSUED_AMOUNT.issuer, 42, false),
+  Amount: ISSUED_AMOUNT,
+  Flags: { tfPartialPayment: true },
+  Memos: [{ Memo: { MemoData: 'abcd' } }],
 } as Transaction;
 
 const EXPECTED = { walletName: 'Test Wallet', account: ACCOUNT, networkId: 0 };
@@ -207,7 +225,7 @@ describe('assertRequestedTransaction', () => {
   });
 
   it('ignores a requested signature, which the wallet produces', () => {
-    const requested = { ...REQUEST, TxnSignature: 'STALE' } as Transaction;
+    const requested = { ...REQUEST, TxnSignature: 'DEADBEEF' } as Transaction;
 
     expect(() => assertRequestedTransaction(requested, SIGNED, POLICY)).not.toThrow();
   });
@@ -255,9 +273,9 @@ describe('assertRequestedTransaction', () => {
   });
 
   it('requires every requested signer, in any order', () => {
-    const first = { Signer: { Account: ACCOUNT, SigningPubKey: 'A', TxnSignature: 'A1' } };
-    const second = { Signer: { Account: ACCOUNT, SigningPubKey: 'B', TxnSignature: 'B1' } };
-    const added = { Signer: { Account: ACCOUNT, SigningPubKey: 'C', TxnSignature: 'C1' } };
+    const first = { Signer: { Account: ACCOUNT, SigningPubKey: 'AA', TxnSignature: 'A1' } };
+    const second = { Signer: { Account: ACCOUNT, SigningPubKey: 'BB', TxnSignature: 'B1' } };
+    const added = { Signer: { Account: ACCOUNT, SigningPubKey: 'CC', TxnSignature: 'C1' } };
     const requested = { ...REQUEST, Signers: [first, second] } as Transaction;
 
     expect(() =>
@@ -266,5 +284,100 @@ describe('assertRequestedTransaction', () => {
     expect(() =>
       assertRequestedTransaction(requested, { ...SIGNED, Signers: [first, added] }, POLICY)
     ).toThrow('Test Wallet returned a transaction that did not match the signing request');
+  });
+
+  describe('with a request in an equivalent non-canonical encoding', () => {
+    // xrpl's Wallet.sign() serializes these fields to the same signed blob, but
+    // cannot serialize a flag-interface object itself.
+    const signedEquivalent = signed(ACCOUNT_WALLET, {
+      ...NON_CANONICAL_REQUEST,
+      Flags: 131072,
+      Fee: '12',
+      Sequence: 7,
+    } as Transaction).transaction;
+
+    it('accepts the transaction a wallet signed from it', () => {
+      expect(() =>
+        assertRequestedTransaction(NON_CANONICAL_REQUEST, signedEquivalent, POLICY)
+      ).not.toThrow();
+    });
+
+    it.each([
+      ['destination tag', { DestinationTag: 43 }],
+      ['issued value', { Amount: { ...ISSUED_AMOUNT, value: '1.6' } }],
+      ['flags', { Flags: 0 }],
+      ['memo', { Memos: [{ Memo: { MemoData: 'ABCE' } }] }],
+    ])('rejects a changed %s', (_field, change) => {
+      expect(() =>
+        assertRequestedTransaction(
+          NON_CANONICAL_REQUEST,
+          { ...signedEquivalent, ...change },
+          POLICY
+        )
+      ).toThrow('Test Wallet returned a transaction that did not match the signing request');
+    });
+  });
+
+  it('rejects a request that cannot be serialized', () => {
+    const requested = { ...REQUEST, Amount: 5 } as unknown as Transaction;
+
+    expect(() => assertRequestedTransaction(requested, SIGNED, POLICY)).toThrow(
+      'Test Wallet signing request is not a valid XRPL transaction'
+    );
+  });
+});
+
+describe('canonicalizeTransaction', () => {
+  it('returns a canonical transaction unchanged', () => {
+    expect(canonicalizeTransaction(AUTOFILLED as Transaction)).toEqual(AUTOFILLED);
+  });
+
+  it('converts equivalent encodings to codec form without modifying the input', () => {
+    const snapshot = JSON.stringify(NON_CANONICAL_REQUEST);
+
+    expect(canonicalizeTransaction(NON_CANONICAL_REQUEST)).toEqual({
+      TransactionType: 'Payment',
+      Account: ACCOUNT,
+      Destination: ISSUED_AMOUNT.issuer,
+      DestinationTag: 42,
+      Amount: { ...ISSUED_AMOUNT, value: '1.5' },
+      Flags: 131072,
+      Memos: [{ Memo: { MemoData: 'ABCD' } }],
+    });
+    expect(JSON.stringify(NON_CANONICAL_REQUEST)).toBe(snapshot);
+  });
+
+  it.each([
+    ['an invalid field value', { Amount: 5 }],
+    ['an unknown flag', { Flags: { tfUnknown: true } }],
+    ['an unknown field', { Unknown: 'value' }],
+  ])('throws for %s', (_description, fields) => {
+    expect(() => canonicalizeTransaction({ ...REQUEST, ...fields } as Transaction)).toThrow();
+  });
+
+  it('converts flag objects with xrpl versions that lack convertTxFlagsToNumber', async () => {
+    // xrpl 3.x and 4.0 export only the mutating setTransactionFlagsToNumber.
+    vi.resetModules();
+    const setTransactionFlagsToNumber = vi.fn();
+    vi.doMock('xrpl', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('xrpl')>();
+      setTransactionFlagsToNumber.mockImplementation(actual.setTransactionFlagsToNumber);
+      // A missing export reads as undefined; the mock proxy needs it spelled out.
+      return { ...actual, convertTxFlagsToNumber: undefined, setTransactionFlagsToNumber };
+    });
+    // Later versions deprecate the mutating converter with a console warning.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const legacy = await import('./transaction-verification');
+      const request = { ...REQUEST, Flags: { tfPartialPayment: true } } as Transaction;
+
+      expect(legacy.canonicalizeTransaction(request)).toMatchObject({ Flags: 131072 });
+      expect(setTransactionFlagsToNumber).toHaveBeenCalledOnce();
+      expect(request.Flags).toEqual({ tfPartialPayment: true });
+    } finally {
+      warn.mockRestore();
+      vi.doUnmock('xrpl');
+      vi.resetModules();
+    }
   });
 });

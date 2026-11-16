@@ -7,7 +7,16 @@
  * the application asked to sign.
  */
 
-import { encodeForMultiSigning, verifyKeypairSignature, verifySignature } from 'xrpl';
+import {
+  decode,
+  encode,
+  encodeForMultiSigning,
+  verifyKeypairSignature,
+  verifySignature,
+} from 'xrpl';
+// Namespace access for exports that differ across the supported xrpl majors.
+import * as xrpl from 'xrpl';
+import { getErrorMessage } from './errors';
 import type { Transaction } from './types';
 
 const MAX_LEDGER_SEQUENCE = 0xffffffff;
@@ -39,6 +48,37 @@ export interface RequestedTransactionPolicy {
    * Defaults to 0 (exact match). Multisigning and Batch requests always match exactly.
    */
   maxLastLedgerSequenceExtension?: number;
+}
+
+/**
+ * Return a transaction in the canonical form the XRPL binary codec produces,
+ * which is the form a decoded signed transaction takes: flag-interface `Flags`
+ * become a number, X-addresses become classic addresses with tags, hex is
+ * uppercase, and issued-currency values are normalized. The input is not
+ * modified.
+ *
+ * @param transaction - The transaction to canonicalize
+ * @throws If the transaction cannot be serialized
+ */
+export function canonicalizeTransaction(transaction: Transaction): Transaction {
+  const flags = transaction.Flags;
+  const serializable =
+    flags !== null && typeof flags === 'object'
+      ? { ...transaction, Flags: convertFlagsToNumber(transaction) }
+      : transaction;
+  return decode(encode(serializable)) as Transaction;
+}
+
+function convertFlagsToNumber(transaction: Transaction): number {
+  // xrpl 4.1+ exports a pure converter. xrpl 3.x and 4.0 export only the
+  // mutating setTransactionFlagsToNumber, which later versions deprecate.
+  const { convertTxFlagsToNumber } = xrpl as {
+    convertTxFlagsToNumber?: (transaction: Transaction) => number;
+  };
+  if (convertTxFlagsToNumber) return convertTxFlagsToNumber(transaction);
+  const converted = { ...transaction };
+  xrpl.setTransactionFlagsToNumber(converted);
+  return converted.Flags as number;
 }
 
 /**
@@ -124,20 +164,30 @@ export function assertSignedTransaction(
  * request. The wallet may add fields the request omitted (such as `Fee`,
  * `Sequence`, `LastLedgerSequence`, or `SigningPubKey`) but may not change a
  * requested value, except for the permitted `LastLedgerSequence` extension.
- * Requested `Signers` must all be preserved, in any order.
+ * Requested `Signers` must all be preserved, in any order. The request is
+ * compared in canonical form (see `canonicalizeTransaction`), so equivalent
+ * encodings of a field match.
  *
- * @param requested - Snapshot of the transaction sent to the wallet
+ * @param request - Snapshot of the transaction sent to the wallet
  * @param actual - The signed transaction (or wallet-reported request) to compare
  * @param policy - How strictly to compare `LastLedgerSequence`
  */
 export function assertRequestedTransaction(
-  requested: Transaction,
+  request: Transaction,
   actual: Record<string, unknown> | undefined,
   policy: RequestedTransactionPolicy
 ): void {
   const { walletName, maxLastLedgerSequenceExtension = 0 } = policy;
   if (!actual) {
     throw new Error(`${walletName} returned a transaction that did not match the signing request`);
+  }
+  let requested: Transaction;
+  try {
+    requested = canonicalizeTransaction(request);
+  } catch (error) {
+    throw new Error(
+      `${walletName} signing request is not a valid XRPL transaction: ${getErrorMessage(error)}`
+    );
   }
   let expected = requested;
   const requestedExpiry = requested.LastLedgerSequence;

@@ -99,7 +99,11 @@ export { isMobile } from './device';
 export { withTimeout } from './async';
 
 // Signed transaction verification
-export { assertSignedTransaction, assertRequestedTransaction } from './transaction-verification';
+export {
+  assertSignedTransaction,
+  assertRequestedTransaction,
+  canonicalizeTransaction,
+} from './transaction-verification';
 export type {
   SignedTransactionExpectation,
   RequestedTransactionPolicy,
