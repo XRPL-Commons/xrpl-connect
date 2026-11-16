@@ -42,7 +42,16 @@ interface Eip6963ProviderDetail {
 
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
 
+/**
+ * EIP-6963 reverse-DNS identifiers accepted as MetaMask, in order of
+ * preference: the MetaMask extension, then MetaMask Flask (its developer build).
+ */
+const METAMASK_RDNS: readonly string[] = ['io.metamask', 'io.metamask.flask'];
+
 const DEFAULT_SNAP_ID = 'npm:xrpl-snap';
+
+/** Version range MetaMask must install for the default Snap: its current major. */
+const DEFAULT_SNAP_VERSION = '^1.0.3';
 
 /**
  * Mapping between xrpl-connect network IDs and snap chainIds
@@ -64,6 +73,12 @@ const CHAIN_ID_TO_NETWORK: Record<number, string> = {
  */
 export interface MetaMaskSnapAdapterOptions {
   snapId?: string;
+  /**
+   * Semver range MetaMask must install for the Snap. Defaults to the current
+   * major of `npm:xrpl-snap` when `snapId` is the default; a custom `snapId`
+   * is requested without a version range unless one is set here.
+   */
+  snapVersion?: string;
 }
 
 /**
@@ -76,16 +91,23 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
   readonly url = 'https://snaps.metamask.io/snap/npm/xrpl-snap/';
 
   private readonly snapId: string;
+  private readonly snapVersion: string | undefined;
   private provider: Eip1193Provider | null = null;
   private currentAccount: AccountInfo | null = null;
   private connectionGeneration = 0;
 
   constructor(options: MetaMaskSnapAdapterOptions = {}) {
     this.snapId = options.snapId || DEFAULT_SNAP_ID;
+    this.snapVersion =
+      options.snapVersion ?? (this.snapId === DEFAULT_SNAP_ID ? DEFAULT_SNAP_VERSION : undefined);
   }
 
   /**
-   * Get the MetaMask provider from the window object
+   * Discover MetaMask through EIP-6963 provider announcements.
+   *
+   * Only exact MetaMask identifiers are accepted, and the first provider
+   * announced for an identifier is kept, so a later announcer cannot replace
+   * it. `window.ethereum` is never used: other wallets also set `isMetaMask`.
    */
   private getProvider(): Eip1193Provider | null {
     if (this.provider) {
@@ -95,14 +117,17 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
       return null;
     }
 
-    let discovered: Eip1193Provider | null = null;
+    const announced = new Map<string, Eip1193Provider>();
     const handleAnnouncement = (event: Event) => {
       const detail = (event as CustomEvent<Eip6963ProviderDetail>).detail;
+      const rdns = detail?.info?.rdns;
       if (
-        detail?.info?.rdns.includes('io.metamask') &&
+        typeof rdns === 'string' &&
+        METAMASK_RDNS.includes(rdns) &&
+        !announced.has(rdns) &&
         typeof detail.provider?.request === 'function'
       ) {
-        discovered = detail.provider;
+        announced.set(rdns, detail.provider);
       }
     };
 
@@ -113,8 +138,8 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
       window.removeEventListener('eip6963:announceProvider', handleAnnouncement);
     }
 
-    const legacy = (window as Window & { ethereum?: Eip1193Provider }).ethereum;
-    this.provider = discovered ?? (legacy?.isMetaMask ? legacy : null);
+    const preferred = METAMASK_RDNS.find((rdns) => announced.has(rdns));
+    this.provider = preferred === undefined ? null : announced.get(preferred)!;
     return this.provider;
   }
 
@@ -153,10 +178,11 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
         throw createWalletError.notInstalled(this.name);
       }
 
-      // Request snap installation/connection
+      // Request snap installation/connection within the pinned version range:
+      // MetaMask refuses the request rather than use a release outside it.
       await provider.request({
         method: 'wallet_requestSnaps',
-        params: { [this.snapId]: {} },
+        params: { [this.snapId]: this.snapVersion ? { version: this.snapVersion } : {} },
       });
       if (generation !== this.connectionGeneration) throw createWalletError.notConnected();
 

@@ -476,13 +476,25 @@ import { MetaMaskSnapAdapter } from 'xrpl-connect';
 const adapter = new MetaMaskSnapAdapter({
   // Optional. Defaults to the production XRPL Snap.
   snapId: 'npm:xrpl-snap',
+  // Optional. Defaults to '^1.0.3' for the production XRPL Snap.
+  snapVersion: '^1.0.3',
 });
 ```
 
 **Supported Features:** Transaction signing and message signing through
 MetaMask. The adapter does not require an application API key.
 
-Use a custom `snapId` only when developing or auditing a different Snap.
+Use a custom `snapId` only when developing or auditing a different Snap. The
+production Snap is requested with the version range `^1.0.3`, so MetaMask
+refuses the connection instead of installing or using a different major
+release; set `snapVersion` to change the range. A custom `snapId` is requested
+without a version range unless `snapVersion` is set.
+
+MetaMask is discovered only through [EIP-6963](https://eips.ethereum.org/EIPS/eip-6963)
+provider announcements with the exact identifier `io.metamask` (preferred) or
+`io.metamask.flask`; the first provider announced for an identifier is used.
+The adapter never falls back to `window.ethereum`, because other wallets also set
+`isMetaMask` there. MetaMask extension v11 and later announce through EIP-6963.
 
 ## Umbrella package exports
 
