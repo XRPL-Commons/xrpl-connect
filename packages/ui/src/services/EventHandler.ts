@@ -245,6 +245,10 @@ export class EventHandler {
       this.component.cancelAuthPrompt();
       this.component.showWalletList();
     });
+    // Closing the modal cancels the transaction review, which rejects it.
+    this.add(overlayRoot?.querySelector('#auth-prompt-reject-button'), 'click', () => {
+      this.component.close();
+    });
 
     // Account selection buttons (in overlay portal)
     overlayRoot?.querySelectorAll('.account-button').forEach((button: Element) => {

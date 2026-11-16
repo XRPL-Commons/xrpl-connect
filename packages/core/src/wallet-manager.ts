@@ -11,12 +11,15 @@ import type {
   Transaction,
   ManagedSignedTransaction,
   ManagedSignedMessage,
+  SignedTransaction,
+  SignedMessage,
   SubmittedTransaction,
   WalletEvent,
   ConnectOptions,
   ConnectOptionsFor,
   NetworkConfig,
   NetworkInfo,
+  PendingConnection,
   StoredState,
   WalletCapabilities,
   ReconnectOptions,
@@ -33,7 +36,7 @@ import {
   STANDARD_NETWORKS,
   WalletErrorCode,
 } from './types';
-import { createWalletError, isWalletError } from './errors';
+import { createWalletError, isWalletError, type WalletError } from './errors';
 import { Logger, configureLogger, isLoggerInstance } from './logger';
 import { Storage } from './storage';
 import { TIME } from './constants';
@@ -42,12 +45,98 @@ import { withTimeout } from './async';
 const AVAILABILITY_TIMED_OUT = Symbol('availability-timed-out');
 
 /**
+ * Compare the network an adapter reports with the network a session requested.
+ * Returns the `NETWORK_MISMATCH` error to raise, or `null` when the reported
+ * network is acceptable. Without a requested network every network is
+ * acceptable unless its standard identity contradicts its WalletConnect chain.
+ */
+function findNetworkMismatch(
+  requestedNetwork: NetworkConfig | undefined,
+  accountNetwork: NetworkInfo
+): WalletError | null {
+  const requestedNetworkId =
+    typeof requestedNetwork === 'string' ? requestedNetwork : requestedNetwork?.id;
+  const explicitRequestedWalletConnectId =
+    typeof requestedNetwork === 'object' ? requestedNetwork.walletConnectId : undefined;
+  const canonicalAccountWalletConnectId = isStandardNetworkId(accountNetwork.id)
+    ? STANDARD_NETWORKS[accountNetwork.id].walletConnectId
+    : undefined;
+  const accountNetworkIsContradictory =
+    canonicalAccountWalletConnectId !== undefined &&
+    accountNetwork.walletConnectId !== undefined &&
+    accountNetwork.walletConnectId !== canonicalAccountWalletConnectId;
+  if (requestedNetworkId === undefined) {
+    return accountNetworkIsContradictory
+      ? createWalletError.networkMismatch(
+          canonicalAccountWalletConnectId,
+          accountNetwork.walletConnectId!
+        )
+      : null;
+  }
+
+  const canonicalRequestedWalletConnectId = isStandardNetworkId(requestedNetworkId)
+    ? STANDARD_NETWORKS[requestedNetworkId].walletConnectId
+    : undefined;
+  const requestedWalletConnectId =
+    canonicalRequestedWalletConnectId ?? explicitRequestedWalletConnectId;
+  const accountWalletConnectId = canonicalAccountWalletConnectId ?? accountNetwork.walletConnectId;
+  const requestedNetworkIsContradictory =
+    canonicalRequestedWalletConnectId !== undefined &&
+    explicitRequestedWalletConnectId !== undefined &&
+    explicitRequestedWalletConnectId !== canonicalRequestedWalletConnectId;
+  const idsMatch = accountNetwork.id === requestedNetworkId;
+  const walletConnectIdsMatch =
+    requestedWalletConnectId !== undefined && requestedWalletConnectId === accountWalletConnectId;
+
+  if (
+    !requestedNetworkIsContradictory &&
+    !accountNetworkIsContradictory &&
+    (idsMatch || walletConnectIdsMatch)
+  ) {
+    return null;
+  }
+  return createWalletError.networkMismatch(
+    requestedNetworkIsContradictory
+      ? canonicalRequestedWalletConnectId
+      : accountNetworkIsContradictory
+        ? (requestedWalletConnectId ?? requestedNetworkId)
+        : requestedNetworkId,
+    requestedNetworkIsContradictory
+      ? explicitRequestedWalletConnectId!
+      : accountNetworkIsContradictory
+        ? accountNetwork.walletConnectId!
+        : accountNetwork.id
+  );
+}
+
+function cloneNetworkConfig(network: NetworkConfig | undefined): NetworkConfig | undefined {
+  return typeof network === 'object' ? { ...network } : network;
+}
+
+/**
+ * Summarize a signing failure for logs. The error object itself is never
+ * logged: a wrapped error such as an xrpl.js `RippledError` keeps the raw
+ * ledger response in its fields, which can echo the signed transaction.
+ */
+function describeFailure(error: WalletError): Record<string, string> {
+  const summary: Record<string, string> = { code: error.code, message: error.message };
+  const cause = error.originalError?.message;
+  if (cause && !error.message.includes(cause)) summary.cause = cause;
+  return summary;
+}
+
+/**
  * Main class for managing wallet connections
  */
 export class WalletManager extends EventEmitter<WalletEvent> {
   adapters: Map<string, WalletAdapter> = new Map();
   private currentAdapter: WalletAdapter | null = null;
   private currentAccount: AccountInfo | null = null;
+  /**
+   * Network the active session was requested on (manager default or per call).
+   * Wallet-reported networks never replace it; while they differ, signing fails.
+   */
+  private sessionNetwork: NetworkConfig | undefined;
   private connectingAdapter: WalletAdapter | null = null;
   private storage: Storage;
   private logger: Logger;
@@ -124,7 +213,8 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   private async connectInternal(
     walletId: WalletIdentifier,
     options?: ConnectOptions,
-    expectedState?: StoredState
+    expectedState?: StoredState,
+    completingAuthorization = false
   ): Promise<AccountInfo> {
     this.logger.info(`Connecting to wallet: ${walletId}`);
 
@@ -211,12 +301,11 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         network: options?.network ?? this.options.network,
       };
 
-      // A redirect-based login leaves the page before it can commit. When it
-      // returns, it has to replace the session a failed restore left behind,
-      // so that session is marked as awaiting it. Marking instead of clearing
-      // keeps the session for a later retry if the login is cancelled or fails.
-      if (this.retainedStoredSession && !expectedState && supportsPendingConnection(adapter)) {
-        await this.markPendingAuthorization(adapter.id);
+      // A redirect-based login leaves the page before it can commit, and its
+      // returned authorization completes on a later page load. Record the
+      // network it was requested on so that completion requests the same one.
+      if (!expectedState && !completingAuthorization && supportsPendingConnection(adapter)) {
+        await this.recordPendingConnection(adapter.id, connectOptions.network);
         if (
           connectionAttempt !== this.connectionAttemptGeneration ||
           this.connectingAdapter !== adapter
@@ -235,60 +324,8 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         throw createWalletError.notConnected();
       }
 
-      const requestedNetwork = connectOptions.network;
-      const requestedNetworkId =
-        typeof requestedNetwork === 'string' ? requestedNetwork : requestedNetwork?.id;
-      const explicitRequestedWalletConnectId =
-        typeof requestedNetwork === 'object' ? requestedNetwork.walletConnectId : undefined;
-      const canonicalAccountWalletConnectId = isStandardNetworkId(account.network.id)
-        ? STANDARD_NETWORKS[account.network.id].walletConnectId
-        : undefined;
-      const accountNetworkIsContradictory =
-        canonicalAccountWalletConnectId !== undefined &&
-        account.network.walletConnectId !== undefined &&
-        account.network.walletConnectId !== canonicalAccountWalletConnectId;
-      if (requestedNetworkId === undefined && accountNetworkIsContradictory) {
-        throw createWalletError.networkMismatch(
-          canonicalAccountWalletConnectId,
-          account.network.walletConnectId!
-        );
-      }
-      if (requestedNetworkId !== undefined) {
-        const canonicalRequestedWalletConnectId = isStandardNetworkId(requestedNetworkId)
-          ? STANDARD_NETWORKS[requestedNetworkId].walletConnectId
-          : undefined;
-        const requestedWalletConnectId =
-          canonicalRequestedWalletConnectId ?? explicitRequestedWalletConnectId;
-        const accountWalletConnectId =
-          canonicalAccountWalletConnectId ?? account.network.walletConnectId;
-        const requestedNetworkIsContradictory =
-          canonicalRequestedWalletConnectId !== undefined &&
-          explicitRequestedWalletConnectId !== undefined &&
-          explicitRequestedWalletConnectId !== canonicalRequestedWalletConnectId;
-        const idsMatch = account.network.id === requestedNetworkId;
-        const walletConnectIdsMatch =
-          requestedWalletConnectId !== undefined &&
-          requestedWalletConnectId === accountWalletConnectId;
-
-        if (
-          requestedNetworkIsContradictory ||
-          accountNetworkIsContradictory ||
-          (!idsMatch && !walletConnectIdsMatch)
-        ) {
-          throw createWalletError.networkMismatch(
-            requestedNetworkIsContradictory
-              ? canonicalRequestedWalletConnectId
-              : accountNetworkIsContradictory
-                ? (requestedWalletConnectId ?? requestedNetworkId)
-                : requestedNetworkId,
-            requestedNetworkIsContradictory
-              ? explicitRequestedWalletConnectId!
-              : accountNetworkIsContradictory
-                ? account.network.walletConnectId!
-                : account.network.id
-          );
-        }
-      }
+      const networkMismatch = findNetworkMismatch(connectOptions.network, account.network);
+      if (networkMismatch) throw networkMismatch;
 
       if (expectedState && supportsReconnectOptions(adapter)) {
         if (account.address !== expectedState.account.address) {
@@ -311,6 +348,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       // invalidate this session and prevent a stale storage write.
       this.currentAdapter = adapter;
       this.currentAccount = this.cloneAccount(account);
+      this.sessionNetwork = cloneNetworkConfig(connectOptions.network);
       generation = ++this.sessionGeneration;
       this.stateRevision += 1;
 
@@ -541,7 +579,16 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         if (reconnectGeneration !== this.reconnectGeneration) return null;
         if (pending) {
           completingAuthorization = true;
-          return await this.connectInternal(adapter.id);
+          // Request the network the login was requested on, with the same
+          // precedence as a restore.
+          const requestedNetwork = await this.loadPendingConnectionNetwork(adapter.id);
+          if (reconnectGeneration !== this.reconnectGeneration) return null;
+          return await this.connectInternal(
+            adapter.id,
+            { network: this.options.network ?? requestedNetwork },
+            undefined,
+            true
+          );
         }
       }
       if (!stored) return null;
@@ -553,12 +600,15 @@ export class WalletManager extends EventEmitter<WalletEvent> {
 
       // Replay the original connect options so wallet-specific selections
       // (e.g. the Ledger derivation path / account index) are restored instead
-      // of reconnecting to the default account.
+      // of reconnecting to the default account. The network is connection
+      // policy: the manager's configured network wins, then the network the
+      // session was requested on. The wallet's last-reported network (and its
+      // endpoint) is never replayed from storage.
       return await this.connectInternal(
         stored.walletId,
         {
           ...stored.connectOptions,
-          network: stored.network,
+          network: this.options.network ?? stored.requestedNetwork,
         },
         stored
       );
@@ -614,25 +664,25 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       throw createWalletError.notConnected();
     }
     this.assertSupports('sign');
+    this.assertSessionNetwork();
 
-    this.logger.debug('Signing transaction', transaction);
+    // Log only the transaction type and hash: transactions, signed blobs and
+    // signatures must not reach application log pipelines.
+    this.logger.debug('Signing transaction', { type: transaction.TransactionType });
 
     const adapter = this.currentAdapter;
     const signerAddress = this.currentAccount.address;
     try {
-      const result = await adapter.sign(transaction);
-      const signed: ManagedSignedTransaction = {
-        ...result,
-        signerAddress: result.signerAddress ?? signerAddress,
-      };
-      this.logger.info('Transaction signed', signed.tx_blob || signed.signature);
+      const signed = this.bindSigner(await adapter.sign(transaction), signerAddress);
+      this.logger.info('Transaction signed', {
+        type: transaction.TransactionType,
+        hash: signed.hash,
+      });
       return signed;
     } catch (error) {
-      this.logger.error('Failed to sign transaction:', error);
-      if (isWalletError(error)) {
-        throw error;
-      }
-      throw createWalletError.signFailed(error as Error);
+      const failure = isWalletError(error) ? error : createWalletError.signFailed(error as Error);
+      this.logger.error('Failed to sign transaction:', describeFailure(failure));
+      throw failure;
     }
   }
 
@@ -646,19 +696,21 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       throw createWalletError.notConnected();
     }
     this.assertSupports('signAndSubmit');
+    this.assertSessionNetwork();
 
-    this.logger.debug('Signing and submitting transaction', transaction);
+    this.logger.debug('Signing and submitting transaction', { type: transaction.TransactionType });
 
     try {
       const result = await this.currentAdapter.signAndSubmit(transaction);
-      this.logger.info('Transaction submitted', result.hash || result.id);
+      this.logger.info('Transaction submitted', {
+        type: transaction.TransactionType,
+        hash: result.hash,
+      });
       return result;
     } catch (error) {
-      this.logger.error('Failed to submit transaction:', error);
-      if (isWalletError(error)) {
-        throw error;
-      }
-      throw createWalletError.signFailed(error as Error);
+      const failure = isWalletError(error) ? error : createWalletError.signFailed(error as Error);
+      this.logger.error('Failed to submit transaction:', describeFailure(failure));
+      throw failure;
     }
   }
 
@@ -670,25 +722,20 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       throw createWalletError.notConnected();
     }
     this.assertSupports('signMessage');
+    this.assertSessionNetwork();
 
     this.logger.debug('Signing message');
 
     const adapter = this.currentAdapter;
     const signerAddress = this.currentAccount.address;
     try {
-      const result = await adapter.signMessage(message);
-      const signed: ManagedSignedMessage = {
-        ...result,
-        signerAddress: result.signerAddress ?? signerAddress,
-      };
+      const signed = this.bindSigner(await adapter.signMessage(message), signerAddress);
       this.logger.info('Message signed');
       return signed;
     } catch (error) {
-      this.logger.error('Failed to sign message:', error);
-      if (isWalletError(error)) {
-        throw error;
-      }
-      throw createWalletError.signFailed(error as Error);
+      const failure = isWalletError(error) ? error : createWalletError.signFailed(error as Error);
+      this.logger.error('Failed to sign message:', describeFailure(failure));
+      throw failure;
     }
   }
 
@@ -813,7 +860,10 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     }
 
     if (addressChanged) this.emit('accountChanged', this.cloneAccount(account));
-    if (networkChanged) this.emit('networkChanged', { ...account.network });
+    if (networkChanged) {
+      this.emit('networkChanged', { ...account.network });
+      this.reportNetworkMismatch(adapter, generation, account.network);
+    }
     return this.cloneAccount(account);
   }
 
@@ -858,6 +908,34 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
+   * The `NETWORK_MISMATCH` error signing currently rejects with, because the
+   * connected wallet reports a network other than the one the session was
+   * requested on. `null` when signing is not blocked by the network, including
+   * when no wallet is connected. Recomputed from the latest wallet-reported
+   * network on each access.
+   */
+  get networkMismatch(): WalletError | null {
+    return this.currentAccount
+      ? findNetworkMismatch(this.sessionNetwork, this.currentAccount.network)
+      : null;
+  }
+
+  /**
+   * Bind a signature to the account that started the request. A signer the
+   * wallet reports must be that account; when the wallet reports none, the
+   * account asserted by the wallet session is stamped (not verified).
+   */
+  private bindSigner<Result extends SignedTransaction | SignedMessage>(
+    result: Result,
+    signerAddress: string
+  ): Result & { signerAddress: string } {
+    if (result.signerAddress !== undefined && result.signerAddress !== signerAddress) {
+      throw createWalletError.signerMismatch(signerAddress, result.signerAddress);
+    }
+    return { ...result, signerAddress };
+  }
+
+  /**
    * Throw a typed `UNSUPPORTED_METHOD` error if the connected wallet declares
    * it can't perform the given capability.
    */
@@ -867,6 +945,32 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         `${this.currentAdapter.name} does not support "${capability}"`
       );
     }
+  }
+
+  /**
+   * Throw `NETWORK_MISMATCH` while the wallet reports a network other than the
+   * one the session was requested on, applying the same comparison as connect.
+   */
+  private assertSessionNetwork(): void {
+    const mismatch = this.networkMismatch;
+    if (mismatch) throw mismatch;
+  }
+
+  /**
+   * Emit an `error` event when a wallet-reported network change leaves the
+   * session on a network it was not requested on. The session stays connected
+   * so the user can switch back; signing fails until then.
+   */
+  private reportNetworkMismatch(
+    adapter: WalletAdapter,
+    generation: number,
+    network: NetworkInfo
+  ): void {
+    if (!this.isActiveSession(adapter, generation)) return;
+    const mismatch = findNetworkMismatch(this.sessionNetwork, network);
+    if (!mismatch) return;
+    this.logger.warn('Wallet network does not match the requested network; signing is blocked');
+    this.emit('error', mismatch);
   }
 
   /**
@@ -898,11 +1002,15 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     if (!this.isActiveSession(adapter, generation)) return;
 
     this.logger.info('Account changed', account);
+    const previousNetwork = this.currentAccount?.network;
     const nextAccount = this.cloneAccount(account);
     this.currentAccount = nextAccount;
     this.stateRevision += 1;
     void this.persistState(adapter, generation, nextAccount);
     this.emit('accountChanged', this.cloneAccount(nextAccount));
+    if (!previousNetwork || !this.networksEqual(previousNetwork, nextAccount.network)) {
+      this.reportNetworkMismatch(adapter, generation, nextAccount.network);
+    }
   }
 
   /**
@@ -916,11 +1024,17 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     if (!this.isActiveSession(adapter, generation) || !this.currentAccount) return;
 
     this.logger.info('Network changed', network);
+    const previousNetwork = this.currentAccount.network;
     const nextAccount = this.cloneAccount({ ...this.currentAccount, network });
     this.currentAccount = nextAccount;
     this.stateRevision += 1;
     void this.persistState(adapter, generation, nextAccount);
     this.emit('networkChanged', { ...nextAccount.network });
+    // A wallet may report one switch through accountChanged and then
+    // networkChanged (WalletConnect does); its mismatch is reported once.
+    if (!this.networksEqual(previousNetwork, nextAccount.network)) {
+      this.reportNetworkMismatch(adapter, generation, nextAccount.network);
+    }
   }
 
   /** Serialize storage mutations so cleanup is always the final old-session write. */
@@ -932,13 +1046,44 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     return result;
   }
 
-  /** Record that a login on `walletId` may return to replace the stored session. */
-  private markPendingAuthorization(walletId: WalletIdentifier): Promise<void> {
+  /**
+   * Record a login on `walletId` whose authorization may return to a later page
+   * load. When a failed restore left a session behind, the returning login has
+   * to replace it, so that session is marked as awaiting it. Marking instead of
+   * clearing keeps the session for a later retry if the login is cancelled or fails.
+   */
+  private recordPendingConnection(
+    walletId: WalletIdentifier,
+    requestedNetwork: NetworkConfig | undefined
+  ): Promise<void> {
+    const connection: PendingConnection = { walletId, timestamp: Date.now() };
+    if (requestedNetwork !== undefined) {
+      connection.requestedNetwork = cloneNetworkConfig(requestedNetwork);
+    }
+    const replacesRetainedSession = this.retainedStoredSession;
     return this.queueStorage(async () => {
+      await this.storage.savePendingConnection(connection);
+      if (!replacesRetainedSession) return;
       const stored = await this.storage.loadState();
       if (!stored || stored.pendingAuthorization === walletId) return;
       await this.storage.saveState({ ...stored, pendingAuthorization: walletId });
     });
+  }
+
+  /**
+   * The network a login on `walletId` was requested on, while its record is
+   * recent enough to belong to the authorization returning now.
+   */
+  private async loadPendingConnectionNetwork(
+    walletId: WalletIdentifier
+  ): Promise<NetworkConfig | undefined> {
+    const connection = await this.storage.loadPendingConnection();
+    if (!connection || connection.walletId !== walletId) return undefined;
+    const age = Date.now() - connection.timestamp;
+    if (!Number.isFinite(age) || age < 0 || age >= TIME.PENDING_CONNECTION_MAX_AGE) {
+      return undefined;
+    }
+    return connection.requestedNetwork;
   }
 
   /** Clear only the state this reconnect attempt actually loaded. */
@@ -987,15 +1132,20 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     return teardown;
   }
 
-  /** Persist an immutable session snapshot without restoring stale state. */
+  /**
+   * Persist an immutable session snapshot without restoring stale state. A new
+   * session also replaces the stored reconnect options and ends the pending
+   * connection, which it either completed or replaced.
+   */
   private persistState(
     adapter: WalletAdapter,
     generation: number,
     account: AccountInfo,
     reconnectOptions?: ReconnectOptions,
-    replaceReconnectOptions = false
+    newSession = false
   ): Promise<void> {
     const snapshot = this.cloneAccount(account);
+    const requestedNetwork = cloneNetworkConfig(this.sessionNetwork);
     return this.queueStorage(async () => {
       if (!this.isActiveSession(adapter, generation)) return;
       const existing = await this.storage.loadState();
@@ -1008,11 +1158,14 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         timestamp: Date.now(),
       };
       delete state.pendingAuthorization;
-      if (replaceReconnectOptions) {
+      if (requestedNetwork === undefined) delete state.requestedNetwork;
+      else state.requestedNetwork = requestedNetwork;
+      if (newSession) {
         if (reconnectOptions) state.connectOptions = reconnectOptions;
         else delete state.connectOptions;
       }
       await this.storage.saveState(state);
+      if (newSession) await this.storage.clearPendingConnection();
     });
   }
 
@@ -1079,6 +1232,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     this.unsubscribeFromAdapter(adapter);
     this.currentAdapter = null;
     this.currentAccount = null;
+    this.sessionNetwork = undefined;
     this.sessionGeneration += 1;
     this.stateRevision += 1;
     await this.queueStorage(() => this.storage.clearState());

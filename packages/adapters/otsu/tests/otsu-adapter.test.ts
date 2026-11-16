@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
-import { STANDARD_NETWORKS, WalletErrorCode } from '@xrpl-connect/core';
+import {
+  MemoryStorageAdapter,
+  STANDARD_NETWORKS,
+  WalletErrorCode,
+  WalletManager,
+} from '@xrpl-connect/core';
 import { OtsuAdapter } from '../src/otsu-adapter';
 
 function makeProvider(overrides: Record<string, unknown> = {}) {
@@ -330,13 +335,13 @@ describe('OtsuAdapter.fetchAccount', () => {
 });
 
 describe('OtsuAdapter.sign', () => {
-  async function connected() {
+  async function connected(options?: { network: 'mainnet' }) {
     const provider = makeProvider({
       connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
     });
     installProvider(provider);
     const adapter = new OtsuAdapter();
-    await adapter.connect();
+    await adapter.connect(options);
     return { adapter, provider };
   }
 
@@ -369,6 +374,90 @@ describe('OtsuAdapter.sign', () => {
     expect(provider.signTransaction).not.toHaveBeenCalled();
   });
 
+  const observeSwitches = [
+    [
+      'a network change event',
+      async (_adapter: OtsuAdapter, provider: ReturnType<typeof makeProvider>) =>
+        emitProviderEvent(provider, 'networkChanged', 'testnet'),
+    ],
+    [
+      'a live account refresh',
+      async (adapter: OtsuAdapter, provider: ReturnType<typeof makeProvider>) => {
+        provider.isConnected.mockReturnValue(true);
+        provider.getAddress.mockResolvedValue({ address: 'rOtsuUser' });
+        await adapter.fetchAccount();
+      },
+    ],
+  ] as const;
+
+  it.each(observeSwitches)(
+    'keeps a requested network as signing authority after %s',
+    async (_label, observeSwitch) => {
+      const { adapter, provider } = await connected({ network: 'mainnet' });
+      provider.getNetwork.mockResolvedValue({ network: 'testnet' });
+      provider.signTransaction.mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' });
+      provider.signAndSubmit.mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' });
+
+      await observeSwitch(adapter, provider);
+      await expect(adapter.getNetwork()).resolves.toEqual(STANDARD_NETWORKS.testnet);
+
+      const mismatch = {
+        code: WalletErrorCode.NETWORK_MISMATCH,
+        message: 'Network mismatch. Expected "mainnet" but wallet is connected to "testnet".',
+      };
+      await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject(
+        mismatch
+      );
+      await expect(
+        adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+      ).rejects.toMatchObject(mismatch);
+      expect(provider.signTransaction).not.toHaveBeenCalled();
+      expect(provider.signAndSubmit).not.toHaveBeenCalled();
+
+      provider.getNetwork.mockResolvedValue({ network: 'mainnet' });
+      await expect(adapter.sign({ TransactionType: 'Payment' } as never)).resolves.toMatchObject({
+        hash: 'H',
+      });
+    }
+  );
+
+  it.each(observeSwitches)(
+    'follows the wallet network after %s when no network was requested',
+    async (_label, observeSwitch) => {
+      const { adapter, provider } = await connected();
+      provider.getNetwork.mockResolvedValue({ network: 'testnet' });
+      provider.signTransaction.mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' });
+      provider.signAndSubmit.mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' });
+
+      await observeSwitch(adapter, provider);
+      await expect(adapter.getNetwork()).resolves.toEqual(STANDARD_NETWORKS.testnet);
+
+      await expect(adapter.sign({ TransactionType: 'Payment' } as never)).resolves.toMatchObject({
+        hash: 'H',
+      });
+      await expect(
+        adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+      ).resolves.toMatchObject({ hash: 'H' });
+
+      // An unobserved switch away from the followed network is still refused.
+      provider.getNetwork.mockResolvedValue({ network: 'devnet' });
+      await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+        code: WalletErrorCode.NETWORK_MISMATCH,
+        message: 'Network mismatch. Expected "testnet" but wallet is connected to "devnet".',
+      });
+    }
+  );
+
+  it('emits networkChanged when following a wallet network switch', async () => {
+    const { adapter, provider } = await connected();
+    const networkChanged = vi.fn();
+    adapter.on('networkChanged', networkChanged);
+
+    emitProviderEvent(provider, 'networkChanged', 'testnet');
+
+    expect(networkChanged).toHaveBeenCalledExactlyOnceWith(STANDARD_NETWORKS.testnet);
+  });
+
   it('maps a user rejection to a sign-rejected error', async () => {
     const { adapter, provider } = await connected();
     provider.signTransaction.mockRejectedValue(new Error('User rejected the signing'));
@@ -376,6 +465,150 @@ describe('OtsuAdapter.sign', () => {
     await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_REJECTED,
     });
+  });
+});
+
+describe('OtsuAdapter.signMessage', () => {
+  async function connected() {
+    const provider = makeProvider({
+      connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      signMessage: vi.fn().mockResolvedValue({ signature: 'SIG' }),
+    });
+    installProvider(provider);
+    const adapter = new OtsuAdapter();
+    await adapter.connect();
+    return { adapter, provider };
+  }
+
+  it('signs the exact text encoded by valid UTF-8 bytes', async () => {
+    const { adapter, provider } = await connected();
+
+    await expect(adapter.signMessage(new TextEncoder().encode('sign in ✓'))).resolves.toEqual({
+      message: 'sign in ✓',
+      signature: 'SIG',
+      publicKey: '',
+    });
+    expect(provider.signMessage).toHaveBeenCalledWith('sign in ✓');
+  });
+
+  it('rejects invalid UTF-8 bytes before asking Otsu to sign', async () => {
+    const { adapter, provider } = await connected();
+
+    await expect(adapter.signMessage(Uint8Array.from([0xc3, 0x28]))).rejects.toMatchObject({
+      code: WalletErrorCode.INVALID_MESSAGE,
+    });
+    expect(provider.signMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('OtsuAdapter with WalletManager', () => {
+  async function managedSession(network?: 'mainnet') {
+    const provider = makeProvider({
+      connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      signTransaction: vi.fn().mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' }),
+    });
+    installProvider(provider);
+    const manager = new WalletManager({
+      adapters: [new OtsuAdapter()],
+      network,
+      storage: new MemoryStorageAdapter(),
+    });
+    await manager.connect('otsu');
+    const onError = vi.fn();
+    manager.on('error', onError);
+
+    provider.getNetwork.mockResolvedValue({ network: 'testnet' });
+    emitProviderEvent(provider, 'networkChanged', 'testnet');
+    return { manager, provider, onError };
+  }
+
+  it('signs on the network the wallet switched to when no network is configured', async () => {
+    const { manager, provider, onError } = await managedSession();
+
+    expect(manager.account?.network).toEqual(STANDARD_NETWORKS.testnet);
+    await expect(manager.sign({ TransactionType: 'Payment' } as never)).resolves.toMatchObject({
+      hash: 'H',
+    });
+    expect(provider.signTransaction).toHaveBeenCalledOnce();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('blocks signing after the wallet leaves the configured network', async () => {
+    const { manager, provider, onError } = await managedSession('mainnet');
+
+    await expect(manager.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    expect(provider.signTransaction).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ code: WalletErrorCode.NETWORK_MISMATCH })
+    );
+  });
+});
+
+describe('OtsuAdapter provider pinning', () => {
+  async function connectedThenReplaced() {
+    const provider = makeProvider({
+      isConnected: vi.fn(() => true),
+      connect: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      getAddress: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      signTransaction: vi.fn().mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' }),
+      signAndSubmit: vi.fn().mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' }),
+      signMessage: vi.fn().mockResolvedValue({ signature: 'SIG' }),
+    });
+    installProvider(provider);
+    const adapter = new OtsuAdapter();
+    await adapter.connect();
+
+    const replacement = makeProvider({
+      isConnected: vi.fn(() => true),
+      getAddress: vi.fn().mockResolvedValue({ address: 'rOtsuUser' }),
+      signTransaction: vi.fn().mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' }),
+      signAndSubmit: vi.fn().mockResolvedValue({ tx_blob: 'BLOB', hash: 'H' }),
+      signMessage: vi.fn().mockResolvedValue({ signature: 'SIG' }),
+    });
+    (globalThis as unknown as { window: { xrpl: unknown } }).window.xrpl = replacement;
+    return { adapter, provider, replacement };
+  }
+
+  it.each([
+    ['sign', (adapter: OtsuAdapter) => adapter.sign({ TransactionType: 'Payment' } as never)],
+    [
+      'signAndSubmit',
+      (adapter: OtsuAdapter) => adapter.signAndSubmit({ TransactionType: 'Payment' } as never),
+    ],
+    ['signMessage', (adapter: OtsuAdapter) => adapter.signMessage('hello')],
+    ['fetchAccount', (adapter: OtsuAdapter) => adapter.fetchAccount()],
+  ])(
+    'does not %s through a provider that replaced the connected one',
+    async (_operation, operation) => {
+      const { adapter, provider, replacement } = await connectedThenReplaced();
+      provider.getNetwork.mockClear();
+
+      await expect(operation(adapter)).rejects.toMatchObject({
+        code: WalletErrorCode.CONNECTION_FAILED,
+      });
+
+      for (const candidate of [provider, replacement]) {
+        expect(candidate.isConnected).not.toHaveBeenCalled();
+        expect(candidate.getNetwork).not.toHaveBeenCalled();
+        expect(candidate.signTransaction).not.toHaveBeenCalled();
+        expect(candidate.signAndSubmit).not.toHaveBeenCalled();
+        expect(candidate.signMessage).not.toHaveBeenCalled();
+      }
+      await expect(adapter.getAccount()).resolves.toMatchObject({ address: 'rOtsuUser' });
+    }
+  );
+
+  it('keeps signing through the connected provider while it is still injected', async () => {
+    const { adapter, provider } = await connectedThenReplaced();
+    (globalThis as unknown as { window: { xrpl: unknown } }).window.xrpl = provider;
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).resolves.toEqual({
+      hash: 'H',
+      tx_blob: 'BLOB',
+    });
+    expect(provider.signTransaction).toHaveBeenCalledOnce();
   });
 });
 

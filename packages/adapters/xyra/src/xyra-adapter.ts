@@ -30,6 +30,7 @@ import type {
 } from '@xrpl-connect/core';
 import {
   createWalletError,
+  decodeMessage,
   isWalletError,
   STANDARD_NETWORKS,
   createLogger,
@@ -330,10 +331,10 @@ export class XyraAdapter implements WalletAdapter {
       throw createWalletError.notConnected();
     }
 
-    try {
-      // Convert Uint8Array to string if needed
-      const messageStr = typeof message === 'string' ? message : new TextDecoder().decode(message);
+    const messageStr = decodeMessage(message);
+    const expectedAddress = this.currentAccount.address;
 
+    try {
       logger.debug('Signing message', {
         length: messageStr.length,
       });
@@ -343,12 +344,20 @@ export class XyraAdapter implements WalletAdapter {
         message: messageStr,
       });
 
+      // Xyra's popup chooses the signing account itself; only a signature from
+      // the connected account answers this request.
+      if (response.address !== expectedAddress) {
+        throw createWalletError.signerMismatch(expectedAddress, String(response.address));
+      }
+
       logger.debug('Message signed', {
         address: response.address,
       });
 
+      // Return the requested message rather than the wallet-reported text, so
+      // the result describes what this request asked to have signed.
       return {
-        message: response.message,
+        message: messageStr,
         signature: response.signature,
         publicKey: response.publicKey,
         signerAddress: response.address,

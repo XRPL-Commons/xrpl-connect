@@ -474,18 +474,24 @@ export const mainStyles = `
   }
 
   .auth-prompt-code-cell {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    appearance: none;
+    display: block;
+    width: 100%;
     min-width: 0;
     height: 52px;
+    padding: 0;
     border: 1px solid var(--xc-background-tertiary);
     border-radius: var(--xc-secondary-button-border-radius);
     background: var(--xc-background-secondary);
     color: var(--xc-text-color);
+    /* Cells are disabled inputs; keep their digits at full contrast. */
+    -webkit-text-fill-color: var(--xc-text-color);
+    opacity: 1;
     font-size: 22px;
     font-weight: ${FONT_WEIGHTS.SEMIBOLD};
     line-height: 1;
+    text-align: center;
+    pointer-events: none;
     transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
   }
 
@@ -540,6 +546,76 @@ export const mainStyles = `
 
   .auth-prompt-actions .error-button {
     flex: 1;
+  }
+
+  .auth-prompt-review {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    width: 100%;
+    max-height: min(240px, 34vh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    padding: 2px 14px;
+    border-radius: var(--xc-secondary-button-border-radius);
+    background: var(--xc-background-secondary);
+    text-align: left;
+  }
+
+  .auth-prompt-review:focus-visible {
+    outline: 2px solid var(--xc-focus-color);
+    outline-offset: 2px;
+  }
+
+  .auth-prompt-review-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    padding: 9px 0;
+    border-top: 1px solid var(--xc-background-tertiary);
+  }
+
+  .auth-prompt-review-row:first-child {
+    border-top: 0;
+  }
+
+  .auth-prompt-review dt {
+    flex: 0 0 auto;
+    color: var(--xc-text-muted-color);
+    font-size: 13px;
+  }
+
+  .auth-prompt-review dd {
+    min-width: 0;
+    color: var(--xc-text-color);
+    font-size: 14px;
+    line-height: 1.4;
+    text-align: right;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .auth-prompt-review-row--block {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .auth-prompt-review-row--block dd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    text-align: left;
+  }
+
+  .auth-prompt-actions--review {
+    gap: 12px;
+  }
+
+  .auth-prompt-actions--review .error-button:disabled {
+    opacity: 0.55;
+    cursor: default;
   }
 
   .auth-prompt-secondary-action {

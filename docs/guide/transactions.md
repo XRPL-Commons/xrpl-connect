@@ -95,7 +95,11 @@ through `4_294_967_295`; invalid configuration throws `RangeError` at constructi
 
 The adapter checks the expiry in both the resolved request and the decoded,
 cryptographically verified signed blob. Other supplied transaction fields remain
-strictly compared. The original caller object is not modified. Use the returned
+strictly compared, in the canonical form the XRPL binary codec produces: Xaman
+receives that form, so equivalent encodings such as lowercase hex, an X-address,
+or a Payment `DeliverMax` in place of `Amount` are accepted, and a transaction that
+cannot be serialized rejects with `SIGN_FAILED` before a signing request is opened.
+The original caller object is not modified. Use the returned
 `signed.tx_json.LastLedgerSequence` (or decode `signed.tx_blob`) when recording
 the actual deadline; do not record the originally requested expiry as the signed one.
 
@@ -122,6 +126,62 @@ submission. Signature, signer, hash, network, and dispatch-result checks remain.
 Use `sign()` followed by application submission when you need the expiry policy
 enforced before broadcasting. A `signAndSubmit()` error is not proof that nothing
 was submitted; reconcile the outcome before asking the user to sign again.
+
+### WalletConnect result verification
+
+The adapter sends your transaction in the canonical form the XRPL binary codec
+produces, so the wallet signs exactly what is later verified. Equivalent encodings
+are accepted: a flag-interface `Flags` object becomes a number, an X-address becomes
+a classic address with its tag, hex becomes uppercase, and issued-currency values
+are normalized (`"1.50"` becomes `"1.5"`). A Payment's `DeliverMax`, the API v2 alias
+of `Amount`, is resolved as xrpl's `autofill()` resolves it: it becomes `Amount`, and
+if both are supplied they must be the same amount. A transaction that cannot be
+serialized, or whose `Amount` and `DeliverMax` differ, rejects with `SIGN_FAILED`
+before the wallet is contacted.
+
+A WalletConnect wallet returns signed transaction JSON, which the adapter treats as
+untrusted. Before `sign()` or `signAndSubmit()` resolves, the adapter serializes it
+and requires that:
+
+- `Account` is the connected account, and `TxnSignature` is a valid single signature
+  for the transaction's `SigningPubKey`;
+- `NetworkID` matches the connected chain (it is required above network ID 1024);
+- every field you supplied is unchanged. The wallet may only fill omitted fields such
+  as `Fee`, `Sequence`, `LastLedgerSequence`, and `NetworkID`; a supplied
+  `LastLedgerSequence` must be signed exactly;
+- the hash the wallet reports matches the serialized transaction. `signAndSubmit()`
+  requires the wallet to report one;
+- a Payment's `DeliverMax`, which API v2 reports in place of `Amount`, is the signed
+  amount. It is serialized as `Amount` when reported alone, and must equal `Amount`
+  when both are reported.
+
+The result contains the verified `tx_blob`, its `hash`, the `signature`, and
+`tx_json` decoded from the blob, all in canonical form. A failed check rejects with
+`SIGN_FAILED`. Multi-signing requests (`SigningPubKey: ''` or `Signers`) reject
+with `UNSUPPORTED_METHOD` before the wallet is contacted.
+
+After `signAndSubmit()`, the wallet may already have broadcast a transaction that
+fails verification. The error message says so, and when the returned transaction
+could be serialized the error has a `transactionHash` string property. Check that
+hash on the ledger before asking the user to sign again:
+
+```ts
+try {
+  await manager.signAndSubmit(transaction);
+} catch (error) {
+  const transactionHash = (error as { transactionHash?: unknown }).transactionHash;
+  if (typeof transactionHash === 'string') {
+    // Reconcile: look up transactionHash with your XRPL client before retrying.
+  }
+  throw error;
+}
+```
+
+`SigningPubKey` may be the account's master key or its RegularKey, and only the
+ledger knows which keys control the account. When a signature serves as proof
+of account ownership, also confirm that `deriveAddress(SigningPubKey)` equals
+`Account` with the master key enabled, or that the key is the account's
+`RegularKey`.
 
 ### Ledger multisign contributions
 
@@ -156,6 +216,8 @@ because one contribution may not satisfy the account's signer quorum.
 ## Message signing
 
 Not every XRPL wallet supports arbitrary messages. Gate the UI with `manager.supports('signMessage')` and include domain, origin, purpose, nonce, and expiry in authentication messages to prevent replay.
+
+Wallets sign text. A `Uint8Array` message must be valid UTF-8; otherwise the call rejects with `INVALID_MESSAGE` before the wallet is opened. The result's `message` is the text you requested, and a wallet-reported signer other than the connected account rejects with `SIGN_FAILED`. When the wallet does not report a signer, `signerAddress` is the connected account as asserted by the wallet session, so a server authenticating users must still verify the signature against the account's public key.
 
 ## Safety checklist
 

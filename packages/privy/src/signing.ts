@@ -7,9 +7,34 @@ import {
   isValidClassicAddress,
   validate,
   verifyKeypairSignature,
+  xrpToDrops,
 } from 'xrpl';
 import { createWalletError, type SignedTransaction, type Transaction } from 'xrpl-connect';
 import type { PrivyWallet } from './session-types';
+
+/**
+ * Highest fee the adapter signs: xrpl.js's default autofill cap, which the
+ * adapter's ledger client also uses for the fees it computes.
+ */
+export const MAX_FEE_XRP = '2';
+const MAX_FEE_DROPS = BigInt(xrpToDrops(MAX_FEE_XRP));
+/** Types whose cost is the owner reserve; xrpl.js does not cap their fee either. */
+const RESERVE_COST_TYPES: ReadonlySet<string> = new Set([
+  'AccountDelete',
+  'AMMCreate',
+  'VaultCreate',
+]);
+
+/** Apply the autofill fee cap to every fee, including one the application supplied. */
+export function assertFeeWithinLimit(transaction: Transaction): void {
+  const fee = transaction.Fee;
+  if (typeof fee !== 'string' || !/^[0-9]+$/.test(fee)) {
+    throw new Error('Transaction Fee must be a whole number of drops');
+  }
+  if (!RESERVE_COST_TYPES.has(transaction.TransactionType) && BigInt(fee) > MAX_FEE_DROPS) {
+    throw new Error(`Transaction Fee of ${fee} drops exceeds the ${MAX_FEE_XRP} XRP limit`);
+  }
+}
 
 export function validateWallet(wallet: PrivyWallet): void {
   if (!wallet.id || !wallet.userId || !isValidClassicAddress(wallet.address)) {

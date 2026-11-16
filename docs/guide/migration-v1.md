@@ -116,6 +116,8 @@ Use `manager.fetchAccount()` to query account information through the adapter ra
 
 1.0 continues to read the versioned connection envelope written by 0.8.2, including records without newer reconnect options. Unversioned pre-schema state, malformed data, and unsupported future schema versions are discarded safely.
 
+The connection record now stores the network the session was requested on (schema version 2). A version 1 record is upgraded on load by treating its stored network as the requested network; standard networks are kept by id, so restores use their canonical endpoints. A restore requests the manager's configured `network` first and never replays the network or endpoint the wallet last reported. An older runtime discards a version 2 record, so downgrading signs the user out once.
+
 - Construct the manager and register listeners before starting application UI when `autoConnect` is enabled.
 - Treat reconnect as an asynchronous attempt that can fail because an extension, session, device, or network is unavailable.
 - Supply a custom storage adapter when browser `localStorage` is not appropriate; use `MemoryStorageAdapter` for tests or non-persistent environments.

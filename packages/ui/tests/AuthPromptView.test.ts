@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vite-plus/test';
 import {
   getAuthCodeLength,
+  isTransactionReviewPrompt,
   normalizeAuthCodeValue,
   renderAuthPromptView,
 } from '../src/views/AuthPromptView';
@@ -100,7 +101,9 @@ describe('renderAuthPromptView', () => {
     expect(input.value).toBe('012');
     expect(onValueChange).toHaveBeenLastCalledWith('code', '012');
     expect(
-      [...host.querySelectorAll('.auth-prompt-code-cell')].map((cell) => cell.textContent)
+      [...host.querySelectorAll<HTMLInputElement>('.auth-prompt-code-cell')].map(
+        (cell) => cell.value
+      )
     ).toEqual(['0', '1', '2', '', '', '']);
 
     input.value = '12a34';
@@ -135,6 +138,36 @@ describe('renderAuthPromptView', () => {
         .querySelectorAll('.auth-prompt-code-cell')[2]
         ?.classList.contains('auth-prompt-code-cell--active')
     ).toBe(true);
+  });
+
+  it('keeps typed digits out of text nodes and markup for session-replay privacy', () => {
+    const host = mount(
+      {
+        title: 'Verify',
+        fields: [
+          { name: 'code', label: 'Code', type: 'text', inputMode: 'numeric', codeLength: 6 },
+        ],
+        cancel: vi.fn(),
+      },
+      { values: { code: '4' } }
+    );
+    const input = host.querySelector<HTMLInputElement>('input[name="code"]')!;
+    input.value = '482913';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const cells = [...host.querySelectorAll<HTMLInputElement>('.auth-prompt-code-cell')];
+    expect(cells.map((cell) => cell.value).join('')).toBe('482913');
+    for (const cell of cells) {
+      expect(cell.tagName).toBe('INPUT');
+      expect(cell.disabled).toBe(true);
+      expect(cell.name).toBe('');
+      expect(cell.hasAttribute('data-auth-field')).toBe(false);
+    }
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    const text: string[] = [];
+    while (walker.nextNode()) text.push(walker.currentNode.textContent ?? '');
+    expect(text.join('')).not.toMatch(/[0-9]/);
+    expect(host.innerHTML).not.toMatch(/48|29|13/);
   });
 
   it('maps pointer clicks to visual cells so an existing digit can be replaced', () => {
@@ -172,6 +205,60 @@ describe('renderAuthPromptView', () => {
     input.value = `${input.value.slice(0, 3)}9${input.value.slice(4)}`;
     input.dispatchEvent(new Event('input', { bubbles: true }));
     expect(input.value).toBe('123956');
+  });
+
+  it('renders a transaction review with every detail and explicit reject and approve actions', () => {
+    const prompt: WalletAuthPrompt = {
+      title: 'Review transaction',
+      icon: ICON,
+      description: 'Approving signs this transaction.',
+      // Sign-in resources never appear on a review, even if an adapter adds them.
+      fields: [{ name: 'code', label: 'Code', type: 'text' }],
+      url: 'https://example.test/auth',
+      qrCode: 'payload',
+      captcha: { provider: 'turnstile', siteKey: 'site-key' },
+      secondaryAction: { label: 'Resend', run: vi.fn() },
+      review: {
+        action: 'sign',
+        network: { id: 'testnet', name: 'Testnet', wss: 'wss://example' },
+        transaction: { TransactionType: 'AccountSet', Account: 'rSigner' },
+        details: [
+          { name: 'TransactionType', label: 'Transaction type', value: 'AccountSet' },
+          { name: 'Memos', label: 'Memos', value: '[\n  {}\n]' },
+        ],
+      },
+      submitLabel: 'Approve',
+      submit: vi.fn(),
+      cancel: vi.fn(),
+    };
+    expect(isTransactionReviewPrompt(prompt)).toBe(true);
+    const host = mount(prompt, { submitLocked: true });
+
+    expect(host.querySelector('#auth-prompt-cancel-button')).toBeNull();
+    expect(host.querySelector('.close-button')).not.toBeNull();
+    expect(host.querySelector('dl')?.getAttribute('aria-label')).toBe('Transaction details');
+    expect([...host.querySelectorAll('dt')].map((term) => term.textContent)).toEqual([
+      'Transaction type',
+      'Memos',
+    ]);
+    expect(host.querySelectorAll('dd')[1]?.textContent).toBe('[\n  {}\n]');
+    expect(host.querySelector('[data-auth-field]')).toBeNull();
+    expect(host.querySelector('.auth-prompt-link, .auth-prompt-qr-container')).toBeNull();
+    expect(host.querySelector('.auth-prompt-captcha, .auth-prompt-secondary-action')).toBeNull();
+    const buttons = [...host.querySelectorAll<HTMLButtonElement>('.auth-prompt-actions button')];
+    expect(buttons.map((button) => [button.textContent, button.disabled])).toEqual([
+      ['Reject', false],
+      ['Approve', true],
+    ]);
+
+    const unlocked = mount(prompt);
+    expect(unlocked.querySelector<HTMLButtonElement>('#auth-prompt-submit-button')?.disabled).toBe(
+      false
+    );
+    expect(isTransactionReviewPrompt({ ...prompt, submit: undefined })).toBe(false);
+    expect(isTransactionReviewPrompt({ title: 'Verify', submit: vi.fn(), cancel: vi.fn() })).toBe(
+      false
+    );
   });
 
   it('falls back to a regular text field for invalid code lengths', () => {

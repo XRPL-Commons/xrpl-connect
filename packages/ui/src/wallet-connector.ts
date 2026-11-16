@@ -39,6 +39,7 @@ import {
   renderAuthPromptView,
   updateAuthPromptBusy,
   getAuthCodeLength,
+  isTransactionReviewPrompt,
   normalizeAuthCodeValue,
 } from './views';
 import { createWalletImage, replaceViewChildren } from './views/dom';
@@ -206,6 +207,8 @@ interface AuthPromptState {
   values: Record<string, string>;
   busy: boolean;
   error: string | null;
+  /** A transaction review cannot be approved until its approval delay passes. */
+  approvalLocked: boolean;
 }
 
 // Only define the component in browser (guard against SSR)
@@ -262,6 +265,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private captchaCleanup: (() => void) | null = null;
     private captchaGeneration = 0;
     private authQrRenderGeneration = 0;
+    private reviewApprovalTimer: ReturnType<typeof setTimeout> | null = null;
     private previousModalHeight: number = 0;
     private modalHeightFrame: number | null = null;
     private preGeneratedQRCode: QRCodeStyling | null = null;
@@ -496,6 +500,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       const previousManager = this.walletManager;
+      // A review belongs to the replaced manager's wallet: reject it and close its modal.
+      if (this.authPromptData?.prompt.review) this.close();
       this.cancelAuthPrompt();
       this.invalidateSocialDiscovery();
       const cancelledAttempt = this.walletService?.cancelPendingWork() ?? null;
@@ -552,6 +558,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           const settledAttempt = connectedId
             ? this.walletService?.settleManagerConnection(connectedId)
             : null;
+          // Listen before anyone hears about the connection and asks for a signature.
+          this.walletService?.watchTransactionReviews();
           this.resolveConnectionWaiters(account);
           if (connectedId) this.recordMruId(connectedId);
           if (settledAttempt) {
@@ -572,6 +580,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         },
         disconnect: () => {
           if (manager !== this.walletManager) return;
+          this.walletService?.stopTransactionReviews();
+          // A review of the wallet that left can no longer be approved.
+          if (this.authPromptData?.prompt.review) this.close();
           if (this.accountModalOpen) this.closeAccountModal();
           else this.render();
         },
@@ -583,9 +594,11 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       manager.on('connect', this.walletManagerHandlers.connect);
       manager.on('disconnect', this.walletManagerHandlers.disconnect);
       manager.on('accountChanged', this.walletManagerHandlers.accountChanged);
+      this.walletService?.watchTransactionReviews();
     }
 
     private detachWalletManagerHandlers(): void {
+      this.walletService?.stopTransactionReviews();
       if (!this.walletManager || !this.walletManagerHandlers) return;
       this.walletManager.off('connect', this.walletManagerHandlers.connect);
       this.walletManager.off('disconnect', this.walletManagerHandlers.disconnect);
@@ -1151,17 +1164,22 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     async open() {
       if (this.isOpen) return;
-      this.walletDialogOpener = this.captureFocusReturnTarget();
-      this.openGeneration += 1;
-      this.isOpen = true;
-      this.isFirstOpen = true;
-      this.updateBodyScrollLock();
+      this.beginOpen();
       this.render();
       void this.refreshWalletAvailability(true);
       this.dispatchEvent(new CustomEvent('open'));
 
       // Pre-initialize WalletConnect to reduce loading time
       this.preInitializeWalletConnect();
+    }
+
+    /** Mark the modal open; the caller renders its first view. */
+    private beginOpen(): void {
+      this.walletDialogOpener = this.captureFocusReturnTarget();
+      this.openGeneration += 1;
+      this.isOpen = true;
+      this.isFirstOpen = true;
+      this.updateBodyScrollLock();
     }
 
     /**
@@ -1306,13 +1324,13 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       walletName: string,
       walletIcon?: string
     ): void {
+      if (prompt.review) {
+        this.showTransactionReview(prompt, walletId, walletName, walletIcon);
+        return;
+      }
       if (!this.isOpen) {
         // A prompt nobody can see would leave its connection waiting forever.
-        try {
-          prompt.cancel();
-        } catch (error) {
-          logger.warn('Failed to cancel authentication prompt:', error);
-        }
+        this.cancelPrompt(prompt);
         return;
       }
       this.authCaptchaToken = null;
@@ -1324,6 +1342,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         values: Object.create(null) as Record<string, string>,
         busy: false,
         error: null,
+        approvalLocked: false,
       };
       this.viewState = 'auth-prompt';
       this.qrCodeData = null;
@@ -1333,10 +1352,80 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.render();
     }
 
+    /**
+     * Show a connected wallet's transaction review, opening the modal for it.
+     * Approval stays locked briefly so a click aimed at the page, or the second
+     * click of a double click, cannot approve a review that just appeared.
+     */
+    public showTransactionReview(
+      prompt: WalletAuthPrompt,
+      walletId: string,
+      walletName: string,
+      walletIcon?: string
+    ): void {
+      if (this.authPromptData?.prompt === prompt) return;
+      if (!isTransactionReviewPrompt(prompt)) {
+        logger.warn(`Rejected an incomplete transaction review from ${walletId}`);
+        this.cancelPrompt(prompt);
+        return;
+      }
+      // Only one review is answerable at a time; a newer one rejects the one on screen.
+      this.clearAuthPromptState(true);
+      this.invalidateSocialDiscovery();
+      this.clearWalletAvailabilityTimer();
+      if (this.accountModalOpen) this.closeAccountModal();
+      const opening = !this.isOpen;
+      if (opening) this.beginOpen();
+
+      const state: AuthPromptState = {
+        prompt,
+        walletId,
+        walletName,
+        walletIcon,
+        values: Object.create(null) as Record<string, string>,
+        busy: false,
+        error: null,
+        approvalLocked: true,
+      };
+      this.authPromptData = state;
+      this.viewState = 'auth-prompt';
+      this.qrCodeData = null;
+      this.loadingData = null;
+      this.errorData = null;
+      this.accountSelectionData = null;
+      this.render();
+      this.reviewApprovalTimer = setTimeout(() => {
+        this.reviewApprovalTimer = null;
+        if (this.authPromptData !== state) return;
+        state.approvalLocked = false;
+        const submitButton = this.getOverlayRoot()?.querySelector<HTMLButtonElement>(
+          '#auth-prompt-submit-button'
+        );
+        if (submitButton) submitButton.disabled = state.busy;
+      }, TIMINGS.TRANSACTION_REVIEW_APPROVAL_DELAY);
+      if (opening) this.dispatchEvent(new CustomEvent('open'));
+    }
+
+    public endTransactionReview(walletId: string): void {
+      const state = this.authPromptData;
+      if (!state?.prompt.review || state.walletId !== walletId) return;
+      // The wallet already settled this review; there is nothing to cancel.
+      this.clearAuthPromptState(false);
+      this.close();
+    }
+
+    private cancelPrompt(prompt: WalletAuthPrompt): void {
+      try {
+        prompt.cancel();
+      } catch (error) {
+        logger.warn('Failed to cancel authentication prompt:', error);
+      }
+    }
+
     public async submitAuthPrompt(): Promise<void> {
       const state = this.authPromptData;
       const submit = state?.prompt.submit;
-      if (!state || !submit || state.busy) return;
+      if (!state || !submit || state.busy || state.approvalLocked) return;
 
       const form = this.getOverlayRoot()?.querySelector<HTMLFormElement>('#auth-prompt-form');
       if (!form) return;
@@ -1461,12 +1550,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       const state = this.authPromptData;
       this.authPromptData = null;
       this.clearCaptchaWidget();
-      if (!state || !callCancel) return;
-      try {
-        state.prompt.cancel();
-      } catch (error) {
-        logger.warn('Failed to cancel authentication prompt:', error);
+      if (this.reviewApprovalTimer !== null) {
+        clearTimeout(this.reviewApprovalTimer);
+        this.reviewApprovalTimer = null;
       }
+      if (!state || !callCancel) return;
+      this.cancelPrompt(state.prompt);
     }
 
     /** Remove the CAPTCHA widget; its token is only valid with the widget that issued it. */
@@ -1872,12 +1961,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Called by wallet adapters when QR code URI is ready
      */
     public setQRCode(walletId: string, uri: string) {
-      logger.debug('setQRCode called:', {
-        walletId,
-        uri: uri.substring(0, 60) + '...',
-        viewState: this.viewState,
-        qrCodeData: this.qrCodeData,
-      });
+      // The URI is a live pairing secret (a WalletConnect URI carries its
+      // symmetric key), so it stays out of logs.
+      logger.debug('setQRCode called:', { walletId, viewState: this.viewState });
 
       if (this.viewState === 'qr' && this.qrCodeData?.walletId === walletId) {
         this.qrCodeData.uri = uri;
@@ -1946,7 +2032,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       const generation = ++this.qrRenderGeneration;
       const openGeneration = this.openGeneration;
       const managerGeneration = this.managerGeneration;
-      logger.debug('renderQRCode called with URI:', uri.substring(0, 60) + '...');
+      // The URI is a pairing secret or a signing link, so it stays out of logs.
+      logger.debug('renderQRCode called:', { walletId: this.qrCodeData?.walletId });
       const container = this.overlayPortal?.shadowRoot?.querySelector('#qr-container');
       if (!container || !uri) {
         logger.warn('No container or URI for QR code rendering');
@@ -2097,6 +2184,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           busy: authPromptState.busy,
           error: authPromptState.error ?? undefined,
           values: authPromptState.values,
+          submitLocked: authPromptState.approvalLocked,
           onValueChange: (name, value) => {
             if (this.authPromptData === authPromptState) {
               authPromptState.values[name] = value;

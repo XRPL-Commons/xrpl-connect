@@ -58,12 +58,22 @@ manager has not saved its first session yet. With auto-connect omitted or disabl
 call `manager.reconnect()` explicitly on the returned page. Mounting the connector
 does not initiate recovery.
 
+Only the return of a login started in the same browser profile completes: its OAuth
+state must match a pending, unexpired attempt in local storage. Links that carry a
+Xaman token or code without such an attempt are ignored, so a crafted link cannot sign
+a user in to another account. Sessions that earlier versions adopted from the Xaman
+SDK's `XummPkceJwt` storage are not restored; those users sign in once more.
+
 When the return opens another tab on the same origin and browser profile, completing
 that recovery also settles the original tab's pending connection. This requires
 local storage. Each browser login has its own OAuth state; expired or cancelled
 attempts cannot be adopted by a later login. Unanswered connections time out after
 five minutes with `OPERATION_TIMEOUT`. A suspended tab checks its deadline when it
 resumes. Other tabs that did not initiate a connection remain idle.
+
+Disconnecting deletes the saved Xaman token from local storage, along with copies that
+earlier versions left after logout. A session that another tab saved in the meantime is
+kept.
 
 Persist checkout/order state separately so the return page can resume the payment
 step. Recovering a wallet session does not restore application state.

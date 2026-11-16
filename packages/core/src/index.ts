@@ -12,6 +12,8 @@ export type {
   WalletLoginMethod,
   WalletAuthField,
   WalletAuthPrompt,
+  WalletTransactionReview,
+  WalletTransactionReviewDetail,
   WalletId,
   WalletIdentifier,
   WalletManagerOptions,
@@ -33,6 +35,7 @@ export type {
   WalletAdapterEvent,
   StorageAdapter,
   StoredState,
+  PendingConnection,
   LoggerOptions,
   LoggerInstance,
   LogLevel,
@@ -89,8 +92,22 @@ export { TIME } from './constants';
 // Network helpers
 export { resolveNetwork } from './network';
 
+// Message helpers
+export { decodeMessage } from './message';
+
 // Device detection
 export { isMobile } from './device';
 
 // Async helpers
 export { withTimeout } from './async';
+
+// Signed transaction verification
+export {
+  assertSignedTransaction,
+  assertRequestedTransaction,
+  canonicalizeTransaction,
+} from './transaction-verification';
+export type {
+  SignedTransactionExpectation,
+  RequestedTransactionPolicy,
+} from './transaction-verification';

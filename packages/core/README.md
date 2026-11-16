@@ -55,6 +55,7 @@ interface LoggerOptions {
 }
 
 interface LoggerInstance {
+  level?: 'debug' | 'info' | 'warn' | 'error' | 'silent' | 'none'; // Same default as LoggerOptions.level
   debug(message: string, ...args: unknown[]): void;
   info(message: string, ...args: unknown[]): void;
   warn(message: string, ...args: unknown[]): void;
@@ -161,6 +162,35 @@ stored session or pending authorization can be restored.
 
 Failed reconnection attempts clear invalid stored state and resolve to `null`.
 
+The network is connection policy, not restored data: a restore requests the
+manager's configured `network`, or else the network the session was requested
+on (`StoredState.requestedNetwork`), and applies the same `NETWORK_MISMATCH`
+check as `connect()`. The wallet's last-reported network and endpoint
+(`StoredState.network`) are never requested again. A session connected without
+any requested network restores on whatever network the wallet reports, except a
+session saved by an earlier release (stored state version 1): it did not record
+whether a network was requested, so the migration makes its stored network the
+requested one, and it restores only there, as before.
+
+A login on an adapter implementing `SupportsPendingConnection` (Privy OAuth,
+Xaman's mobile sign-in) can return through a redirect, so the manager records it
+(`PendingConnection`) with the network it was requested on, for up to
+`TIME.PENDING_CONNECTION_MAX_AGE` (one hour). Completing the returned
+authorization requests the manager's configured `network`, or else that recorded
+network, including on a first login with empty storage. Without one (none was
+requested, or the record expired) it completes on whatever network the wallet
+reports. A committed session or `disconnect()` removes the record.
+
+#### Network policy
+
+A requested network stays the session's network. When the wallet later reports
+another network (adapter event or `fetchAccount()`), the manager updates
+`account.network`, emits `networkChanged`, and then emits `error` with a
+`NETWORK_MISMATCH` `WalletError`. Until the wallet is back on the requested
+network, `sign()`, `signAndSubmit()`, and `signMessage()` reject with
+`NETWORK_MISMATCH`, and `networkMismatch` returns that error. Without a requested
+network, reported networks are adopted.
+
 **Example**:
 
 ```typescript
@@ -184,6 +214,12 @@ Signs a transaction without submitting it to the network.
 **Returns**: A `SignedTransaction` with a required `signerAddress` identifying
 the account that produced the signature. The result may also contain `tx_blob`,
 `tx_json`, `signature`, and wallet-specific fields.
+
+`signerAddress` is bound to the account connected when the request started. A
+wallet-reported signer that differs from it rejects with `SIGN_FAILED`. When the
+wallet does not report a signer, the manager fills in the connected account as
+asserted by the wallet session; it is not cryptographically verified against the
+signature.
 
 These artifacts are not always ready for direct submission. A multisign-capable
 adapter can return one signer contribution whose `tx_json`/`tx_blob` contains a
@@ -255,13 +291,16 @@ Signs an arbitrary message (not a transaction).
 
 **Parameters**:
 
-- `message` (string | Uint8Array): The message to sign
+- `message` (string | Uint8Array): The message to sign. Bytes must be valid
+  UTF-8; they are never decoded lossily.
 
-**Returns**: A `SignedMessage` containing the signature, message, public key,
-and required `signerAddress`
+**Returns**: A `SignedMessage` containing the signature, the requested message,
+public key, and required `signerAddress` (bound to the connected account as for
+`sign()`)
 
 **Throws**: `WalletError` with `SIGN_FAILED`, `SIGN_REJECTED`,
-`NOT_CONNECTED`, or `UNSUPPORTED_METHOD` error codes
+`NOT_CONNECTED`, `UNSUPPORTED_METHOD`, or `INVALID_MESSAGE` (invalid UTF-8
+bytes) error codes
 
 **Example**:
 
@@ -410,6 +449,21 @@ manager. This is distinct from `wallet`, which only exposes a committed session.
 
 ---
 
+#### `networkMismatch: WalletError | null`
+
+The `NETWORK_MISMATCH` error that `sign()`, `signAndSubmit()`, and `signMessage()`
+currently reject with, because the connected wallet reports a network other than
+the one the session was requested on. `null` once the wallet is back on that
+network, and when no wallet is connected. See [Network policy](#network-policy).
+
+```typescript
+walletManager.on('networkChanged', () => {
+  if (!walletManager.networkMismatch) hideSwitchNetworkPrompt();
+});
+```
+
+---
+
 #### `wallets: WalletAdapter[]`
 
 All registered adapters (both available and unavailable).
@@ -497,9 +551,27 @@ walletManager.on('networkChanged', (network: NetworkInfo) => {
 
 ---
 
+### `error` Event
+
+Emitted with a `NETWORK_MISMATCH` `WalletError` after a `networkChanged` (or a
+network carried by `accountChanged`) leaves the network the session was
+requested on. It fires once per change of the reported network, even when the
+wallet reports one switch through both events. Signing stays blocked until the
+wallet returns to it; see [Network policy](#network-policy).
+
+```typescript
+walletManager.on('error', (error: WalletError) => {
+  if (error.code === WalletErrorCode.NETWORK_MISMATCH) promptNetworkSwitch();
+});
+```
+
+**Event Data**: `WalletError`
+
+---
+
 Connection, signing, refresh, and disconnection errors reject their operation
-promises with `WalletError` where applicable. `WalletManager` does not emit a
-general-purpose `error` event.
+promises with `WalletError` where applicable. The `error` event is reserved for
+the network policy above.
 
 ---
 
@@ -676,6 +748,7 @@ enum WalletErrorCode {
   NOT_CONNECTED = 'NOT_CONNECTED',
   ALREADY_CONNECTED = 'ALREADY_CONNECTED',
   UNSUPPORTED_METHOD = 'UNSUPPORTED_METHOD',
+  INVALID_MESSAGE = 'INVALID_MESSAGE',
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
 ```
@@ -808,8 +881,17 @@ const manager = new WalletManager({
 });
 ```
 
-**Defaults**: when no level is provided, `'debug'` is used in development
-(`NODE_ENV === 'development'` or localhost) and `'warn'` everywhere else.
+**Defaults**: when no level is provided, `'debug'` is used only when
+`process.env.NODE_ENV === 'development'` and `'warn'` everywhere else. The page
+hostname is never used to guess the environment, so browser bundles that do not
+define `NODE_ENV` (including apps served from `localhost` by Capacitor, Ionic, or
+Electron) log warnings and errors only. Set `level: 'debug'` explicitly to see
+verbose output while developing.
+
+Logs never contain transactions, signed blobs, or signatures: signing operations
+log only the transaction type and hash, and a failed one logs only the error's
+code and message, never the error object (a wrapped ledger error can carry the
+raw server response).
 
 **Log Levels**:
 
@@ -822,8 +904,10 @@ const manager = new WalletManager({
 ### Routing logs to a custom logger
 
 Pass any object that implements `LoggerInstance` (matching the `console.*`
-shape) to send all log calls — including those emitted by individual adapters —
-into your own logging pipeline (Sentry, Datadog, pino, etc.):
+shape) to route log output — including that of individual adapters — into your
+own logging pipeline (Sentry, Datadog, pino, etc.). Like the built-in logger, it
+receives only warnings and errors outside `NODE_ENV === 'development'` unless it
+sets `level` (see below):
 
 ```typescript
 import type { LoggerInstance } from '@xrpl-connect/core';
@@ -842,7 +926,16 @@ const manager = new WalletManager({
 ```
 
 The supplied instance receives messages from the manager and every registered
-adapter, each prefixed with its source (e.g. `[Xaman] Connecting…`).
+adapter, each prefixed with its source (e.g. `[Xaman] Connecting…`). It uses the
+same default level as the built-in logger (`'warn'` outside
+`NODE_ENV === 'development'`); add a `level` property to receive more:
+
+```typescript
+const manager = new WalletManager({
+  adapters: [...],
+  logger: { ...appLogger, level: 'info' },
+});
+```
 
 ---
 

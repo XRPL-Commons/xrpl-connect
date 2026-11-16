@@ -122,8 +122,16 @@ export function createXrplConnect(config: XrplConnectConfig): Plugin {
         sync();
       };
       const onDisconnect = () => sync();
-      const onAccountChanged = () => sync();
-      const onNetworkChanged = () => sync();
+      // A NETWORK_MISMATCH error describes the session's network, so it is
+      // cleared once the wallet is back on the requested network.
+      const onWalletChanged = () => {
+        sync();
+        if (error.value?.code === WalletErrorCode.NETWORK_MISMATCH && !manager.networkMismatch) {
+          error.value = null;
+        }
+      };
+      const onAccountChanged = onWalletChanged;
+      const onNetworkChanged = onWalletChanged;
       const onError = (value: unknown) => {
         modalConnectionAttempts.clear();
         syncConnecting();

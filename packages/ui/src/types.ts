@@ -17,9 +17,10 @@ import type {
   WalletIdentifier,
   WalletLoginMethod,
   WalletManager,
+  WalletTransactionReview,
 } from '@xrpl-connect/core';
 
-export type { WalletAuthField, WalletAuthPrompt, WalletLoginMethod };
+export type { WalletAuthField, WalletAuthPrompt, WalletLoginMethod, WalletTransactionReview };
 
 /**
  * A user-configured social sign-in method backed by a registered wallet
@@ -123,6 +124,15 @@ export interface WalletConnectorContext extends HTMLElement {
   submitAuthPrompt(): Promise<void>;
   runAuthPromptSecondaryAction(): Promise<void>;
   cancelAuthPrompt(): void;
+  /** Open the modal on a connected wallet's transaction review. */
+  showTransactionReview(
+    prompt: WalletAuthPrompt,
+    walletId: string,
+    walletName: string,
+    walletIcon?: string
+  ): void;
+  /** The wallet withdrew its review: close the modal that showed it. */
+  endTransactionReview(walletId: string): void;
 
   showQRCodeView(walletId: string, uri?: string): void;
   showLoadingView(walletId: string, walletName: string, walletIcon?: string): void;

@@ -1,4 +1,9 @@
-import type { ConnectOptions, WalletAdapter, WalletManager } from '@xrpl-connect/core';
+import type {
+  ConnectOptions,
+  WalletAdapter,
+  WalletAuthPrompt,
+  WalletManager,
+} from '@xrpl-connect/core';
 import {
   createLogger,
   isAdapterConfigured,
@@ -93,6 +98,17 @@ interface ActiveConnectionAttempt extends CancelledConnectionAttempt {
   detail: Record<string, unknown>;
 }
 
+interface TransactionReviewSubscription {
+  wallet: WalletAdapter;
+  unsubscribe: () => void;
+}
+
+/**
+ * Reviews already shown by a connector. Every connector sharing a manager
+ * receives each review; only the first one to receive it opens its modal.
+ */
+const shownTransactionReviews = new WeakSet<WalletAuthPrompt>();
+
 export class WalletService {
   private nextConnectionAttemptId = 0;
   private activeConnectionAttempt: ActiveConnectionAttempt | null = null;
@@ -101,11 +117,50 @@ export class WalletService {
     connectionAttemptId: number;
     unsubscribe: () => void;
   } | null = null;
+  private transactionReviewSubscription: TransactionReviewSubscription | null = null;
 
   constructor(
     private walletManager: WalletManager,
     private component: WalletConnectorContext
   ) {}
+
+  /**
+   * Route the connected wallet's transaction reviews to the modal. Sign-in
+   * prompts stay with the connection attempt that asked for them.
+   */
+  watchTransactionReviews(): void {
+    const wallet = this.walletManager.connected ? this.walletManager.wallet : null;
+    if (this.transactionReviewSubscription?.wallet === wallet) return;
+    this.stopTransactionReviews();
+    if (!wallet?.onAuthPrompt) return;
+
+    const subscription: TransactionReviewSubscription = { wallet, unsubscribe: () => undefined };
+    this.transactionReviewSubscription = subscription;
+    try {
+      subscription.unsubscribe = wallet.onAuthPrompt((prompt) => {
+        if (this.transactionReviewSubscription !== subscription) return;
+        if (!prompt) {
+          this.component.endTransactionReview(wallet.id);
+        } else if (prompt.review && !shownTransactionReviews.has(prompt)) {
+          shownTransactionReviews.add(prompt);
+          this.component.showTransactionReview(prompt, wallet.id, wallet.name, wallet.icon);
+        }
+      });
+    } catch (error) {
+      this.transactionReviewSubscription = null;
+      logger.warn(`Failed to subscribe to transaction reviews for ${wallet.id}:`, error);
+    }
+  }
+
+  stopTransactionReviews(): void {
+    const subscription = this.transactionReviewSubscription;
+    this.transactionReviewSubscription = null;
+    try {
+      subscription?.unsubscribe();
+    } catch (error) {
+      logger.warn('Failed to remove transaction review subscription:', error);
+    }
+  }
 
   private dispatchConnecting(
     walletId: string,
@@ -333,7 +388,7 @@ export class WalletService {
             ...options,
             onQRCode: (uri: string) => {
               if (!this.isCurrentAttempt(uiAttempt)) return;
-              logger.debug('QR code callback received:', uri.substring(0, 50) + '...');
+              logger.debug('QR code callback received:', { walletId });
               this.component.setQRCode(walletId, uri);
             },
           };

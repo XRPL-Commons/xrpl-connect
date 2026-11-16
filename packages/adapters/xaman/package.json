@@ -46,6 +46,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@noble/hashes": "^1.8.0",
     "@xrpl-connect/core": "workspace:*",
     "xumm": "^1.8.0",
     "xumm-oauth2-pkce": "^2.6.0",

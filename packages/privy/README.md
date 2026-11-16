@@ -70,8 +70,8 @@ logout lifecycle belong to the adapter.
 ## Dashboard methods
 
 The chooser supports the dashboard's email and phone authentication, built-in and
-custom OAuth providers, passkeys, Farcaster, and guest login. It shows only enabled
-methods. Phone authentication follows the dashboard's SMS or WhatsApp setting;
+custom OAuth providers, passkeys, Farcaster, and, when the application opts in,
+[guest login](#guest-login). It shows only enabled methods. Phone authentication follows the dashboard's SMS or WhatsApp setting;
 WhatsApp must be enabled for the app. Native Telegram authentication requires the
 signed launch context from a Telegram Mini App and seamless login enabled in the
 dashboard. Telegram OAuth works through the normal redirect flow.
@@ -98,6 +98,36 @@ complete, it is ended first and is never handed to the next person who signs in.
 Calling `manager.connect('privy')` without a `loginMethod` resumes the current
 session instead.
 
+### Guest login
+
+Enabling guest login in the Privy dashboard is not enough to offer it. The
+adapter shows and accepts the `guest` method only when the application opts in:
+
+```js
+const privy = new PrivyAdapter({
+  appId: 'YOUR_PUBLIC_APP_ID',
+  redirectUri: `${window.location.origin}/wallet/privy`,
+  allowGuestLogin: true,
+});
+```
+
+A guest receives a real XRPL wallet, but the guest account's only credential is a
+random secret that Privy keeps in this browser's storage. The guest account and
+its XRPL wallet, including any XRP or tokens sent to its address, are lost for
+good when:
+
+- the guest disconnects, because `manager.disconnect()` logs out of Privy and
+  logout deletes the secret;
+- anyone signs in with a login method in the same browser, including **Guest**
+  again, because the previous session is ended first;
+- a connection attempt fails, because the adapter then logs out of the session it
+  started;
+- the browser's site data is cleared, or the guest switches browser or device.
+
+Neither the application nor Privy can recover the account. Offer guest login only
+for disposable use, such as testnet demos, and warn users not to fund a guest
+wallet they want to keep.
+
 ## Signing and submission
 
 ```js
@@ -115,19 +145,83 @@ console.log(submitted.hash);
 ```
 
 Fund the XRPL account before autofill or submission. The adapter uses the network
-configured on the manager, autofills missing fee/sequence fields, hashes the XRPL
-signing serialization with SHA-512Half, and requests a raw signature from the
-Privy user's signer. It converts the compact signature to canonical DER, verifies
-it against the connected public key, and returns the signed blob. Submission
-waits for validation and returns the hash with `transactionResult`. A validated
-`tec` result is returned rather than thrown, because it consumed the fee and
-sequence; check `transactionResult === 'tesSUCCESS'` before treating it as applied.
+configured on the manager, autofills missing fee/sequence fields, asks the user to
+review the transaction, hashes the XRPL signing serialization with SHA-512Half,
+and requests a raw signature from the Privy user's signer. It converts the compact
+signature to canonical DER, verifies it against the connected public key, and
+returns the signed blob. Submission waits for validation and returns the hash with
+`transactionResult`. A validated `tec` result is returned rather than thrown,
+because it consumed the fee and sequence; check `transactionResult === 'tesSUCCESS'`
+before treating it as applied.
 
 Prepared transactions with `Fee` and `Sequence` can be signed without connecting
 to an XRPL server. Include `LastLedgerSequence` to bound their lifetime. The
 adapter rejects pre-signed transactions and transactions for another account.
+Every fee, computed or supplied by the application, is limited to 2 XRP, the
+xrpl.js autofill limit; like xrpl.js, the adapter exempts `AccountDelete`,
+`AMMCreate`, and `VaultCreate`, whose fee is the ledger's owner reserve. A larger
+fee fails with a `SIGN_FAILED` wallet error before any review or signature.
 Multisigning and arbitrary message signing are not supported; `signMessage` is
 declared unavailable through the standard capabilities contract.
+
+### Transaction review
+
+The embedded wallet signs without a wallet app of its own, so the adapter asks the
+user before every signature (`sign` and `signAndSubmit`). With the default
+`transactionReview: 'prompt'`, it sends the transaction through `onAuthPrompt()`
+as a prompt whose `review` lists every field of the exact transaction that will
+be signed: type, amount, destination and destination tag, fee, network, and
+account first, then all other fields. XRP amounts are shown in XRP, issued
+currencies as value, currency, and issuer, and MPT amounts as value and issuance
+ID; other values appear as text or JSON.
+
+The wallet connector shows this review in its dialog, opening it if it is closed
+and closing it afterwards. **Approve** signs; **Reject**, closing the dialog, or
+pressing Escape rejects with `SIGN_REJECTED`, and the Privy signer is never
+called. A disconnect, logout, or lost session during a review rejects it with
+`NOT_CONNECTED`. Reviews run one at a time: a second request waits until the
+first is answered, an answer always applies to the transaction on screen, and
+**Approve** stays disabled for a second after each review appears so a double
+click cannot approve the next one.
+
+The review runs after autofill, so an autofilled `LastLedgerSequence` (about 20
+ledgers ahead, roughly a minute) keeps counting while the user reads. With
+`signAndSubmit`, approve within about a minute: an expired transaction fails
+without being applied. With `sign`, a transaction the adapter autofilled must be
+approved and then submitted within the same window. Supply your own
+`LastLedgerSequence` to choose the window, or `Fee` and `Sequence` to sign without
+autofill.
+
+The review fails closed. When nothing is subscribed with `onAuthPrompt()`,
+signing fails with a `SIGN_FAILED` wallet error instead of signing, so keep a
+connector on the page while users sign. To use your own interface, subscribe with
+`adapter.onAuthPrompt()` and answer prompts that carry a `review` with
+`prompt.submit({})` or `prompt.cancel()`, or pass a function:
+
+```js
+const privy = new PrivyAdapter({
+  appId: 'YOUR_PUBLIC_APP_ID',
+  redirectUri: `${window.location.origin}/wallet/privy`,
+  // Called once per transaction, one at a time. `signal` aborts on disconnect.
+  transactionReview: async (review, signal) => {
+    // review.action: 'sign' | 'signAndSubmit'; review.network; review.transaction;
+    // review.details: [{ name, label, value }] covering every field.
+    return await myConfirmDialog(review.details, { signal }); // `true` approves
+  },
+});
+```
+
+Only an explicit `true` approves; any other answer rejects with `SIGN_REJECTED`,
+and a thrown error fails the request with `SIGN_FAILED`.
+
+`transactionReview: 'none'` turns the review off: the adapter signs headlessly,
+whenever any code calls `sign` or `signAndSubmit`. **Any script running in the
+page, including a compromised dependency or injected code, can then sign and
+submit transactions with the user's wallet without the user seeing them.** Use
+it only when your application shows its own confirmation for every transaction.
+An in-page review cannot stop code that already runs in your page, which can
+click its buttons or answer its prompts; it protects users from transactions they
+did not expect, such as ones built from untrusted input.
 
 Privy's browser extended-chain API creates the native `xrpl` wallet with the
 authenticated user as owner. The implementation uses the same vanilla `create`
@@ -158,8 +252,12 @@ included in this package. See also
   then is removed along with its listeners. Every wait is bounded by
   `timeoutMs` (15 seconds by default): a request that never settles is
   abandoned so it cannot block later logins, and if it completes afterwards
-  the adapter logs out once more. Provider discovery and a new login wait for
-  the cleanup operation. A later login restores the same embedded wallet.
+  the adapter logs out once more. Privy keeps one signed-in user per browser,
+  so if such a late login replaces a newer connection's user, the adapter logs
+  the late user out and ends the newer connection with a `disconnect` event
+  rather than let it continue as someone else; that user signs in again.
+  Provider discovery and a new login wait for the cleanup operation. A later
+  login restores the same embedded wallet.
 - A restore that times out, for example on a slow network, leaves both the
   saved connection and the Privy session in place, so the next
   `manager.reconnect()` can retry without a new login.

@@ -102,16 +102,30 @@ export interface SignedTransaction {
  * Result of signing a message
  */
 export interface SignedMessage {
-  message: string; // Original message
+  message: string; // The requested message, exactly as signed
   signature: string; // Signature
   publicKey: string; // Public key used for signing
   signerAddress?: string; // Address of the account that produced the signature
 }
 
-/** Transaction signature returned by WalletManager with a known signer. */
+/**
+ * Transaction signature returned by WalletManager with a known signer.
+ *
+ * The manager rejects a result whose wallet-reported `signerAddress` differs from
+ * the connected account. When the wallet does not report a signer,
+ * `signerAddress` is the connected account as asserted by the wallet session when
+ * the request started; it is not cryptographically verified against the signature.
+ */
 export type ManagedSignedTransaction = SignedTransaction & { signerAddress: string };
 
-/** Message signature returned by WalletManager with a known signer. */
+/**
+ * Message signature returned by WalletManager with a known signer.
+ *
+ * The manager rejects a result whose wallet-reported `signerAddress` differs from
+ * the connected account. When the wallet does not report a signer,
+ * `signerAddress` is the connected account as asserted by the wallet session when
+ * the request started; it is not cryptographically verified against the signature.
+ */
 export type ManagedSignedMessage = SignedMessage & { signerAddress: string };
 
 /**
@@ -272,6 +286,31 @@ export interface WalletAuthPrompt {
     run: () => Promise<void>;
   };
   cancel: () => void;
+  /**
+   * A transaction waiting for the user's approval before the wallet signs it.
+   * `submit` approves it and `cancel` rejects it. A UI shows every detail and
+   * never answers on the user's behalf.
+   */
+  review?: WalletTransactionReview;
+}
+
+/** One line of a transaction review, formatted for display. */
+export interface WalletTransactionReviewDetail {
+  /** The XRPL field name, or `network` for the network the transaction is for. */
+  name: string;
+  label: string;
+  value: string;
+}
+
+/** A transaction the wallet signs only once the user approves it. */
+export interface WalletTransactionReview {
+  /** `signAndSubmit` also submits the signed transaction to the network. */
+  action: 'sign' | 'signAndSubmit';
+  network: NetworkInfo;
+  /** A copy of the exact transaction that is signed once approved. */
+  transaction: Transaction;
+  /** Every transaction field and the network, key fields first. */
+  details: readonly WalletTransactionReviewDetail[];
 }
 
 /** Core interface that all wallet adapters must implement. */
@@ -313,7 +352,10 @@ export interface WalletAdapter {
    * Callers abort `signal` when the result is no longer needed.
    */
   getLoginMethods?(options?: { signal?: AbortSignal }): Promise<readonly WalletLoginMethod[]>;
-  /** Subscribe to input or QR challenges during an active connection attempt. */
+  /**
+   * Subscribe to input or QR challenges during an active connection attempt,
+   * and to transaction reviews (`prompt.review`) while connected.
+   */
   onAuthPrompt?(callback: (prompt: WalletAuthPrompt | null) => void): () => void;
 
   // Connection lifecycle
@@ -461,8 +503,15 @@ export interface StorageAdapter {
 export interface StoredState {
   walletId: WalletIdentifier;
   account: AccountInfo;
+  /** Network the wallet last reported. Informational: restores never request it. */
   network: NetworkInfo;
   timestamp: number;
+  /**
+   * Network the session was requested on: the manager's `network` option or the
+   * `network` passed to `connect()`. Omitted when none was requested. Restores
+   * request the manager's configured network first, then this one.
+   */
+  requestedNetwork?: NetworkConfig;
   /**
    * Adapter-selected, JSON-safe options required to restore the same account.
    * Arbitrary caller-provided connection options are never stored.
@@ -476,6 +525,19 @@ export interface StoredState {
 }
 
 /**
+ * A login started on a wallet whose authorization can return to a later page
+ * load through a redirect (see `SupportsPendingConnection`). Completing that
+ * authorization requests the network the login was requested on.
+ */
+export interface PendingConnection {
+  walletId: WalletIdentifier;
+  /** Network the login was requested on. Omitted when none was requested. */
+  requestedNetwork?: NetworkConfig;
+  /** When the login started, in milliseconds since the epoch. */
+  timestamp: number;
+}
+
+/**
  * Supported log levels.
  * `'silent'` disables all output; `'none'` is a deprecated alias kept for backwards compatibility.
  */
@@ -483,7 +545,7 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'silent' | 'none';
 
 /**
  * Logger configuration options
- * Level is optional - defaults to 'debug' in development, 'warn' in production
+ * Level is optional - defaults to 'debug' when `NODE_ENV` is 'development', 'warn' otherwise
  */
 export interface LoggerOptions {
   level?: LogLevel;
@@ -497,6 +559,11 @@ export interface LoggerOptions {
  * Method signatures match `console.debug/info/warn/error`.
  */
 export interface LoggerInstance {
+  /**
+   * Minimum level forwarded to this logger. Defaults like `LoggerOptions.level`:
+   * 'debug' when `NODE_ENV` is 'development', 'warn' otherwise.
+   */
+  level?: LogLevel;
   debug(message: string, ...args: unknown[]): void;
   info(message: string, ...args: unknown[]): void;
   warn(message: string, ...args: unknown[]): void;
@@ -519,6 +586,7 @@ export enum WalletErrorCode {
   SIGN_FAILED = 'SIGN_FAILED',
   SIGN_REJECTED = 'SIGN_REJECTED',
   OPERATION_TIMEOUT = 'OPERATION_TIMEOUT',
+  INVALID_MESSAGE = 'INVALID_MESSAGE',
 
   // Network errors
   NETWORK_NOT_SUPPORTED = 'NETWORK_NOT_SUPPORTED',

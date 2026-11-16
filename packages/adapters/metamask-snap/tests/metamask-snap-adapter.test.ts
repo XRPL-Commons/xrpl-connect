@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
-import { WalletErrorCode } from '@xrpl-connect/core';
+import { describe, it, expect, vi, afterEach } from 'vite-plus/test';
+import {
+  MemoryStorageAdapter,
+  STANDARD_NETWORKS,
+  WalletErrorCode,
+  WalletManager,
+} from '@xrpl-connect/core';
 import { MetaMaskSnapAdapter } from '../src/metamask-snap-adapter';
 
 const SNAP_ID = 'npm:xrpl-snap';
@@ -33,14 +38,34 @@ function mockProvider(opts: {
   return { isMetaMask: opts.isMetaMask ?? true, request };
 }
 
-function setProvider(provider: unknown) {
-  (window as unknown as { ethereum?: unknown }).ethereum = provider;
+type MockProvider = ReturnType<typeof mockProvider>;
+
+const announcers: Array<() => void> = [];
+
+/** Answer EIP-6963 provider requests with each provider, in order. */
+function announceProviders(...entries: Array<[rdns: string, provider: MockProvider]>) {
+  for (const [rdns, provider] of entries) {
+    const announce = () => {
+      window.dispatchEvent(
+        new CustomEvent('eip6963:announceProvider', {
+          detail: { info: { rdns, uuid: rdns, name: rdns, icon: '' }, provider },
+        })
+      );
+    };
+    window.addEventListener('eip6963:requestProvider', announce);
+    announcers.push(announce);
+  }
 }
 
-beforeEach(() => {
-  setProvider(undefined);
-});
+function setProvider(provider: MockProvider) {
+  announceProviders(['io.metamask', provider]);
+}
+
 afterEach(() => {
+  for (const announce of announcers.splice(0)) {
+    window.removeEventListener('eip6963:requestProvider', announce);
+  }
+  delete (window as unknown as { ethereum?: unknown }).ethereum;
   vi.restoreAllMocks();
 });
 
@@ -62,23 +87,59 @@ describe('MetaMaskSnapAdapter.isAvailable', () => {
   it('discovers MetaMask through EIP-6963 when another wallet owns window.ethereum', async () => {
     const legacy = mockProvider({ isMetaMask: false });
     const metamask = mockProvider({});
-    setProvider(legacy);
-    const announce = () => {
-      window.dispatchEvent(
-        new CustomEvent('eip6963:announceProvider', {
-          detail: { info: { rdns: 'io.metamask' }, provider: metamask },
-        })
-      );
-    };
-    window.addEventListener('eip6963:requestProvider', announce);
+    (window as unknown as { ethereum?: unknown }).ethereum = legacy;
+    setProvider(metamask);
 
-    try {
-      await expect(new MetaMaskSnapAdapter().isAvailable()).resolves.toBe(true);
-      expect(metamask.request).toHaveBeenCalledWith({ method: 'wallet_getSnaps' });
-      expect(legacy.request).not.toHaveBeenCalled();
-    } finally {
-      window.removeEventListener('eip6963:requestProvider', announce);
+    await expect(new MetaMaskSnapAdapter().isAvailable()).resolves.toBe(true);
+    expect(metamask.request).toHaveBeenCalledWith({ method: 'wallet_getSnaps' });
+    expect(legacy.request).not.toHaveBeenCalled();
+  });
+
+  it('does not fall back to a window.ethereum provider that claims to be MetaMask', async () => {
+    const impersonator = mockProvider({ isMetaMask: true });
+    (window as unknown as { ethereum?: unknown }).ethereum = impersonator;
+
+    await expect(new MetaMaskSnapAdapter().isAvailable()).resolves.toBe(false);
+    expect(impersonator.request).not.toHaveBeenCalled();
+  });
+
+  it.each(['io.metamask.evil', 'com.evil.io.metamask', 'io.metamaskx', 'IO.METAMASK'])(
+    'ignores a provider announced under the look-alike identifier %s',
+    async (rdns) => {
+      const impersonator = mockProvider({});
+      announceProviders([rdns, impersonator]);
+
+      await expect(new MetaMaskSnapAdapter().isAvailable()).resolves.toBe(false);
+      expect(impersonator.request).not.toHaveBeenCalled();
     }
+  );
+
+  it('keeps the first provider announced as MetaMask', async () => {
+    const first = mockProvider({});
+    const later = mockProvider({});
+    announceProviders(['io.metamask', first], ['io.metamask', later]);
+
+    await expect(new MetaMaskSnapAdapter().isAvailable()).resolves.toBe(true);
+    expect(first.request).toHaveBeenCalledWith({ method: 'wallet_getSnaps' });
+    expect(later.request).not.toHaveBeenCalled();
+  });
+
+  it('prefers MetaMask over MetaMask Flask regardless of announcement order', async () => {
+    const flask = mockProvider({});
+    const metamask = mockProvider({});
+    announceProviders(['io.metamask.flask', flask], ['io.metamask', metamask]);
+
+    await expect(new MetaMaskSnapAdapter().isAvailable()).resolves.toBe(true);
+    expect(metamask.request).toHaveBeenCalledWith({ method: 'wallet_getSnaps' });
+    expect(flask.request).not.toHaveBeenCalled();
+  });
+
+  it('uses MetaMask Flask when it is the only MetaMask announced', async () => {
+    const flask = mockProvider({});
+    announceProviders(['io.metamask.flask', flask]);
+
+    await expect(new MetaMaskSnapAdapter().isAvailable()).resolves.toBe(true);
+    expect(flask.request).toHaveBeenCalledWith({ method: 'wallet_getSnaps' });
   });
 
   it('returns false when wallet_getSnaps throws', async () => {
@@ -108,6 +169,37 @@ describe('MetaMaskSnapAdapter.connect', () => {
     expect(account.address).toBe('rSNAP');
     expect(account.publicKey).toBe('PUBKEY');
     expect(account.network.id).toBe('testnet');
+  });
+
+  it.each([
+    ['pins the default Snap to its current major', {}, { [SNAP_ID]: { version: '^1.0.3' } }],
+    [
+      'requests a configured Snap version range',
+      { snapVersion: '1.0.3' },
+      { [SNAP_ID]: { version: '1.0.3' } },
+    ],
+    [
+      'requests a custom Snap without a version range by default',
+      { snapId: 'local:http://localhost:8080' },
+      { 'local:http://localhost:8080': {} },
+    ],
+    [
+      'requests a custom Snap with a configured version range',
+      { snapId: 'npm:custom-snap', snapVersion: '^2.0.0' },
+      { 'npm:custom-snap': { version: '^2.0.0' } },
+    ],
+  ])('%s', async (_label, options, params) => {
+    const provider = mockProvider({
+      snapHandlers: {
+        xrpl_getActiveNetwork: () => ({ chainId: 0, name: 'Mainnet', nodeUrl: '' }),
+        xrpl_getAccount: () => ({ account: 'rSNAP', publicKey: 'PUBKEY' }),
+      },
+    });
+    setProvider(provider);
+
+    await new MetaMaskSnapAdapter(options).connect();
+
+    expect(provider.request).toHaveBeenCalledWith({ method: 'wallet_requestSnaps', params });
   });
 
   it('does not restore account state when disconnected during account approval', async () => {
@@ -344,7 +436,7 @@ describe('MetaMaskSnapAdapter signing', () => {
     const adapter = await connected({ xrpl_signMessage: signMessage });
 
     await expect(adapter.signMessage(Uint8Array.from([0xc3, 0x28]))).rejects.toMatchObject({
-      code: WalletErrorCode.SIGN_FAILED,
+      code: WalletErrorCode.INVALID_MESSAGE,
     });
     expect(signMessage).not.toHaveBeenCalled();
   });
@@ -406,6 +498,57 @@ describe('MetaMaskSnapAdapter network switching', () => {
 
     await expect(adapter.switchNetwork('testnet')).resolves.toMatchObject({ id: 'testnet' });
     await expect(adapter.getNetwork()).resolves.toMatchObject({ id: 'testnet' });
+  });
+
+  function switchableProvider(sign: () => unknown) {
+    let chainId = 0;
+    const provider = mockProvider({
+      snapHandlers: {
+        xrpl_getActiveNetwork: () => ({ chainId, name: 'Network', nodeUrl: '' }),
+        xrpl_changeNetwork: (params) => {
+          chainId = (params as { chainId: number }).chainId;
+          return {};
+        },
+        xrpl_getAccount: () => ({ account: 'rSNAP', publicKey: 'PUBKEY' }),
+        xrpl_sign: sign,
+      },
+    });
+    setProvider(provider);
+    return provider;
+  }
+
+  it('emits networkChanged only when switchNetwork changes the network', async () => {
+    switchableProvider(() => ({ hash: 'HASH', tx_blob: 'BLOB' }));
+    const adapter = new MetaMaskSnapAdapter();
+    await adapter.connect();
+    const onNetworkChanged = vi.fn();
+    adapter.on('networkChanged', onNetworkChanged);
+
+    await adapter.switchNetwork('mainnet');
+    await adapter.switchNetwork('testnet');
+
+    expect(onNetworkChanged).toHaveBeenCalledExactlyOnceWith(STANDARD_NETWORKS.testnet);
+    await expect(adapter.getAccount()).resolves.toMatchObject({ network: { id: 'testnet' } });
+  });
+
+  it('lets the manager block signing after switchNetwork leaves the configured network', async () => {
+    const sign = vi.fn(() => ({ hash: 'HASH', tx_blob: 'BLOB' }));
+    switchableProvider(sign);
+    const adapter = new MetaMaskSnapAdapter();
+    const manager = new WalletManager({
+      adapters: [adapter],
+      network: 'mainnet',
+      storage: new MemoryStorageAdapter(),
+    });
+    await manager.connect('metamask-snap');
+
+    await adapter.switchNetwork('testnet');
+
+    expect(manager.account?.network.id).toBe('testnet');
+    await expect(manager.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+    });
+    expect(sign).not.toHaveBeenCalled();
   });
 
   it('does not hide a rejected network change during connect', async () => {

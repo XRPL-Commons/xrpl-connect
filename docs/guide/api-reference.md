@@ -18,15 +18,23 @@ const walletManager = new WalletManager(options: WalletManagerOptions)
 
 #### Options
 
-| Property      | Type                              | Description                                                                                                                                     |
-| ------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `adapters`    | `WalletAdapter[]`                 | Array of wallet adapters to register                                                                                                            |
-| `network`     | `NetworkConfig`                   | Default network (a standard id or a custom `NetworkInfo`)                                                                                       |
-| `autoConnect` | `boolean`                         | Auto-reconnect from stored session on initialization                                                                                            |
-| `storage`     | `StorageAdapter`                  | Custom storage adapter (defaults to `LocalStorageAdapter`)                                                                                      |
-| `logger`      | `LoggerOptions \| LoggerInstance` | `{ level?, prefix? }` to configure the built-in logger, or a custom logger object (`{ debug, info, warn, error }`) that receives all log output |
+| Property      | Type                              | Description                                                                                                                        |
+| ------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `adapters`    | `WalletAdapter[]`                 | Array of wallet adapters to register                                                                                               |
+| `network`     | `NetworkConfig`                   | Default network (a standard id or a custom `NetworkInfo`)                                                                          |
+| `autoConnect` | `boolean`                         | Auto-reconnect from stored session on initialization                                                                               |
+| `storage`     | `StorageAdapter`                  | Custom storage adapter (defaults to `LocalStorageAdapter`)                                                                         |
+| `logger`      | `LoggerOptions \| LoggerInstance` | `{ level?, prefix? }` for the built-in logger, or a custom logger object (`{ debug, info, warn, error }`) that receives its output |
 
 `NetworkConfig` is either one of the standard keys (`'mainnet' | 'testnet' | 'devnet'`) or a `NetworkInfo` object.
+
+A custom logger object may also carry a `level` property, and receives only output at or
+above it. Without an explicit level, both
+the built-in logger and a custom logger object receive `'warn'` and `'error'` output only,
+unless `process.env.NODE_ENV` is `'development'` (then `'debug'`). The page hostname is not
+used to detect development. Signing operations log only the transaction type and hash, never
+the transaction, signed blob, or signature; a failed one logs only the error's code and
+message, not the error object.
 
 ### Properties
 
@@ -38,6 +46,13 @@ const walletManager = new WalletManager(options: WalletManagerOptions)
 | `connectingWallet` | `WalletAdapter \| null`      | Adapter currently attempting to connect |
 | `wallets`          | `WalletAdapter[]`            | Registered adapters as an array         |
 | `adapters`         | `Map<string, WalletAdapter>` | Registered adapters keyed by id         |
+| `defaultNetwork`   | `NetworkConfig \| undefined` | The manager's configured `network`      |
+| `networkMismatch`  | `WalletError \| null`        | Why signing is blocked by the network   |
+
+`networkMismatch` is the `NETWORK_MISMATCH` error that signing currently rejects with,
+because the connected wallet reports a network other than the one the session was
+requested on (see [Network policy](#network-policy)). It is `null` once the wallet is back
+on that network, and when no wallet is connected.
 
 ### Methods
 
@@ -63,6 +78,48 @@ Reconnect to the previously connected wallet using stored state. When storage is
 configured adapters can also complete an authorization returned to this page, such as
 Xaman's first mobile OAuth login. Returns `null` when neither can be restored.
 
+A restore requests the manager's configured `network`, or else the network the session
+was originally requested on, and applies the same `NETWORK_MISMATCH` check as `connect()`.
+The network the wallet last reported (including its endpoint) is stored for reference only
+and is never requested again, so a wallet that moved to another network fails to restore
+instead of restoring there. Sessions connected without any requested network restore on
+whatever network the wallet reports. The exception is a session saved by an earlier release
+(connection record version 1): it did not record whether a network was requested, so its
+stored network becomes its requested network and it restores only there, as it did before.
+
+A login that can return through a redirect (an adapter implementing
+[`SupportsPendingConnection`](#supportspendingconnection), such as Privy OAuth or Xaman's
+mobile sign-in) is recorded in the manager's storage with the network it was requested on,
+for up to `TIME.PENDING_CONNECTION_MAX_AGE` (one hour). Completing the returned
+authorization requests the manager's configured `network`, or else that recorded network,
+with the same `NETWORK_MISMATCH` check, including on a first login with empty storage. So
+`connect('privy', { network: 'testnet', loginMethod: 'google' })` ends on testnet after the
+OAuth redirect. Without a recorded network (none was requested, or the record expired) the
+authorization completes on whatever network the wallet reports. A committed session or
+`disconnect()` removes the record.
+
+#### Network policy
+
+When a network is requested (the manager's `network` option or `connect(id, { network })`),
+it stays the session's network for its whole lifetime. If the wallet later reports another
+network through an event or `fetchAccount()`, the manager still updates `account.network`
+and emits `networkChanged`, then emits `error` with a `NETWORK_MISMATCH` `WalletError`.
+While the reported network differs, `sign()`, `signAndSubmit()`, and `signMessage()`
+reject with `NETWORK_MISMATCH`; they work again once the wallet is back on the requested
+network. `manager.networkMismatch` exposes that error while it applies. The `error` event
+fires once per change of the reported network, even when the wallet reports one switch
+through both `accountChanged` and `networkChanged`. Without a requested network the manager
+adopts the reported network as before.
+
+The extension adapters (Otsu, Crossmark, GemWallet) apply the same policy on their own, so
+it also holds when they are used without `WalletManager`. When a network was requested at
+connect, they check the wallet's live network before every signature and sign only on the
+requested network, whatever the wallet has reported since. Without a requested network,
+they follow the network the wallet reports (updating the account and emitting
+`networkChanged`) and keep signing after a switch; the live check still refuses a switch the
+wallet has not reported yet. `MetaMaskSnapAdapter.switchNetwork()` emits `networkChanged`,
+so switching away from the requested network blocks manager signing too.
+
 #### sign()
 
 ```typescript
@@ -71,7 +128,7 @@ async sign(
 ): Promise<ManagedSignedTransaction>
 ```
 
-Sign a transaction without submitting it to the ledger. Depending on the adapter, the result contains signed transaction JSON (`tx_json`), a serialized transaction blob (`tx_blob`), and/or the raw signature. These artifacts can represent either a complete single-sign transaction or one multisign contribution; inspect the adapter contract before submitting them. Manager results always contain the address that started the signing request as `signerAddress`, unless the adapter supplies a more specific signer address.
+Sign a transaction without submitting it to the ledger. Depending on the adapter, the result contains signed transaction JSON (`tx_json`), a serialized transaction blob (`tx_blob`), and/or the raw signature. These artifacts can represent either a complete single-sign transaction or one multisign contribution; inspect the adapter contract before submitting them. Manager results always contain `signerAddress`. When the wallet reports the signer, it must be the account connected when the request started, or the call rejects with `SIGN_FAILED`. When the wallet does not report one, `signerAddress` is that connected account as asserted by the wallet session; it is not cryptographically verified against the signature.
 
 #### signAndSubmit()
 
@@ -90,7 +147,10 @@ async signMessage(
 ```
 
 Sign a message using the connected wallet. The manager result always contains a
-required `signerAddress`.
+required `signerAddress`, bound to the connected account exactly as for `sign()`, and
+`message` is the requested text. `Uint8Array` input must be valid UTF-8: wallets sign
+text, so invalid bytes reject with `INVALID_MESSAGE` before the wallet is asked to sign
+instead of being replaced with U+FFFD.
 
 #### supports()
 
@@ -406,7 +466,9 @@ const adapter = new WalletConnectAdapter({
 ```
 
 **Supported Features:** Transaction signing and mobile wallets. Arbitrary
-message signing and live account refresh are not supported.
+message signing, multi-signing, and live account refresh are not supported.
+Signing results are verified against the request and connected account; see
+[WalletConnect result verification](/guide/transactions#walletconnect-result-verification).
 
 **Get Project ID:** [https://cloud.walletconnect.com/](https://cloud.walletconnect.com/)
 
@@ -459,6 +521,10 @@ const adapter = new OtsuAdapter();
 **Supported Features:** Transaction signing, message signing, and live account
 refresh
 
+The session stays bound to the `window.xrpl` provider object it connected
+through. If another script or extension replaces `window.xrpl`, signing and
+account refresh reject with `CONNECTION_FAILED` until the user reconnects.
+
 ### MetaMask Snap Adapter
 
 ```typescript
@@ -467,13 +533,25 @@ import { MetaMaskSnapAdapter } from 'xrpl-connect';
 const adapter = new MetaMaskSnapAdapter({
   // Optional. Defaults to the production XRPL Snap.
   snapId: 'npm:xrpl-snap',
+  // Optional. Defaults to '^1.0.3' for the production XRPL Snap.
+  snapVersion: '^1.0.3',
 });
 ```
 
 **Supported Features:** Transaction signing and message signing through
 MetaMask. The adapter does not require an application API key.
 
-Use a custom `snapId` only when developing or auditing a different Snap.
+Use a custom `snapId` only when developing or auditing a different Snap. The
+production Snap is requested with the version range `^1.0.3`, so MetaMask
+refuses the connection instead of installing or using a different major
+release; set `snapVersion` to change the range. A custom `snapId` is requested
+without a version range unless `snapVersion` is set.
+
+MetaMask is discovered only through [EIP-6963](https://eips.ethereum.org/EIPS/eip-6963)
+provider announcements with the exact identifier `io.metamask` (preferred) or
+`io.metamask.flask`; the first provider announced for an identifier is used.
+The adapter never falls back to `window.ethereum`, because other wallets also set
+`isMetaMask` there. MetaMask extension v11 and later announce through EIP-6963.
 
 ## Umbrella package exports
 
@@ -509,7 +587,23 @@ The corresponding adapter-specific exports are also available from the umbrella 
 | Otsu          | `OtsuProvider`, `OTSU_NETWORK_MAP`                                                                         |
 | MetaMask Snap | `MetaMaskSnapAdapterOptions`                                                                               |
 
-The umbrella also exposes the shared core types, error primitives, capability guards, standard network definitions, storage implementations, logging utilities, `resolveNetwork`, `isMobile`, `withTimeout`, and the web component registration API. Import an individual `@xrpl-connect/adapter-*` package only when deliberately using the modular distribution.
+The umbrella also exposes:
+
+- `WalletManager`, with the properties listed [above](#properties), including `networkMismatch`;
+- the shared core types, including `WalletTransactionReview` and `WalletTransactionReviewDetail`
+  (the transaction review an adapter such as Privy shows before signing) and `PendingConnection`;
+- error primitives, capability guards, standard network definitions, storage implementations,
+  and logging utilities;
+- `resolveNetwork`, `isMobile`, and `withTimeout`;
+- `decodeMessage`, which returns the exact text a wallet must sign for `signMessage()` and
+  rejects bytes that are not valid UTF-8 with `INVALID_MESSAGE`;
+- the signed-transaction verification helpers for adapters: `assertSignedTransaction` (network,
+  account, and signature checks), `assertRequestedTransaction` (every requested field is
+  preserved), and `canonicalizeTransaction` (codec-canonical form), with their
+  `SignedTransactionExpectation` and `RequestedTransactionPolicy` option types;
+- the web component registration API.
+
+Import an individual `@xrpl-connect/adapter-*` package only when deliberately using the modular distribution.
 
 ## React API
 
@@ -531,7 +625,9 @@ mount; use a React `key` when an intentional configuration change must rebuild i
   connector. Awaitable calls reject with a namespaced setup error until a connector registers.
 
 All hooks must be used below `XrplConnectProvider`. Signing methods reject with
-the same typed `WalletError` values as the core manager.
+the same typed `WalletError` values as the core manager. A `NETWORK_MISMATCH` `error`
+reported for the connected session clears once the wallet is back on the requested
+network; other errors are unaffected.
 
 When several connectors are mounted, modal ownership follows registration order and falls back
 when the active connector unmounts. `ready` remains `true` while any connector is registered.
@@ -568,7 +664,9 @@ composables and `<WalletConnector>` must run beneath that installation.
 Call `connect(walletId, options?)` for a headless connection flow, or mount at least one
 connector before using the modal composable. When several connectors are mounted, modal
 ownership follows registration order and falls back when the active connector unmounts. Gate
-optional signing operations with `manager.supports(...)`.
+optional signing operations with `manager.supports(...)`. As in React, a `NETWORK_MISMATCH`
+`error` reported for the connected session clears once the wallet is back on the requested
+network.
 
 ### WalletConnector
 
@@ -655,8 +753,9 @@ function supportsPendingConnection(
 
 Detection must be synchronous and side-effect free. It identifies a returned wallet
 authorization that `connect()` can complete without starting a new authorization.
-Xaman implements it for successful OAuth callback parameters and rejection callbacks
-for its own pending browser attempts. Unrelated rejected-return URLs are ignored. With empty storage, `reconnect()` attempts the first configured candidate
+Xaman implements it only for OAuth callbacks, successful or rejected, whose state
+matches a live sign-in attempt started in the same browser. Links carrying a token or
+code without one are ignored. With empty storage, `reconnect()` attempts the first configured candidate
 in registration order through the normal connection validation and persistence path.
 Automatic recovery requires `autoConnect: true`; callers may also reconnect explicitly.
 
@@ -845,6 +944,18 @@ walletManager.on('networkChanged', (network: NetworkInfo) => {
 });
 ```
 
+#### error
+
+Emitted with a `NETWORK_MISMATCH` `WalletError` when the wallet reports a network other
+than the one the session was requested on. Signing stays blocked until the wallet returns
+to the requested network (see [Network policy](#network-policy)).
+
+```javascript
+walletManager.on('error', (error: WalletError) => {
+  if (error.code === WalletErrorCode.NETWORK_MISMATCH) showSwitchNetworkPrompt();
+});
+```
+
 ## Error Handling
 
 ### Error Categories
@@ -879,6 +990,7 @@ All error codes are exposed by the `WalletErrorCode` enum.
 | `NOT_CONNECTED`         | `INVALID_INPUT`      | A connection is required but none is active                | Connect before calling the method            |
 | `ALREADY_CONNECTED`     | `INVALID_INPUT`      | A wallet is already connected or connecting                | Disconnect first                             |
 | `UNSUPPORTED_METHOD`    | `INVALID_INPUT`      | The wallet does not implement this method                  | Use a wallet that supports it                |
+| `INVALID_MESSAGE`       | `INVALID_INPUT`      | Message bytes passed to `signMessage()` are not UTF-8      | Pass a string or valid UTF-8 bytes           |
 | `SIGN_FAILED`           | `INTERNAL`           | Signing failed for an unspecified reason                   | Retry or surface the original error          |
 | `UNKNOWN_ERROR`         | `INTERNAL`           | Unhandled error from the adapter                           | Inspect `originalError`                      |
 

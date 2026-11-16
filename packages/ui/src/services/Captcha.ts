@@ -21,8 +21,21 @@ const CAPTCHA_SCRIPT_URLS: Record<CaptchaProvider, string> = {
 const CAPTCHA_SCRIPT_LOAD_TIMEOUT = 10_000;
 const scriptPromises = new Map<CaptchaProvider, Promise<void>>();
 
+function isCaptchaProvider(provider: unknown): provider is CaptchaProvider {
+  return (
+    typeof provider === 'string' &&
+    Object.prototype.hasOwnProperty.call(CAPTCHA_SCRIPT_URLS, provider)
+  );
+}
+
 function getCaptchaApi(provider: CaptchaProvider): CaptchaApi | undefined {
-  return typeof window === 'undefined' ? undefined : window[provider];
+  if (typeof window === 'undefined' || !isCaptchaProvider(provider)) return undefined;
+  // An element with the provider's id or name is also a window property. Only
+  // the provider's script defines an API that can render a widget.
+  const api: unknown = window[provider];
+  return typeof (api as Partial<CaptchaApi> | null | undefined)?.render === 'function'
+    ? (api as CaptchaApi)
+    : undefined;
 }
 
 function loadCaptchaScript(provider: CaptchaProvider, nonce?: string): Promise<void> {
@@ -106,6 +119,7 @@ export async function renderCaptchaWidget(
   onExpired: () => void,
   onError: () => void
 ): Promise<() => void> {
+  if (!isCaptchaProvider(provider)) throw new Error('Unsupported CAPTCHA provider.');
   await loadCaptchaScript(provider, nonce);
   const api = getCaptchaApi(provider);
   if (!api || !container.isConnected) return () => undefined;

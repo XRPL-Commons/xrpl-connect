@@ -10,7 +10,10 @@ declare global {
   }
 }
 
-const options: MetaMaskSnapAdapterOptions = { snapId: 'local:http://localhost:8080' };
+const options: MetaMaskSnapAdapterOptions = {
+  snapId: 'local:http://localhost:8080',
+  snapVersion: '^1.0.0',
+};
 const adapter = new MetaMaskSnapAdapter(options);
 
 void adapter;

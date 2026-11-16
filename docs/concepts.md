@@ -133,10 +133,12 @@ import { MetaMaskSnapAdapter } from 'xrpl-connect';
 const adapter = new MetaMaskSnapAdapter({
   // Optional: override this when developing a custom Snap.
   snapId: 'npm:xrpl-snap',
+  // Optional: the Snap version range MetaMask must use (default '^1.0.3').
+  snapVersion: '^1.0.3',
 });
 ```
 
-**Features:** Transaction signing and message signing through MetaMask. No application API key is required.
+**Features:** Transaction signing and message signing through MetaMask. No application API key is required. MetaMask (extension v11 or later) is discovered through EIP-6963 announcements only; `window.ethereum` is not used.
 
 #### GemWallet Adapter
 

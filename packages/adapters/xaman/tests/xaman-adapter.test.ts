@@ -1,5 +1,6 @@
 import { describe, it, expect, expectTypeOf, vi, beforeEach, afterEach } from 'vite-plus/test';
 import {
+  configureLogger,
   MemoryStorageAdapter,
   WalletManager,
   WalletErrorCode,
@@ -287,35 +288,23 @@ async function signedAdapter(
 describe('Xaman OAuth return recovery', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it.each(['access_token', 'authorization_code'])(
-    'completes a returned %s through reconnect without a stored manager session',
-    async (parameter) => {
-      vi.stubGlobal('document', { location: { search: `?${parameter}=oauth-return` } });
-      mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
-      const adapter = new XamanAdapter({ apiKey: 'test-key' });
-      const manager = new WalletManager({
-        adapters: [adapter],
-        storage: new MemoryStorageAdapter(),
-      });
-
-      await expect(manager.reconnect()).resolves.toMatchObject({ address: CONNECTED_ACCOUNT });
-
-      expect(mockXummInstance.authorize).toHaveBeenCalledOnce();
-      expect(manager.wallet).toBe(adapter);
-    }
-  );
-
+  // Callbacks of attempts started in this browser are covered in browser-oauth.test.ts.
   it.each([
     undefined,
     '',
     '?state=ordinary-page',
     '?access_token=',
     '?error_description=Cancelled',
-  ])('leaves a page without an OAuth result idle (%s)', async (search) => {
+    '?access_token=oauth-return',
+    '?authorization_code=oauth-return',
+    '?state=xrpl-connect-forged&access_token=oauth-return',
+  ])('leaves a page without a local sign-in attempt idle (%s)', async (search) => {
     if (search !== undefined) vi.stubGlobal('document', { location: { search } });
+    mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
     const adapter = new XamanAdapter({ apiKey: 'test-key' });
     const manager = new WalletManager({ adapters: [adapter], storage: new MemoryStorageAdapter() });
 
+    expect(adapter.hasPendingConnection()).toBe(false);
     await expect(manager.reconnect()).resolves.toBeNull();
 
     expect(mockXummInstance.authorize).not.toHaveBeenCalled();
@@ -870,6 +859,32 @@ describe('XamanAdapter.sign', () => {
     });
   });
 
+  it('opens each signing window under its own random name', async () => {
+    const open = vi.fn();
+    const screen = { width: 1280, height: 800 };
+    vi.stubGlobal('window', Object.assign(new EventTarget(), { open, screen, crypto }));
+    try {
+      mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
+      mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false));
+      const adapter = new XamanAdapter({ apiKey: 'test-key' });
+      await adapter.connect();
+      for (const count of [1, 2]) {
+        const subscription = createSubscriptionHarness();
+        const signing = adapter.sign(REQUESTED_TRANSACTION);
+        await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(count));
+        await subscription.emit({ signed: true });
+        await expect(signing).resolves.toMatchObject({ hash: SIGNED_TX_HASH });
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    const [first, second] = open.mock.calls.map(([url, name]) => ({ url, name }));
+    expect(first.url).toBe('https://xaman.app/sign/payload-uuid');
+    expect(first.name).toMatch(/^xaman-sign-[0-9a-f]{32}$/);
+    expect(second.name).toMatch(/^xaman-sign-[0-9a-f]{32}$/);
+    expect(second.name).not.toBe(first.name);
+  });
+
   it('bounds payload creation when the SDK never resolves it', async () => {
     vi.useFakeTimers();
     try {
@@ -1059,6 +1074,25 @@ describe('XamanAdapter.sign', () => {
     expectTypeOf(result.tx_blob).toEqualTypeOf<string | undefined>();
     expectTypeOf(result.signature).toEqualTypeOf<string | undefined>();
     expectTypeOf(result.tx_json).toEqualTypeOf<Transaction | undefined>();
+  });
+
+  it('keeps the signing link out of debug logs', async () => {
+    const records: unknown[][] = [];
+    const record = (...args: unknown[]) => void records.push(args);
+    configureLogger({ level: 'debug', debug: record, info: record, warn: record, error: record });
+    try {
+      const { adapter, subscription } = await signedAdapter();
+      mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false));
+
+      const signPromise = adapter.sign(REQUESTED_TRANSACTION);
+      await subscription.emit({ signed: true });
+      await expect(signPromise).resolves.toMatchObject({ hash: SIGNED_TX_HASH });
+
+      expect(records.some(([message]) => String(message).includes('openSignWindow'))).toBe(true);
+      expect(JSON.stringify(records)).not.toContain('xaman.app/sign');
+    } finally {
+      configureLogger(undefined);
+    }
   });
 
   it('accepts the default 50-ledger expiry extension in request JSON and the signed blob', async () => {
@@ -1303,6 +1337,71 @@ describe('XamanAdapter.sign', () => {
 
     await expect(signPromise).resolves.toMatchObject({ hash: resolved.hash });
   });
+
+  it('sends and verifies the canonical form of an equivalent request', async () => {
+    const requested = {
+      ...REQUESTED_TRANSACTION,
+      Memos: [{ Memo: { MemoData: 'cafe' } }],
+    } as Transaction;
+    const signed = SIGNING_WALLET.sign({
+      ...REQUESTED_TRANSACTION,
+      Memos: [{ Memo: { MemoData: 'CAFE' } }],
+    } as Transaction);
+    const hash = hashes.hashSignedTx(signed.tx_blob);
+    let sent: Transaction | undefined;
+    const { adapter, subscription } = await signedAdapter('mainnet', {}, (body) => {
+      sent = structuredClone(body.txjson);
+      mockXummInstance.payload.get.mockResolvedValue(
+        resolvedPayload(false, { hex: signed.tx_blob, txid: hash }, {}, body.txjson)
+      );
+    });
+
+    const signPromise = adapter.sign(requested);
+    await subscription.emit({ signed: true });
+
+    await expect(signPromise).resolves.toMatchObject({ hash });
+    expect(sent?.Memos).toEqual([{ Memo: { MemoData: 'CAFE' } }]);
+    expect(requested.Memos).toEqual([{ Memo: { MemoData: 'cafe' } }]);
+  });
+
+  it('sends and verifies a Payment DeliverMax as the Amount it stands for', async () => {
+    // DeliverMax is the API v2 JSON alias of Amount, which the binary codec does not define.
+    const requested = {
+      TransactionType: 'Payment',
+      Account: CONNECTED_ACCOUNT,
+      Destination: 'rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe',
+      DeliverMax: '1000000',
+      Fee: '10',
+      Sequence: 1,
+      Flags: 0,
+    } as Transaction;
+    const snapshot = structuredClone(requested);
+    let sent: Transaction | undefined;
+    const { adapter, subscription } = await signedAdapter('mainnet', {}, (body) => {
+      sent = structuredClone(body.txjson);
+      mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false, {}, {}, body.txjson));
+    });
+
+    const signPromise = adapter.sign(requested);
+    await subscription.emit({ signed: true });
+
+    await expect(signPromise).resolves.toMatchObject({ hash: SIGNED_TX_HASH });
+    expect(sent).toEqual(REQUESTED_TRANSACTION);
+    expect(requested).toEqual(snapshot);
+  });
+
+  it.each([false, true])(
+    'rejects a request the XRPL codec cannot serialize before creating a payload (submit: %s)',
+    async (submit) => {
+      const { adapter } = await signedAdapter();
+      const transaction = { ...REQUESTED_TRANSACTION, Destination: 'not-an-address' };
+
+      await expect(
+        submit ? adapter.signAndSubmit(transaction) : adapter.sign(transaction)
+      ).rejects.toMatchObject({ code: WalletErrorCode.SIGN_FAILED });
+      expect(mockXummInstance.payload.createAndSubscribe).not.toHaveBeenCalled();
+    }
+  );
 
   it('snapshots the caller transaction and SDK payload before approval-time mutation', async () => {
     const requested = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10);

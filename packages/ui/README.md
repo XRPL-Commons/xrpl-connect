@@ -407,6 +407,36 @@ Shows error message and recovery options.
 
 ---
 
+### 5. Transaction Review View
+
+Shows a transaction that a connected wallet, such as the Privy embedded wallet, is
+waiting to sign. The wallet sends it as an `onAuthPrompt()` prompt with a `review`;
+the component listens to the connected wallet for as long as it stays connected.
+
+**Displays when**:
+
+- A connected wallet asks the user to approve a transaction. The component opens
+  the modal for it if it was closed (emitting `open`) and closes it once the review
+  is answered or withdrawn (emitting `close`). An open account modal is closed first.
+
+**UI Elements**:
+
+- Title, description, and a scrollable list of every transaction detail the wallet
+  provided, rendered as text
+- "Reject" and "Approve" buttons. "Approve" stays disabled for one second after a
+  review appears, so a double click or a click aimed at the page cannot approve it
+
+**Behavior**:
+
+- "Reject", the close button, an overlay click, and Escape reject the transaction.
+  So do disconnecting the wallet, removing the component, and replacing its manager.
+- One review is shown at a time. A newer review from the same wallet rejects the one
+  on screen. When several components share a manager, only one of them shows a review.
+- A review without details or an approval handler is rejected without being shown.
+- Sign-in prompts are only shown during the connection attempt that requested them.
+
+---
+
 ## Customization
 
 The component exposes exact CSS variables plus stable shadow parts. See the

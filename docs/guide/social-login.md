@@ -14,6 +14,14 @@ Enable the desired authentication methods in the Privy dashboard. The integratio
 does not render Privy's “connect wallet” or “use your own wallet” options. External wallets
 continue to connect through the other XRPL Connect adapters.
 
+Guest login also needs `allowGuestLogin: true` on the `PrivyAdapter`; the
+dashboard setting alone does not offer it. A guest's only credential is a random
+secret in the browser's storage. The guest account and its XRPL wallet, with any
+funds sent to it, are lost for good on disconnect, when anyone signs in with a
+login method in the same browser, when a connection attempt fails, or when site
+data is cleared. Offer it only for disposable use; see the
+[guest login notes](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/packages/privy#guest-login).
+
 With a configured Privy adapter, the wallet picker shows one **Sign in with
 socials** button alongside the XRPL wallet options. Opening it fetches the current
 Privy dashboard settings and displays the enabled authentication methods. Changes
@@ -78,8 +86,9 @@ the application. In an app with a router, replace the callback route after a suc
 3. Use the demo's testnet funding control for a new account and wait for funding
    to finish before signing. The demos use XRPL Testnet.
 4. Try signing a transaction without submitting it, then explicitly submit a
-   transaction. Inspect the result and event log. Privy does not support arbitrary
-   message signing or multisigning, so those actions are unavailable.
+   transaction. The connector opens a review of each transaction; approve one and
+   reject another, then inspect the results and event log. Privy does not support
+   arbitrary message signing or multisigning, so those actions are unavailable.
 5. Disconnect and sign in again to check logout and wallet restoration. You can
    also cancel a pending login and retry from the chooser.
 
@@ -129,6 +138,36 @@ XRPL transactions. Fund a new account before submission. The Privy adapter
 supports transaction signing and validated submission; multisigning and arbitrary
 message signing are not supported. `manager.disconnect()` logs the user out of
 the adapter-owned Privy session.
+
+### Transaction review
+
+The embedded wallet has no wallet app of its own to ask the user, so before every
+signature the connector opens a **Review transaction** dialog. It lists every field
+of the exact transaction to be signed, with the type, amount, destination and tag,
+fee, network, and account first; XRP amounts appear in XRP, issued currencies with
+their issuer, and MPT amounts with their issuance ID. The wallet signs only after the
+user selects **Approve**. Rejecting or closing the dialog rejects the request with a
+`SIGN_REJECTED` wallet error, and a disconnect during the review rejects it with
+`NOT_CONNECTED`. Concurrent requests are reviewed one at a time, and **Approve**
+stays disabled for a second after each review appears, so a double click cannot
+approve the next one. The adapter also refuses any fee above 2 XRP, including one
+the application supplied, except for transaction types priced at the owner reserve.
+
+The review opens after autofill, so an autofilled `LastLedgerSequence` (about 20
+ledgers, roughly a minute) keeps counting while the user reads. Approve a
+`signAndSubmit()` request within about a minute, or the transaction expires
+without being applied. A transaction that `sign()` autofilled must likewise be
+approved and then submitted within that window; set `LastLedgerSequence` yourself
+to choose it, or supply `Fee` and `Sequence` to sign without autofill.
+
+Keep a connector on the page while users sign. Without one, signing fails with an
+error until something subscribes with `adapter.onAuthPrompt()`. The
+`transactionReview` option replaces the built-in review with your own (a function
+that returns `true` to approve) or turns it off with `'none'`. With `'none'`, any
+script running in your page can sign with the user's wallet; use it only when your
+application confirms every transaction itself. See the
+[Privy package documentation](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/packages/privy#transaction-review)
+for details.
 
 See the [complete configuration, lifecycle, custom authentication, and framework examples](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/packages/privy)
 and the [smaller Privy integration example](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/examples/privy-vanilla).

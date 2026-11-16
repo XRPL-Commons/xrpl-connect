@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vite-plus/test';
 import {
   createWalletError,
+  MemoryStorageAdapter,
+  STANDARD_NETWORKS,
   WalletErrorCategory,
   WalletErrorCode,
+  WalletManager,
   type Transaction,
 } from '@xrpl-connect/core';
 import {
@@ -941,5 +944,59 @@ describe('LedgerAdapter reconnect options', () => {
     expect(adapter.serializeReconnectOptions({ network: 'testnet' })).toEqual({
       derivationPath: "44'/144'/7'/0/0",
     });
+  });
+});
+
+describe('LedgerAdapter session restore', () => {
+  const STORED = { ...STANDARD_NETWORKS.testnet, wss: 'wss://stored-endpoint.example' };
+  const STORED_STATE = {
+    walletId: 'ledger',
+    account: {
+      address: SINGLE_SIGNER.classicAddress,
+      publicKey: SINGLE_SIGNER.publicKey,
+      network: STORED,
+    },
+    network: STORED,
+    connectOptions: { derivationPath: "44'/144'/0'/0/0" },
+  };
+
+  it.each([
+    [
+      'the configured network over a stored one',
+      'testnet' as const,
+      { version: 2, payload: { ...STORED_STATE, requestedNetwork: STORED } },
+    ],
+    [
+      'the requested network id instead of the stored endpoint',
+      undefined,
+      { version: 2, payload: { ...STORED_STATE, requestedNetwork: 'testnet' } },
+    ],
+    [
+      'the canonical endpoint of a version 1 session network',
+      undefined,
+      { version: 1, payload: STORED_STATE },
+    ],
+  ])('autofills and submits on %s after a reload', async (_label, network, envelope) => {
+    installNavigator({ hid: {} });
+    xrpAppInstance.getAddress.mockResolvedValue({
+      address: SINGLE_SIGNER.classicAddress,
+      publicKey: SINGLE_SIGNER.publicKey,
+    });
+    xrpAppInstance.signTransaction.mockImplementation(async (_path, rawTransaction) =>
+      signWithSingleSigner(rawTransaction)
+    );
+    const storage = new MemoryStorageAdapter();
+    await storage.set(
+      'wallet-state',
+      JSON.stringify({ ...envelope, payload: { ...envelope.payload, timestamp: Date.now() } })
+    );
+    const manager = new WalletManager({ adapters: [new LedgerAdapter()], network, storage });
+
+    await expect(manager.reconnect()).resolves.toMatchObject({
+      network: STANDARD_NETWORKS.testnet,
+    });
+    await manager.signAndSubmit(SINGLE_TRANSACTION);
+
+    expect(Client).toHaveBeenCalledExactlyOnceWith(STANDARD_NETWORKS.testnet.wss);
   });
 });

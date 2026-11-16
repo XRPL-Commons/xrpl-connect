@@ -25,6 +25,7 @@ import type {
 } from '@xrpl-connect/core';
 import {
   createWalletError,
+  decodeMessage,
   isWalletError,
   isStandardNetworkId,
   STANDARD_NETWORKS,
@@ -68,6 +69,13 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
   // ==================== Private State ====================
 
   private currentAccount: AccountInfo | null = null;
+  /**
+   * Network requested at connect, once validated against the wallet. While
+   * set, signing is only allowed on it: wallet-reported switches update
+   * `currentAccount` but never this. Without a requested network, signing
+   * follows the wallet-reported network in `currentAccount`.
+   */
+  private pinnedNetwork: NetworkInfo | null = null;
   private connectionGeneration = 0;
   private stateRevision = 0;
   private listeners: Map<WalletAdapterEvent, Set<(data?: unknown) => void>> = new Map();
@@ -123,6 +131,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
         address: response.address,
         network: networkInfo,
       };
+      this.pinnedNetwork = requestedNetwork ? networkInfo : null;
       this.stateRevision += 1;
 
       this.setupProviderListeners(provider);
@@ -152,6 +161,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
     this.connectionGeneration += 1;
     this.stateRevision += 1;
     this.currentAccount = null;
+    this.pinnedNetwork = null;
 
     const provider = this.providerListenerOwner ?? this.getProviderSafe();
     if (this.providerListenerOwner) this.removeProviderListeners(this.providerListenerOwner);
@@ -179,7 +189,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
     if (!this.currentAccount) return null;
     const generation = this.connectionGeneration;
     const startingRevision = this.stateRevision;
-    const provider = this.getProvider();
+    const provider = this.getSessionProvider();
     let connected: boolean;
     try {
       connected = provider.isConnected();
@@ -261,7 +271,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
       throw createWalletError.notConnected();
     }
 
-    const provider = this.getProvider();
+    const provider = this.getSessionProvider();
 
     try {
       logger.debug('Signing transaction', {
@@ -302,7 +312,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
       throw createWalletError.notConnected();
     }
 
-    const provider = this.getProvider();
+    const provider = this.getSessionProvider();
 
     try {
       logger.debug('Signing and submitting transaction', {
@@ -339,11 +349,10 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
       throw createWalletError.notConnected();
     }
 
-    const provider = this.getProvider();
+    const messageStr = decodeMessage(message);
+    const provider = this.getSessionProvider();
 
     try {
-      const messageStr = typeof message === 'string' ? message : new TextDecoder().decode(message);
-
       logger.debug('Signing message', { length: messageStr.length });
 
       const response = await provider.signMessage(messageStr);
@@ -399,6 +408,23 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
   }
 
   /**
+   * Get the provider this session connected through. Requests never follow a
+   * replaced `window.xrpl`: another script or extension could install an
+   * object that also reports `isOtsu`, so the session fails instead.
+   */
+  private getSessionProvider(): OtsuProvider {
+    const provider = this.providerListenerOwner;
+    if (!provider) throw createWalletError.notConnected();
+    if (typeof window === 'undefined' || window.xrpl !== provider) {
+      throw createWalletError.connectionFailed(
+        this.name,
+        new Error('The injected Otsu provider changed after connecting. Reconnect to continue.')
+      );
+    }
+    return provider;
+  }
+
+  /**
    * Get the injected provider without throwing.
    */
   private getProviderSafe(): OtsuProvider | null {
@@ -451,10 +477,12 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
   }
 
   /**
-   * Verify that the provider is still on the network represented by the
-   * cached account before asking it to sign. Otsu's signing methods do not
-   * accept a network argument, so this live check prevents signing after an
-   * unobserved wallet network switch.
+   * Verify the provider's live network before asking it to sign. Otsu's
+   * signing methods do not accept a network argument, so this check prevents
+   * signing on a network other than the requested one, whether or not the
+   * wallet reported the switch. Without a requested network, the expected
+   * network is the last one the wallet reported, which catches unobserved
+   * switches.
    */
   private async assertCurrentNetwork(provider: OtsuProvider): Promise<void> {
     if (!this.currentAccount) throw createWalletError.notConnected();
@@ -469,8 +497,9 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
         ? (response as { network?: unknown }).network
         : undefined;
     const networkInfo = this.toNetworkInfo(network);
-    if (networkInfo.id !== this.currentAccount.network.id) {
-      throw createWalletError.networkMismatch(this.currentAccount.network.id, networkInfo.id);
+    const expected = this.pinnedNetwork ?? this.currentAccount.network;
+    if (networkInfo.id !== expected.id) {
+      throw createWalletError.networkMismatch(expected.id, networkInfo.id);
     }
   }
 

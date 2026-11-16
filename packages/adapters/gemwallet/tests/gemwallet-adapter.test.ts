@@ -308,12 +308,12 @@ describe('GemWalletAdapter.connect', () => {
 });
 
 describe('GemWalletAdapter.sign', () => {
-  async function connected() {
+  async function connected(options?: { network: 'mainnet' }) {
     api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
     api.getPublicKey.mockResolvedValue({ result: { address: 'rGem', publicKey: 'PK' } });
     mockLiveNetwork();
     const adapter = new GemWalletAdapter();
-    await adapter.connect();
+    await adapter.connect(options);
     api.getNetwork.mockClear();
     return adapter;
   }
@@ -339,6 +339,52 @@ describe('GemWalletAdapter.sign', () => {
     ).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_MISMATCH });
     expect(api.signTransaction).not.toHaveBeenCalled();
     expect(api.submitTransaction).not.toHaveBeenCalled();
+  });
+
+  it('keeps a requested network as signing authority after a live refresh', async () => {
+    const adapter = await connected({ network: 'mainnet' });
+    mockLiveNetwork({ network: 'Testnet', websocket: 'wss://testnet.example' });
+    api.signTransaction.mockResolvedValue({ result: { signature: 'SIG' } });
+
+    await expect(adapter.fetchAccount()).resolves.toMatchObject({ network: { id: 'testnet' } });
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+      message: 'Network mismatch. Expected "mainnet" but wallet is connected to "testnet".',
+    });
+    await expect(
+      adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+    ).rejects.toMatchObject({ code: WalletErrorCode.NETWORK_MISMATCH });
+    expect(api.signTransaction).not.toHaveBeenCalled();
+    expect(api.submitTransaction).not.toHaveBeenCalled();
+
+    mockLiveNetwork();
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).resolves.toMatchObject({
+      tx_blob: 'SIG',
+    });
+  });
+
+  it('follows the refreshed network when no network was requested', async () => {
+    const adapter = await connected();
+    mockLiveNetwork({ network: 'Testnet', websocket: 'wss://testnet.example' });
+    api.signTransaction.mockResolvedValue({ result: { signature: 'SIG' } });
+    api.submitTransaction.mockResolvedValue({ result: { hash: 'HASH' } });
+
+    await expect(adapter.fetchAccount()).resolves.toMatchObject({ network: { id: 'testnet' } });
+
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).resolves.toMatchObject({
+      tx_blob: 'SIG',
+    });
+    await expect(
+      adapter.signAndSubmit({ TransactionType: 'Payment' } as never)
+    ).resolves.toMatchObject({ hash: 'HASH' });
+
+    // An unrefreshed switch away from the followed network is still refused.
+    mockLiveNetwork({ network: 'Devnet', websocket: 'wss://devnet.example' });
+    await expect(adapter.sign({ TransactionType: 'Payment' } as never)).rejects.toMatchObject({
+      code: WalletErrorCode.NETWORK_MISMATCH,
+      message: 'Network mismatch. Expected "testnet" but wallet is connected to "devnet".',
+    });
   });
 
   it('throws notConnected when no session exists', async () => {
@@ -372,6 +418,38 @@ describe('GemWalletAdapter.sign', () => {
     await expect(adapter.signMessage('hello')).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_REJECTED,
     });
+  });
+});
+
+describe('GemWalletAdapter.signMessage', () => {
+  async function connected() {
+    api.isInstalled.mockResolvedValue({ result: { isInstalled: true } });
+    api.getPublicKey.mockResolvedValue({ result: { address: 'rGem', publicKey: 'PK' } });
+    mockLiveNetwork();
+    const adapter = new GemWalletAdapter();
+    await adapter.connect();
+    return adapter;
+  }
+
+  it('signs the exact text encoded by valid UTF-8 bytes', async () => {
+    const adapter = await connected();
+    api.signMessage.mockResolvedValue({ result: { signedMessage: 'SIG' } });
+
+    await expect(adapter.signMessage(new TextEncoder().encode('sign in ✓'))).resolves.toEqual({
+      message: 'sign in ✓',
+      signature: 'SIG',
+      publicKey: 'PK',
+    });
+    expect(api.signMessage).toHaveBeenCalledWith('sign in ✓');
+  });
+
+  it('rejects invalid UTF-8 bytes before asking GemWallet to sign', async () => {
+    const adapter = await connected();
+
+    await expect(adapter.signMessage(Uint8Array.from([0xc3, 0x28]))).rejects.toMatchObject({
+      code: WalletErrorCode.INVALID_MESSAGE,
+    });
+    expect(api.signMessage).not.toHaveBeenCalled();
   });
 });
 

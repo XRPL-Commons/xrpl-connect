@@ -6,6 +6,7 @@ import {
   WalletErrorCode,
   type Transaction,
 } from '@xrpl-connect/core';
+import { classicAddressToXAddress, decode, ECDSA, encode, hashes, Wallet } from 'xrpl';
 
 const mockClient = {
   core: { pairing: { disconnect: vi.fn() } },
@@ -28,13 +29,59 @@ import SignClient from '@walletconnect/sign-client';
 import { WalletConnectAdapter } from '../src/walletconnect-adapter';
 
 const SignClientMock = SignClient as unknown as { init: ReturnType<typeof vi.fn> };
-const MAINNET_ADDRESS = 'rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh';
-const TESTNET_ADDRESS = 'rN7n7otQDd6FczFgLdSqtcsAUxDkw6fzRH';
+// Public genesis-account test vector (rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh).
+const MAINNET_WALLET = Wallet.fromSeed('snoPBrXtMeMyMHUVTgbuqAfg1SUTb', {
+  algorithm: ECDSA.secp256k1,
+});
+const MAINNET_ADDRESS = MAINNET_WALLET.address;
+const TESTNET_WALLET = Wallet.generate();
+const TESTNET_ADDRESS = TESTNET_WALLET.address;
+const OTHER_WALLET = Wallet.generate(ECDSA.secp256k1);
 const PAIRING_TOPIC = 'a'.repeat(64);
 const OTHER_PAIRING_TOPIC = 'b'.repeat(64);
+const DESTINATION = 'rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe';
+const PAYMENT = {
+  TransactionType: 'Payment',
+  Destination: DESTINATION,
+  Amount: '1000000',
+} as Transaction;
+const ISSUED_AMOUNT = { currency: 'USD', issuer: OTHER_WALLET.address };
+const VERIFICATION_FAILURE = {
+  sign: 'WalletConnect returned an invalid signed transaction: ',
+  signAndSubmit:
+    'WalletConnect returned an invalid signed transaction that it may already have submitted; check the ledger before retrying: ',
+};
+
+type SignTransactionRequest = {
+  chainId: string;
+  request: { params: { tx_json: Transaction } };
+};
 
 function walletConnectUri(topic: string): string {
   return `wc:${topic}@2?relay-protocol=irn&symKey=${'c'.repeat(64)}`;
+}
+
+/**
+ * Answer `xrpl_signTransaction` like a wallet: autofill omitted fields, sign
+ * with `wallet`, and report the hash. `tamper` edits the transaction first.
+ */
+function walletResponse(
+  wallet: Wallet,
+  tamper: (transaction: Transaction) => Transaction = (transaction) => transaction,
+  multisign = false
+) {
+  return async ({ chainId, request }: SignTransactionRequest) => {
+    const networkId = Number(chainId.slice('xrpl:'.length));
+    const autofilled = {
+      Fee: '12',
+      Sequence: 7,
+      LastLedgerSequence: 100_000,
+      ...(networkId > 1024 ? { NetworkID: networkId } : {}),
+      ...request.params.tx_json,
+    } as Transaction;
+    const { tx_blob, hash } = wallet.sign(tamper(autofilled), multisign);
+    return { tx_json: { ...(decode(tx_blob) as Transaction), hash } };
+  };
 }
 
 function getClientEventHandler(event: string): (payload: never) => void {
@@ -197,9 +244,7 @@ describe('WalletConnectAdapter.connect', () => {
         },
       }),
     });
-    mockClient.request.mockResolvedValue({
-      tx_json: { TransactionType: 'Payment', TxnSignature: 'SIG' },
-    });
+    mockClient.request.mockImplementation(walletResponse(MAINNET_WALLET));
 
     const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
     const network = {
@@ -209,9 +254,10 @@ describe('WalletConnectAdapter.connect', () => {
       walletConnectId: 'xrpl:21338',
     };
     const account = await adapter.connect({ network });
-    await adapter.sign({ TransactionType: 'Payment' } as never);
+    const signed = await adapter.sign(PAYMENT);
 
     expect(account).toMatchObject({ address: MAINNET_ADDRESS, network });
+    expect(signed.tx_json).toMatchObject({ NetworkID: 21338 });
     expect(mockClient.request).toHaveBeenCalledWith(
       expect.objectContaining({ chainId: 'xrpl:21338' })
     );
@@ -959,8 +1005,8 @@ describe('WalletConnectAdapter session changes', () => {
       })
     );
 
-    mockClient.request.mockResolvedValue({ tx_json: { TransactionType: 'Payment' } });
-    await adapter.sign({ TransactionType: 'Payment' } as never);
+    mockClient.request.mockImplementation(walletResponse(TESTNET_WALLET));
+    await adapter.sign(PAYMENT);
     expect(mockClient.request).toHaveBeenCalledWith(
       expect.objectContaining({
         chainId: 'xrpl:0',
@@ -1067,31 +1113,50 @@ describe('WalletConnectAdapter.sign', () => {
     return adapter;
   }
 
-  it('returns the signed tx_json and signature when no tx_blob is provided', async () => {
+  it('returns the verified blob, hash, and decoded tx_json of an autofilled response', async () => {
     const adapter = await connected();
-    mockClient.request.mockResolvedValue({
-      tx_json: {
-        hash: 'ABCDEF0123456789',
-        TransactionType: 'Payment',
-        SigningPubKey: 'PUB',
-        TxnSignature: 'SIG',
-      },
-    });
+    mockClient.request.mockImplementation(walletResponse(MAINNET_WALLET));
 
-    const result = await adapter.sign({ TransactionType: 'Payment' } as never);
+    const result = await adapter.sign(PAYMENT);
 
-    // TxnSignature is a raw signature, not a serialized transaction blob — it
-    // must not be reported as tx_blob (there is none, since the wallet only
-    // signed; it did not encode/submit anything).
-    expect(result.tx_blob).toBeUndefined();
-    expect(result.signature).toBe('SIG');
+    expect(mockClient.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chainId: 'xrpl:0',
+        request: {
+          method: 'xrpl_signTransaction',
+          params: {
+            tx_json: { ...PAYMENT, Account: MAINNET_ADDRESS },
+            autofill: true,
+            submit: false,
+          },
+        },
+      })
+    );
+    expect(result.tx_json).toEqual(decode(result.tx_blob!));
     expect(result.tx_json).toMatchObject({
-      TransactionType: 'Payment',
-      SigningPubKey: 'PUB',
-      TxnSignature: 'SIG',
+      ...PAYMENT,
+      Account: MAINNET_ADDRESS,
+      Fee: '12',
+      Sequence: 7,
+      LastLedgerSequence: 100_000,
+      SigningPubKey: MAINNET_WALLET.publicKey,
     });
-    expect(result.hash).toBe('ABCDEF0123456789');
+    expect(result.hash).toBe(hashes.hashSignedTx(result.tx_blob!));
+    expect(result.signature).toBe(result.tx_json?.TxnSignature);
     expectTypeOf(result.tx_json).toEqualTypeOf<Transaction | undefined>();
+  });
+
+  it('accepts a sign-only response that does not report a hash', async () => {
+    const adapter = await connected();
+    mockClient.request.mockImplementation(async (request: SignTransactionRequest) => {
+      const { tx_json } = await walletResponse(MAINNET_WALLET)(request);
+      const { hash: _hash, ...unhashed } = tx_json;
+      return { tx_json: unhashed };
+    });
+
+    const result = await adapter.sign(PAYMENT);
+
+    expect(result.hash).toBe(hashes.hashSignedTx(result.tx_blob!));
   });
 
   it('maps a rejected request to sign-rejected and retains its cause', async () => {
@@ -1147,25 +1212,64 @@ describe('WalletConnectAdapter.signAndSubmit', () => {
     return adapter;
   }
 
-  it('returns the ledger hash and signed tx_json when no tx_blob is provided', async () => {
+  it('returns the reported hash with the verified blob and decoded tx_json', async () => {
     const adapter = await connected();
-    mockClient.request.mockResolvedValue({
-      tx_json: {
-        hash: 'ABCDEF0123456789',
-        TransactionType: 'Payment',
-        SigningPubKey: 'PUB',
-        TxnSignature: 'SIG',
-      },
+    let reportedHash: string | undefined;
+    mockClient.request.mockImplementation(async (request: SignTransactionRequest) => {
+      const response = await walletResponse(MAINNET_WALLET)(request);
+      reportedHash = response.tx_json.hash;
+      return response;
     });
 
-    const result = await adapter.signAndSubmit({ TransactionType: 'Payment' } as never);
+    const result = await adapter.signAndSubmit(PAYMENT);
 
-    expect(result.hash).toBe('ABCDEF0123456789');
-    expect(result.signature).toBe('SIG');
-    expect(result.tx_json).toMatchObject({ TransactionType: 'Payment', TxnSignature: 'SIG' });
-    expect(result.tx_blob).toBeUndefined();
+    expect(mockClient.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: expect.objectContaining({
+          params: expect.objectContaining({ autofill: true, submit: true }),
+        }),
+      })
+    );
+    expect(result.hash).toBe(reportedHash);
+    expect(result.hash).toBe(hashes.hashSignedTx(result.tx_blob!));
+    expect(result.tx_json).toEqual(decode(result.tx_blob!));
+    expect(result.tx_json).toMatchObject({ ...PAYMENT, Account: MAINNET_ADDRESS, Sequence: 7 });
+    expect(result.signature).toBe(result.tx_json?.TxnSignature);
     expectTypeOf(result.signature).toEqualTypeOf<string | undefined>();
     expectTypeOf(result.tx_json).toEqualTypeOf<Transaction | undefined>();
+  });
+
+  it('rejects a submission that does not report its hash, reporting it for reconciliation', async () => {
+    const adapter = await connected();
+    let signedHash: string | undefined;
+    mockClient.request.mockImplementation(async (request: SignTransactionRequest) => {
+      const { tx_json } = await walletResponse(MAINNET_WALLET)(request);
+      const { hash, ...unhashed } = tx_json;
+      signedHash = hash;
+      return { tx_json: unhashed };
+    });
+
+    const error = await adapter.signAndSubmit(PAYMENT).catch((caught: unknown) => caught);
+
+    expect(signedHash).toMatch(/^[0-9A-F]{64}$/);
+    expect(error).toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+      message: expect.stringContaining('may already have submitted'),
+      transactionHash: signedHash,
+    });
+  });
+
+  it('omits the transaction hash when a submission response cannot be serialized', async () => {
+    const adapter = await connected();
+    mockClient.request.mockResolvedValue({ tx_json: { ...PAYMENT, Amount: 5 } });
+
+    const error = await adapter.signAndSubmit(PAYMENT).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+      message: expect.stringContaining('may already have submitted'),
+    });
+    expect(error).not.toHaveProperty('transactionHash');
   });
 
   it('maps a structured Reown rejection to sign-rejected', async () => {
@@ -1182,6 +1286,339 @@ describe('WalletConnectAdapter.signAndSubmit', () => {
     });
   });
 });
+
+describe.each(['sign', 'signAndSubmit'] as const)(
+  'WalletConnectAdapter.%s verification',
+  (method) => {
+    async function connected() {
+      mockClient.connect.mockResolvedValue({
+        uri: 'wc:example',
+        approval: vi.fn().mockResolvedValue({
+          topic: 'topic-1',
+          namespaces: { xrpl: { accounts: [`xrpl:0:${MAINNET_ADDRESS}`] } },
+        }),
+      });
+      const adapter = new WalletConnectAdapter({ projectId: 'proj-id' });
+      await adapter.connect();
+      return adapter;
+    }
+
+    async function forgedSignature(request: SignTransactionRequest) {
+      // Signed by another key while claiming the connected account's key.
+      const { tx_json } = await walletResponse(OTHER_WALLET)(request);
+      const forged = { ...tx_json, SigningPubKey: MAINNET_WALLET.publicKey } as Transaction;
+      return { tx_json: { ...forged, hash: hashes.hashSignedTx(encode(forged)) } };
+    }
+
+    async function wrongHash(request: SignTransactionRequest) {
+      const { tx_json } = await walletResponse(MAINNET_WALLET)(request);
+      return { tx_json: { ...tx_json, hash: '0'.repeat(64) } };
+    }
+
+    it.each([
+      ['a signature by another key', forgedSignature, 'returned an invalid transaction signature'],
+      [
+        'a changed Destination',
+        walletResponse(MAINNET_WALLET, (tx) => ({ ...tx, Destination: OTHER_WALLET.address })),
+        'returned a transaction that did not match the signing request',
+      ],
+      [
+        'a changed Amount',
+        walletResponse(MAINNET_WALLET, (tx) => ({ ...tx, Amount: '1' }) as Transaction),
+        'returned a transaction that did not match the signing request',
+      ],
+      [
+        'a wrong hash',
+        wrongHash,
+        'returned a transaction hash that does not match the signed blob',
+      ],
+      [
+        'another Account',
+        walletResponse(OTHER_WALLET, (tx) => ({ ...tx, Account: OTHER_WALLET.address })),
+        'signed with an account other than the connected account',
+      ],
+      [
+        'another network',
+        walletResponse(MAINNET_WALLET, (tx) => ({ ...tx, NetworkID: 1 })),
+        'signed a transaction for a different network',
+      ],
+      [
+        'multi-signatures',
+        walletResponse(MAINNET_WALLET, (tx) => tx, true),
+        'returned unexpected multi-signatures',
+      ],
+      ['no tx_json', async () => ({}), 'did not return a signed transaction'],
+      ['a non-object tx_json', async () => ({ tx_json: 'signed' }), 'did not return a signed'],
+      // Serialization failures report the XRPL codec's own message.
+      ['a malformed tx_json', async () => ({ tx_json: { ...PAYMENT, Amount: 5 } }), ''],
+      [
+        'an unsigned tx_json',
+        async ({ request }: SignTransactionRequest) => ({
+          tx_json: { ...request.params.tx_json, Fee: '12', Sequence: 7 },
+        }),
+        '',
+      ],
+    ])('rejects a response with %s', async (_description, respond, reason) => {
+      const adapter = await connected();
+      mockClient.request.mockImplementation(respond);
+
+      await expect(adapter[method](PAYMENT)).rejects.toMatchObject({
+        code: WalletErrorCode.SIGN_FAILED,
+        category: WalletErrorCategory.INTERNAL,
+        message: expect.stringContaining(
+          `${VERIFICATION_FAILURE[method]}${reason && `WalletConnect ${reason}`}`
+        ),
+      });
+    });
+
+    it('reports the hash of a rejected result only when it may have been submitted', async () => {
+      const adapter = await connected();
+      let signedHash: string | undefined;
+      mockClient.request.mockImplementation(async (request: SignTransactionRequest) => {
+        const tamper = (tx: Transaction) => ({ ...tx, Destination: OTHER_WALLET.address });
+        const response = await walletResponse(MAINNET_WALLET, tamper)(request);
+        signedHash = response.tx_json.hash;
+        return response;
+      });
+
+      const error = await adapter[method](PAYMENT).catch((caught: unknown) => caught);
+
+      expect(error).toMatchObject({ code: WalletErrorCode.SIGN_FAILED });
+      if (method === 'signAndSubmit') expect(error).toMatchObject({ transactionHash: signedHash });
+      else expect(error).not.toHaveProperty('transactionHash');
+    });
+
+    describe.each([
+      [
+        'a lowercase hex memo',
+        { Memos: [{ Memo: { MemoType: '746578742f706c61696e', MemoData: 'abcd' } }] },
+        { Memos: [{ Memo: { MemoType: '746578742F706C61696E', MemoData: 'ABCD' } }] },
+        { Memos: [{ Memo: { MemoType: '746578742F706C61696E', MemoData: 'ABCE' } }] },
+      ],
+      [
+        'an X-address destination with a tag',
+        { Destination: classicAddressToXAddress(DESTINATION, 42, false) },
+        { Destination: DESTINATION, DestinationTag: 42 },
+        { DestinationTag: 43 },
+      ],
+      [
+        'an issued value with a trailing zero',
+        { Amount: { ...ISSUED_AMOUNT, value: '1.50' } },
+        { Amount: { ...ISSUED_AMOUNT, value: '1.5' } },
+        { Amount: { ...ISSUED_AMOUNT, value: '1.6' } },
+      ],
+      [
+        'a flag-interface Flags object',
+        { Flags: { tfPartialPayment: true } },
+        { Flags: 131072 },
+        { Flags: 0 },
+      ],
+    ])('with %s', (_description, fields, canonicalFields, tampered) => {
+      const request = { ...PAYMENT, ...fields } as Transaction;
+
+      it('sends the canonical form and accepts the signed equivalent', async () => {
+        const adapter = await connected();
+        mockClient.request.mockImplementation(walletResponse(MAINNET_WALLET));
+
+        const result = await adapter[method](request);
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.objectContaining({
+            request: expect.objectContaining({
+              params: expect.objectContaining({
+                tx_json: { ...PAYMENT, Account: MAINNET_ADDRESS, ...canonicalFields },
+              }),
+            }),
+          })
+        );
+        expect(result.tx_json).toMatchObject(canonicalFields);
+        expect(result.hash).toBe(hashes.hashSignedTx(result.tx_blob!));
+      });
+
+      it('rejects a signed equivalent with a changed value', async () => {
+        const adapter = await connected();
+        mockClient.request.mockImplementation(
+          walletResponse(MAINNET_WALLET, (tx) => ({ ...tx, ...tampered }) as Transaction)
+        );
+
+        await expect(adapter[method](request)).rejects.toMatchObject({
+          code: WalletErrorCode.SIGN_FAILED,
+          message: expect.stringContaining('did not match the signing request'),
+        });
+      });
+    });
+
+    describe('with a Payment DeliverMax', () => {
+      // DeliverMax is the API v2 JSON alias of a Payment's Amount; it is never signed.
+      const DELIVER_MAX_ERROR =
+        'PaymentTransaction: Amount and DeliverMax fields must be identical when both are provided';
+      const ISSUED = { ...ISSUED_AMOUNT, value: '1.5' };
+      const REORDERED_ISSUED = { value: '1.5', issuer: ISSUED.issuer, currency: ISSUED.currency };
+
+      function reportingDeliverMax(
+        report: (fields: Record<string, unknown>) => Record<string, unknown>,
+        tamper?: (transaction: Transaction) => Transaction
+      ) {
+        return async (request: SignTransactionRequest) => {
+          const { tx_json } = await walletResponse(MAINNET_WALLET, tamper)(request);
+          return { tx_json: report(tx_json as Record<string, unknown>) };
+        };
+      }
+
+      it.each([
+        ['in place of Amount', { DeliverMax: '1000000' }, { Amount: '1000000' }],
+        [
+          'equal to an issued Amount in another key order',
+          { Amount: ISSUED, DeliverMax: REORDERED_ISSUED },
+          { Amount: ISSUED },
+        ],
+      ])('sends a request with DeliverMax %s as its Amount', async (_description, fields, sent) => {
+        const adapter = await connected();
+        mockClient.request.mockImplementation(walletResponse(MAINNET_WALLET));
+        const request = { TransactionType: 'Payment', Destination: DESTINATION, ...fields };
+        const snapshot = structuredClone(request);
+
+        const result = await adapter[method](request as Transaction);
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.objectContaining({
+            request: expect.objectContaining({
+              params: expect.objectContaining({
+                tx_json: { ...PAYMENT, Account: MAINNET_ADDRESS, ...sent },
+              }),
+            }),
+          })
+        );
+        expect(result.tx_json).toMatchObject(sent);
+        expect(result.tx_json).not.toHaveProperty('DeliverMax');
+        expect(request).toEqual(snapshot);
+      });
+
+      it('rejects a request whose DeliverMax differs from Amount before contacting the wallet', async () => {
+        const adapter = await connected();
+
+        await expect(
+          adapter[method]({ ...PAYMENT, DeliverMax: '1' } as Transaction)
+        ).rejects.toMatchObject({
+          code: WalletErrorCode.SIGN_FAILED,
+          message: expect.stringContaining(DELIVER_MAX_ERROR),
+        });
+        expect(mockClient.request).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        [
+          'in place of Amount (API v2)',
+          ({ Amount, ...fields }: Record<string, unknown>) => ({ ...fields, DeliverMax: Amount }),
+        ],
+        [
+          'next to Amount (API v1)',
+          (fields: Record<string, unknown>) => ({ ...fields, DeliverMax: fields.Amount }),
+        ],
+      ])(
+        'accepts a result that reports the signed Amount as DeliverMax %s',
+        async (_description, report) => {
+          const adapter = await connected();
+          let signedHash: unknown;
+          mockClient.request.mockImplementation(
+            reportingDeliverMax((fields) => {
+              signedHash = fields.hash;
+              return report(fields);
+            })
+          );
+
+          const result = await adapter[method](PAYMENT);
+
+          expect(result.hash).toBe(signedHash);
+          expect(result.hash).toBe(hashes.hashSignedTx(result.tx_blob!));
+          expect(result.tx_json).toEqual(decode(result.tx_blob!));
+          expect(result.tx_json).toMatchObject({ Amount: '1000000' });
+          expect(result.tx_json).not.toHaveProperty('DeliverMax');
+        }
+      );
+
+      it('rejects a result that reports another amount as DeliverMax in place of Amount', async () => {
+        const adapter = await connected();
+        mockClient.request.mockImplementation(
+          reportingDeliverMax(
+            ({ Amount, ...fields }) => ({ ...fields, DeliverMax: Amount }),
+            (tx) => ({ ...tx, Amount: '1' }) as Transaction
+          )
+        );
+
+        await expect(adapter[method](PAYMENT)).rejects.toMatchObject({
+          code: WalletErrorCode.SIGN_FAILED,
+          message: expect.stringContaining('did not match the signing request'),
+        });
+      });
+
+      it('rejects a result whose DeliverMax differs from the signed Amount', async () => {
+        const adapter = await connected();
+        let signedHash: unknown;
+        mockClient.request.mockImplementation(
+          reportingDeliverMax((fields) => {
+            signedHash = fields.hash;
+            return { ...fields, DeliverMax: '1' };
+          })
+        );
+
+        const error = await adapter[method](PAYMENT).catch((caught: unknown) => caught);
+
+        expect(error).toMatchObject({
+          code: WalletErrorCode.SIGN_FAILED,
+          message: expect.stringContaining(`${VERIFICATION_FAILURE[method]}${DELIVER_MAX_ERROR}`),
+        });
+        // The blob carries the signed Amount, so a possible submission can be reconciled.
+        expect(signedHash).toMatch(/^[0-9A-F]{64}$/);
+        if (method === 'signAndSubmit')
+          expect(error).toMatchObject({ transactionHash: signedHash });
+        else expect(error).not.toHaveProperty('transactionHash');
+      });
+    });
+
+    it.each([
+      ['an invalid field value', { Amount: 5 }],
+      ['an unknown flag', { Flags: { tfUnknown: true } }],
+      ['an unknown field', { Unknown: 'value' }],
+    ])('rejects a request with %s before contacting the wallet', async (_description, fields) => {
+      const adapter = await connected();
+
+      await expect(
+        adapter[method]({ ...PAYMENT, ...fields } as unknown as Transaction)
+      ).rejects.toMatchObject({
+        code: WalletErrorCode.SIGN_FAILED,
+        message: expect.stringContaining('The transaction is not a valid XRPL transaction'),
+      });
+      expect(mockClient.request).not.toHaveBeenCalled();
+    });
+
+    it('requires a requested LastLedgerSequence to be signed unchanged', async () => {
+      const adapter = await connected();
+      mockClient.request.mockImplementation(
+        walletResponse(MAINNET_WALLET, (tx) => ({ ...tx, LastLedgerSequence: 100_001 }))
+      );
+
+      await expect(
+        adapter[method]({ ...PAYMENT, LastLedgerSequence: 100_000 } as Transaction)
+      ).rejects.toMatchObject({
+        code: WalletErrorCode.SIGN_FAILED,
+        message: expect.stringContaining('outside the permitted signing expiry range'),
+      });
+    });
+
+    it.each([{ SigningPubKey: '' }, { Signers: [] }])(
+      'rejects a multi-signing request %o before contacting the wallet',
+      async (fields) => {
+        const adapter = await connected();
+
+        await expect(
+          adapter[method]({ ...PAYMENT, ...fields } as Transaction)
+        ).rejects.toMatchObject({ code: WalletErrorCode.UNSUPPORTED_METHOD });
+        expect(mockClient.request).not.toHaveBeenCalled();
+      }
+    );
+  }
+);
 
 describe('WalletConnectAdapter.disconnect', () => {
   it('disconnects a session that is approved after the pending connection was cancelled', async () => {

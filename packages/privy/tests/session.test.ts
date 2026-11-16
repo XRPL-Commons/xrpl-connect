@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+import { secp256k1 } from '@noble/curves/secp256k1';
+import { deriveAddress } from 'xrpl';
+import { MemoryStorageAdapter, Storage, WalletManager } from 'xrpl-connect';
 import { LOGIN_ICONS } from '../src/login-icons';
+import { PrivyAdapter } from '../src/privy-adapter';
 import { PrivySession } from '../src/session';
 import type { PrivyLoginMethod, PrivyWallet } from '../src/session-types';
 
@@ -237,6 +241,66 @@ function configureExistingUser(): void {
   mocks.userGet.mockResolvedValue({ user: user() });
   mocks.refreshUser.mockResolvedValue({ user: user() });
   mocks.getWallet.mockResolvedValue(walletApi());
+}
+
+type TestUser = ReturnType<typeof user>;
+
+/** An unsigned access token naming its user; the session reads only `sub`. */
+function accessToken(sub: string): string {
+  const encode = (value: object): string =>
+    btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `${encode({ alg: 'ES256', typ: 'JWT' })}.${encode({ sub })}.signature`;
+}
+
+/**
+ * Model the SDK's single active session: each completed login replaces it and
+ * logout clears it, whoever it belongs to.
+ */
+function modelActiveSession() {
+  const session = {
+    user: null as TestUser | null,
+    signIn(signedIn: TestUser) {
+      session.user = signedIn;
+      return { user: signedIn };
+    },
+  };
+  mocks.getAccessToken.mockImplementation(async () =>
+    session.user ? accessToken(session.user.id) : null
+  );
+  mocks.userGet.mockImplementation(async () => {
+    if (!session.user)
+      throw Object.assign(new Error('No tokens found in storage'), { status: 401 });
+    return { user: session.user };
+  });
+  mocks.logout.mockImplementation(async () => {
+    session.user = null;
+  });
+  return session;
+}
+
+const staleUser = (): TestUser => ({ id: 'did:privy:stale', linked_accounts: [] });
+
+/**
+ * Start a login and cancel it while the SDK request is pending, so the next
+ * disconnect abandons it. The returned function completes it as `staleUser`.
+ */
+async function abandonLogin(
+  session: PrivySession,
+  active: ReturnType<typeof modelActiveSession>
+): Promise<() => void> {
+  let completeLogin!: () => void;
+  mocks.syncWithToken.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        completeLogin = () => resolve(active.signIn(staleUser()));
+      })
+  );
+  const controller = new AbortController();
+  const connecting = session.connect('custom', controller.signal);
+  await vi.waitFor(() => expect(mocks.syncWithToken).toHaveBeenCalledOnce());
+  controller.abort();
+  await expect(connecting).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+  return () => completeLogin();
 }
 
 beforeEach(() => {
@@ -529,6 +593,7 @@ describe('PrivySession', () => {
       appId: 'app-216',
       redirectUri: `${window.location.origin}/wallet/privy`,
       loginMethods: [{ id: 'github-alias', oauthProvider: 'github' }],
+      allowGuestLogin: true,
     });
 
     const methods = await session.getLoginMethods();
@@ -543,6 +608,36 @@ describe('PrivySession', () => {
     );
     await session.disconnect();
     delete (window as unknown as { Telegram?: unknown }).Telegram;
+  });
+
+  it('neither offers nor performs dashboard guest login unless the application opts in', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValue({ guest_auth: true, custom_oauth_providers: [] });
+    const session = makeSession([]);
+
+    await expect(session.getLoginMethods()).resolves.toEqual([]);
+    await expect(session.connect('guest', new AbortController().signal)).rejects.toThrow(
+      'Privy login method "guest" is not configured'
+    );
+    expect(mocks.guestCreate).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+    await session.disconnect();
+  });
+
+  it('offers and performs dashboard guest login once the application opts in', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValue({ guest_auth: true, custom_oauth_providers: [] });
+    const session = new PrivySession({ ...options([]), allowGuestLogin: true });
+
+    await expect(session.getLoginMethods()).resolves.toEqual([
+      expect.objectContaining({ id: 'guest', connectOptions: { loginMethod: 'guest' } }),
+    ]);
+    await expect(session.connect('guest', new AbortController().signal)).resolves.toEqual({
+      id: walletId,
+      address,
+      publicKey,
+      userId,
+    });
+    expect(mocks.guestCreate).toHaveBeenCalledOnce();
+    await session.disconnect();
   });
 
   it('waits for email input and code verification outside the SDK request timeout', async () => {
@@ -1706,6 +1801,145 @@ describe('PrivySession', () => {
     await session.disconnect();
   });
 
+  it('ends a stale login that replaces a newer connection after it was abandoned', async () => {
+    const active = modelActiveSession();
+    const session = makeSession();
+    const lost = vi.fn();
+    session.onSessionLost(lost);
+    const completeStaleLogin = await abandonLogin(session, active);
+    await session.disconnect();
+    // Provider logout runs after the bounded wait for the abandoned login, which
+    // disconnect() itself does not outlast.
+    await vi.waitFor(() => expect(mocks.logout).toHaveBeenCalledOnce());
+
+    // The next person connects. The abandoned login then completes, and the SDK
+    // makes its user active in place of theirs.
+    mocks.syncWithToken.mockImplementationOnce(async () => active.signIn(user()));
+    const wallet = await session.connect('custom', new AbortController().signal);
+    completeStaleLogin();
+
+    await vi.waitFor(() => expect(lost).toHaveBeenCalledOnce());
+    expect(mocks.logout).toHaveBeenLastCalledWith({ userId: staleUser().id });
+    expect(active.user).toBeNull();
+    // The replaced connection cannot continue as the stale user.
+    await expect(
+      session.signHash(wallet, `0x${'12'.repeat(32)}`, new AbortController().signal)
+    ).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+    // Resuming cannot hand the stale session to whoever uses the device next.
+    await expect(session.connect(undefined, new AbortController().signal)).rejects.toThrow(
+      'Privy login method is required when no session is available'
+    );
+    await session.disconnect();
+  });
+
+  it.each([
+    ['in the same turn as the cleanup deadline', true],
+    ['after the cleanup deadline', false],
+  ])(
+    'logs out a stale login that completes %s with no newer connection',
+    async (_when, atDeadline) => {
+      const active = modelActiveSession();
+      const session = makeSession();
+      const completeStaleLogin = await abandonLogin(session, active);
+      if (atDeadline) {
+        // The deadline ends the wait and starts the logout in one turn; the
+        // abandoned login completes right after that logout.
+        mocks.logout.mockImplementationOnce(async () => {
+          active.user = null;
+          completeStaleLogin();
+        });
+      }
+      await session.disconnect();
+      if (!atDeadline) {
+        // disconnect() can resolve before the cleanup deadline; complete the
+        // login only once the deadline has passed and the first logout ran.
+        await vi.waitFor(() => expect(mocks.logout).toHaveBeenCalledOnce());
+        completeStaleLogin();
+      }
+
+      await vi.waitFor(() => expect(mocks.logout).toHaveBeenCalledTimes(2));
+      expect(active.user).toBeNull();
+      await expect(session.connect(undefined, new AbortController().signal)).rejects.toThrow(
+        'Privy login method is required when no session is available'
+      );
+    }
+  );
+
+  it('leaves a newer connection alone when its own user is active once abandoned work settles', async () => {
+    const active = modelActiveSession();
+    const session = makeSession();
+    const lost = vi.fn();
+    session.onSessionLost(lost);
+    let completeDiscovery!: () => void;
+    mocks.fetchPrivyRoute.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          completeDiscovery = () => resolve({ custom_oauth_providers: [] });
+        })
+    );
+    const discovering = expect(session.getLoginMethods()).rejects.toMatchObject({
+      code: 'OPERATION_TIMEOUT',
+    });
+    const completeStaleLogin = await abandonLogin(session, active);
+    await session.disconnect();
+    await discovering;
+    // Let the disconnect's provider logout finish before the stale login lands.
+    await vi.waitFor(() => expect(mocks.logout).toHaveBeenCalledOnce());
+
+    // The abandoned login completes first. Choosing a method ends its session
+    // before the next person signs in.
+    completeStaleLogin();
+    mocks.syncWithToken.mockImplementationOnce(async () => active.signIn(user()));
+    const wallet = await session.connect('custom', new AbortController().signal);
+    expect(mocks.logout).toHaveBeenLastCalledWith({ userId: staleUser().id });
+
+    // The remaining abandoned work settles while the newer connection is active.
+    completeDiscovery();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mocks.logout).toHaveBeenCalledTimes(2);
+    expect(lost).not.toHaveBeenCalled();
+    expect(active.user).toEqual(user());
+    await expect(
+      session.signHash(wallet, `0x${'12'.repeat(32)}`, new AbortController().signal)
+    ).resolves.toMatch(/^0x/);
+    await session.disconnect();
+  });
+
+  it('ends a stale login that completes while a newer login is still in progress', async () => {
+    const active = modelActiveSession();
+    let provideToken: ((token: string) => void) | undefined;
+    const session = makeSession([
+      customMethod,
+      {
+        id: 'company',
+        getCustomToken: () =>
+          new Promise<string>((resolve) => {
+            provideToken = resolve;
+          }),
+      },
+    ]);
+    const lost = vi.fn();
+    session.onSessionLost(lost);
+    const completeStaleLogin = await abandonLogin(session, active);
+    await session.disconnect();
+
+    const connecting = session.connect('company', new AbortController().signal);
+    await vi.waitFor(() => expect(provideToken).toBeDefined());
+    completeStaleLogin();
+    await vi.waitFor(() =>
+      expect(mocks.logout).toHaveBeenLastCalledWith({ userId: staleUser().id })
+    );
+    expect(active.user).toBeNull();
+
+    // The newer login was not using the stale session, so it still completes.
+    mocks.syncWithToken.mockImplementationOnce(async () => active.signIn(user()));
+    provideToken?.('company-jwt');
+    await expect(connecting).resolves.toMatchObject({ id: walletId, userId });
+    expect(lost).not.toHaveBeenCalled();
+    expect(active.user).toEqual(user());
+    await session.disconnect();
+  });
+
   it('retries SDK initialization after it timed out', async () => {
     mocks.initialize.mockImplementationOnce(() => new Promise<void>(() => undefined));
     const session = makeSession();
@@ -1993,4 +2227,60 @@ describe('PrivySession', () => {
     expect(mocks.farcasterAuthenticate).not.toHaveBeenCalled();
     await session.disconnect();
   }, 10_000);
+});
+
+describe('PrivyAdapter OAuth return through WalletManager', () => {
+  // The adapter validates the wallet as an XRPL secp256k1 key pair.
+  const validPublicKey = Array.from(secp256k1.getPublicKey('1'.padStart(64, '0')), (byte) =>
+    byte.toString(16).padStart(2, '0')
+  ).join('');
+  const validAddress = deriveAddress(validPublicKey);
+
+  function configureValidWallet(): void {
+    const account = { ...embeddedAccount(), address: validAddress, public_key: validPublicKey };
+    mocks.loginWithCode.mockResolvedValue({ user: user([account]) });
+    mocks.userGet.mockResolvedValue({ user: user([account]) });
+    mocks.refreshUser.mockResolvedValue({ user: user([account]) });
+    mocks.getWallet.mockResolvedValue({
+      ...walletApi(),
+      address: validAddress,
+      public_key: validPublicKey,
+    });
+  }
+
+  it('completes a first login on the network it was requested on', async () => {
+    // No manager network: the login alone asks for testnet.
+    const storage = new MemoryStorageAdapter();
+    const leaving = new WalletManager({
+      adapters: [new PrivyAdapter(options([oauthMethod]))],
+      storage,
+      autoConnect: false,
+    });
+    const login = leaving.connect('privy', { network: 'testnet', loginMethod: 'google' });
+    void login.catch(() => undefined);
+    await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledOnce());
+
+    // The OAuth provider redirects back to a fresh page with empty manager state.
+    resetURL(
+      '/wallet/privy?privy_oauth_code=oauth-code&privy_oauth_state=oauth-state&privy_oauth_provider=google'
+    );
+    configureExistingUser();
+    configureValidWallet();
+    const manager = new WalletManager({
+      adapters: [new PrivyAdapter(options([oauthMethod]))],
+      storage,
+      autoConnect: false,
+    });
+
+    await expect(manager.reconnect()).resolves.toMatchObject({
+      address: validAddress,
+      network: { id: 'testnet' },
+    });
+    expect(mocks.loginWithCode).toHaveBeenCalledWith('oauth-code', 'oauth-state', 'google');
+    expect((await new Storage(storage).loadState())?.requestedNetwork).toBe('testnet');
+
+    await manager.disconnect();
+    await leaving.disconnect();
+    await expect(login).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+  });
 });

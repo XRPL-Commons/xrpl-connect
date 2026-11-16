@@ -158,7 +158,8 @@ async function sendPayment() {
 
 - `createXrplConnect(config)` installs an isolated wallet manager using core `WalletManagerOptions`.
 - `useWallet()` returns `manager`, `connected`, `account`, `network`, `connecting`, `error`,
-  `connect`, and `disconnect`.
+  `connect`, and `disconnect`. A `NETWORK_MISMATCH` `error` reported while connected clears once the
+  wallet is back on the requested network.
 - `useSigner()` returns `sign`, `signAndSubmit`, and `signMessage`.
 - `useWalletModal()` returns readonly `ready`, awaitable `open` and `openAndWait`, and `close`.
 - `<WalletConnector>` wraps the browser custom element with typed Vue props and events.
