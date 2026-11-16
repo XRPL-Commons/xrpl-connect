@@ -353,7 +353,8 @@ const documentedReactInstall = verifyDocumentedXrplSpecs();
 const temporaryRoot = mkdtempSync(path.join(os.tmpdir(), 'xrpl-connect-publish-'));
 const runOptions = {
   env: { npm_config_cache: path.join(temporaryRoot, '.npm-cache') },
-  unsetEnv: inheritedPnpmConfig,
+  // Package-manager shims can expose workspace dependencies through NODE_PATH.
+  unsetEnv: [...inheritedPnpmConfig, 'NODE_PATH'],
 };
 const publishRunOptions = (tag, registry) => ({
   ...runOptions,
