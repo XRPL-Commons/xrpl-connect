@@ -86,6 +86,12 @@ deployments, configure the equivalent response header in your server/proxy. Veri
 actual HTML response, including production proxy headers; changing client code is insufficient.
 Close old OAuth popups and fully reload the original page before retrying.
 
+Sign-in uses the OAuth authorization code flow with PKCE (S256). A redirect back to your
+page carries a single-use code, never the access token; the adapter redeems it at
+`https://oauth2.xumm.app/token` with a verifier that only the initiating browser holds, then
+removes the callback parameters from the address bar. Allow `https://oauth2.xumm.app` in
+`connect-src` for the token exchange and user information requests.
+
 Keep CSP enabled. Permit the wallet services your deployment uses in the appropriate
 directives. WalletConnect's built-in inline QR logo does not require adding `data:` to
 `connect-src`; displaying inline images still requires `data:` in `img-src`. A report-only

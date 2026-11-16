@@ -2,6 +2,7 @@ import type { Xumm } from 'xumm';
 import { createWalletError } from '@xrpl-connect/core';
 import { XummSdkJwt } from 'xumm-sdk';
 import type { ResolvedFlow } from 'xumm-oauth2-pkce';
+import { codeChallenge, randomHex } from './pkce';
 
 export type XamanClient = Pick<Xumm, 'authorize' | 'logout'> & {
   payload?: Xumm['payload'] | XummSdkJwt['payload'];
@@ -34,6 +35,8 @@ type Attempt = {
   redirect: string;
   expires: number;
   status: 'pending';
+  /** PKCE code verifier: only this browser can redeem the attempt's authorization code. */
+  verifier: string;
 };
 
 function readItem<T>(browser: Window, key: string): T | undefined {
@@ -50,6 +53,7 @@ function liveAttempt(browser: Window, apiKey: string, state: string): Attempt | 
   if (
     !attempt ||
     attempt.apiKey !== apiKey ||
+    typeof attempt.verifier !== 'string' ||
     readItem(browser, `${PREFIX}${state}:cancelled`) ||
     !Number.isFinite(attempt.expires) ||
     attempt.expires <= Date.now()
@@ -72,7 +76,10 @@ export class BrowserOAuthClient implements XamanClient {
     const state = params.get('state');
     return Boolean(
       state?.startsWith(STATE_PREFIX) &&
-      (params.get('access_token') || params.has('error') || params.has('error_description')) &&
+      (params.get('code') ||
+        params.get('authorization_code') ||
+        params.has('error') ||
+        params.has('error_description')) &&
       liveAttempt(window, apiKey, state)
     );
   }
@@ -252,9 +259,9 @@ export class BrowserOAuthClient implements XamanClient {
 
   private start(): Promise<ResolvedFlow> {
     this.removeExpiredAttempts();
-    const bytes = new Uint8Array(32);
-    this.browser.crypto.getRandomValues(bytes);
-    this.state = STATE_PREFIX + Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    this.state = STATE_PREFIX + randomHex(this.browser.crypto, 32);
+    // The verifier format of Xaman's own PKCE client: 64 random bytes, hex encoded.
+    const verifier = randomHex(this.browser.crypto, 64);
     const redirect = new URL(this.page.location.href);
     for (const param of CALLBACK_PARAMS) redirect.searchParams.delete(param);
     this.write(`${PREFIX}${this.state}`, {
@@ -262,14 +269,19 @@ export class BrowserOAuthClient implements XamanClient {
       redirect: redirect.href,
       expires: Date.now() + CONNECTION_TIMEOUT_MS,
       status: 'pending',
+      verifier,
     } satisfies Attempt);
+    // Authorization code flow with PKCE (RFC 7636): the callback carries a single-use
+    // code instead of the bearer token, and only this browser can redeem it.
     const url = new URL('/auth', OAUTH_ORIGIN);
     url.search = new URLSearchParams({
       client_id: this.apiKey,
       redirect_uri: redirect.href,
-      response_type: 'token',
+      response_type: 'code',
       scope: 'XummPkce',
       state: this.state,
+      code_challenge: codeChallenge(verifier),
+      code_challenge_method: 'S256',
     }).toString();
 
     return new Promise((resolve, reject) => {
@@ -372,10 +384,11 @@ export class BrowserOAuthClient implements XamanClient {
   }
 
   private async receive(callback: URL): Promise<ResolvedFlow> {
-    if (callback.href === this.page.location.href) {
-      const clean = new URL(callback.href);
-      for (const param of CALLBACK_PARAMS) clean.searchParams.delete(param);
-      this.browser.history.replaceState(this.browser.history.state, '', clean.href);
+    const page = new URL(this.page.location.href);
+    if (page.searchParams.get('state') === this.state) {
+      // Keep the callback, including its code, out of the address bar and history.
+      for (const param of CALLBACK_PARAMS) page.searchParams.delete(param);
+      this.browser.history.replaceState(this.browser.history.state, '', page.href);
     }
     this.assertActive();
     const attempt = this.attempt()!;
@@ -387,7 +400,9 @@ export class BrowserOAuthClient implements XamanClient {
     ) {
       throw new Error('Xaman returned an unexpected authorization callback');
     }
-    const jwt = callback.searchParams.get('access_token');
+    // Xaman's PKCE client reads `code`; its redirect detection also accepts `authorization_code`.
+    const code =
+      callback.searchParams.get('code') || callback.searchParams.get('authorization_code');
     const rejected =
       callback.searchParams.has('error') || callback.searchParams.has('error_description');
     const existing = this.read<{ jwt?: string }>(`${PREFIX}${this.state}:result`);
@@ -396,7 +411,8 @@ export class BrowserOAuthClient implements XamanClient {
       this.write(`${PREFIX}${this.state}:rejected`, true);
       throw createWalletError.connectionRejected('Xaman');
     }
-    if (!jwt) throw new Error('Xaman authorization did not return an access token');
+    if (!code) throw new Error('Xaman authorization did not return an authorization code');
+    const jwt = await this.exchange(code, attempt);
     const session = await this.verify(jwt);
     this.assertActive();
     const completed = this.read<{ jwt?: string }>(`${PREFIX}${this.state}:result`);
@@ -404,6 +420,32 @@ export class BrowserOAuthClient implements XamanClient {
       throw new Error('Xaman authorization already completed');
     if (!completed) this.write(`${PREFIX}${this.state}:result`, { jwt });
     return session;
+  }
+
+  /** Redeems the code at Xaman's token endpoint, as its own PKCE client does. */
+  private async exchange(code: string, attempt: Attempt): Promise<string> {
+    const response = await fetch(`${OAUTH_ORIGIN}/token`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        client_id: this.apiKey,
+        redirect_uri: attempt.redirect,
+        code_verifier: attempt.verifier,
+      }),
+      signal: this.controller.signal,
+    });
+    const token: { access_token?: unknown } | undefined = await response
+      .json()
+      .catch(() => undefined);
+    if (!response.ok || typeof token?.access_token !== 'string' || !token.access_token) {
+      throw new Error('Xaman did not issue an access token for the authorization code');
+    }
+    return token.access_token;
   }
 
   private async verify(jwt: string): Promise<ResolvedFlow> {
