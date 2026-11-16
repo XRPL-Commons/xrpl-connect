@@ -96,8 +96,8 @@ subtree. The manager is created once on mount; pass a React `key` to rebuild it.
 The provider owns persisted-session restoration and calls `reconnect()` only when
 `config.autoConnect` is `true`; mounting `<WalletConnector />` does not restore a session by
 itself. Use `manager.reconnect()` for an explicit restore when automatic restoration is disabled.
-Reconnection also completes a returned Xaman OAuth login before the first manager
-session has been saved.
+Reconnection also completes a Xaman or Privy login that returns through a redirect before the
+first manager session has been saved.
 
 ### Hooks
 
@@ -107,6 +107,9 @@ session has been saved.
 - `useWalletModal()` → `{ ready, open, openAndWait, close }` — drive the active
   `<WalletConnector>` modal. `open()` is awaitable, and `openAndWait()` resolves with the
   connected account or rejects if opening fails or the modal closes first.
+
+Besides connection failures, `error` holds `NETWORK_MISMATCH` when the connected wallet switches
+away from the requested network; it clears once the wallet is back on that network.
 
 `ready` becomes `true` after a connector registers and returns to `false` after the last
 connector unmounts. Calling `open()` or `openAndWait()` while it is `false` rejects with a
@@ -128,7 +131,8 @@ typed `CONFIGURATION_REQUIRED` error.
 
 ### `<WalletConnector />`
 
-React wrapper around the web component. Props: `primaryWallet`, `wallets`, `showUnavailable`, `theme`
+React wrapper around the web component. Props: `primaryWallet`, `wallets`, `socialLogins`
+(`SocialLogin` entries for the **Sign in with socials** chooser), `showUnavailable`, `theme`
 (`'dark' | 'light' | 'purple'`), `cssVars` (`--xc-*` overrides), `style`, `className`,
 typed callbacks `onConnecting(walletId)`, `onConnect(account)`, `onError(WalletError)`, and
 standard host attributes such as `id`, `title`, `data-*`, and `aria-*`.

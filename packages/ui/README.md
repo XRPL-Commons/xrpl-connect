@@ -4,6 +4,10 @@
 
 `@xrpl-connect/ui` is a framework-agnostic web component that provides a production-ready user interface for wallet connection. It wraps the `WalletManager` from `@xrpl-connect/core` and adapters from the individual `@xrpl-connect/adapter-*` packages, presenting users with a polished modal-based experience for connecting to XRPL wallets.
 
+Applications install and import it from the published `xrpl-connect` package, which re-exports the
+component together with the core manager and every adapter. Importing from `xrpl-connect` also
+registers the element.
+
 **Key Responsibility**: Render a beautiful, accessible, responsive UI component that handles wallet selection, QR code display, loading states, error handling, and user feedback—all wrapped in a custom HTML element that works in any JavaScript environment.
 
 ---
@@ -45,10 +49,7 @@ A Web Component is a reusable, encapsulated HTML element built using the Web Com
       "
     ></xrpl-wallet-connector>
     <script type="module">
-      import '@xrpl-connect/ui';
-      import { WalletManager } from '@xrpl-connect/core';
-      import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-      import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
+      import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
 
       const walletManager = new WalletManager({
         adapters: [new XamanAdapter({ apiKey: 'YOUR_KEY' }), new CrossmarkAdapter()],
@@ -92,6 +93,11 @@ including the wallet and account portals. No Google Fonts are loaded.
 Allow that nonce in `style-src` (and `style-src-elem` if specified), keep
 `style-src-attr 'none'`, and put static theme overrides in an allowed external stylesheet.
 Use `element.nonce` when reading it; browsers hide `getAttribute('nonce')`.
+
+When a sign-in prompt requires a CAPTCHA, the connector loads the provider's script on demand from
+`https://challenges.cloudflare.com` (Turnstile) or `https://js.hcaptcha.com` (hCaptcha). Allow that
+origin in `script-src`, along with the `frame-src` and `connect-src` entries the provider documents
+for its widget. The script element carries the connector's `nonce`.
 See the [complete CSP setup and limitations](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/docs/guide/production.md#strict-content-security-policy).
 
 ### JavaScript API
@@ -100,6 +106,7 @@ The web component provides a public API for programmatic control:
 
 ```typescript
 interface WalletConnectorElementInstance extends HTMLElement {
+  socialLogins: readonly SocialLogin[];
   setWalletManager(manager: WalletManager): void;
   open(): Promise<void>;
   openAndWait(): Promise<AccountInfo>;
@@ -117,6 +124,28 @@ const connector = document.querySelector('xrpl-wallet-connector');
 const walletManager = new WalletManager({ adapters: [...] });
 connector.setWalletManager(walletManager);
 ```
+
+#### `socialLogins`
+
+Optional application entries for the **Sign in with socials** chooser. It is a JavaScript
+property, not an HTML attribute. Each `SocialLogin` has an `id`, a `label`, the `adapterId` of a
+registered adapter, an optional `icon`, and optional `connectOptions` passed to that adapter's
+`connect()`. Entries without an ID or label, with a duplicate ID, or naming an adapter the manager
+does not register are ignored. An entry always shows its adapter, even when `wallets` omits it.
+
+```typescript
+connector.socialLogins = [
+  {
+    id: 'company',
+    label: 'Company account',
+    adapterId: 'privy',
+    connectOptions: { loginMethod: 'company' },
+  },
+];
+```
+
+Adapters that implement `getLoginMethods()`, such as the Privy adapter, add their methods to the
+chooser without this property; those adapters follow the `wallets` attribute.
 
 #### `open()`
 
@@ -345,6 +374,8 @@ Shows available wallets as a grid of cards.
 - Wallet cards with icon, name, and status
 - Primary wallet (if configured) displayed prominently
 - Status badges (e.g., "Installed", "Not installed")
+- A **Sign in with socials** entry when a social login is available. Adapters that provide social
+  logins are listed behind it rather than as wallet rows.
 
 ---
 
@@ -407,7 +438,42 @@ Shows error message and recovery options.
 
 ---
 
-### 5. Transaction Review View
+### 5. Social Sign-In View
+
+Lists the social login methods, such as Google or email, offered by social-login adapters.
+
+**Displays when**:
+
+- User selects **Sign in with socials** in the wallet list
+
+**UI Elements**:
+
+- One button per method: `socialLogins` entries first, then the methods each adapter's
+  `getLoginMethods()` returns, fetched again every time the view opens
+- A loading status while methods load, and a "Try again" button for an adapter whose methods
+  failed to load or timed out
+- "Back" button to return to wallet list
+
+---
+
+### 6. Authentication Prompt View
+
+Shows input a wallet requests through `onAuthPrompt()` while this component connects it, such as
+the Privy adapter's email or SMS code step.
+
+**UI Elements**:
+
+- Title, description, and the fields the wallet asks for
+- A one-time code entered in a row of digit cells, with paste support
+- A Cloudflare Turnstile or hCaptcha challenge when the prompt requires one
+  (see [Strict CSP](#strict-csp) for its script origins)
+- A QR code and an "Open authentication page" link for sign-ins approved in another app,
+  such as Farcaster
+- Submit button and an optional secondary action, such as "Resend code"; "Back" cancels the step
+
+---
+
+### 7. Transaction Review View
 
 Shows a transaction that a connected wallet, such as the Privy embedded wallet, is
 waiting to sign. The wallet sends it as an `onAuthPrompt()` prompt with a `review`;
@@ -489,13 +555,14 @@ Specify which wallets to include:
 
 ## Integration Patterns
 
+React and Vue applications can use the official bindings, `@xrpl-commons/xrpl-connect-react` and
+`@xrpl-commons/xrpl-connect-vue`, instead of wiring the element by hand.
+
 ### React
 
 ```typescript
-import { useEffect, useRef } from 'react';
-import '@xrpl-connect/ui';
-import { WalletManager } from '@xrpl-connect/core';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { useEffect, useRef, type CSSProperties } from 'react';
+import { WalletManager, XamanAdapter } from 'xrpl-connect';
 
 function WalletConnection() {
   const connectorRef = useRef<any>(null);
@@ -536,7 +603,7 @@ function WalletConnection() {
     <xrpl-wallet-connector
       ref={connectorRef}
       primary-wallet="xaman"
-      primary-color="#0EA5E9"
+      style={{ '--xc-primary-color': '#0EA5E9' } as CSSProperties}
     />
   );
 }
@@ -556,9 +623,7 @@ function WalletConnection() {
 
 <script setup>
 import { onMounted, ref } from 'vue';
-import '@xrpl-connect/ui';
-import { WalletManager } from '@xrpl-connect/core';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
+import { WalletManager, XamanAdapter } from 'xrpl-connect';
 
 const connector = ref();
 
@@ -585,10 +650,7 @@ const handleError = (e) => {
 ### Vanilla JavaScript
 
 ```javascript
-import { WalletManager } from '@xrpl-connect/core';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
-import '@xrpl-connect/ui';
+import { WalletManager, XamanAdapter, CrossmarkAdapter } from 'xrpl-connect';
 
 // Initialize wallet manager
 const walletManager = new WalletManager({
@@ -750,7 +812,7 @@ packages/ui/src/
 ├── security.ts                 # URL and rendering safety helpers
 ├── services/                   # Wallet operations and DOM event binding
 ├── styles/                     # Component styles
-├── views/                      # Modal, list, QR, loading, error, and account views
+├── views/                      # Modal, list, social sign-in, auth prompt, QR, loading, error, and account views
 ├── constants.ts                # Shared UI constants
 ├── utils.ts                    # Browser, color, and QR helpers
 └── types.ts                    # Public and internal TypeScript types
@@ -802,8 +864,8 @@ The component works in all modern browsers that support:
 3. Verify the component was registered with `customElements.define()`
 
 ```typescript
-// Make sure to import
-import '@xrpl-connect/ui';
+// Importing from xrpl-connect registers <xrpl-wallet-connector>
+import { WalletManager } from 'xrpl-connect';
 ```
 
 ---
