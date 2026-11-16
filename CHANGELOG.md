@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Xaman: a link carrying another account's OAuth credentials no longer signs the visitor in; only the callback of a sign-in started in this browser completes. Sign-in uses the authorization code flow with PKCE (S256) instead of returning the access token in the page URL, logout deletes the stored token, and each signing window opens under a random name.
+- WalletConnect: verify signed results before returning them (connected account, signature, network, every requested field, and the reported hash) and return the verified `tx_blob`. Xaman and WalletConnect send and compare requests in canonical codec form, so equivalent encodings are accepted and unserializable transactions fail before the wallet opens.
+- Privy: require a transaction review before every signature. The wallet connector shows it by default; `transactionReview` accepts a custom review function or `'none'` for headless signing, and signing fails when nothing can show the review. The 2 XRP fee limit also applies to fees supplied by the application.
+- Privy: guest login requires `allowGuestLogin: true`, because a guest wallet is lost on logout; a stale login that completes after disconnect no longer replaces a newer session.
+- Core: enforce the requested network for the whole session, including restores and wallet network switches; signing rejects with `NETWORK_MISMATCH` until the wallet returns to it.
+- Core: keep transactions, signed blobs, and signatures out of logs; development logging depends only on `NODE_ENV`, and a custom logger instance no longer forces the debug level.
+- Core: reject message signatures for invalid UTF-8 input (`INVALID_MESSAGE`) or from a signer other than the connected account.
+- MetaMask Snap: accept only exact MetaMask EIP-6963 identifiers, drop the `window.ethereum` fallback, and pin the `xrpl-snap` version (`snapVersion` option).
+- Otsu: sign with the provider approved at connect.
+- UI: keep one-time-code digits out of text nodes, load CAPTCHA scripts despite clobbered provider globals, and keep WalletConnect pairing URIs out of debug logs.
+
+### Changed
+
+- Core: the stored connection record (schema version 2) keeps the requested network, and restores request the configured `network` first. An older runtime discards it, so a downgrade signs the user out once.
+- Core: a custom logger instance receives warnings and errors unless it sets `level`.
+- WalletConnect: `tx_json` results are decoded from the verified blob, in canonical form; multi-signing requests reject with `UNSUPPORTED_METHOD`, and a `signAndSubmit()` that fails verification carries `transactionHash` for reconciliation.
+- Xaman: sessions saved under the legacy `XummPkceJwt` key are no longer restored, so affected users sign in once more; the token exchange needs `https://oauth2.xumm.app` in `connect-src`.
+
 ## [1.0.0] - 2026-10-06
 
 ### Added
