@@ -4,6 +4,7 @@ import {
   type PrivyConnectOptions,
   type PrivyLoginMethod,
   type PrivyOAuthProvider,
+  type PrivyTransactionReviewOption,
 } from '@xrpl-commons/xrpl-connect-privy';
 import {
   WalletManager,
@@ -11,6 +12,7 @@ import {
   type WalletAdapter,
   type WalletAuthPrompt,
   type WalletLoginMethod,
+  type WalletTransactionReview,
 } from 'xrpl-connect';
 
 declare module 'xrpl-connect' {
@@ -27,10 +29,18 @@ const customLoginMethod: PrivyLoginMethod = {
     return 'publish-smoke-token';
   },
 };
+const reviewTransaction: PrivyTransactionReviewOption = async (
+  review: WalletTransactionReview,
+  signal: AbortSignal
+) => {
+  signal.throwIfAborted();
+  return review.action === 'sign' && review.details.every(({ label, value }) => label && value);
+};
 const adapterOptions: PrivyAdapterOptions = {
   appId: 'publish-smoke-test',
   redirectUri: 'https://example.test/wallet/privy',
   loginMethods: [{ id: 'google', oauthProvider }, customLoginMethod],
+  transactionReview: reviewTransaction,
 };
 const adapter = new PrivyAdapter(adapterOptions);
 const connectOptions: ConnectOptions<PrivyConnectOptions> = {
@@ -48,6 +58,7 @@ const discoveredMethods: Promise<readonly WalletLoginMethod[]> | undefined =
 const unsubscribe = dashboardAdapter.onAuthPrompt?.((prompt: WalletAuthPrompt | null) => {
   if (prompt?.captcha) void prompt.captcha.siteKey;
   if (prompt?.fields) void prompt.fields[0]?.inputMode;
+  if (prompt?.review) void prompt.review.network.id;
 });
 void discoveredMethods;
 unsubscribe?.();

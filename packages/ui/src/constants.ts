@@ -36,6 +36,12 @@ export const TIMINGS = {
   ANIMATION_DURATION: 200,
   SAFARI_CONNECT_DELAY: 0,
   NON_SAFARI_CONNECT_DELAY: 100,
+  /**
+   * A transaction review's approve button stays disabled this long, so a
+   * double click or a click meant for the page cannot approve a review that
+   * has just appeared under the pointer.
+   */
+  TRANSACTION_REVIEW_APPROVAL_DELAY: 1000,
 } as const;
 
 /**

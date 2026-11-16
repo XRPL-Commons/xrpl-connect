@@ -9,8 +9,13 @@ import {
   WalletErrorCode,
   WalletManager,
   type Transaction,
+  type WalletAuthPrompt,
 } from 'xrpl-connect';
-import { PrivyAdapter } from '../src/privy-adapter';
+import {
+  PrivyAdapter,
+  type PrivyAdapterOptions,
+  type PrivyTransactionReviewOption,
+} from '../src/privy-adapter';
 
 const mocks = vi.hoisted(() => ({
   connect: vi.fn(),
@@ -63,11 +68,14 @@ const wallet = {
   publicKey,
   address: deriveAddress(publicKey),
 };
-const options = {
+const reviewedOptions: PrivyAdapterOptions = {
   appId: 'app',
   redirectUri: 'http://localhost/callback',
   loginMethods: [{ id: 'google', oauthProvider: 'google' as const }],
 };
+// Lifecycle and signing-mechanics tests sign headlessly; the transaction
+// review, which is on by default, has its own tests below.
+const options: PrivyAdapterOptions = { ...reviewedOptions, transactionReview: 'none' };
 const transaction: Transaction = {
   TransactionType: 'AccountSet',
   Account: wallet.address,
@@ -207,8 +215,11 @@ describe('PrivyAdapter', () => {
     expect(mocks.onAuthPrompt).not.toHaveBeenCalled();
 
     const listener = vi.fn();
-    expect(adapter.onAuthPrompt(listener)).toBe(unsubscribe);
+    const stop = adapter.onAuthPrompt(listener);
     expect(mocks.onAuthPrompt).toHaveBeenCalledWith(listener);
+    expect(unsubscribe).not.toHaveBeenCalled();
+    stop();
+    expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
   it('cancels a new login that is still waiting for a previous logout', async () => {
@@ -460,6 +471,292 @@ describe('PrivyAdapter', () => {
     await adapter.connect({ network: 'mainnet' });
     await adapter.signAndSubmit(transaction);
     expect(mocks.clientConnect).toHaveBeenCalledTimes(2);
+    await adapter.disconnect();
+  });
+});
+
+describe('PrivyAdapter transaction review', () => {
+  const destination = deriveAddress(
+    Array.from(secp256k1.getPublicKey('2'.padStart(64, '0')), (v) =>
+      v.toString(16).padStart(2, '0')
+    ).join('')
+  );
+  const payment: Transaction = {
+    TransactionType: 'Payment',
+    Account: wallet.address,
+    Destination: destination,
+    DestinationTag: 42,
+    Amount: '1500000',
+    Fee: '12',
+    Sequence: 7,
+    LastLedgerSequence: 100,
+  };
+
+  beforeEach(() => {
+    mocks.onAuthPrompt.mockReturnValue(() => undefined);
+  });
+
+  function watchPrompts(adapter: PrivyAdapter) {
+    const prompts: (WalletAuthPrompt | null)[] = [];
+    const stop = adapter.onAuthPrompt((prompt) => prompts.push(prompt));
+    const reviews = () => prompts.filter((prompt): prompt is WalletAuthPrompt => !!prompt);
+    const nextReview = async (count: number) => {
+      await vi.waitFor(() => expect(reviews()).toHaveLength(count));
+      return reviews()[count - 1];
+    };
+    return { prompts, stop, nextReview };
+  }
+
+  async function connected(adapterOptions: PrivyAdapterOptions = reviewedOptions) {
+    const adapter = new PrivyAdapter(adapterOptions);
+    await adapter.connect({ network: 'testnet' });
+    return adapter;
+  }
+
+  it('shows the exact transaction and signs only after approval', async () => {
+    const adapter = await connected();
+    const { prompts, nextReview } = watchPrompts(adapter);
+    const signing = adapter.sign(payment);
+
+    const prompt = await nextReview(1);
+    expect(mocks.signHash).not.toHaveBeenCalled();
+    expect(prompt).toMatchObject({ title: 'Review transaction', submitLabel: 'Approve' });
+    expect(prompt.review?.action).toBe('sign');
+    expect(prompt.review?.network.id).toBe('testnet');
+    expect(prompt.review?.transaction).toMatchObject({ ...payment, SigningPubKey: publicKey });
+    expect(prompt.review?.details.slice(0, 7)).toEqual([
+      { name: 'TransactionType', label: 'Transaction type', value: 'Payment' },
+      { name: 'Amount', label: 'Amount', value: '1.5 XRP' },
+      { name: 'Destination', label: 'Destination', value: destination },
+      { name: 'DestinationTag', label: 'Destination tag', value: '42' },
+      { name: 'Fee', label: 'Fee', value: '0.000012 XRP' },
+      { name: 'network', label: 'Network', value: 'Testnet' },
+      { name: 'Account', label: 'Account', value: wallet.address },
+    ]);
+    expect(prompt.review?.details.map(({ name }) => name).slice(7)).toEqual([
+      'Sequence',
+      'LastLedgerSequence',
+      'SigningPubKey',
+    ]);
+    expect(Object.isFrozen(prompt) && Object.isFrozen(prompt.review?.details[0])).toBe(true);
+
+    await prompt.submit!({});
+    const signed = await signing;
+    expect(mocks.signHash).toHaveBeenCalledOnce();
+    expect(signed.tx_json).toMatchObject(payment);
+    expect(prompts.at(-1)).toBeNull();
+    await adapter.disconnect();
+  });
+
+  it('reviews the autofilled transaction before submitting it', async () => {
+    const adapter = await connected();
+    const { nextReview } = watchPrompts(adapter);
+    const { Fee: _fee, Sequence: _sequence, LastLedgerSequence: _bound, ...partial } = payment;
+    const submitting = adapter.signAndSubmit(partial as Transaction);
+
+    const prompt = await nextReview(1);
+    expect(prompt.review?.action).toBe('signAndSubmit');
+    expect(prompt.description).toContain('submits it to the XRP Ledger');
+    expect(prompt.review?.transaction).toMatchObject({
+      Fee: '12',
+      Sequence: 1,
+      LastLedgerSequence: 100,
+    });
+    expect(mocks.submit).not.toHaveBeenCalled();
+    await prompt.submit!({});
+    await expect(submitting).resolves.toMatchObject({ hash: 'validated-hash' });
+    expect(mocks.submit).toHaveBeenCalledOnce();
+    await adapter.disconnect();
+  });
+
+  it('rejects as a user rejection without signing or submitting', async () => {
+    const adapter = await connected();
+    const { prompts, nextReview } = watchPrompts(adapter);
+    const signing = adapter.signAndSubmit(payment);
+    const rejected = expect(signing).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_REJECTED,
+    });
+
+    (await nextReview(1)).cancel();
+    await rejected;
+    expect(prompts.at(-1)).toBeNull();
+    expect(mocks.signHash).not.toHaveBeenCalled();
+    expect(mocks.submit).not.toHaveBeenCalled();
+
+    // A rejection keeps the shared ledger connection for the next transaction.
+    const next = adapter.signAndSubmit(payment);
+    await (
+      await nextReview(2)
+    ).submit!({});
+    await expect(next).resolves.toMatchObject({ hash: 'validated-hash' });
+    expect(mocks.clientConnect).toHaveBeenCalledOnce();
+    await adapter.disconnect();
+  });
+
+  it('fails closed when nothing can show the review', async () => {
+    const adapter = await connected();
+    const failure = {
+      code: WalletErrorCode.SIGN_FAILED,
+      message: expect.stringContaining('subscribe with onAuthPrompt() first'),
+    };
+    await expect(adapter.sign(payment)).rejects.toMatchObject(failure);
+
+    const { stop } = watchPrompts(adapter);
+    stop();
+    await expect(adapter.signAndSubmit(payment)).rejects.toMatchObject(failure);
+    expect(mocks.signHash).not.toHaveBeenCalled();
+    expect(mocks.submit).not.toHaveBeenCalled();
+    await adapter.disconnect();
+  });
+
+  it("signs headlessly with transactionReview 'none'", async () => {
+    const adapter = await connected({ ...reviewedOptions, transactionReview: 'none' });
+    const { prompts } = watchPrompts(adapter);
+    await expect(adapter.sign(payment)).resolves.toMatchObject({ signerAddress: wallet.address });
+    expect(prompts).toEqual([]);
+    expect(mocks.signHash).toHaveBeenCalledOnce();
+    await adapter.disconnect();
+  });
+
+  it('lets an application review approve only with an explicit true', async () => {
+    const reviewer = vi.fn<Exclude<PrivyTransactionReviewOption, string>>();
+    const adapter = await connected({ ...reviewedOptions, transactionReview: reviewer });
+    const { prompts } = watchPrompts(adapter);
+
+    reviewer.mockResolvedValueOnce(true);
+    await expect(adapter.sign(payment)).resolves.toMatchObject({ signerAddress: wallet.address });
+    const [review, signal] = reviewer.mock.calls[0];
+    expect(review.details[0]).toEqual({
+      name: 'TransactionType',
+      label: 'Transaction type',
+      value: 'Payment',
+    });
+    expect(Object.isFrozen(review.transaction)).toBe(true);
+    expect(signal.aborted).toBe(false);
+    expect(mocks.signHash).toHaveBeenCalledOnce();
+
+    for (const answer of [false, undefined, 'yes']) {
+      reviewer.mockResolvedValueOnce(answer as boolean);
+      await expect(adapter.sign(payment)).rejects.toMatchObject({
+        code: WalletErrorCode.SIGN_REJECTED,
+      });
+    }
+    reviewer.mockRejectedValueOnce(new Error('review service unavailable'));
+    await expect(adapter.sign(payment)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+      message: expect.stringContaining('review service unavailable'),
+    });
+    expect(mocks.signHash).toHaveBeenCalledOnce();
+    expect(prompts).toEqual([]);
+    await adapter.disconnect();
+  });
+
+  it('rejects a review pending at disconnect and ignores its later answer', async () => {
+    const adapter = await connected();
+    const { prompts, nextReview } = watchPrompts(adapter);
+    const signing = adapter.sign(payment);
+    const rejected = expect(signing).rejects.toMatchObject({
+      code: WalletErrorCode.NOT_CONNECTED,
+    });
+    const prompt = await nextReview(1);
+
+    await adapter.disconnect();
+    await rejected;
+    expect(prompts.at(-1)).toBeNull();
+    await prompt.submit!({});
+    expect(mocks.signHash).not.toHaveBeenCalled();
+
+    const pendingReview = deferred<boolean>();
+    const reviewer = vi.fn((_review: unknown, _signal: AbortSignal) => pendingReview.promise);
+    const custom = await connected({ ...reviewedOptions, transactionReview: reviewer });
+    const customSigning = custom.sign(payment);
+    const customRejected = expect(customSigning).rejects.toMatchObject({
+      code: WalletErrorCode.NOT_CONNECTED,
+    });
+    await vi.waitFor(() => expect(reviewer).toHaveBeenCalledOnce());
+    await custom.disconnect();
+    await customRejected;
+    expect(reviewer.mock.calls[0][1].aborted).toBe(true);
+    pendingReview.resolve(true);
+    await Promise.resolve();
+    expect(mocks.signHash).not.toHaveBeenCalled();
+  });
+
+  it('reviews concurrent requests one at a time and never applies a stale answer', async () => {
+    const adapter = await connected();
+    const { prompts, nextReview } = watchPrompts(adapter);
+    const larger: Transaction = { ...payment, Amount: '25000000', Sequence: 8 };
+    const first = adapter.sign(payment);
+    const second = adapter.sign(larger);
+    const secondRejected = expect(second).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_REJECTED,
+    });
+
+    const firstPrompt = await nextReview(1);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(prompts).toHaveLength(1);
+
+    await firstPrompt.submit!({});
+    const secondPrompt = await nextReview(2);
+    expect(prompts[1]).toBeNull();
+    expect(secondPrompt.review?.details.find(({ name }) => name === 'Amount')?.value).toBe(
+      '25 XRP'
+    );
+    await expect(first).resolves.toMatchObject({ tx_json: { Amount: '1500000' } });
+
+    // Answering the first review again cannot approve the second transaction.
+    await firstPrompt.submit!({});
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mocks.signHash).toHaveBeenCalledOnce();
+
+    secondPrompt.cancel();
+    await secondRejected;
+    expect(mocks.signHash).toHaveBeenCalledOnce();
+    await adapter.disconnect();
+  });
+
+  it('applies the autofill fee limit to supplied fees before any review', async () => {
+    const adapter = await connected();
+    const { prompts, nextReview } = watchPrompts(adapter);
+    const limit = {
+      code: WalletErrorCode.SIGN_FAILED,
+      message: expect.stringContaining('exceeds the 2 XRP limit'),
+    };
+
+    await expect(adapter.sign({ ...payment, Fee: '2000001' })).rejects.toMatchObject(limit);
+    // Autofill keeps a supplied fee; the limit still applies before submission.
+    mocks.autofill.mockImplementationOnce(async (tx) => ({
+      Sequence: 1,
+      LastLedgerSequence: 100,
+      ...tx,
+    }));
+    await expect(adapter.signAndSubmit({ ...payment, Fee: '5000000' })).rejects.toMatchObject(
+      limit
+    );
+    await expect(adapter.sign({ ...payment, Fee: '1e6' })).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    expect(prompts).toEqual([]);
+    expect(mocks.signHash).not.toHaveBeenCalled();
+    expect(mocks.submit).not.toHaveBeenCalled();
+
+    // The limit is inclusive, and reserve-priced types keep xrpl.js's exemption.
+    const atLimit = adapter.sign({ ...payment, Fee: '2000000' });
+    await (
+      await nextReview(1)
+    ).submit!({});
+    await expect(atLimit).resolves.toMatchObject({ tx_json: { Fee: '2000000' } });
+    const deletion = adapter.sign({
+      TransactionType: 'AccountDelete',
+      Account: wallet.address,
+      Destination: destination,
+      Fee: '5000000',
+      Sequence: 9,
+    });
+    const deletionPrompt = await nextReview(2);
+    expect(deletionPrompt.review?.details.find(({ name }) => name === 'Fee')?.value).toBe('5 XRP');
+    deletionPrompt.cancel();
+    await expect(deletion).rejects.toMatchObject({ code: WalletErrorCode.SIGN_REJECTED });
     await adapter.disconnect();
   });
 });

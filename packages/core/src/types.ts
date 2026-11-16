@@ -286,6 +286,31 @@ export interface WalletAuthPrompt {
     run: () => Promise<void>;
   };
   cancel: () => void;
+  /**
+   * A transaction waiting for the user's approval before the wallet signs it.
+   * `submit` approves it and `cancel` rejects it. A UI shows every detail and
+   * never answers on the user's behalf.
+   */
+  review?: WalletTransactionReview;
+}
+
+/** One line of a transaction review, formatted for display. */
+export interface WalletTransactionReviewDetail {
+  /** The XRPL field name, or `network` for the network the transaction is for. */
+  name: string;
+  label: string;
+  value: string;
+}
+
+/** A transaction the wallet signs only once the user approves it. */
+export interface WalletTransactionReview {
+  /** `signAndSubmit` also submits the signed transaction to the network. */
+  action: 'sign' | 'signAndSubmit';
+  network: NetworkInfo;
+  /** A copy of the exact transaction that is signed once approved. */
+  transaction: Transaction;
+  /** Every transaction field and the network, key fields first. */
+  details: readonly WalletTransactionReviewDetail[];
 }
 
 /** Core interface that all wallet adapters must implement. */
@@ -327,7 +352,10 @@ export interface WalletAdapter {
    * Callers abort `signal` when the result is no longer needed.
    */
   getLoginMethods?(options?: { signal?: AbortSignal }): Promise<readonly WalletLoginMethod[]>;
-  /** Subscribe to input or QR challenges during an active connection attempt. */
+  /**
+   * Subscribe to input or QR challenges during an active connection attempt,
+   * and to transaction reviews (`prompt.review`) while connected.
+   */
   onAuthPrompt?(callback: (prompt: WalletAuthPrompt | null) => void): () => void;
 
   // Connection lifecycle

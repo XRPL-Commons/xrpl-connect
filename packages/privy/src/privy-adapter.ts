@@ -16,16 +16,46 @@ import {
   type WalletAdapterEvent,
   type WalletAuthPrompt,
   type WalletLoginMethod,
+  type WalletTransactionReview,
 } from 'xrpl-connect';
 import { PrivySession } from './session';
 import { PRIVY_ATTRIBUTION, PRIVY_SYMBOL } from './branding';
+import { createTransactionReview } from './review';
 import type { PrivySessionOptions, PrivyWallet } from './session-types';
-import { prepareSigningInput, signPreparedTransaction, validateWallet } from './signing';
+import {
+  assertFeeWithinLimit,
+  MAX_FEE_XRP,
+  prepareSigningInput,
+  signPreparedTransaction,
+  validateWallet,
+} from './signing';
 
-export type PrivyAdapterOptions = PrivySessionOptions;
+/**
+ * How the user approves a transaction before the embedded wallet signs it.
+ * A function receives the review and a signal that aborts when the connection
+ * ends, and approves only by returning `true`.
+ */
+export type PrivyTransactionReviewOption =
+  | 'prompt'
+  | 'none'
+  | ((review: WalletTransactionReview, signal: AbortSignal) => boolean | Promise<boolean>);
+
+export interface PrivyAdapterOptions extends PrivySessionOptions {
+  /**
+   * `'prompt'` (default) asks through `onAuthPrompt()`: the wallet connector
+   * shows the transaction and the wallet signs only after the user approves.
+   * Signing fails when nothing is subscribed. A function replaces the prompt
+   * with your own review. `'none'` signs without asking anyone, so any script
+   * running in the page can sign with the user's wallet.
+   */
+  transactionReview?: PrivyTransactionReviewOption;
+}
 
 /** How long an unused ledger connection stays open for the next signature. */
 const LEDGER_IDLE_MS = 30_000;
+
+const NO_REVIEWER_MESSAGE =
+  'Privy transaction review needs a confirmation prompt. Connect through the wallet connector UI or subscribe with onAuthPrompt() first.';
 
 interface LedgerConnection {
   readonly client: Client;
@@ -63,6 +93,9 @@ export class PrivyAdapter implements WalletAdapter {
   private account: AccountInfo | null = null;
   private teardown: Promise<void> | null = null;
   private ledger: LedgerConnection | null = null;
+  private readonly promptListeners = new Set<(prompt: WalletAuthPrompt | null) => void>();
+  /** Settles once the latest review is answered; reviews never overlap. */
+  private reviewQueue: Promise<void> = Promise.resolve();
 
   constructor(private readonly options: PrivyAdapterOptions) {
     this.session = new PrivySession(options);
@@ -103,7 +136,13 @@ export class PrivyAdapter implements WalletAdapter {
   onAuthPrompt(callback: (prompt: WalletAuthPrompt | null) => void): () => void {
     // Subscribe on the session itself: it refuses prompt-based logins while
     // nobody is listening instead of waiting for an answer that cannot come.
-    return this.session.onAuthPrompt(callback);
+    // Transaction reviews reach the same listeners and refuse the same way.
+    const unsubscribe = this.session.onAuthPrompt(callback);
+    this.promptListeners.add(callback);
+    return () => {
+      this.promptListeners.delete(callback);
+      unsubscribe();
+    };
   }
 
   serializeReconnectOptions(): ReconnectOptions | undefined {
@@ -204,13 +243,11 @@ export class PrivyAdapter implements WalletAdapter {
     try {
       const { wallet, account, controller } = this.signingContext();
       const input = prepareSigningInput(transaction, wallet);
-      if (input.Fee !== undefined && input.Sequence !== undefined) {
-        return await this.signPrepared(input, wallet, controller);
-      }
-      return await this.withClient(account.network, async (client) => {
-        this.assertActive(controller);
-        return this.signPrepared(await client.autofill(input), wallet, controller);
-      });
+      const prepared =
+        input.Fee !== undefined && input.Sequence !== undefined
+          ? input
+          : await this.autofill(input, account.network, controller);
+      return await this.signPrepared(prepared, wallet, account.network, controller, 'sign');
     } catch (error) {
       if (isWalletError(error)) throw error;
       throw createWalletError.signFailed(asError(error));
@@ -221,11 +258,18 @@ export class PrivyAdapter implements WalletAdapter {
     try {
       const { wallet, account, controller } = this.signingContext();
       const input = prepareSigningInput(transaction, wallet);
+      // submitAndWait requires a ledger bound, even when Fee and Sequence are supplied.
+      const prepared = await this.autofill(input, account.network, controller);
+      // The review happens between ledger operations, so a slow answer holds
+      // no connection open and a rejection leaves the shared one intact.
+      const signed = await this.signPrepared(
+        prepared,
+        wallet,
+        account.network,
+        controller,
+        'signAndSubmit'
+      );
       return await this.withClient(account.network, async (client) => {
-        this.assertActive(controller);
-        // submitAndWait requires a ledger bound, even when Fee and Sequence are supplied.
-        const prepared = await client.autofill(input);
-        const signed = await this.signPrepared(prepared, wallet, controller);
         this.assertActive(controller);
         const result = await client.submitAndWait(signed.tx_blob!);
         const metadata = result.result.meta;
@@ -269,11 +313,27 @@ export class PrivyAdapter implements WalletAdapter {
     return { wallet: this.wallet, account: this.account, controller: this.controller };
   }
 
+  private autofill(
+    input: Transaction,
+    network: NetworkInfo,
+    controller: AbortController
+  ): Promise<Transaction> {
+    return this.withClient(network, async (client) => {
+      this.assertActive(controller);
+      return client.autofill(input);
+    });
+  }
+
   private async signPrepared(
     transaction: Transaction,
     wallet: PrivyWallet,
-    controller: AbortController
+    network: NetworkInfo,
+    controller: AbortController,
+    action: WalletTransactionReview['action']
   ): Promise<SignedTransaction> {
+    this.assertActive(controller);
+    assertFeeWithinLimit(transaction);
+    await this.review(transaction, network, action, controller);
     this.assertActive(controller);
     const signed = await signPreparedTransaction(transaction, wallet, (hash) => {
       this.assertActive(controller);
@@ -281,6 +341,96 @@ export class PrivyAdapter implements WalletAdapter {
     });
     this.assertActive(controller);
     return signed;
+  }
+
+  /**
+   * Resolve once the user approves exactly this transaction. Reviews run one
+   * at a time, so an answer always belongs to the transaction on screen.
+   */
+  private async review(
+    transaction: Transaction,
+    network: NetworkInfo,
+    action: WalletTransactionReview['action'],
+    controller: AbortController
+  ): Promise<void> {
+    const reviewer = this.options.transactionReview;
+    if (reviewer === 'none') return;
+    const review = createTransactionReview(transaction, network, action);
+    const previous = this.reviewQueue;
+    let finished!: () => void;
+    this.reviewQueue = new Promise<void>((resolve) => (finished = resolve));
+    try {
+      await previous;
+      this.assertActive(controller);
+      const approved =
+        typeof reviewer === 'function'
+          ? await this.untilAborted(controller.signal, () => reviewer(review, controller.signal))
+          : await this.promptForApproval(review, controller.signal);
+      this.assertActive(controller);
+      // Anything but an explicit `true`, such as a forgotten return, rejects.
+      if (approved !== true) throw createWalletError.signRejected();
+    } finally {
+      finished();
+    }
+  }
+
+  private untilAborted<T>(signal: AbortSignal, operation: () => T | Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const onAbort = (): void => reject(createWalletError.notConnected());
+      if (signal.aborted) return onAbort();
+      signal.addEventListener('abort', onAbort, { once: true });
+      Promise.resolve()
+        .then(operation)
+        .then(resolve, reject)
+        .finally(() => signal.removeEventListener('abort', onAbort));
+    });
+  }
+
+  private promptForApproval(
+    review: WalletTransactionReview,
+    signal: AbortSignal
+  ): Promise<boolean> {
+    if (this.promptListeners.size === 0) {
+      // Nothing can show the review or answer it, so the signature could never be approved.
+      return Promise.reject(createWalletError.signFailed(new Error(NO_REVIEWER_MESSAGE)));
+    }
+    return new Promise<boolean>((resolve, reject) => {
+      let settled = false;
+      const settle = (outcome: boolean | Error): void => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener('abort', onAbort);
+        // Withdraw the prompt before answering, so the next review starts clean.
+        this.emitPrompt(null);
+        if (outcome instanceof Error) reject(outcome);
+        else resolve(outcome);
+      };
+      const onAbort = (): void => settle(createWalletError.notConnected());
+      signal.addEventListener('abort', onAbort, { once: true });
+      this.emitPrompt(
+        Object.freeze({
+          title: 'Review transaction',
+          description:
+            review.action === 'signAndSubmit'
+              ? 'Approving signs this transaction with your Privy wallet and submits it to the XRP Ledger.'
+              : 'Approving signs this transaction with your Privy wallet. The app can then submit it to the XRP Ledger.',
+          review,
+          submitLabel: 'Approve',
+          submit: async () => settle(true),
+          cancel: () => settle(false),
+        })
+      );
+    });
+  }
+
+  private emitPrompt(prompt: WalletAuthPrompt | null): void {
+    for (const listener of [...this.promptListeners]) {
+      try {
+        listener(prompt);
+      } catch {
+        // Prompt observers are isolated from the signing operation.
+      }
+    }
   }
 
   private assertActive(controller: AbortController): void {
@@ -302,7 +452,7 @@ export class PrivyAdapter implements WalletAdapter {
     if (this.ledger && this.ledger.wss !== network.wss) this.releaseLedger();
     let ledger = this.ledger;
     if (!ledger) {
-      const client = new Client(network.wss);
+      const client = new Client(network.wss, { maxFeeXRP: MAX_FEE_XRP });
       ledger = { client, wss: network.wss, ready: client.connect(), users: 0 };
       ledger.ready.catch(() => undefined);
       this.ledger = ledger;

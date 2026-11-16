@@ -12,6 +12,8 @@ export type {
   WalletLoginMethod,
   WalletAuthField,
   WalletAuthPrompt,
+  WalletTransactionReview,
+  WalletTransactionReviewDetail,
   WalletId,
   WalletIdentifier,
   WalletManagerOptions,

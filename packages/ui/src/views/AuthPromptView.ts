@@ -1,5 +1,5 @@
 import { WALLET_CONNECTOR_PARTS } from '../customization';
-import type { WalletAuthField, WalletAuthPrompt } from '../types';
+import type { WalletAuthField, WalletAuthPrompt, WalletTransactionReview } from '../types';
 import { getSafeExternalUrl } from '../utils';
 import { createStaticView, createWalletImage, getViewElement } from './dom';
 
@@ -8,6 +8,52 @@ export interface AuthPromptViewOptions {
   error?: string;
   values?: Readonly<Record<string, string>>;
   onValueChange?: (name: string, value: string) => void;
+  /** Keep the submit button disabled, e.g. until a review can be approved. */
+  submitLocked?: boolean;
+}
+
+/** Whether a prompt carries a complete transaction review the user can approve. */
+export function isTransactionReviewPrompt(prompt: WalletAuthPrompt): boolean {
+  const details: unknown = prompt.review?.details;
+  return (
+    typeof prompt.submit === 'function' &&
+    Array.isArray(details) &&
+    details.length > 0 &&
+    details.every(
+      (detail) =>
+        typeof detail?.label === 'string' &&
+        detail.label.trim() !== '' &&
+        typeof detail.value === 'string'
+    )
+  );
+}
+
+/** Values longer than this, such as addresses and keys, get a line of their own. */
+const INLINE_REVIEW_VALUE_LENGTH = 24;
+
+/**
+ * List every detail of the review; values are text, never markup. The list
+ * scrolls on its own so the approve and reject actions stay in view.
+ */
+function appendTransactionReview(form: HTMLFormElement, review: WalletTransactionReview): void {
+  const list = document.createElement('dl');
+  list.className = 'auth-prompt-review';
+  list.setAttribute('aria-label', 'Transaction details');
+  list.tabIndex = 0;
+  for (const detail of review.details) {
+    const row = document.createElement('div');
+    row.className =
+      detail.value.includes('\n') || detail.value.length > INLINE_REVIEW_VALUE_LENGTH
+        ? 'auth-prompt-review-row auth-prompt-review-row--block'
+        : 'auth-prompt-review-row';
+    const label = document.createElement('dt');
+    label.textContent = detail.label;
+    const value = document.createElement('dd');
+    value.textContent = detail.value;
+    row.append(label, value);
+    list.append(row);
+  }
+  form.before(list);
 }
 
 const AUTH_FIELD_TYPES = new Set<WalletAuthField['type']>(['text', 'email', 'tel', 'password']);
@@ -230,6 +276,8 @@ export function updateAuthPromptBusy(
   }
   const secondaryButton = root.querySelector<HTMLButtonElement>('#auth-prompt-secondary-button');
   if (secondaryButton) secondaryButton.disabled = busy;
+  const rejectButton = root.querySelector<HTMLButtonElement>('#auth-prompt-reject-button');
+  if (rejectButton) rejectButton.disabled = busy;
 }
 
 export function renderAuthPromptView(
@@ -265,6 +313,9 @@ export function renderAuthPromptView(
     'part',
     WALLET_CONNECTOR_PARTS.walletModal.closeButton
   );
+  // A review has no previous step: closing the modal or rejecting cancels it.
+  const review = prompt.review;
+  if (review) getViewElement(view, '#auth-prompt-cancel-button').remove();
   const title = prompt.title.trim() || 'Authentication';
   getViewElement<HTMLHeadingElement>(view, '#wallet-dialog-title').textContent = title;
 
@@ -280,7 +331,8 @@ export function renderAuthPromptView(
   else description.remove();
 
   const form = getViewElement<HTMLFormElement>(view, '#auth-prompt-form');
-  const safeUrl = getSafeExternalUrl(prompt.url);
+  const safeUrl = review ? null : getSafeExternalUrl(prompt.url);
+  if (review) appendTransactionReview(form, review);
   if (safeUrl) {
     const link = document.createElement('a');
     link.className = 'auth-prompt-link';
@@ -291,7 +343,7 @@ export function renderAuthPromptView(
     form.before(link);
   }
 
-  if (prompt.qrCode) {
+  if (prompt.qrCode && !review) {
     const qrContainer = document.createElement('div');
     qrContainer.className = 'auth-prompt-qr-container';
     const loading = document.createElement('p');
@@ -302,7 +354,7 @@ export function renderAuthPromptView(
     form.before(qrContainer);
   }
 
-  if (prompt.captcha) {
+  if (prompt.captcha && !review) {
     const captchaContainer = document.createElement('div');
     captchaContainer.className = 'auth-prompt-captcha';
     captchaContainer.id = 'auth-prompt-captcha';
@@ -310,7 +362,8 @@ export function renderAuthPromptView(
   }
 
   form.setAttribute('aria-busy', String(busy));
-  for (const [index, field] of (prompt.fields ?? []).filter(isAuthField).entries()) {
+  const fields = review ? [] : (prompt.fields ?? []);
+  for (const [index, field] of fields.filter(isAuthField).entries()) {
     appendAuthField(form, field, index, options);
   }
 
@@ -318,14 +371,25 @@ export function renderAuthPromptView(
   if (prompt.submit) {
     submitButton.setAttribute('form', 'auth-prompt-form');
     submitButton.textContent = getSubmitLabel(prompt, busy);
-    submitButton.disabled = busy;
+    submitButton.disabled = busy || (options.submitLocked ?? false);
   } else {
     submitButton.remove();
+  }
+  if (review) {
+    const rejectButton = document.createElement('button');
+    rejectButton.className = 'error-button error-button-secondary';
+    rejectButton.id = 'auth-prompt-reject-button';
+    rejectButton.type = 'button';
+    rejectButton.textContent = 'Reject';
+    rejectButton.disabled = busy;
+    const actions = getViewElement(view, '.auth-prompt-actions');
+    actions.classList.add('auth-prompt-actions--review');
+    actions.prepend(rejectButton);
   }
 
   const secondaryContainer = getViewElement(view, '.auth-prompt-secondary-action');
   const secondaryButton = getViewElement<HTMLButtonElement>(view, '#auth-prompt-secondary-button');
-  if (prompt.secondaryAction) {
+  if (prompt.secondaryAction && !review) {
     const secondaryDescription = getViewElement(
       secondaryContainer,
       '.auth-prompt-secondary-description'

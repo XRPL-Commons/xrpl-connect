@@ -145,19 +145,77 @@ console.log(submitted.hash);
 ```
 
 Fund the XRPL account before autofill or submission. The adapter uses the network
-configured on the manager, autofills missing fee/sequence fields, hashes the XRPL
-signing serialization with SHA-512Half, and requests a raw signature from the
-Privy user's signer. It converts the compact signature to canonical DER, verifies
-it against the connected public key, and returns the signed blob. Submission
-waits for validation and returns the hash with `transactionResult`. A validated
-`tec` result is returned rather than thrown, because it consumed the fee and
-sequence; check `transactionResult === 'tesSUCCESS'` before treating it as applied.
+configured on the manager, autofills missing fee/sequence fields, asks the user to
+review the transaction, hashes the XRPL signing serialization with SHA-512Half,
+and requests a raw signature from the Privy user's signer. It converts the compact
+signature to canonical DER, verifies it against the connected public key, and
+returns the signed blob. Submission waits for validation and returns the hash with
+`transactionResult`. A validated `tec` result is returned rather than thrown,
+because it consumed the fee and sequence; check `transactionResult === 'tesSUCCESS'`
+before treating it as applied.
 
 Prepared transactions with `Fee` and `Sequence` can be signed without connecting
 to an XRPL server. Include `LastLedgerSequence` to bound their lifetime. The
 adapter rejects pre-signed transactions and transactions for another account.
+Every fee, computed or supplied by the application, is limited to 2 XRP, the
+xrpl.js autofill limit; like xrpl.js, the adapter exempts `AccountDelete`,
+`AMMCreate`, and `VaultCreate`, whose fee is the ledger's owner reserve. A larger
+fee fails with a `SIGN_FAILED` wallet error before any review or signature.
 Multisigning and arbitrary message signing are not supported; `signMessage` is
 declared unavailable through the standard capabilities contract.
+
+### Transaction review
+
+The embedded wallet signs without a wallet app of its own, so the adapter asks the
+user before every signature (`sign` and `signAndSubmit`). With the default
+`transactionReview: 'prompt'`, it sends the transaction through `onAuthPrompt()`
+as a prompt whose `review` lists every field of the exact transaction that will
+be signed: type, amount, destination and destination tag, fee, network, and
+account first, then all other fields. XRP amounts are shown in XRP, issued
+currencies as value, currency, and issuer, and MPT amounts as value and issuance
+ID; other values appear as text or JSON.
+
+The wallet connector shows this review in its dialog, opening it if it is closed
+and closing it afterwards. **Approve** signs; **Reject**, closing the dialog, or
+pressing Escape rejects with `SIGN_REJECTED`, and the Privy signer is never
+called. A disconnect, logout, or lost session during a review rejects it with
+`NOT_CONNECTED`. Reviews run one at a time: a second request waits until the
+first is answered, an answer always applies to the transaction on screen, and
+**Approve** stays disabled for a second after each review appears so a double
+click cannot approve the next one. Approve within about a minute when submitting:
+the autofilled `LastLedgerSequence` bounds how long the reviewed transaction stays
+valid, and an expired one fails without being applied.
+
+The review fails closed. When nothing is subscribed with `onAuthPrompt()`,
+signing fails with a `SIGN_FAILED` wallet error instead of signing, so keep a
+connector on the page while users sign. To use your own interface, subscribe with
+`adapter.onAuthPrompt()` and answer prompts that carry a `review` with
+`prompt.submit({})` or `prompt.cancel()`, or pass a function:
+
+```js
+const privy = new PrivyAdapter({
+  appId: 'YOUR_PUBLIC_APP_ID',
+  redirectUri: `${window.location.origin}/wallet/privy`,
+  // Called once per transaction, one at a time. `signal` aborts on disconnect.
+  transactionReview: async (review, signal) => {
+    // review.action: 'sign' | 'signAndSubmit'; review.network; review.transaction;
+    // review.details: [{ name, label, value }] covering every field.
+    return await myConfirmDialog(review.details, { signal }); // `true` approves
+  },
+});
+```
+
+Only an explicit `true` approves; any other answer rejects with `SIGN_REJECTED`,
+and a thrown error fails the request with `SIGN_FAILED`.
+
+`transactionReview: 'none'` turns the review off: the adapter signs headlessly,
+whenever any code calls `sign` or `signAndSubmit`. **Any script running in the
+page, including a compromised dependency or injected code, can then sign and
+submit transactions with the user's wallet without the user seeing them.** Use
+it only when your application shows its own confirmation for every transaction.
+An in-page review cannot stop code that already runs in your page, which can
+click its buttons or answer its prompts; it protects users from transactions they
+did not expect, such as ones built from untrusted input.
 
 Privy's browser extended-chain API creates the native `xrpl` wallet with the
 authenticated user as owner. The implementation uses the same vanilla `create`
