@@ -4,11 +4,21 @@ import {
   type WalletConnectorCssVariable,
   type WalletConnectorCssVars,
   type WalletConnectorElementInstance,
+  type SocialLogin,
 } from '../dist/index';
 import type { AccountInfo } from '@xrpl-connect/core';
 
 const connector: WalletConnectorElementInstance = document.createElement('xrpl-wallet-connector');
 const pendingAccount: Promise<AccountInfo> = connector.openAndWait();
+const socialLogins: readonly SocialLogin[] = [
+  {
+    id: 'google',
+    label: 'Google',
+    adapterId: 'custom-social',
+    connectOptions: { provider: 'google' },
+  },
+];
+connector.socialLogins = socialLogins;
 const firstCssVariable: WalletConnectorCssVariable = WALLET_CONNECTOR_CSS_VARIABLES[0];
 const cssVars: WalletConnectorCssVars = { '--xc-primary-color': '#7c3aed' };
 const invalidCssVars: WalletConnectorCssVars = {
@@ -22,6 +32,7 @@ if (WalletConnectorElement) {
 }
 
 void pendingAccount;
+void socialLogins;
 void firstCssVariable;
 void cssVars;
 void invalidCssVars;

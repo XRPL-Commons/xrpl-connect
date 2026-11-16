@@ -6,11 +6,24 @@ description: Real-world examples and pre-built theme configurations for implemen
 
 Real-world examples and pre-built theme configurations.
 
+## Run the wallet demos
+
+The maintained [vanilla JavaScript demo](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/examples/vanilla-js)
+and [React demo](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/examples/react)
+include optional Privy social login, callback restoration, and manual testnet
+funding and transaction signing. External wallets remain available in both demos.
+
+Follow the [social login guide](/guide/social-login#run-the-demos) to configure the
+public app ID and allowed callback URLs. The vanilla demo runs at
+`http://localhost:5170` and React at `http://localhost:5173`. Each example's README
+also includes its build and run commands.
+
 ## Live React Example
 
 The React example application demonstrates the recommended v1 integration, including:
 
 - Multiple wallet adapters
+- Optional Privy social login with methods discovered from the Privy dashboard
 - The official provider and hooks from `@xrpl-commons/xrpl-connect-react`
 - Capability-aware transaction and message signing
 - Dynamic theme customization
@@ -20,7 +33,7 @@ The React example application demonstrates the recommended v1 integration, inclu
 For Vue 3 and Nuxt, follow the maintained [Vue guide](/guide/frameworks/vue) and
 [Nuxt guide](/guide/frameworks/nuxt).
 
-**Check out the full example:** [`examples/react/`](https://github.com/XRPL-Commons/xrpl-connect/tree/main/examples/react)
+**Check out the full example:** [`examples/react/`](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/examples/react)
 
 The example includes detailed setup instructions, best practices for React integration, and demonstrates how to properly handle web component lifecycle in React applications.
 

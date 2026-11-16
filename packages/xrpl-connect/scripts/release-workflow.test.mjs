@@ -32,6 +32,10 @@ const currentTags = {
     latest: '1.0.0-rc.0',
     rc: '1.0.0-rc.0',
   },
+  '@xrpl-commons/xrpl-connect-privy': {
+    latest: '1.0.0-rc.0',
+    rc: '1.0.0-rc.0',
+  },
 };
 const clone = (value) => structuredClone(value);
 
@@ -289,6 +293,7 @@ function packageNameForTarget(target, config) {
 function packageNameForFolder(folder) {
   if (folder.endsWith('dist-publish')) return 'xrpl-connect';
   if (folder.endsWith('react')) return '@xrpl-commons/xrpl-connect-react';
+  if (folder.endsWith('privy')) return '@xrpl-commons/xrpl-connect-privy';
   return '@xrpl-commons/xrpl-connect-vue';
 }
 
@@ -386,7 +391,7 @@ test('fresh RC publishes through fixed rc policy and preserves every latest tag'
   const harness = createRegistryHarness(RC1);
   await harness.publish(['--', '--confirm', RC1.version]);
   const publishCalls = harness.calls.filter(({ args }) => args[0] === 'publish');
-  assert.equal(publishCalls.length, 3);
+  assert.equal(publishCalls.length, 4);
   for (const call of publishCalls) {
     assert.deepEqual(call.args, [
       'publish',
@@ -425,7 +430,7 @@ test('RC publisher resumes identical partial publication', async () => {
   ]);
   const harness = createRegistryHarness(RC1, { tags, publishedPackages });
   await harness.publish(['--confirm', RC1.version]);
-  assert.equal(harness.calls.filter(({ args }) => args[0] === 'publish').length, 1);
+  assert.equal(harness.calls.filter(({ args }) => args[0] === 'publish').length, 2);
   for (const name of RELEASE_PACKAGE_NAMES)
     assert.equal(harness.registryTags[name].rc, RC1.version);
 });
@@ -485,7 +490,7 @@ test('stable publication resumes partial upload and partial latest promotion', a
   ]);
   const harness = createRegistryHarness(STABLE, { tags, publishedPackages });
   await harness.publish(['--confirm', STABLE.version]);
-  assert.equal(harness.calls.filter(({ args }) => args[0] === 'publish').length, 1);
+  assert.equal(harness.calls.filter(({ args }) => args[0] === 'publish').length, 2);
   for (const name of RELEASE_PACKAGE_NAMES) {
     assert.equal(harness.registryTags[name].latest, STABLE.version);
     assert.equal(harness.registryTags[name][STABLE_STAGING_TAG], undefined);

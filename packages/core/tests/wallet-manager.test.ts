@@ -3,6 +3,7 @@ import EventEmitter from 'eventemitter3';
 import { WalletManager } from '../src/wallet-manager';
 import { MemoryStorageAdapter, Storage } from '../src/storage';
 import { TIME } from '../src/constants';
+import { createWalletError } from '../src/errors';
 import { CAPABILITY_DEFAULTS, WalletErrorCode } from '../src/types';
 import type {
   AccountInfo,
@@ -265,6 +266,34 @@ describe('WalletManager.disconnect()', () => {
     expect(manager.account?.address).toBe(ACCOUNT.address);
   });
 
+  it('notifies consumers as soon as the session clears while provider logout is pending', async () => {
+    let finishDisconnect!: () => void;
+    const adapter = createFakeAdapter();
+    adapter.disconnect = vi.fn(() => new Promise<void>((resolve) => (finishDisconnect = resolve)));
+    const storageAdapter = new MemoryStorageAdapter();
+    const manager = new WalletManager({ adapters: [adapter], storage: storageAdapter });
+    const disconnected = vi.fn(() => {
+      expect(manager.connected).toBe(false);
+      expect(manager.account).toBeNull();
+    });
+    manager.on('disconnect', disconnected);
+    await manager.connect('fake');
+
+    let settled = false;
+    const disconnecting = manager.disconnect().finally(() => {
+      settled = true;
+    });
+    try {
+      await vi.waitFor(() => expect(disconnected).toHaveBeenCalledOnce());
+      expect(settled).toBe(false);
+      await expect(new Storage(storageAdapter).loadState()).resolves.toBeNull();
+    } finally {
+      finishDisconnect();
+      await disconnecting;
+    }
+    expect(disconnected).toHaveBeenCalledOnce();
+  });
+
   it('waits for an earlier teardown before reconnecting the same adapter', async () => {
     let finishDisconnect!: () => void;
     const adapter = createFakeAdapter();
@@ -301,6 +330,8 @@ describe('WalletManager.disconnect()', () => {
     const oldDisconnecting = manager.disconnect();
     await vi.waitFor(() => expect(oldAdapter.disconnect).toHaveBeenCalledOnce());
 
+    expect(disconnected).toHaveBeenCalledOnce();
+    disconnected.mockClear();
     await manager.connect('new');
     finishOldDisconnect();
     await oldDisconnecting;
@@ -312,6 +343,43 @@ describe('WalletManager.disconnect()', () => {
     await manager.disconnect();
     expect(disconnected).toHaveBeenCalledOnce();
   });
+
+  it.each(['adapter event', 'account refresh'] as const)(
+    'does not notify a newer session when %s cleanup finishes',
+    async (source) => {
+      const adapter = createFakeAdapter();
+      adapter.fetchAccount = vi.fn(async () => null);
+      const newerAdapter = { ...createFakeAdapter(), id: 'new', name: 'New Wallet' };
+      const storage = new MemoryStorageAdapter();
+      const manager = new WalletManager({ adapters: [adapter, newerAdapter], storage });
+      await manager.connect('fake');
+      const disconnected = vi.fn();
+      manager.on('disconnect', disconnected);
+      let releaseStorage!: () => void;
+      const storageGate = new Promise<void>((resolve) => (releaseStorage = resolve));
+      const remove = storage.remove.bind(storage);
+      vi.spyOn(storage, 'remove').mockImplementation(async (key) => {
+        await storageGate;
+        await remove(key);
+      });
+
+      const clearing = source === 'account refresh' ? manager.fetchAccount() : undefined;
+      if (source === 'adapter event') adapter.emitAdapterEvent('disconnect');
+      await vi.waitFor(() => expect(storage.remove).toHaveBeenCalledOnce());
+      const connecting = manager.connect('new');
+      try {
+        await vi.waitFor(() => expect(manager.wallet).toBe(newerAdapter));
+      } finally {
+        releaseStorage();
+      }
+      await Promise.all([clearing, connecting]);
+
+      expect(disconnected).not.toHaveBeenCalled();
+      expect(manager.connected).toBe(true);
+      expect(manager.wallet).toBe(newerAdapter);
+      await expect(new Storage(storage).loadState()).resolves.toMatchObject({ walletId: 'new' });
+    }
+  );
 
   it('joins concurrent disconnect callers while teardown is pending', async () => {
     let finishDisconnect!: () => void;
@@ -518,7 +586,7 @@ describe('WalletManager.disconnect()', () => {
     expect(manager.connected).toBe(false);
   });
 
-  it('tears down the provider before notifying disconnect listeners', async () => {
+  it('completes provider teardown even when a disconnect listener throws', async () => {
     const failure = new Error('listener failed');
     const adapter = createFakeAdapter();
     const manager = new WalletManager({ adapters: [adapter] });
@@ -1540,6 +1608,245 @@ describe('WalletManager.reconnect()', () => {
 
     await expect(manager.reconnect()).resolves.toBeNull();
 
+    expect(await new Storage(storage).loadState()).toBeNull();
+  });
+
+  it('keeps the stored session when a reconnect times out', async () => {
+    const storage = new MemoryStorageAdapter();
+    await new Storage(storage).saveState({
+      walletId: 'fake',
+      account: ACCOUNT,
+      network: NETWORK,
+      timestamp: Date.now(),
+    });
+    const storedBefore = await new Storage(storage).loadState();
+    const adapter = {
+      ...createFakeAdapter(),
+      keepsSessionOnRestoreTimeout: true,
+      connect: vi.fn(async () => {
+        throw createWalletError.operationTimeout('Session restore');
+      }),
+    };
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    expect(manager.connected).toBe(false);
+    expect(await new Storage(storage).loadState()).toEqual(storedBefore);
+  });
+
+  it('clears the stored session when a restore that may wait on the user times out', async () => {
+    const storage = new MemoryStorageAdapter();
+    const stored = createFakeAdapter();
+    await new WalletManager({ adapters: [stored], storage }).connect(stored.id);
+    const adapter = {
+      ...createFakeAdapter(),
+      connect: vi.fn(async () => {
+        throw createWalletError.operationTimeout('Wallet authorization');
+      }),
+    };
+    const manager = new WalletManager({ adapters: [adapter], storage });
+
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    expect(await new Storage(storage).loadState()).toBeNull();
+  });
+
+  it('keeps the session retained after a timed-out restore when another connection fails', async () => {
+    const storage = new MemoryStorageAdapter();
+    const stored = createFakeAdapter();
+    await new WalletManager({ adapters: [stored], storage }).connect(stored.id);
+    const storedBefore = await new Storage(storage).loadState();
+    const timedOut = {
+      ...createFakeAdapter(),
+      keepsSessionOnRestoreTimeout: true,
+      connect: vi.fn(async () => {
+        throw createWalletError.operationTimeout('Session restore');
+      }),
+    };
+    const rejecting = {
+      ...createFakeAdapter(),
+      id: 'other',
+      connect: vi.fn(async () => {
+        throw createWalletError.connectionRejected('Other');
+      }),
+    };
+    const manager = new WalletManager({ adapters: [timedOut, rejecting], storage });
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    await expect(manager.connect('other')).rejects.toMatchObject({
+      code: WalletErrorCode.CONNECTION_REJECTED,
+    });
+
+    expect(await new Storage(storage).loadState()).toEqual(storedBefore);
+  });
+
+  it('replaces the session retained after a timed-out restore when another wallet connects', async () => {
+    const storage = new MemoryStorageAdapter();
+    const stored = createFakeAdapter();
+    await new WalletManager({ adapters: [stored], storage }).connect(stored.id);
+    const timedOut = {
+      ...createFakeAdapter(),
+      keepsSessionOnRestoreTimeout: true,
+      connect: vi.fn(async () => {
+        throw createWalletError.operationTimeout('Session restore');
+      }),
+    };
+    const other = { ...createFakeAdapter(), id: 'other' };
+    const manager = new WalletManager({ adapters: [timedOut, other], storage });
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    await manager.connect('other');
+
+    expect((await new Storage(storage).loadState())?.walletId).toBe('other');
+  });
+
+  it('clears the session retained after a timed-out restore on disconnect', async () => {
+    const storage = new MemoryStorageAdapter();
+    const stored = createFakeAdapter();
+    await new WalletManager({ adapters: [stored], storage }).connect(stored.id);
+    const timedOut = {
+      ...createFakeAdapter(),
+      keepsSessionOnRestoreTimeout: true,
+      connect: vi.fn(async () => {
+        throw createWalletError.operationTimeout('Session restore');
+      }),
+    };
+    const manager = new WalletManager({ adapters: [timedOut], storage });
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    await manager.disconnect();
+
+    expect(await new Storage(storage).loadState()).toBeNull();
+  });
+
+  it('completes a redirect login started after a restore timed out', async () => {
+    const storage = new MemoryStorageAdapter();
+    const stored = createFakeAdapter();
+    await new WalletManager({ adapters: [stored], storage }).connect(stored.id);
+    const storedBefore = await new Storage(storage).loadState();
+    const timedOut = {
+      ...createFakeAdapter(),
+      keepsSessionOnRestoreTimeout: true,
+      connect: vi.fn(async () => {
+        throw createWalletError.operationTimeout('Session restore');
+      }),
+    };
+    // The redirect leaves the page, so this connection never settles.
+    const leaving = {
+      ...createFakeAdapter(),
+      id: 'redirect',
+      hasPendingConnection: () => false,
+      connect: vi.fn(() => new Promise<AccountInfo>(() => {})),
+    };
+    const manager = new WalletManager({ adapters: [timedOut, leaving], storage });
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    void manager.connect('redirect').catch(() => undefined);
+    await vi.waitFor(() => expect(leaving.connect).toHaveBeenCalledOnce());
+    // The login may still be abandoned, so the retained session is only marked.
+    expect(await new Storage(storage).loadState()).toEqual({
+      ...storedBefore,
+      pendingAuthorization: 'redirect',
+    });
+
+    // Back on the page, the returned authorization replaces the retained session.
+    const retained = createFakeAdapter();
+    const returned = { ...createFakeAdapter(), id: 'redirect', hasPendingConnection: () => true };
+    const restored = new WalletManager({ adapters: [retained, returned], storage });
+    await expect(restored.reconnect()).resolves.toEqual(ACCOUNT);
+    expect(restored.wallet).toBe(returned);
+    expect(retained.connect).not.toHaveBeenCalled();
+    const replaced = await new Storage(storage).loadState();
+    expect(replaced?.walletId).toBe('redirect');
+    expect(replaced?.pendingAuthorization).toBeUndefined();
+  });
+
+  it.each([
+    ['rejected', createWalletError.connectionRejected('Redirect Wallet')],
+    ['failed', new Error('Provider unavailable')],
+  ])(
+    'keeps the retained session when a redirect-capable replacement login is %s',
+    async (_reason, error) => {
+      const storage = new MemoryStorageAdapter();
+      const stored = createFakeAdapter();
+      await new WalletManager({ adapters: [stored], storage }).connect(stored.id);
+      const storedBefore = await new Storage(storage).loadState();
+      const timedOut = {
+        ...createFakeAdapter(),
+        keepsSessionOnRestoreTimeout: true,
+        connect: vi
+          .fn<WalletAdapter['connect']>()
+          .mockRejectedValueOnce(createWalletError.operationTimeout('Session restore'))
+          .mockResolvedValue(ACCOUNT),
+      };
+      const replacement = {
+        ...createFakeAdapter(),
+        id: 'redirect',
+        hasPendingConnection: () => false,
+        connect: vi.fn<WalletAdapter['connect']>().mockRejectedValue(error),
+      };
+      const manager = new WalletManager({ adapters: [timedOut, replacement], storage });
+      await expect(manager.reconnect()).resolves.toBeNull();
+
+      await expect(manager.connect(replacement.id)).rejects.toThrow();
+
+      expect(await new Storage(storage).loadState()).toEqual({
+        ...storedBefore,
+        pendingAuthorization: replacement.id,
+      });
+      await expect(manager.reconnect()).resolves.toEqual(ACCOUNT);
+      expect(manager.wallet).toBe(timedOut);
+      expect((await new Storage(storage).loadState())?.pendingAuthorization).toBeUndefined();
+    }
+  );
+
+  it('restores the retained session when the login started after it never returned', async () => {
+    const storage = new MemoryStorageAdapter();
+    const stored = createFakeAdapter();
+    await new WalletManager({ adapters: [stored], storage }).connect(stored.id);
+    await new Storage(storage).saveState({
+      ...(await new Storage(storage).loadState())!,
+      pendingAuthorization: 'redirect',
+    });
+    const retained = createFakeAdapter();
+    const abandoned = { ...createFakeAdapter(), id: 'redirect', hasPendingConnection: () => false };
+    const manager = new WalletManager({ adapters: [retained, abandoned], storage });
+
+    await expect(manager.reconnect()).resolves.toEqual(ACCOUNT);
+
+    expect(manager.wallet).toBe(retained);
+    expect(abandoned.connect).not.toHaveBeenCalled();
+    expect((await new Storage(storage).loadState())?.pendingAuthorization).toBeUndefined();
+  });
+
+  it('keeps the stored session when a returned authorization fails', async () => {
+    const storage = new MemoryStorageAdapter();
+    const stored = createFakeAdapter();
+    await new WalletManager({ adapters: [stored], storage }).connect(stored.id);
+    await new Storage(storage).saveState({
+      ...(await new Storage(storage).loadState())!,
+      pendingAuthorization: 'redirect',
+    });
+    const storedBefore = await new Storage(storage).loadState();
+    const retained = createFakeAdapter();
+    const rejected = {
+      ...createFakeAdapter(),
+      id: 'redirect',
+      hasPendingConnection: () => true,
+      connect: vi.fn(async () => {
+        throw createWalletError.connectionRejected('Redirect');
+      }),
+    };
+    const manager = new WalletManager({ adapters: [retained, rejected], storage });
+
+    await expect(manager.reconnect()).resolves.toBeNull();
+
+    expect(retained.connect).not.toHaveBeenCalled();
+    expect(await new Storage(storage).loadState()).toEqual(storedBefore);
+
+    // The session is still the user's to end.
+    await manager.disconnect();
     expect(await new Storage(storage).loadState()).toBeNull();
   });
 

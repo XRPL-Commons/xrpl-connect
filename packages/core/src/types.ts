@@ -233,15 +233,56 @@ export function adapterSupports(
   return adapter.capabilities?.[capability] ?? CAPABILITY_DEFAULTS[capability];
 }
 
-/**
- * Core interface that all wallet adapters must implement
- */
+/** A sign-in choice returned by an adapter's authentication provider. */
+export interface WalletLoginMethod {
+  id: string;
+  label: string;
+  icon?: string;
+  connectOptions?: ConnectOptions<Record<string, unknown>>;
+}
+
+export interface WalletAuthField {
+  name: string;
+  label: string;
+  type: 'text' | 'email' | 'tel' | 'password';
+  autocomplete?: string;
+  inputMode?: 'text' | 'email' | 'tel' | 'numeric';
+  placeholder?: string;
+  /** Number of digits for a numeric one-time-code field (4–12). */
+  codeLength?: number;
+}
+
+/** A pending authentication step. Input values stay between the UI and adapter. */
+export interface WalletAuthPrompt {
+  title: string;
+  /** Optional provider icon displayed by authentication prompt UIs. */
+  icon?: string;
+  description?: string;
+  fields?: readonly WalletAuthField[];
+  url?: string;
+  /** Authentication payload to encode as a QR code, such as a sign-in URL. */
+  qrCode?: string;
+  /** The UI supplies the completed challenge token as `values.captchaToken`. */
+  captcha?: { provider: 'turnstile' | 'hcaptcha'; siteKey: string };
+  submitLabel?: string;
+  submit?: (values: Record<string, string>) => Promise<void>;
+  secondaryAction?: {
+    label: string;
+    description?: string;
+    run: () => Promise<void>;
+  };
+  cancel: () => void;
+}
+
+/** Core interface that all wallet adapters must implement. */
 export interface WalletAdapter {
   // Metadata
   readonly id: WalletIdentifier; // packaged or application-defined adapter ID
   readonly name: string; // 'Xaman Wallet', 'Crossmark', etc.
   readonly icon?: string; // URL or base64 icon
   readonly url?: string; // Wallet website/download URL
+  /** Attribution artwork and accessible label for this adapter's login flow. */
+  readonly loginBranding?: { readonly label: string; readonly logo: string };
 
   /**
    * Declared feature support. Optional — omitted flags use
@@ -250,6 +291,15 @@ export interface WalletAdapter {
    */
   readonly capabilities?: WalletCapabilities;
 
+  /**
+   * Declare `true` when restoring a session never waits on the user, so a
+   * restore that times out says nothing about the session's validity. The
+   * manager then keeps the stored session for a later `reconnect()` instead of
+   * clearing it. Leave unset when a timeout can also mean an authorization the
+   * user never answered.
+   */
+  readonly keepsSessionOnRestoreTimeout?: boolean;
+
   // Optional, minimal reconnect-state serialization (never called by adapters
   // that do not opt in).
   serializeReconnectOptions?(options: ConnectOptions): ReconnectOptions | undefined;
@@ -257,6 +307,14 @@ export interface WalletAdapter {
   // Availability
   getMissingConfiguration?(options?: ConnectOptions): readonly string[];
   isAvailable(): Promise<boolean>; // Check if wallet is installed/accessible
+
+  /**
+   * Discover the sign-in methods currently enabled by the authentication provider.
+   * Callers abort `signal` when the result is no longer needed.
+   */
+  getLoginMethods?(options?: { signal?: AbortSignal }): Promise<readonly WalletLoginMethod[]>;
+  /** Subscribe to input or QR challenges during an active connection attempt. */
+  onAuthPrompt?(callback: (prompt: WalletAuthPrompt | null) => void): () => void;
 
   // Connection lifecycle
   connect(options?: ConnectOptions): Promise<AccountInfo>;
@@ -410,6 +468,11 @@ export interface StoredState {
    * Arbitrary caller-provided connection options are never stored.
    */
   connectOptions?: ReconnectOptions;
+  /**
+   * Wallet whose login was started while this session could not be restored.
+   * If that login returns from a redirect, it replaces this session.
+   */
+  pendingAuthorization?: WalletIdentifier;
 }
 
 /**

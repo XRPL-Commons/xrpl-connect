@@ -91,6 +91,49 @@ describe('WalletService', () => {
     expect(isAvailable).not.toHaveBeenCalled();
   });
 
+  it('passes social options unchanged, labels the loading state, and retries privately', async () => {
+    const socialOptions = { provider: 'google', callback: vi.fn() };
+    const connect = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce(undefined);
+    const mockWalletManager = {
+      wallets: [{ id: 'privy', name: 'Privy' }],
+      connect,
+    };
+    const mockComponent = {
+      showLoadingView: vi.fn(),
+      showQRCodeView: vi.fn(),
+      showAccountSelectionView: vi.fn(),
+      showErrorView: vi.fn(),
+      dispatchEvent: vi.fn(),
+      setQRCode: vi.fn(),
+      close: vi.fn(),
+    };
+    const walletService = new WalletService(mockWalletManager as any, mockComponent as any);
+
+    await walletService.connectWallet('privy', socialOptions, {
+      socialLoginId: 'google',
+      label: 'Continue with Google',
+    });
+
+    expect(connect).toHaveBeenCalledWith('privy', socialOptions);
+    expect(mockComponent.showLoadingView).toHaveBeenCalledWith(
+      'privy',
+      'Continue with Google',
+      undefined
+    );
+    const errorEvent = mockComponent.dispatchEvent.mock.calls.find(
+      ([event]) => (event as Event).type === 'error'
+    )?.[0] as CustomEvent<Record<string, unknown>> | undefined;
+    expect(errorEvent?.detail).toMatchObject({ walletId: 'privy', socialLoginId: 'google' });
+    expect(errorEvent?.detail).not.toHaveProperty('connectOptions');
+
+    expect(walletService.retryLastConnection()).toBe(true);
+    await vi.waitFor(() => expect(connect).toHaveBeenCalledTimes(2));
+    expect(connect.mock.calls[1]).toEqual(['privy', socialOptions]);
+  });
+
   it('shows an unavailable error when the Ledger availability check times out', async () => {
     vi.useFakeTimers();
     const getAccounts = vi.fn();

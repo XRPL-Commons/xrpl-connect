@@ -35,15 +35,24 @@ import {
   renderErrorView,
   renderAccountSelectionView,
   renderAccountModal,
+  renderSocialLoginView,
+  renderAuthPromptView,
+  updateAuthPromptBusy,
+  getAuthCodeLength,
+  normalizeAuthCodeValue,
 } from './views';
-import { replaceViewChildren } from './views/dom';
+import { createWalletImage, replaceViewChildren } from './views/dom';
 import { WalletService, EventHandler, type CancelledConnectionAttempt } from './services';
+import { renderCaptchaWidget } from './services/Captcha';
 import {
   type AccountSelectionData,
   type ErrorData,
   type LedgerAccount,
   type LoadingData,
   type QRCodeData,
+  type SocialLogin,
+  type WalletAuthPrompt,
+  type WalletLoginMethod,
   type WalletConnectorContext,
 } from './types';
 import { isXamanQRImage, adjustColorBrightness, orderWalletsByMru } from './utils';
@@ -53,38 +62,56 @@ import { isXamanQRImage, adjustColorBrightness, orderWalletsByMru } from './util
  */
 const logger = createLogger('[WalletConnector]');
 const AVAILABILITY_TIMED_OUT = Symbol('availability-timed-out');
-const availabilityChecks = new WeakMap<WalletManager, WeakMap<WalletAdapter, Promise<boolean>>>();
+interface AvailabilityCheck {
+  result: Promise<boolean>;
+  timedOut: boolean;
+}
 
-function checkWalletAvailability(manager: WalletManager, wallet: WalletAdapter): Promise<boolean> {
+const availabilityChecks = new WeakMap<WalletManager, WeakMap<WalletAdapter, AvailabilityCheck>>();
+
+function checkWalletAvailability(
+  manager: WalletManager,
+  wallet: WalletAdapter,
+  retryTimedOut = false
+): Promise<boolean> {
   let checks = availabilityChecks.get(manager);
   if (!checks) {
     checks = new WeakMap();
     availabilityChecks.set(manager, checks);
   }
   const pending = checks.get(wallet);
-  if (pending) return pending;
-  const check = withTimeout<boolean | typeof AVAILABILITY_TIMED_OUT>(
-    async () => {
-      try {
-        return await wallet.isAvailable();
-      } catch (error) {
-        logger.warn(`Error checking availability for ${wallet.id}:`, error);
-        return false;
-      }
-    },
-    TIME.AVAILABILITY_TIMEOUT,
-    AVAILABILITY_TIMED_OUT
-  ).then((result) => {
-    checks.delete(wallet);
-    if (result === AVAILABILITY_TIMED_OUT) {
-      logger.warn(
-        `Timed out checking availability for ${wallet.id} after ${TIME.AVAILABILITY_TIMEOUT}ms`
-      );
+  if (pending && !(retryTimedOut && pending.timedOut)) return pending.result;
+  const probe = (async () => {
+    try {
+      return await wallet.isAvailable();
+    } catch (error) {
+      logger.warn(`Error checking availability for ${wallet.id}:`, error);
+      return false;
     }
-    return result === true;
-  });
+  })();
+  const check: AvailabilityCheck = {
+    timedOut: false,
+    result: withTimeout<boolean | typeof AVAILABILITY_TIMED_OUT>(
+      () => probe,
+      TIME.AVAILABILITY_TIMEOUT,
+      AVAILABILITY_TIMED_OUT
+    ).then((result) => {
+      if (result === AVAILABILITY_TIMED_OUT) {
+        check.timedOut = true;
+        logger.warn(
+          `Timed out checking availability for ${wallet.id} after ${TIME.AVAILABILITY_TIMEOUT}ms`
+        );
+      }
+      return result === true;
+    }),
+  };
   checks.set(wallet, check);
-  return check;
+  // Keep background retries from overlapping a hung SDK probe. Reopening the
+  // modal can explicitly retry a timed-out check without trusting its late result.
+  void probe.then(() => {
+    if (checks.get(wallet) === check) checks.delete(wallet);
+  });
+  return check.result;
 }
 
 function createMainStyleElement(nonce: string | undefined): HTMLStyleElement {
@@ -94,8 +121,49 @@ function createMainStyleElement(nonce: string | undefined): HTMLStyleElement {
   return style;
 }
 
+function setQRCodeSvgRendering(container: ParentNode): void {
+  container.querySelector('svg')?.setAttribute('shape-rendering', 'crispEdges');
+}
+
+const CAPTCHA_ERRORS = {
+  required: 'Complete the CAPTCHA challenge before continuing.',
+  expired: 'CAPTCHA expired. Please try again.',
+  rejected: 'CAPTCHA could not be verified. Please try again.',
+  unavailable: 'CAPTCHA could not be loaded. Please try again.',
+} as const;
+const CAPTCHA_ERROR_MESSAGES = new Set<string>(Object.values(CAPTCHA_ERRORS));
+
+/** Structural equality for plain descriptor data; other objects compare by identity. */
+function isSameValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((value, index) => isSameValue(value, b[index]));
+  }
+  const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+    value !== null &&
+    typeof value === 'object' &&
+    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+  if (!isPlainObject(a) || !isPlainObject(b)) return false;
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((key) => Object.prototype.hasOwnProperty.call(b, key) && isSameValue(a[key], b[key]))
+  );
+}
+
+function areSocialLoginsEqual(
+  current: readonly SocialLogin[],
+  next: readonly SocialLogin[]
+): boolean {
+  return (
+    current.length === next.length &&
+    current.every((login, index) => isSameValue(login, next[index]))
+  );
+}
+
 /** Public API exposed by the `<xrpl-wallet-connector>` custom element. */
 export interface WalletConnectorElementInstance extends HTMLElement {
+  socialLogins: readonly SocialLogin[];
   setWalletManager(manager: WalletManager): void;
   open(): Promise<void>;
   openAndWait(): Promise<AccountInfo>;
@@ -118,6 +186,26 @@ interface FocusReturnTarget {
   element: HTMLElement;
   root: Document | ShadowRoot;
   id: string | null;
+}
+
+interface DiscoveredSocialLogin {
+  login: SocialLogin;
+  key: string;
+}
+
+interface SocialLoginDiscoveryError {
+  adapterId: string;
+  adapterName: string;
+}
+
+interface AuthPromptState {
+  prompt: WalletAuthPrompt;
+  walletId: string;
+  walletName: string;
+  walletIcon?: string;
+  values: Record<string, string>;
+  busy: boolean;
+  error: string | null;
 }
 
 // Only define the component in browser (guard against SSR)
@@ -148,11 +236,32 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private preInitializationGeneration = 0;
     private isFirstOpen = true;
     private primaryWalletId: string | null = null;
-    private viewState: 'list' | 'qr' | 'loading' | 'error' | 'account-selection' = 'list';
+    private socialLoginInput: readonly SocialLogin[] = [];
+    private validatedSocialLogins: readonly SocialLogin[] = [];
+    private discoveredSocialLogins: readonly DiscoveredSocialLogin[] = [];
+    private socialDiscoveryErrors = new Map<string, SocialLoginDiscoveryError>();
+    private socialDiscoveryPending = new Set<string>();
+    private socialDiscoveryGeneration = 0;
+    private socialDiscoveryController = new AbortController();
+    private viewState:
+      | 'list'
+      | 'social-login'
+      | 'auth-prompt'
+      | 'qr'
+      | 'loading'
+      | 'error'
+      | 'account-selection' = 'list';
     public qrCodeData: QRCodeData | null = null;
     private loadingData: LoadingData | null = null;
     public errorData: ErrorData | null = null;
     public accountSelectionData: AccountSelectionData | null = null;
+    private authPromptData: AuthPromptState | null = null;
+    /** The prompt currently in the overlay; `render()` leaves it in place. */
+    private renderedAuthPrompt: AuthPromptState | null = null;
+    private authCaptchaToken: string | null = null;
+    private captchaCleanup: (() => void) | null = null;
+    private captchaGeneration = 0;
+    private authQrRenderGeneration = 0;
     private previousModalHeight: number = 0;
     private modalHeightFrame: number | null = null;
     private preGeneratedQRCode: QRCodeStyling | null = null;
@@ -167,6 +276,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private walletAvailabilityChecked: boolean = false;
     private walletAvailabilityPromise: Promise<void> | null = null;
     private walletAvailabilityUpdatedAt = -Infinity;
+    private walletAvailabilityRetryDelay: number = TIMINGS.WALLET_AVAILABILITY_RETRY;
+    private walletAvailabilityFullRefreshAt = -Infinity;
     private walletAvailabilityWallets: WalletAdapter[] | null = null;
     private walletAvailabilityTimer: ReturnType<typeof setTimeout> | null = null;
     private walletAvailabilityGeneration: number = 0;
@@ -189,6 +300,24 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     // Observed attributes
     static get observedAttributes() {
       return ['primary-wallet', 'wallets', 'show-unavailable'];
+    }
+
+    public get socialLogins(): readonly SocialLogin[] {
+      return this.validatedSocialLogins;
+    }
+
+    public set socialLogins(value: readonly SocialLogin[]) {
+      const next = Array.isArray(value) ? [...value] : [];
+      // Framework wrappers re-assign a fresh array on every render; only an
+      // actual change may reset discovery or leave the social chooser.
+      if (areSocialLoginsEqual(this.socialLoginInput, next)) return;
+      this.invalidateSocialDiscovery();
+      this.socialLoginInput = next;
+      this.refreshSocialLogins();
+      this.resetWalletAvailability();
+      if (this.viewState === 'social-login') this.viewState = 'list';
+      if (this.isConnected || this.isOpen) void this.refreshWalletAvailability();
+      if (this.shadow.children.length > 0) this.render();
     }
 
     /** Whether unavailable wallets are listed with an "Install" link. */
@@ -222,6 +351,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     disconnectedCallback() {
+      this.cancelAuthPrompt();
+      this.invalidateSocialDiscovery();
       const cancelledAttempt = this.cancelPendingConnection();
       this.openGeneration += 1;
       this.managerGeneration += 1;
@@ -241,6 +372,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.styleObserver = null;
       this.walletDialogOpener = null;
       this.accountDialogOpener = null;
+      this.clearCaptchaWidget();
 
       this.overlayPortal?.remove();
       this.overlayPortal = null;
@@ -337,10 +469,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     attributeChangedCallback(name: string, oldValue: string, newValue: string) {
       if (name === 'wallets' && oldValue !== newValue) {
+        this.invalidateSocialDiscovery();
         this.resetWalletAvailability();
         if (this.isConnected || this.isOpen) void this.refreshWalletAvailability();
         if (this.isOpen) {
           if (this.viewState === 'list') this.renderWalletAvailability();
+          else if (this.viewState === 'social-login') {
+            this.viewState = 'list';
+            this.render();
+          }
           return;
         }
       }
@@ -359,6 +496,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       const previousManager = this.walletManager;
+      this.cancelAuthPrompt();
+      this.invalidateSocialDiscovery();
       const cancelledAttempt = this.walletService?.cancelPendingWork() ?? null;
       this.managerGeneration += 1;
       this.invalidateWalletConnectPreInitialization(
@@ -371,12 +510,15 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         });
       }
       this.walletManager = manager;
+      this.refreshSocialLogins();
       this.clearQRRenderTimer();
       this.viewState = 'list';
       this.qrCodeData = null;
       this.loadingData = null;
       this.errorData = null;
       this.accountSelectionData = null;
+      this.authPromptData = null;
+      this.authCaptchaToken = null;
       this.resetWalletAvailability();
       this.walletService = new WalletService(this.walletManager, this);
       this.eventHandler = new EventHandler(this, this.walletService);
@@ -479,6 +621,256 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         .filter((id) => id.length > 0);
     }
 
+    private refreshSocialLogins(): void {
+      const registeredAdapterIds = this.walletManager
+        ? new Set(this.walletManager.wallets.map((wallet) => wallet.id))
+        : null;
+      const seenIds = new Set<string>();
+      const validSocialLogins: SocialLogin[] = [];
+
+      for (const socialLogin of this.socialLoginInput) {
+        if (!socialLogin || typeof socialLogin !== 'object') continue;
+        const id = typeof socialLogin.id === 'string' ? socialLogin.id.trim() : '';
+        const label = typeof socialLogin.label === 'string' ? socialLogin.label : '';
+        const adapterId =
+          typeof socialLogin.adapterId === 'string' ? socialLogin.adapterId.trim() : '';
+        if (
+          !id ||
+          !label.trim() ||
+          !adapterId ||
+          seenIds.has(id) ||
+          (registeredAdapterIds !== null && !registeredAdapterIds.has(adapterId))
+        ) {
+          continue;
+        }
+        seenIds.add(id);
+        validSocialLogins.push({
+          ...socialLogin,
+          id,
+          adapterId: adapterId as SocialLogin['adapterId'],
+        });
+      }
+
+      this.validatedSocialLogins = validSocialLogins;
+    }
+
+    private invalidateSocialDiscovery(): void {
+      this.socialDiscoveryGeneration += 1;
+      this.socialDiscoveryController.abort();
+      this.socialDiscoveryController = new AbortController();
+      this.discoveredSocialLogins = [];
+      this.socialDiscoveryErrors.clear();
+      this.socialDiscoveryPending.clear();
+    }
+
+    private getConfiguredSocialAdapterIds(manager: WalletManager): Set<string> {
+      // Explicit `socialLogins` entries opt their adapter in; dynamic discovery
+      // honors the `wallets` filter like every other registered adapter.
+      const adapterIds = new Set(
+        this.getConfiguredSocialLogins(manager).map(({ wallet }) => wallet.id)
+      );
+      const allowedIds = new Set(this.parseWalletAttribute());
+      for (const wallet of manager.wallets) {
+        if (typeof wallet.getLoginMethods !== 'function' || !allowedIds.has(wallet.id)) continue;
+        try {
+          if (isAdapterConfigured(wallet)) adapterIds.add(wallet.id);
+        } catch (error) {
+          logger.warn(`Error checking configuration for ${wallet.id}:`, error);
+        }
+      }
+      return adapterIds;
+    }
+
+    private getLoginAdapters(
+      manager: WalletManager,
+      configuredAdapterIds = this.getConfiguredSocialAdapterIds(manager)
+    ): WalletAdapter[] {
+      return manager.wallets.filter(
+        (wallet) =>
+          configuredAdapterIds.has(wallet.id) && typeof wallet.getLoginMethods === 'function'
+      );
+    }
+
+    private getAvailableLoginAdapters(
+      manager: WalletManager,
+      configuredAdapterIds?: Set<string>
+    ): WalletAdapter[] {
+      const available = new Set(this.availableWallets);
+      return this.getLoginAdapters(manager, configuredAdapterIds).filter((wallet) =>
+        available.has(wallet)
+      );
+    }
+
+    private getAllSocialLogins(): SocialLogin[] {
+      const explicit = this.validatedSocialLogins.map((login) => ({
+        login,
+        key: `${login.adapterId}:${login.id}`,
+      }));
+      const explicitKeys = new Set(explicit.map(({ key }) => key));
+      return [
+        ...explicit.map(({ login }) => login),
+        ...this.discoveredSocialLogins
+          .filter(({ key }) => !explicitKeys.has(key))
+          .map(({ login }) => login),
+      ];
+    }
+
+    private getAvailableSocialLogins(): SocialLogin[] {
+      const availableAdapterIds = new Set(this.availableWallets.map((wallet) => wallet.id));
+      return this.getAllSocialLogins().filter((login) => availableAdapterIds.has(login.adapterId));
+    }
+
+    /** Whether anything can be offered behind the social sign-in entry. */
+    private hasAvailableSocialLogin(
+      manager: WalletManager,
+      configuredAdapterIds?: Set<string>
+    ): boolean {
+      return (
+        this.getAvailableLoginAdapters(manager, configuredAdapterIds).length > 0 ||
+        this.getAvailableSocialLogins().length > 0
+      );
+    }
+
+    private getSingleSocialLoginAdapter(
+      configuredAdapterIds?: Set<string>
+    ): WalletAdapter | undefined {
+      if (!this.walletManager) return undefined;
+      const ids = new Set([
+        ...this.getAvailableLoginAdapters(this.walletManager, configuredAdapterIds).map(
+          ({ id }) => id
+        ),
+        ...this.getAvailableSocialLogins().map(({ adapterId }) => adapterId),
+      ]);
+      if (ids.size !== 1) return undefined;
+      return this.walletManager.wallets.find(({ id }) => ids.has(id));
+    }
+
+    private createLoginAttribution(): HTMLElement | null {
+      let walletId: string | undefined;
+      if (this.viewState === 'auth-prompt') walletId = this.authPromptData?.walletId;
+      else if (this.viewState === 'loading') walletId = this.loadingData?.walletId;
+      else if (this.viewState === 'error') walletId = this.errorData?.walletId;
+      const adapter =
+        this.viewState === 'social-login'
+          ? this.getSingleSocialLoginAdapter()
+          : this.walletManager?.wallets.find(({ id }) => id === walletId);
+      const branding = adapter?.loginBranding;
+      if (!branding?.label.trim()) return null;
+      const logo = createWalletImage(branding.logo, branding.label, { height: 13 });
+      if (!logo) return null;
+      const footer = document.createElement('div');
+      footer.className = 'auth-provider-attribution';
+      footer.append(logo);
+      return footer;
+    }
+
+    private normalizeLoginMethods(
+      wallet: WalletAdapter,
+      methods: readonly WalletLoginMethod[]
+    ): DiscoveredSocialLogin[] {
+      const seen = new Set<string>();
+      const normalized: DiscoveredSocialLogin[] = [];
+      for (const method of methods) {
+        const id = typeof method?.id === 'string' ? method.id.trim() : '';
+        const label = typeof method?.label === 'string' ? method.label.trim() : '';
+        if (!id || !label || seen.has(id)) continue;
+        seen.add(id);
+        normalized.push({
+          key: `${wallet.id}:${id}`,
+          login: {
+            id: `discovered:${wallet.id}:${id}`,
+            label,
+            adapterId: wallet.id,
+            icon: typeof method.icon === 'string' ? method.icon : undefined,
+            connectOptions: method.connectOptions,
+          },
+        });
+      }
+      return normalized;
+    }
+
+    private isCurrentSocialDiscovery(manager: WalletManager, generation: number): boolean {
+      return (
+        this.isOpen &&
+        this.viewState === 'social-login' &&
+        manager === this.walletManager &&
+        generation === this.socialDiscoveryGeneration
+      );
+    }
+
+    private async discoverSocialLoginAdapter(
+      manager: WalletManager,
+      wallet: WalletAdapter,
+      generation: number
+    ): Promise<void> {
+      // One controller per request: aborted when discovery is invalidated, and
+      // after the request settles or times out so adapters stop network work.
+      const controller = new AbortController();
+      const discoverySignal = this.socialDiscoveryController.signal;
+      const abort = (): void => controller.abort();
+      discoverySignal.addEventListener('abort', abort, { once: true });
+      try {
+        const methods = await withTimeout<readonly WalletLoginMethod[] | null>(
+          async () => {
+            try {
+              return await wallet.getLoginMethods!({ signal: controller.signal });
+            } catch (error) {
+              // An aborted request is a discovery the user moved away from.
+              if (!controller.signal.aborted) {
+                logger.warn(`Failed to load sign-in methods for ${wallet.id}:`, error);
+              }
+              return null;
+            }
+          },
+          TIMINGS.SOCIAL_DISCOVERY_TIMEOUT,
+          null
+        );
+        if (methods === null) throw new Error('Sign-in method discovery failed or timed out');
+        if (!this.isCurrentSocialDiscovery(manager, generation)) return;
+        this.discoveredSocialLogins = [
+          ...this.discoveredSocialLogins.filter(({ login }) => login.adapterId !== wallet.id),
+          ...this.normalizeLoginMethods(wallet, methods),
+        ];
+        this.socialDiscoveryErrors.delete(wallet.id);
+      } catch {
+        if (!this.isCurrentSocialDiscovery(manager, generation)) return;
+        this.socialDiscoveryErrors.set(wallet.id, {
+          adapterId: wallet.id,
+          adapterName: wallet.name,
+        });
+      } finally {
+        discoverySignal.removeEventListener('abort', abort);
+        controller.abort();
+        if (this.isCurrentSocialDiscovery(manager, generation)) {
+          this.socialDiscoveryPending.delete(wallet.id);
+          this.render();
+        }
+      }
+    }
+
+    private discoverSocialLogins(manager: WalletManager, generation: number): void {
+      const adapters = this.getAvailableLoginAdapters(manager);
+      for (const wallet of adapters) {
+        void this.discoverSocialLoginAdapter(manager, wallet, generation);
+      }
+      if (adapters.length === 0) this.render();
+    }
+
+    public retrySocialLoginDiscovery(adapterId: string): void {
+      const manager = this.walletManager;
+      if (!manager || this.viewState !== 'social-login') return;
+      const wallet = this.getAvailableLoginAdapters(manager).find(({ id }) => id === adapterId);
+      if (!wallet) return;
+      this.discoveredSocialLogins = this.discoveredSocialLogins.filter(
+        ({ login }) => login.adapterId !== adapterId
+      );
+      this.socialDiscoveryErrors.delete(adapterId);
+      this.socialDiscoveryPending.add(adapterId);
+      const generation = this.socialDiscoveryGeneration;
+      this.render();
+      void this.discoverSocialLoginAdapter(manager, wallet, generation);
+    }
+
     private clearWalletAvailabilityTimer(): void {
       if (this.walletAvailabilityTimer === null) return;
       clearTimeout(this.walletAvailabilityTimer);
@@ -493,16 +885,24 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.unavailableWallets = [];
       this.walletAvailabilityChecked = false;
       this.walletAvailabilityUpdatedAt = -Infinity;
+      this.walletAvailabilityFullRefreshAt = -Infinity;
+      this.walletAvailabilityRetryDelay = TIMINGS.WALLET_AVAILABILITY_RETRY;
       this.walletAvailabilityWallets = null;
     }
 
     private scheduleWalletAvailabilityRefresh(): void {
       this.clearWalletAvailabilityTimer();
       if (!this.isOpen || this.viewState !== 'list' || !this.walletManager) return;
-      const remaining = Math.max(
-        0,
-        this.walletAvailabilityUpdatedAt + TIMINGS.WALLET_AVAILABILITY_REFRESH - Date.now()
-      );
+      const fullRefreshAt =
+        this.walletAvailabilityFullRefreshAt + TIMINGS.WALLET_AVAILABILITY_REFRESH;
+      const refreshAt =
+        this.unavailableWallets.length > 0
+          ? Math.min(
+              fullRefreshAt,
+              this.walletAvailabilityUpdatedAt + this.walletAvailabilityRetryDelay
+            )
+          : fullRefreshAt;
+      const remaining = Math.max(0, refreshAt - Date.now());
       this.walletAvailabilityTimer = setTimeout(() => {
         this.walletAvailabilityTimer = null;
         void this.refreshWalletAvailability();
@@ -511,7 +911,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     private getConfiguredWallets(manager: WalletManager): WalletAdapter[] {
       const walletsById = new Map(manager.wallets.map((wallet) => [wallet.id, wallet]));
-      return [...new Set(this.parseWalletAttribute())]
+      const socialAdapterIds = this.getConfiguredSocialAdapterIds(manager);
+      return [...new Set([...this.parseWalletAttribute(), ...socialAdapterIds])]
         .map((id) => walletsById.get(id))
         .filter((wallet): wallet is WalletAdapter => {
           if (!wallet) return false;
@@ -524,6 +925,23 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         });
     }
 
+    private getConfiguredSocialLogins(
+      manager: WalletManager
+    ): Array<{ login: SocialLogin; wallet: WalletAdapter }> {
+      const walletsById = new Map(manager.wallets.map((wallet) => [wallet.id, wallet]));
+      const configured: Array<{ login: SocialLogin; wallet: WalletAdapter }> = [];
+      for (const login of this.validatedSocialLogins) {
+        const wallet = walletsById.get(login.adapterId);
+        if (!wallet) continue;
+        try {
+          if (isAdapterConfigured(wallet)) configured.push({ login, wallet });
+        } catch (error) {
+          logger.warn(`Error checking configuration for ${wallet.id}:`, error);
+        }
+      }
+      return configured;
+    }
+
     private matchesWalletAvailability(wallets: WalletAdapter[]): boolean {
       return (
         this.walletAvailabilityWallets?.length === wallets.length &&
@@ -531,9 +949,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       );
     }
 
-    private refreshWalletAvailability(): Promise<void> {
+    private refreshWalletAvailability(retryUnavailable = false): Promise<void> {
       const manager = this.walletManager;
       if (!manager) return Promise.resolve();
+      if (retryUnavailable) this.walletAvailabilityRetryDelay = TIMINGS.WALLET_AVAILABILITY_RETRY;
       const wallets = this.getConfiguredWallets(manager);
       if (!this.matchesWalletAvailability(wallets)) {
         const available = this.availableWallets.filter((wallet) => wallets.includes(wallet));
@@ -542,45 +961,65 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.walletAvailabilityWallets = wallets;
         this.availableWallets = available;
         this.unavailableWallets = unavailable;
-        this.walletAvailabilityChecked = available.length + unavailable.length > 0;
+        this.walletAvailabilityChecked = available.length + unavailable.length === wallets.length;
         if (this.isOpen && this.viewState === 'list') this.renderWalletAvailability();
       }
       if (this.walletAvailabilityPromise) return this.walletAvailabilityPromise;
-      if (
+      const fresh =
         this.walletAvailabilityChecked &&
-        Date.now() - this.walletAvailabilityUpdatedAt < TIMINGS.WALLET_AVAILABILITY_REFRESH
+        Date.now() - this.walletAvailabilityFullRefreshAt < TIMINGS.WALLET_AVAILABILITY_REFRESH;
+      if (
+        fresh &&
+        (this.unavailableWallets.length === 0 ||
+          (!retryUnavailable &&
+            Date.now() - this.walletAvailabilityUpdatedAt < this.walletAvailabilityRetryDelay))
       ) {
         this.scheduleWalletAvailabilityRefresh();
         return Promise.resolve();
       }
+      const walletsToCheck = fresh ? this.unavailableWallets : wallets;
 
       this.clearWalletAvailabilityTimer();
       const generation = this.walletAvailabilityGeneration;
-      const discovery = Promise.all(
-        wallets.map(async (wallet) => ({
-          wallet,
-          available: await checkWalletAvailability(manager, wallet),
-        }))
-      ).then((results) => {
+      const results = new Map<WalletAdapter, boolean>([
+        ...this.availableWallets.map((wallet) => [wallet, true] as const),
+        ...this.unavailableWallets.map((wallet) => [wallet, false] as const),
+      ]);
+      const publishResults = (complete: boolean): void => {
         if (generation !== this.walletAvailabilityGeneration || manager !== this.walletManager) {
           return;
         }
-        this.walletAvailabilityPromise = null;
         if (!this.matchesWalletAvailability(this.getConfiguredWallets(manager))) {
           void this.refreshWalletAvailability();
           return;
         }
-        this.availableWallets = results
-          .filter((result) => result.available)
-          .map(({ wallet }) => wallet);
-        this.unavailableWallets = results
-          .filter((result) => !result.available)
-          .map(({ wallet }) => wallet);
-        this.walletAvailabilityChecked = true;
-        this.walletAvailabilityUpdatedAt = Date.now();
+        this.availableWallets = wallets.filter((wallet) => results.get(wallet) === true);
+        this.unavailableWallets = wallets.filter((wallet) => results.get(wallet) === false);
+        if (complete) {
+          this.walletAvailabilityPromise = null;
+          this.walletAvailabilityChecked = true;
+          this.walletAvailabilityUpdatedAt = Date.now();
+          if (!fresh) {
+            this.walletAvailabilityFullRefreshAt = this.walletAvailabilityUpdatedAt;
+          } else {
+            // Back off the quick retries: an extension that is still injecting
+            // shows up within the first few, and one that is not installed is
+            // left to the regular refresh instead of being probed twice a second.
+            this.walletAvailabilityRetryDelay = Math.min(
+              this.walletAvailabilityRetryDelay * 2,
+              TIMINGS.WALLET_AVAILABILITY_REFRESH
+            );
+          }
+        }
         if (this.isOpen && this.viewState === 'list') this.renderWalletAvailability();
-        this.scheduleWalletAvailabilityRefresh();
-      });
+        if (complete) this.scheduleWalletAvailabilityRefresh();
+      };
+      const discovery = Promise.all(
+        walletsToCheck.map(async (wallet) => {
+          results.set(wallet, await checkWalletAvailability(manager, wallet, retryUnavailable));
+          publishResults(false);
+        })
+      ).then(() => publishResults(true));
       this.walletAvailabilityPromise = discovery;
       return discovery;
     }
@@ -612,16 +1051,23 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     }
 
     private createWalletListView(): DocumentFragment {
-      const unavailableWalletIds = new Set(this.unavailableWallets.map((wallet) => wallet.id));
+      const socialAdapterIds = this.walletManager
+        ? this.getConfiguredSocialAdapterIds(this.walletManager)
+        : new Set<string>();
+      const availableWallets = this.availableWallets.filter(
+        (wallet) => !socialAdapterIds.has(wallet.id)
+      );
+      const unavailableWallets = this.unavailableWallets.filter(
+        (wallet) => !socialAdapterIds.has(wallet.id)
+      );
+      const unavailableWalletIds = new Set(unavailableWallets.map((wallet) => wallet.id));
       const checkedWallets = this.showUnavailable
         ? this.parseWalletAttribute()
             .map((id) =>
-              [...this.availableWallets, ...this.unavailableWallets].find(
-                (wallet) => wallet.id === id
-              )
+              [...availableWallets, ...unavailableWallets].find((wallet) => wallet.id === id)
             )
             .filter((wallet): wallet is WalletAdapter => wallet !== undefined)
-        : this.availableWallets;
+        : availableWallets;
       const wallets = this.showUnavailable
         ? this.orderVisibleWallets(checkedWallets, unavailableWalletIds)
         : this.orderByMru(checkedWallets);
@@ -634,8 +1080,17 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         primaryWallet,
         wallets.filter((wallet) => wallet !== primaryWallet),
         unavailableWalletIds,
-        !!this.walletManager && !this.walletAvailabilityChecked
+        !!this.walletManager && !this.walletAvailabilityChecked,
+        !!this.walletManager && this.hasAvailableSocialLogin(this.walletManager, socialAdapterIds),
+        this.getSingleSocialLoginAdapter(socialAdapterIds)?.icon
       );
+    }
+
+    private createSocialLoginView(): DocumentFragment {
+      return renderSocialLoginView(this.getAvailableSocialLogins(), {
+        loading: this.socialDiscoveryPending.size > 0,
+        errors: [...this.socialDiscoveryErrors.values()],
+      });
     }
 
     /** localStorage key holding the most-recently-used wallet ids (newest first). */
@@ -702,7 +1157,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.isFirstOpen = true;
       this.updateBodyScrollLock();
       this.render();
-      void this.refreshWalletAvailability();
+      void this.refreshWalletAvailability(true);
       this.dispatchEvent(new CustomEvent('open'));
 
       // Pre-initialize WalletConnect to reduce loading time
@@ -738,6 +1193,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     close() {
       const wasOpen = this.isOpen;
+      this.cancelAuthPrompt();
+      this.invalidateSocialDiscovery();
       const cancelledAttempt = this.cancelPendingConnection();
       this.openGeneration += 1;
       this.isOpen = false;
@@ -811,12 +1268,317 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Disconnect wallet from the account modal
      */
     public async disconnectFromAccountModal() {
+      const manager = this.walletManager;
       try {
-        await this.walletManager?.disconnect();
-        if (this.accountModalOpen) this.closeAccountModal();
+        await manager?.disconnect();
       } catch (error) {
         logger.error('Failed to disconnect:', error);
       }
+      // The manager's 'disconnect' event usually closes the modal; close it here
+      // too when the session ended without that event (e.g. partial cleanup).
+      if (manager === this.walletManager && !manager?.connected && this.accountModalOpen) {
+        this.closeAccountModal();
+      }
+    }
+
+    public connectSocialLogin(socialLoginId: string): void {
+      const socialLogin = this.getAllSocialLogins().find(({ id }) => id === socialLoginId);
+      const manager = this.walletManager;
+      const wallet = socialLogin
+        ? manager?.wallets.find(({ id }) => id === socialLogin.adapterId)
+        : undefined;
+      const configuredAdapterIds = manager
+        ? this.getConfiguredSocialAdapterIds(manager)
+        : new Set<string>();
+      if (!socialLogin || !wallet || !configuredAdapterIds.has(wallet.id) || !this.walletService)
+        return;
+
+      void this.walletService.connectWallet(socialLogin.adapterId, socialLogin.connectOptions, {
+        socialLoginId: socialLogin.id,
+        label: socialLogin.label,
+        icon: socialLogin.icon ?? wallet.icon,
+      });
+    }
+
+    public showAuthPrompt(
+      prompt: WalletAuthPrompt,
+      walletId: string,
+      walletName: string,
+      walletIcon?: string
+    ): void {
+      if (!this.isOpen) {
+        // A prompt nobody can see would leave its connection waiting forever.
+        try {
+          prompt.cancel();
+        } catch (error) {
+          logger.warn('Failed to cancel authentication prompt:', error);
+        }
+        return;
+      }
+      this.authCaptchaToken = null;
+      this.authPromptData = {
+        prompt,
+        walletId,
+        walletName,
+        walletIcon,
+        values: Object.create(null) as Record<string, string>,
+        busy: false,
+        error: null,
+      };
+      this.viewState = 'auth-prompt';
+      this.qrCodeData = null;
+      this.loadingData = null;
+      this.errorData = null;
+      this.accountSelectionData = null;
+      this.render();
+    }
+
+    public async submitAuthPrompt(): Promise<void> {
+      const state = this.authPromptData;
+      const submit = state?.prompt.submit;
+      if (!state || !submit || state.busy) return;
+
+      const form = this.getOverlayRoot()?.querySelector<HTMLFormElement>('#auth-prompt-form');
+      if (!form) return;
+      const values: Record<string, string> = { ...state.values };
+      for (const input of form.querySelectorAll<HTMLInputElement>('[data-auth-field]')) {
+        if (input.name) values[input.name] = input.value;
+      }
+
+      const codeField = (state.prompt.fields ?? []).find(
+        (field) => getAuthCodeLength(field) !== null
+      );
+      if (codeField) {
+        const codeLength = getAuthCodeLength(codeField)!;
+        const code = normalizeAuthCodeValue(values[codeField.name] ?? '').slice(0, codeLength);
+        values[codeField.name] = code;
+        if (code.length !== codeLength) {
+          state.values = values;
+          this.setAuthPromptError(`Enter the ${codeLength}-digit code.`);
+          return;
+        }
+      }
+      state.values = values;
+
+      if (state.prompt.captcha) {
+        if (!this.authCaptchaToken) {
+          this.setAuthPromptError(CAPTCHA_ERRORS.required);
+          return;
+        }
+        values.captchaToken = this.authCaptchaToken;
+      }
+
+      // Update in place: a full render would replace the solved CAPTCHA widget
+      // with a fresh challenge while its token is being submitted.
+      this.setAuthPromptBusy(state, true);
+      try {
+        await submit(values);
+      } catch (error) {
+        if (this.authPromptData === state) {
+          state.error = error instanceof Error ? error.message : String(error);
+        }
+      } finally {
+        if (this.authPromptData === state) {
+          state.busy = false;
+          // The submitted CAPTCHA token is single-use; render mounts a fresh challenge.
+          this.renderedAuthPrompt = null;
+          this.render();
+        }
+      }
+    }
+
+    public async runAuthPromptSecondaryAction(): Promise<void> {
+      const state = this.authPromptData;
+      const run = state?.prompt.secondaryAction?.run;
+      if (!state || !run || state.busy) return;
+
+      const form = this.getOverlayRoot()?.querySelector<HTMLFormElement>('#auth-prompt-form');
+      for (const input of form?.querySelectorAll<HTMLInputElement>('[data-auth-field]') ?? []) {
+        if (input.name) state.values[input.name] = input.value;
+      }
+
+      // Secondary actions (e.g. resending a code) keep the solved CAPTCHA.
+      this.setAuthPromptBusy(state, true);
+      try {
+        await run();
+      } catch (error) {
+        if (this.authPromptData === state) {
+          state.error = error instanceof Error ? error.message : String(error);
+        }
+      } finally {
+        if (this.authPromptData === state) {
+          this.setAuthPromptBusy(state, false);
+          if (state.error) this.setAuthPromptError(state.error);
+        }
+      }
+    }
+
+    public cancelAuthPrompt(): void {
+      this.clearAuthPromptState(true);
+    }
+
+    private setAuthPromptBusy(state: AuthPromptState, busy: boolean): void {
+      state.busy = busy;
+      if (busy) state.error = null;
+      const root = this.getOverlayRoot();
+      const dialog = this.getDialog('wallet');
+      if (!root || !dialog) return;
+      const active = root.activeElement;
+      updateAuthPromptBusy(root, state.prompt, busy);
+      if (busy) {
+        const errorElement = root.querySelector<HTMLElement>('#auth-prompt-error');
+        if (errorElement) {
+          errorElement.hidden = true;
+          errorElement.textContent = '';
+        }
+        // Keep focus inside the dialog when the focused control becomes disabled.
+        if (active instanceof HTMLElement && active.matches(':disabled')) dialog.focus();
+      } else if (active === dialog) {
+        this.focusAuthPromptControl(dialog);
+      }
+    }
+
+    private focusAuthPromptControl(dialog: HTMLElement): void {
+      (
+        dialog.querySelector<HTMLElement>('[data-auth-field]:not([disabled])') ??
+        this.getDialogFocusables(dialog)[0] ??
+        dialog
+      ).focus();
+    }
+
+    private setAuthPromptError(message: string): void {
+      const state = this.authPromptData;
+      if (!state) return;
+      state.error = message;
+      const errorElement = this.getOverlayRoot()?.querySelector<HTMLElement>('#auth-prompt-error');
+      if (!errorElement) return;
+      errorElement.hidden = false;
+      errorElement.textContent = message;
+    }
+
+    /** Tear down the prompt; `callCancel` also notifies the adapter that issued it. */
+    private clearAuthPromptState(callCancel: boolean): void {
+      const state = this.authPromptData;
+      this.authPromptData = null;
+      this.clearCaptchaWidget();
+      if (!state || !callCancel) return;
+      try {
+        state.prompt.cancel();
+      } catch (error) {
+        logger.warn('Failed to cancel authentication prompt:', error);
+      }
+    }
+
+    /** Remove the CAPTCHA widget; its token is only valid with the widget that issued it. */
+    private clearCaptchaWidget(): void {
+      this.captchaGeneration += 1;
+      this.authCaptchaToken = null;
+      const cleanup = this.captchaCleanup;
+      this.captchaCleanup = null;
+      cleanup?.();
+    }
+
+    private async mountCaptchaWidget(): Promise<void> {
+      const state = this.authPromptData;
+      const captcha = state?.prompt.captcha;
+      const container = this.getOverlayRoot()?.querySelector<HTMLElement>('#auth-prompt-captcha');
+      if (!state || !captcha || !container) return;
+      const generation = this.captchaGeneration;
+      try {
+        const cleanup = await renderCaptchaWidget(
+          container,
+          captcha.provider,
+          captcha.siteKey,
+          this.nonce,
+          (token) => {
+            if (this.captchaGeneration !== generation || this.authPromptData !== state) return;
+            this.authCaptchaToken = token;
+            if (state.error && CAPTCHA_ERROR_MESSAGES.has(state.error)) {
+              state.error = null;
+              const errorElement =
+                this.getOverlayRoot()?.querySelector<HTMLElement>('#auth-prompt-error');
+              if (errorElement) {
+                errorElement.hidden = true;
+                errorElement.textContent = '';
+              }
+            }
+          },
+          () => {
+            if (this.captchaGeneration === generation && this.authPromptData === state) {
+              this.authCaptchaToken = null;
+              this.setAuthPromptError(CAPTCHA_ERRORS.expired);
+            }
+          },
+          () => {
+            if (this.captchaGeneration === generation && this.authPromptData === state) {
+              this.authCaptchaToken = null;
+              this.setAuthPromptError(CAPTCHA_ERRORS.rejected);
+            }
+          }
+        );
+        if (this.captchaGeneration !== generation || this.authPromptData !== state) {
+          cleanup();
+          return;
+        }
+        this.captchaCleanup = cleanup;
+      } catch {
+        if (this.captchaGeneration === generation && this.authPromptData === state) {
+          this.setAuthPromptError(CAPTCHA_ERRORS.unavailable);
+        }
+      }
+    }
+
+    private async mountAuthPromptQRCode(): Promise<void> {
+      const state = this.authPromptData;
+      const payload = state?.prompt.qrCode;
+      const container = this.getOverlayRoot()?.querySelector<HTMLElement>(
+        '.auth-prompt-qr-container'
+      );
+      if (!state || !payload || !container) return;
+
+      const generation = this.authQrRenderGeneration;
+      const isCurrent = () =>
+        generation === this.authQrRenderGeneration &&
+        this.authPromptData === state &&
+        this.viewState === 'auth-prompt' &&
+        container ===
+          this.getOverlayRoot()?.querySelector<HTMLElement>('.auth-prompt-qr-container');
+
+      try {
+        const qrCode = await this.createQRCode(payload);
+        if (!isCurrent()) return;
+        replaceViewChildren(container);
+        qrCode.append(container);
+        setQRCodeSvgRendering(container);
+        const svg = container.querySelector('svg');
+        svg?.setAttribute('role', 'img');
+        svg?.setAttribute('aria-label', 'Authentication QR code');
+      } catch (error) {
+        if (!isCurrent()) return;
+        logger.warn('Failed to generate authentication QR code:', error);
+        const message = document.createElement('p');
+        message.className = 'qr-loading';
+        message.textContent = 'Failed to generate QR code';
+        replaceViewChildren(container, message);
+      }
+    }
+
+    /**
+     * Show the configured social-login methods without exposing their adapter
+     * rows in the main wallet list.
+     */
+    public showSocialLoginList(): void {
+      const manager = this.walletManager;
+      if (!manager || !this.hasAvailableSocialLogin(manager)) return;
+      this.clearWalletAvailabilityTimer();
+      this.invalidateSocialDiscovery();
+      const generation = this.socialDiscoveryGeneration;
+      for (const wallet of this.getAvailableLoginAdapters(manager)) {
+        this.socialDiscoveryPending.add(wallet.id);
+      }
+      this.viewState = 'social-login';
+      this.render();
+      this.discoverSocialLogins(manager, generation);
     }
 
     /**
@@ -985,6 +1747,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Show QR code view
      */
     public showQRCodeView(walletId: string, uri?: string) {
+      this.clearAuthPromptState(false);
       this.clearQRRenderTimer();
       this.clearWalletAvailabilityTimer();
       this.viewState = 'qr';
@@ -999,6 +1762,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Show loading view
      */
     public showLoadingView(walletId: string, walletName: string, walletIcon?: string) {
+      this.clearAuthPromptState(false);
       this.clearWalletAvailabilityTimer();
       this.viewState = 'loading';
       this.loadingData = { walletId, walletName, walletIcon };
@@ -1012,6 +1776,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Show error view
      */
     public showErrorView(walletId: string, walletName: string, error: Error) {
+      this.clearAuthPromptState(false);
       this.clearWalletAvailabilityTimer();
       this.viewState = 'error';
       this.errorData = { walletId, walletName, error };
@@ -1025,6 +1790,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Show wallet list view
      */
     public showWalletList() {
+      this.cancelAuthPrompt();
+      this.invalidateSocialDiscovery();
       this.clearQRRenderTimer();
       const cancelledAttempt = this.cancelPendingConnection();
       this.invalidateWalletConnectPreInitialization(
@@ -1057,9 +1824,13 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     private cancelPendingConnection(): CancelledConnectionAttempt | null {
       const cancelledAttempt = this.walletService?.cancelPendingWork() ?? null;
-      if (!this.walletManager || this.walletManager.connected) return cancelledAttempt;
+      // Only an attempt in flight is cancelled. Disconnecting an idle manager
+      // would end a session it kept for a later reconnect, although the user
+      // only closed or navigated the modal.
+      const manager = this.walletManager;
+      if (!manager || manager.connected || !manager.connectingWallet) return cancelledAttempt;
 
-      void this.walletManager.disconnect().catch((error) => {
+      void manager.disconnect().catch((error) => {
         logger.warn('Failed to cancel pending wallet connection:', error);
       });
       return cancelledAttempt;
@@ -1086,6 +1857,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       walletIcon: string | undefined,
       accounts: LedgerAccount[]
     ) {
+      this.clearAuthPromptState(false);
       this.clearWalletAvailabilityTimer();
       this.viewState = 'account-selection';
       this.accountSelectionData = { walletId, walletName, walletIcon, accounts };
@@ -1208,6 +1980,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           logger.debug('Using pre-generated QR code - instant render!');
           replaceViewChildren(container);
           this.preGeneratedQRCode.append(container as HTMLElement);
+          setQRCodeSvgRendering(container);
           return;
         }
 
@@ -1221,6 +1994,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         // Clear container and append QR code
         replaceViewChildren(container);
         qrCode.append(container as HTMLElement);
+        setQRCodeSvgRendering(container);
         logger.debug('Modern QR code generated successfully');
       } catch (error) {
         if (!isCurrent()) return;
@@ -1272,6 +2046,17 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      */
     private render() {
       this.clearModalHeightFrame();
+      // A render unrelated to the prompt the user is answering (an attribute or
+      // account change) keeps it in place: rebuilding it would discard a solved
+      // CAPTCHA and regenerate its QR code.
+      const authPrompt =
+        this.isOpen && this.viewState === 'auth-prompt' ? this.authPromptData : null;
+      const keepAuthPrompt = authPrompt !== null && authPrompt === this.renderedAuthPrompt;
+      this.renderedAuthPrompt = authPrompt;
+      if (!keepAuthPrompt) {
+        this.clearCaptchaWidget();
+        this.authQrRenderGeneration += 1;
+      }
       // Capture current modal height before re-rendering
       const existingModal = this.overlayPortal?.shadowRoot?.querySelector(
         '.modal'
@@ -1306,6 +2091,20 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           this.accountSelectionData.walletIcon,
           this.accountSelectionData.accounts
         );
+      } else if (this.viewState === 'auth-prompt' && this.authPromptData) {
+        const authPromptState = this.authPromptData;
+        content = renderAuthPromptView(authPromptState.prompt, {
+          busy: authPromptState.busy,
+          error: authPromptState.error ?? undefined,
+          values: authPromptState.values,
+          onValueChange: (name, value) => {
+            if (this.authPromptData === authPromptState) {
+              authPromptState.values[name] = value;
+            }
+          },
+        });
+      } else if (this.viewState === 'social-login') {
+        content = this.createSocialLoginView();
       } else {
         content = this.createWalletListView();
       }
@@ -1328,7 +2127,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       // Wallet connection overlay — rendered in a portal on document.body to guarantee
       // position: fixed is always relative to the viewport (not a transformed ancestor)
-      if (this.isOpen) {
+      if (keepAuthPrompt) {
+        this.ensureOverlayPortal();
+      } else if (this.isOpen) {
         const overlayRoot = this.ensureOverlayPortal();
         const overlay = document.createElement('div');
         overlay.className = overlayClass;
@@ -1341,6 +2142,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         modal.setAttribute('aria-labelledby', 'wallet-dialog-title');
         modal.tabIndex = -1;
         modal.append(content);
+        const attribution = this.createLoginAttribution();
+        if (attribution) modal.append(attribution);
         overlay.append(modal);
         replaceViewChildren(overlayRoot, createMainStyleElement(this.nonce), overlay);
       } else if (this.overlayPortal) {
@@ -1364,6 +2167,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.eventHandler?.attachEventListeners();
       if (this.isOpen) this.ensureDialogFocus('wallet');
       if (this.accountModalOpen) this.ensureDialogFocus('account');
+      if (authPrompt && !keepAuthPrompt) {
+        void this.mountCaptchaWidget();
+        void this.mountAuthPromptQRCode();
+      }
 
       // Only measure the modal produced by this render; older callbacks can measure
       // a height that a newer transition has temporarily pinned to the previous view.
@@ -1465,7 +2272,11 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       const root = dialog.getRootNode() as ShadowRoot;
       if (root.activeElement && dialog.contains(root.activeElement)) return;
 
-      (this.getDialogFocusables(dialog)[0] ?? dialog).focus();
+      const authField =
+        this.viewState === 'auth-prompt'
+          ? dialog.querySelector<HTMLInputElement>('[data-auth-field]:not([disabled])')
+          : null;
+      (authField ?? this.getDialogFocusables(dialog)[0] ?? dialog).focus();
     }
 
     public handleDialogKeyDown(dialogType: 'wallet' | 'account', event: KeyboardEvent): void {

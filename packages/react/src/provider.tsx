@@ -44,7 +44,7 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
   const [connected, setConnected] = useState<boolean>(manager.connected);
   const [account, setAccount] = useState<AccountInfo | null>(manager.account);
   const [network, setNetwork] = useState<NetworkInfo | null>(manager.account?.network ?? null);
-  const [connecting, setConnecting] = useState<boolean>(false);
+  const [connecting, setConnecting] = useState<boolean>(autoConnectRef.current);
   const [error, setError] = useState<WalletError | null>(null);
   const [ready, setReady] = useState(false);
 

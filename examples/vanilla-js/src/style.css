@@ -283,6 +283,21 @@ xrpl-wallet-connector::part(connect-button):hover {
   background: var(--secondary-hover);
 }
 
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.action-row .btn-secondary {
+  flex: 1 1 220px;
+}
+
+#cancel-reconnect {
+  margin-top: 0.75rem;
+}
+
 .info-card {
   background: white;
   border-radius: 8px;

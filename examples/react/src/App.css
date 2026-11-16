@@ -199,6 +199,23 @@ xrpl-wallet-connector::part(connect-button):hover {
   background: var(--secondary-hover);
 }
 
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
+.transaction-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.transaction-actions .btn-primary {
+  width: auto;
+}
+
 .info-card {
   background: white;
   border-radius: 8px;
@@ -442,6 +459,10 @@ footer {
   }
 
   .theme-buttons {
+    grid-template-columns: 1fr;
+  }
+
+  .transaction-actions {
     grid-template-columns: 1fr;
   }
 

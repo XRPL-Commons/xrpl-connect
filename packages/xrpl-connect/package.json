@@ -65,7 +65,7 @@
     "publish:rc": "node scripts/publish-release.mjs --channel rc",
     "publish:stable": "node scripts/publish-release.mjs --channel stable",
     "test": "node scripts/run-command.test.mjs",
-    "test:publish": "pnpm publish:build && vp run -F @xrpl-commons/xrpl-connect-react -F @xrpl-commons/xrpl-connect-vue --no-cache build && node scripts/test-publish.mjs",
+    "test:publish": "pnpm publish:build && vp run -F @xrpl-commons/xrpl-connect-react -F @xrpl-commons/xrpl-connect-vue -F @xrpl-commons/xrpl-connect-privy --no-cache build && node scripts/test-publish.mjs",
     "verify:release:access": "node scripts/test-publish.mjs --check-access",
     "verify:release:preflight": "node scripts/test-publish.mjs --check-access --check-prepublish",
     "verify:release:registry": "node scripts/test-publish.mjs --check-registry",

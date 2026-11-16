@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { useDemo } from './context/DemoContext';
+import { useWallet } from '@xrpl-commons/xrpl-connect-react';
 import { WalletConnector } from './components/WalletConnector';
 import { ThemeSelector } from './components/ThemeSelector';
 import { AccountInfo } from './components/AccountInfo';
@@ -7,8 +9,35 @@ import { MessageSignForm } from './components/MessageSignForm';
 import { EventLog } from './components/EventLog';
 import './App.css';
 
-function App() {
-  const { statusMessage } = useDemo();
+function App({ privyRedirectUri }: { privyRedirectUri: string }) {
+  const { statusMessage, showStatus } = useDemo();
+  const { connecting, error, disconnect, account, manager } = useWallet();
+  const [restoring, setRestoring] = useState(connecting);
+
+  useEffect(() => {
+    if (!connecting) setRestoring(false);
+  }, [connecting]);
+
+  useEffect(() => {
+    if (!account || manager.wallet?.id !== 'privy') return;
+    const callback = new URL(privyRedirectUri);
+    if (
+      window.location.origin === callback.origin &&
+      window.location.pathname === callback.pathname
+    ) {
+      // Leave the callback without reloading the connected wallet session.
+      window.history.replaceState(window.history.state, '', import.meta.env.BASE_URL);
+    }
+  }, [account, manager, privyRedirectUri]);
+
+  const cancelConnection = async () => {
+    try {
+      await disconnect();
+      showStatus('Connection cancelled. Choose a wallet to retry.', 'info');
+    } catch (error) {
+      showStatus(error instanceof Error ? error.message : String(error), 'error');
+    }
+  };
 
   return (
     <div id="app">
@@ -25,16 +54,41 @@ function App() {
         <section id="connect-section">
           <h2>Connection Status</h2>
           <p className="section-description">
-            Click the <strong>"Connect Wallet"</strong> button above to connect or manage your
-            wallet
+            {restoring
+              ? 'Restoring your wallet session or finishing sign-in… Your wallet controls will appear when it is ready.'
+              : 'Click the "Connect Wallet" button above to connect or manage your wallet'}
           </p>
           {statusMessage && (
-            <div className={`status-${statusMessage.type}`}>{statusMessage.message}</div>
+            <div className={`status-${statusMessage.type}`} role="status">
+              {statusMessage.message}
+            </div>
+          )}
+          {restoring && !statusMessage && (
+            <div className="status-info" role="status" aria-live="polite">
+              Restoring a wallet session or finishing sign-in…
+            </div>
+          )}
+          {connecting && !restoring && !statusMessage && (
+            <div className="status-info" role="status" aria-live="polite">
+              Connecting to your wallet…
+            </div>
+          )}
+          {error && !statusMessage && (
+            <div className="status-error" role="alert">
+              {error.message}
+            </div>
+          )}
+          {connecting && (
+            <button type="button" className="btn-secondary" onClick={() => void cancelConnection()}>
+              Cancel connection
+            </button>
           )}
         </section>
 
         <AccountInfo />
-        <TransactionForm />
+        <TransactionForm
+          key={account ? `${account.address}:${account.network.id}` : 'disconnected'}
+        />
         <MessageSignForm />
         <EventLog />
       </main>
@@ -43,7 +97,9 @@ function App() {
         <p>Built with XRPL Connect - A framework-agnostic wallet toolkit</p>
       </footer>
 
-      <WalletConnector />
+      <div hidden={restoring}>
+        <WalletConnector />
+      </div>
     </div>
   );
 }

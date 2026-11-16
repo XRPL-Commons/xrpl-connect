@@ -1,11 +1,38 @@
-import { WalletConnector as XrplWalletConnector } from '@xrpl-commons/xrpl-connect-react';
+import { useEffect, useRef } from 'react';
+import {
+  WalletConnector as XrplWalletConnector,
+  type WalletConnectorElement,
+} from '@xrpl-commons/xrpl-connect-react';
 import { useDemo } from '../context/DemoContext';
 
 export function WalletConnector() {
   const { addEvent, showStatus } = useDemo();
+  const connectorRef = useRef<WalletConnectorElement | null>(null);
+
+  useEffect(() => {
+    const connector = connectorRef.current;
+    if (!connector) return;
+
+    const onCancelled = () => {
+      showStatus('Connection cancelled. Choose a wallet to retry.', 'info');
+      addEvent('Connection Cancelled', { source: 'wallet connector' });
+    };
+    const onClosed = (event: Event) => {
+      if ((event as CustomEvent<{ connectionAttemptId?: number }>).detail?.connectionAttemptId) {
+        onCancelled();
+      }
+    };
+    connector.addEventListener('cancelled', onCancelled);
+    connector.addEventListener('close', onClosed);
+    return () => {
+      connector.removeEventListener('cancelled', onCancelled);
+      connector.removeEventListener('close', onClosed);
+    };
+  }, [addEvent, showStatus]);
 
   return (
     <XrplWalletConnector
+      ref={connectorRef}
       primaryWallet="xaman"
       theme="dark"
       cssVars={{

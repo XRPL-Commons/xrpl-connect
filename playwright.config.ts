@@ -15,6 +15,12 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'], hasTouch: true },
     },
+    {
+      name: 'webkit-mobile-auth',
+      testMatch: '**/auth-prompt.spec.ts',
+      grep: /mobile auth QR rendering/,
+      use: { ...devices['Desktop Safari'] },
+    },
   ],
   webServer: {
     command:

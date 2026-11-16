@@ -224,9 +224,10 @@ async open(): Promise<void>
 ```
 
 Open the wallet selection modal immediately using cached availability or an accessible loading
-status. Discovery starts on mount once a manager is available, and stale availability refreshes
-in the background while the wallet list is open. The promise resolves when the modal opens;
-it does not wait for discovery or a connection.
+status. Discovery starts on mount once a manager is available. Wallets appear independently as
+their checks finish, and cached available choices remain usable during background refresh.
+Unavailable wallets are rechecked on open and retried promptly while the list stays open.
+The promise resolves when the modal opens; it does not wait for discovery or a connection.
 
 #### openAndWait()
 
@@ -658,6 +659,25 @@ Xaman implements it for successful OAuth callback parameters and rejection callb
 for its own pending browser attempts. Unrelated rejected-return URLs are ignored. With empty storage, `reconnect()` attempts the first configured candidate
 in registration order through the normal connection validation and persistence path.
 Automatic recovery requires `autoConnect: true`; callers may also reconnect explicitly.
+
+### keepsSessionOnRestoreTimeout
+
+```typescript
+interface WalletAdapter {
+  readonly keepsSessionOnRestoreTimeout?: boolean;
+}
+```
+
+Declare `true` when restoring a session never waits on the user. A restore that
+fails with `OPERATION_TIMEOUT` then keeps the stored session, so a later
+`reconnect()` can retry it. Privy declares it. Adapters that leave it unset, such
+as Xaman, have their stored session cleared, because their timeout can also mean
+an authorization the user never answered.
+
+The kept session lasts until it is restored, replaced by another connection, or
+ended with `disconnect()`. A login that is rejected or fails leaves it in place.
+A redirect login started in the meantime replaces it when it returns: a stored
+session is otherwise authoritative over a pending authorization.
 
 ### ConnectOptions
 

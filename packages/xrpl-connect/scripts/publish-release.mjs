@@ -44,6 +44,10 @@ const candidatePackages = [
     folder: path.join(repositoryRoot, 'packages', 'react'),
   },
   { name: '@xrpl-commons/xrpl-connect-vue', folder: path.join(repositoryRoot, 'packages', 'vue') },
+  {
+    name: '@xrpl-commons/xrpl-connect-privy',
+    folder: path.join(repositoryRoot, 'packages', 'privy'),
+  },
 ];
 
 assert.deepEqual(

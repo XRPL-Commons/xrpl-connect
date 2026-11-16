@@ -124,6 +124,60 @@ describe('XrplConnectProvider + hooks', () => {
     await waitFor(() => expect(storage.get).toHaveBeenCalledTimes(1));
   });
 
+  it('reports restoration from the first render until the returned wallet is usable', async () => {
+    const storedState = deferred<string | null>();
+    const pendingWallet = deferred<AccountInfo>();
+    const adapter = {
+      ...makeAdapter(),
+      hasPendingConnection: vi.fn(() => true),
+      connect: vi.fn(() => pendingWallet.promise),
+    };
+    const storage: StorageAdapter = {
+      get: vi.fn(() => storedState.promise),
+      set: vi.fn(async () => {}),
+      remove: vi.fn(async () => {}),
+      clear: vi.fn(async () => {}),
+    };
+    const renders: Array<{ connecting: boolean; connected: boolean; account: AccountInfo | null }> =
+      [];
+    const { result, unmount } = renderHook(
+      () => {
+        const wallet = useWallet();
+        renders.push({
+          connecting: wallet.connecting,
+          connected: wallet.connected,
+          account: wallet.account,
+        });
+        return wallet;
+      },
+      {
+        wrapper: ({ children }) => (
+          <StrictMode>
+            <XrplConnectProvider config={{ adapters: [adapter], autoConnect: true, storage }}>
+              {children}
+            </XrplConnectProvider>
+          </StrictMode>
+        ),
+      }
+    );
+
+    await waitFor(() => expect(storage.get).toHaveBeenCalledOnce());
+    expect(renders.every((state) => state.connecting && !state.connected && !state.account)).toBe(
+      true
+    );
+
+    await act(async () => storedState.resolve(null));
+    await waitFor(() => expect(adapter.connect).toHaveBeenCalledOnce());
+    expect(result.current.connecting).toBe(true);
+    expect(result.current.account).toBeNull();
+
+    await act(async () => pendingWallet.resolve(ACCOUNT));
+    await waitFor(() => expect(result.current.connecting).toBe(false));
+    expect(result.current.connected).toBe(true);
+    expect(result.current.account).toEqual(ACCOUNT);
+    unmount();
+  });
+
   it.each([false, true])(
     'recovers returned authorization only with autoConnect=%s or an explicit call',
     async (autoConnect) => {
@@ -1168,6 +1222,34 @@ describe('<WalletConnector>', () => {
     expect(el.getAttribute('wallets')).toBe('third');
     rerender(<View />);
     expect(el.hasAttribute('wallets')).toBe(false);
+  });
+
+  it('forwards social methods as a property and never serializes options as attributes', async () => {
+    const first = [
+      { id: 'google', label: 'Google', adapterId: 'fake', connectOptions: { provider: 'google' } },
+    ] as const;
+    const second = [
+      { id: 'apple', label: 'Apple', adapterId: 'fake', connectOptions: { provider: 'apple' } },
+    ] as const;
+    function View({ socialLogins }: { socialLogins: typeof first | typeof second }) {
+      return (
+        <XrplConnectProvider config={{ adapters: [makeAdapter()], autoConnect: false }}>
+          <WalletConnector socialLogins={socialLogins} />
+        </XrplConnectProvider>
+      );
+    }
+
+    const { rerender } = render(<View socialLogins={first} />);
+    const element = document.querySelector('xrpl-wallet-connector') as WalletConnectorElement & {
+      manager: unknown;
+    };
+    await waitFor(() => expect(element.manager).not.toBeNull());
+    await waitFor(() => expect(element.socialLogins).toEqual(first));
+    expect(element.hasAttribute('social-logins')).toBe(false);
+
+    rerender(<View socialLogins={second} />);
+    await waitFor(() => expect(element.socialLogins).toEqual(second));
+    expect(element.hasAttribute('social-logins')).toBe(false);
   });
 
   it('enables and disables unavailable-wallet rendering on rerender', async () => {

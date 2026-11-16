@@ -121,8 +121,10 @@ connector.setWalletManager(walletManager);
 #### `open()`
 
 Opens the wallet connection modal immediately. Availability discovery starts when the mounted
-connector has a manager and runs in the background. The modal uses cached results or shows a loading
-status until discovery completes; stale results refresh while the wallet list is open.
+connector has a manager and runs in the background. Each available wallet appears as soon as its
+check finishes, while the loading status remains for pending checks. Cached available wallets stay
+usable during refresh. Unavailable wallets are rechecked on open and retried promptly while the
+list stays open, allowing extensions that initialize later to appear without a page reload.
 `await open()` waits for the modal to open, not for discovery or a wallet connection.
 
 ```typescript

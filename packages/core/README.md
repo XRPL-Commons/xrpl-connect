@@ -129,8 +129,10 @@ Local manager state is cleared before the wallet provider is asked to tear down 
 session. If provider teardown fails, the promise rejects with that error while the
 manager remains locally disconnected and safe to reconnect with another adapter.
 The synchronous `disconnecting` event is emitted whenever a disconnect is requested,
-including while the manager is idle. The `disconnect` event is emitted after the
-provider teardown attempt for an active session, including when that attempt fails.
+including while the manager is idle. The `disconnect` event is emitted once the active
+session and stored connection state are cleared, so consumers update while provider
+logout finishes. The promise still waits for provider teardown, and reconnecting the
+same adapter waits for that teardown too.
 
 **Example**:
 

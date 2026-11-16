@@ -15,9 +15,10 @@ import type {
   WalletError,
   WalletManagerOptions,
 } from '@xrpl-connect/core';
-import type { ConnectOptionsFor, WalletIdentifier } from 'xrpl-connect';
+import type { ConnectOptionsFor, SocialLogin, WalletIdentifier } from 'xrpl-connect';
 
 export interface WalletConnectorElement extends HTMLElement {
+  socialLogins: readonly SocialLogin[];
   setWalletManager(manager: WalletManager): void;
   open(): Promise<void>;
   openAndWait(): Promise<AccountInfo>;

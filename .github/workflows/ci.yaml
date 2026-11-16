@@ -32,7 +32,7 @@ jobs:
       - name: Build published packages
         run: |
           vp run -F xrpl-connect publish:build
-          vp run -F @xrpl-commons/xrpl-connect-react -F @xrpl-commons/xrpl-connect-vue --no-cache build
+          vp run -F @xrpl-commons/xrpl-connect-react -F @xrpl-commons/xrpl-connect-vue -F @xrpl-commons/xrpl-connect-privy --no-cache build
 
       - name: Check
         run: vp check
@@ -40,9 +40,9 @@ jobs:
       - name: Test
         run: vp run -F './packages/**' --ignore-depends-on --concurrency-limit 2 test -- --passWithNoTests
 
-      - name: Install browser
+      - name: Install browsers
         if: matrix.node-version == '24.11'
-        run: vp exec playwright install --with-deps chromium
+        run: vp exec playwright install --with-deps chromium webkit
 
       - name: Browser tests
         if: matrix.node-version == '24.11'
