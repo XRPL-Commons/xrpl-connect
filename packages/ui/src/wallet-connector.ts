@@ -121,6 +121,10 @@ function createMainStyleElement(nonce: string | undefined): HTMLStyleElement {
   return style;
 }
 
+function setQRCodeSvgRendering(container: ParentNode): void {
+  container.querySelector('svg')?.setAttribute('shape-rendering', 'crispEdges');
+}
+
 const CAPTCHA_ERRORS = {
   required: 'Complete the CAPTCHA challenge before continuing.',
   expired: 'CAPTCHA expired. Please try again.',
@@ -1545,6 +1549,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         if (!isCurrent()) return;
         replaceViewChildren(container);
         qrCode.append(container);
+        setQRCodeSvgRendering(container);
         const svg = container.querySelector('svg');
         svg?.setAttribute('role', 'img');
         svg?.setAttribute('aria-label', 'Authentication QR code');
@@ -1975,6 +1980,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
           logger.debug('Using pre-generated QR code - instant render!');
           replaceViewChildren(container);
           this.preGeneratedQRCode.append(container as HTMLElement);
+          setQRCodeSvgRendering(container);
           return;
         }
 
@@ -1988,6 +1994,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         // Clear container and append QR code
         replaceViewChildren(container);
         qrCode.append(container as HTMLElement);
+        setQRCodeSvgRendering(container);
         logger.debug('Modern QR code generated successfully');
       } catch (error) {
         if (!isCurrent()) return;

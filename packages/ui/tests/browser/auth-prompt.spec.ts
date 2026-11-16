@@ -3,6 +3,7 @@ import jsQR from 'jsqr';
 import { PNG } from 'pngjs';
 
 const fixturePath = '/packages/ui/tests/browser/auth-prompt.html';
+const authQrUri = 'farcaster://connect?uri=https%3A%2F%2Fexample.test%2Fauth';
 
 declare global {
   interface Window {
@@ -96,7 +97,37 @@ test('keeps unused auth resources out of entry prompts and conditionally renders
       const png = PNG.sync.read(await qr.screenshot());
       return jsQR(new Uint8ClampedArray(png.data), png.width, png.height)?.data;
     })
-    .toBe('farcaster://connect?uri=https%3A%2F%2Fexample.test%2Fauth');
+    .toBe(authQrUri);
+});
+
+test.describe('mobile auth QR rendering', () => {
+  test.use({
+    viewport: { width: 375, height: 667 },
+    deviceScaleFactor: 2,
+    hasTouch: true,
+  });
+
+  test('decodes the authentication QR at a mobile viewport', async ({ page }) => {
+    const dialog = await openWalletDialog(page);
+    await dialog.getByRole('button', { name: 'Sign in with socials', exact: true }).click();
+    const chooser = page.getByRole('dialog', { name: 'Sign in with socials' });
+    await chooser.getByRole('button', { name: 'Email', exact: true }).click();
+    const emailPrompt = page.getByRole('dialog', { name: 'Sign in with email' });
+    await expect(emailPrompt).toBeVisible();
+    await expect(emailPrompt.locator('input[type="email"]')).toBeVisible();
+
+    await page.evaluate(() => window.showAuthQrPrompt());
+    const prompt = page.getByRole('dialog', { name: 'Sign in with Farcaster' });
+    const qr = prompt.locator('.auth-prompt-qr-container');
+    const svg = qr.locator('svg');
+    await expect(svg).toBeVisible();
+    await expect
+      .poll(async () => {
+        const png = PNG.sync.read(await qr.screenshot());
+        return jsQR(new Uint8ClampedArray(png.data), png.width, png.height)?.data;
+      })
+      .toBe(authQrUri);
+  });
 });
 
 test('keeps successful methods and retries a failed dashboard provider discovery', async ({
