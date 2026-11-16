@@ -114,6 +114,18 @@ function cloneNetworkConfig(network: NetworkConfig | undefined): NetworkConfig |
 }
 
 /**
+ * Summarize a signing failure for logs. The error object itself is never
+ * logged: a wrapped error such as an xrpl.js `RippledError` keeps the raw
+ * ledger response in its fields, which can echo the signed transaction.
+ */
+function describeFailure(error: WalletError): Record<string, string> {
+  const summary: Record<string, string> = { code: error.code, message: error.message };
+  const cause = error.originalError?.message;
+  if (cause && !error.message.includes(cause)) summary.cause = cause;
+  return summary;
+}
+
+/**
  * Main class for managing wallet connections
  */
 export class WalletManager extends EventEmitter<WalletEvent> {
@@ -668,11 +680,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       });
       return signed;
     } catch (error) {
-      this.logger.error('Failed to sign transaction:', error);
-      if (isWalletError(error)) {
-        throw error;
-      }
-      throw createWalletError.signFailed(error as Error);
+      const failure = isWalletError(error) ? error : createWalletError.signFailed(error as Error);
+      this.logger.error('Failed to sign transaction:', describeFailure(failure));
+      throw failure;
     }
   }
 
@@ -698,11 +708,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       });
       return result;
     } catch (error) {
-      this.logger.error('Failed to submit transaction:', error);
-      if (isWalletError(error)) {
-        throw error;
-      }
-      throw createWalletError.signFailed(error as Error);
+      const failure = isWalletError(error) ? error : createWalletError.signFailed(error as Error);
+      this.logger.error('Failed to submit transaction:', describeFailure(failure));
+      throw failure;
     }
   }
 
@@ -725,11 +733,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       this.logger.info('Message signed');
       return signed;
     } catch (error) {
-      this.logger.error('Failed to sign message:', error);
-      if (isWalletError(error)) {
-        throw error;
-      }
-      throw createWalletError.signFailed(error as Error);
+      const failure = isWalletError(error) ? error : createWalletError.signFailed(error as Error);
+      this.logger.error('Failed to sign message:', describeFailure(failure));
+      throw failure;
     }
   }
 

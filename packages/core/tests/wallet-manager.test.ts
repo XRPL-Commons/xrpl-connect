@@ -782,6 +782,49 @@ describe('WalletManager logging', () => {
       hash: 'SUBMITTED_HASH',
     });
   });
+
+  it('logs only the code and message of a signing failure', async () => {
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    // Like an xrpl.js RippledError, whose data is the raw rippled response.
+    const rippledError = () =>
+      Object.assign(new Error('Transaction failed'), {
+        data: { tx_blob: 'SECRET_BLOB', tx_json: { TxnSignature: 'SECRET_SIGNATURE' } },
+      });
+    const adapter = createFakeAdapter();
+    adapter.sign = vi.fn(async () => {
+      throw rippledError();
+    });
+    adapter.signAndSubmit = vi.fn(async () => {
+      throw createWalletError.signFailed(rippledError());
+    });
+    adapter.signMessage = vi.fn(async () => {
+      throw rippledError();
+    });
+    const manager = new WalletManager({ adapters: [adapter], logger });
+    await manager.connect('fake');
+    const transaction = { TransactionType: 'Payment' } as Transaction;
+
+    await expect(manager.sign(transaction)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+      originalError: { data: { tx_blob: 'SECRET_BLOB' } },
+    });
+    await expect(manager.signAndSubmit(transaction)).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+    await expect(manager.signMessage('hello')).rejects.toMatchObject({
+      code: WalletErrorCode.SIGN_FAILED,
+    });
+
+    const summary = {
+      code: WalletErrorCode.SIGN_FAILED,
+      message: 'Failed to sign transaction. Transaction failed',
+    };
+    expect(logger.error.mock.calls).toEqual([
+      [expect.stringContaining('Failed to sign transaction'), summary],
+      [expect.stringContaining('Failed to submit transaction'), summary],
+      [expect.stringContaining('Failed to sign message'), summary],
+    ]);
+  });
 });
 
 describe('WalletManager account snapshots', () => {

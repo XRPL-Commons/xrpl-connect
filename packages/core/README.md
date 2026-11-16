@@ -886,7 +886,9 @@ Electron) log warnings and errors only. Set `level: 'debug'` explicitly to see
 verbose output while developing.
 
 Logs never contain transactions, signed blobs, or signatures: signing operations
-log only the transaction type and hash.
+log only the transaction type and hash, and a failed one logs only the error's
+code and message, never the error object (a wrapped ledger error can carry the
+raw server response).
 
 **Log Levels**:
 

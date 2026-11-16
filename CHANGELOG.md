@@ -14,11 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Privy: require a transaction review before every signature. The wallet connector shows it by default; `transactionReview` accepts a custom review function or `'none'` for headless signing, and signing fails when nothing can show the review. The 2 XRP fee limit also applies to fees supplied by the application.
 - Privy: guest login requires `allowGuestLogin: true`, because a guest wallet is lost on logout; a stale login that completes after disconnect no longer replaces a newer session.
 - Core: enforce the requested network for the whole session, including restores, logins that return through a redirect (Privy OAuth, Xaman mobile), and wallet network switches; signing rejects with `NETWORK_MISMATCH` until the wallet returns to it.
-- Core: keep transactions, signed blobs, and signatures out of logs; development logging depends only on `NODE_ENV`, and a custom logger instance no longer forces the debug level.
+- Core: keep transactions, signed blobs, and signatures out of logs, including signing failures, which log only the error code and message; development logging depends only on `NODE_ENV`, and a custom logger instance no longer forces the debug level.
 - Core: reject message signatures for invalid UTF-8 input (`INVALID_MESSAGE`) or from a signer other than the connected account.
 - MetaMask Snap: accept only exact MetaMask EIP-6963 identifiers, drop the `window.ethereum` fallback, and pin the `xrpl-snap` version (`snapVersion` option).
 - Otsu: sign with the provider approved at connect.
-- UI: keep one-time-code digits out of text nodes, load CAPTCHA scripts despite clobbered provider globals, and keep WalletConnect pairing URIs out of debug logs.
+- UI/Xaman: keep one-time-code digits out of text nodes, load CAPTCHA scripts despite clobbered provider globals, and keep WalletConnect pairing URIs and Xaman signing links out of debug logs.
 
 ### Changed
 

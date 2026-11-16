@@ -32,7 +32,8 @@ A custom logger object may also carry a `level` property. Without an explicit le
 the built-in logger and a custom logger object receive `'warn'` and `'error'` output only,
 unless `process.env.NODE_ENV` is `'development'` (then `'debug'`). The page hostname is not
 used to detect development. Signing operations log only the transaction type and hash, never
-the transaction, signed blob, or signature.
+the transaction, signed blob, or signature; a failed one logs only the error's code and
+message, not the error object.
 
 ### Properties
 
