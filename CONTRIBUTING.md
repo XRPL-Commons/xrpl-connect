@@ -54,8 +54,11 @@ xrpl-connect/
 │   ├── ui/                    # Web component
 │   ├── adapters/              # All wallet adapters (xaman, crossmark, gemwallet,
 │   │                          # walletconnect, ledger, xyra, otsu, …)
-│   └── xrpl-connect/          # Meta-package that re-exports everything
-├── examples/                  # vanilla-js and react integration examples
+│   ├── xrpl-connect/          # Meta-package that re-exports everything
+│   ├── react/                 # React bindings (@xrpl-commons/xrpl-connect-react)
+│   ├── vue/                   # Vue bindings (@xrpl-commons/xrpl-connect-vue)
+│   └── privy/                 # Privy social login (@xrpl-commons/xrpl-connect-privy)
+├── examples/                  # vanilla-js, react, and privy-vanilla integration examples
 └── docs/                      # VitePress documentation site
 ```
 
@@ -175,10 +178,11 @@ fresh reconnect prompt.
 
 ## Release Process
 
-The three coordinated artifacts are `xrpl-connect`,
-`@xrpl-commons/xrpl-connect-react`, and `@xrpl-commons/xrpl-connect-vue`. Their versions and the
-framework packages' `xrpl-connect` peer ranges must move together. Standalone core, UI, and adapter
-packages remain on their independently versioned modular line.
+The four coordinated artifacts are `xrpl-connect`, `@xrpl-commons/xrpl-connect-react`,
+`@xrpl-commons/xrpl-connect-vue`, and `@xrpl-commons/xrpl-connect-privy`. Their versions and the
+`xrpl-connect` peer ranges of the React, Vue, and Privy packages must move together. The core, UI,
+and adapter workspace packages (`@xrpl-connect/*`) are not published to npm; `xrpl-connect` bundles
+and re-exports them.
 
 The automated release path uses the `npm` GitHub environment in `release.yaml`. Configure each
 package's npm trusted publisher for `XRPL-Commons/xrpl-connect`, workflow `release.yaml`, environment
@@ -189,11 +193,21 @@ does not authenticate through OIDC. Artifact uploads run without either token th
 trusted publisher and emit provenance. Configure required reviewers on that environment before
 using the automated path.
 
+npm can configure a trusted publisher only for a package that already exists, so the workflow cannot
+publish a coordinated package for the first time. `@xrpl-commons/xrpl-connect-privy` is not on npm
+yet, so publish its first release, `1.1.0-rc.0`, through
+[manual local publication](#manual-local-publication) instead of the workflow. Use an account that
+owns `xrpl-connect` and may create packages in the `xrpl-commons` organization, and answer npm's
+two-factor prompts. The coordinated command publishes all four packages, so do not publish the Privy
+package on its own first: its new `latest` tag would fail the RC preflight. Then configure the new
+package's trusted publisher as above and add it to the `NPM_DIST_TAG_TOKEN` package selection before
+the next automated release.
+
 Before dispatching a release:
 
 1. Make sure `develop` is green and the worktree is clean.
-2. Set the exact version in all three artifact manifests and `docs/package.json`; set both framework
-   peer ranges to `^<version>`.
+2. Set the exact version in all four artifact manifests and `docs/package.json`; set the three
+   `xrpl-connect` peer ranges (React, Vue, and Privy) to `^<version>`.
 3. Move `[Unreleased]` into a dated changelog section and update current release/migration docs.
 4. Merge those changes to `develop`, then dispatch **Publish Release** from that exact commit with
    the matching channel and version.
@@ -208,40 +222,53 @@ documented npm channel.
 ### Release candidates
 
 Release candidates must never move any existing `latest` dist-tag. Prepare a version such as
-`1.0.0-rc.1`, keep the guarded manifest default on `rc`, and dispatch the release workflow with
+`1.1.0-rc.0`, keep the guarded manifest default on `rc`, and dispatch the release workflow with
 channel `rc`. For local maintainer verification, the equivalent guarded command is:
 
 ```bash
-pnpm --filter xrpl-connect run publish:rc -- --confirm 1.0.0-rc.1
+pnpm --filter xrpl-connect run publish:rc -- --confirm 1.1.0-rc.0
 ```
+
+The packed-consumer checks also read the install commands of the root README, the React and Vue
+package READMEs, the example READMEs, and the getting-started, framework, and migration guides
+(`DOCUMENTED_INSTALL_PATHS` in `packages/xrpl-connect/scripts/test-publish.mjs`). Each must install
+`xrpl@^4` and at least one coordinated package, and every coordinated package must be spelled
+`<package>@rc` for a candidate and as the bare package name for a stable release. Switch those
+commands as part of preparing each channel.
 
 Preflight records each package's existing `latest`, permits only an older candidate on `rc`, and
 rejects unknown tags. Before the first registry mutation, every local tarball is packed and every
 already-published artifact is checked for exact integrity. Fresh artifacts publish under `rc`; exact
-artifacts from an interrupted run are reused and retagged. The final check requires all three `rc`
+artifacts from an interrupted run are reused and retagged. The final check requires all four `rc`
 tags on the confirmed candidate and every `latest` value unchanged.
 
-### Stable v1
+### Stable releases
 
-After live-wallet approval, prepare `1.0.0` with framework peers `^1.0.0`, update installation docs
-from `@rc` to the stable/default channel, and dispatch channel `stable`. The stable publisher uploads
-under the temporary `release` tag. It verifies the immutable integrity of all three registry
-artifacts before moving the first `latest` tag, promotes all three packages, removes the temporary
-tag, and verifies the final coordinated state while preserving `rc`. An interrupted upload or
-promotion is resumed by rerunning the exact workflow input; never repair tags with ad hoc commands.
+After live-wallet approval, prepare the stable version with the three `xrpl-connect` peers at
+`^<version>`, switch the documented install commands from `@rc` to the bare package names, and
+dispatch channel `stable`. The stable publisher uploads under the temporary `release` tag. It
+verifies the immutable integrity of all four registry artifacts before moving the first `latest`
+tag, promotes all four packages, removes the temporary tag, and verifies the final coordinated state
+while preserving `rc`. An interrupted upload or promotion is resumed by rerunning the exact workflow
+input; never repair tags with ad hoc commands.
 
 ### Manual local publication
 
 Use this path to publish from your terminal with your npm account instead of configuring GitHub
 Actions credentials. Start from the reviewed release-preparation commit merged into `develop`, with
-a supported Node.js 24 release (24.11 or later) and pnpm 10.18.3. All three package versions must
-be `1.0.0`, and both framework peers must require `xrpl-connect@^1.0.0`.
+a supported Node.js 24 release (24.11 or later) and pnpm 10.18.3. All four package versions must
+equal the release version, and the React, Vue, and Privy peers must require
+`xrpl-connect@^<version>`. A `-rc.N` version is a release candidate published on `rc`; any other
+version is a stable release published on `latest`. The read-only checks below derive the channel
+from the version, and each publish command refuses a version of the other channel.
 
-Set `RELEASE_COMMIT` to the full SHA of the reviewed commit on `develop`. Stop if any command fails;
-do not substitute a newer branch tip without reviewing it.
+Set `RELEASE_COMMIT` to the full SHA of the reviewed commit on `develop` and `RELEASE_VERSION` to the
+exact manifest version, for example `1.1.0-rc.0`. Stop if any command fails; do not substitute a
+newer branch tip without reviewing it.
 
 ```bash
 RELEASE_COMMIT="<full reviewed commit SHA>"
+RELEASE_VERSION="<exact release version>"
 git fetch origin develop
 git switch --detach "$RELEASE_COMMIT"
 test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
@@ -250,8 +277,8 @@ corepack pnpm install --frozen-lockfile
 ```
 
 The status command must produce no output. If your normal checkout contains unrelated work, use a
-clean worktree at `RELEASE_COMMIT`. Retain this variable throughout publication; the source tag must
-identify that same commit. Check `pnpm --version` from this checkout: it must report `10.18.3`
+clean worktree at `RELEASE_COMMIT`. Retain both variables throughout publication; the source tag
+must identify that same commit. Check `pnpm --version` from this checkout: it must report `10.18.3`
 because the release scripts also invoke `pnpm` directly. If it resolves to another version, run
 `corepack enable pnpm` for your active Node installation and check again.
 
@@ -278,13 +305,21 @@ env -u NODE_AUTH_TOKEN -u NPM_TOKEN -u NPM_READ_TOKEN -u NPM_DIST_TAG_TOKEN \
 It verifies membership in `xrpl-commons`, ownership of `xrpl-connect`, and that the current npm tags
 allow the coordinated release. Resolve any failure before publishing.
 
-The following command **publishes all three npm packages**. It first repeats the full packed-consumer
-checks, then stages, verifies, and promotes the artifacts together:
+The following commands **publish all four npm packages**. Each first repeats the full packed-consumer
+checks, then publishes, verifies, and tags the artifacts together. For a release candidate:
 
 ```bash
 env -u NODE_AUTH_TOKEN -u NPM_TOKEN -u NPM_READ_TOKEN -u NPM_DIST_TAG_TOKEN \
   NPM_CONFIG_PROVENANCE=false \
-  corepack pnpm --filter xrpl-connect run publish:stable -- --confirm 1.0.0
+  corepack pnpm --filter xrpl-connect run publish:rc -- --confirm "$RELEASE_VERSION"
+```
+
+For a stable release:
+
+```bash
+env -u NODE_AUTH_TOKEN -u NPM_TOKEN -u NPM_READ_TOKEN -u NPM_DIST_TAG_TOKEN \
+  NPM_CONFIG_PROVENANCE=false \
+  corepack pnpm --filter xrpl-connect run publish:stable -- --confirm "$RELEASE_VERSION"
 ```
 
 Answer any npm authentication prompts interactively. If an upload or tag operation is interrupted,
@@ -298,27 +333,33 @@ env -u NODE_AUTH_TOKEN -u NPM_TOKEN -u NPM_READ_TOKEN -u NPM_DIST_TAG_TOKEN \
   corepack pnpm --filter xrpl-connect run verify:release:registry
 ```
 
-All three packages must have `latest` pointing to `1.0.0`, their previous `rc` tags preserved, and no
-temporary `release` tag. Only after this verification succeeds, create `v1.0.0` at the recorded source
-commit and create the GitHub Release. If the tag already exists, verify it identifies that commit;
-never force-move it.
+For a release candidate, all four packages must have `rc` pointing to `RELEASE_VERSION` and every
+`latest` tag unchanged. For a stable release, all four must have `latest` pointing to
+`RELEASE_VERSION`, their previous `rc` tags preserved, and no temporary `release` tag. Only after this
+verification succeeds, create `v<version>` at the recorded source commit and create the GitHub
+Release. If the tag already exists, verify it identifies that commit; never force-move it.
 
 ```bash
-if ! git show-ref --verify --quiet refs/tags/v1.0.0; then
-  git tag --annotate v1.0.0 "$RELEASE_COMMIT" --message "XRPL Connect 1.0.0"
+RELEASE_TAG="v$RELEASE_VERSION"
+if ! git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+  git tag --annotate "$RELEASE_TAG" "$RELEASE_COMMIT" --message "XRPL Connect $RELEASE_VERSION"
 fi
-test "$(git rev-parse 'v1.0.0^{commit}')" = "$RELEASE_COMMIT" &&
-  git push origin refs/tags/v1.0.0
+test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$RELEASE_COMMIT" &&
+  git push origin "refs/tags/$RELEASE_TAG"
 ```
 
 Stop if the tag check or push fails. Once the remote tag is confirmed, create the GitHub Release
-if it does not already exist; otherwise inspect the existing release.
+if it does not already exist; otherwise inspect the existing release. A candidate is marked as a
+prerelease, a stable release as the latest release.
 
 ```bash
-if gh release view v1.0.0; then
-  echo "Review the existing v1.0.0 release above."
+if gh release view "$RELEASE_TAG"; then
+  echo "Review the existing $RELEASE_TAG release above."
 else
-  gh release create v1.0.0 --verify-tag --title v1.0.0 --generate-notes --latest
+  case "$RELEASE_VERSION" in
+    *-rc.*) gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes --prerelease ;;
+    *) gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes --latest ;;
+  esac
 fi
 ```
 
@@ -327,16 +368,17 @@ Once the source tag and published GitHub Release exist, dispatch the documentati
 `develop`, the repository's default branch:
 
 ```bash
-gh workflow run deploy_vitepressDoc.yaml --ref develop --field release_tag=v1.0.0
+gh workflow run deploy_vitepressDoc.yaml --ref develop --field release_tag="$RELEASE_TAG"
 ```
 
 The workflow requires a published, non-draft GitHub Release and builds from its exact source tag.
 It uses GitHub Pages permissions and does not require npm publishing credentials or republish any
 packages. The automated release workflow continues to call the same deployment workflow.
 
-Watch the resulting run in Actions. After it succeeds, check that the live installation guide uses
-the stable package names and the migration guide identifies `1.0.0`. Rerun the same dispatch if only
-the documentation deployment needs to be retried; keep the release tag unchanged.
+Watch the resulting run in Actions. After it succeeds, check that the live installation guide
+installs the release's channel: `<package>@rc` for a candidate, the bare package names for a stable
+release. Rerun the same dispatch if only the documentation deployment needs to be retried; keep the
+release tag unchanged.
 
 ### Live wallet validation
 
@@ -355,11 +397,21 @@ packed candidate in a fresh browser application and record the result for every 
 | GHOSTSIG      | Supported browser with a PRF-capable passkey and popups allowed   |
 | Otsu          | Supported browser with the Otsu wallet installed                  |
 | MetaMask Snap | Supported browser with MetaMask and the XRPL Snap installed       |
+| Privy         | Privy app with dashboard login methods, origin, and callback URL  |
 
 For each wallet, verify availability, connect, account/network reporting, every declared signing
 capability, rejection or cancellation, disconnect, and session restoration. Also verify switching
 between two adapters in one session. Record the browser, wallet version, network, account, candidate
 tarball integrity, and result so the stable-release decision is reproducible.
+
+For Privy, also verify:
+
+| Privy scenario     | Expected result                                                                  |
+| ------------------ | -------------------------------------------------------------------------------- |
+| Social login       | Every enabled dashboard method signs in, including OAuth return and CAPTCHA      |
+| Embedded wallet    | First login creates the XRPL wallet; a returning login restores the same one     |
+| Transaction review | The connector shows the review; Approve signs, Reject fails with `SIGN_REJECTED` |
+| Testnet submission | `signAndSubmit` on a funded testnet account returns the validated result         |
 
 ## Reporting Security Issues
 
