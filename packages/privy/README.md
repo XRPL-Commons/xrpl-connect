@@ -182,9 +182,15 @@ called. A disconnect, logout, or lost session during a review rejects it with
 `NOT_CONNECTED`. Reviews run one at a time: a second request waits until the
 first is answered, an answer always applies to the transaction on screen, and
 **Approve** stays disabled for a second after each review appears so a double
-click cannot approve the next one. Approve within about a minute when submitting:
-the autofilled `LastLedgerSequence` bounds how long the reviewed transaction stays
-valid, and an expired one fails without being applied.
+click cannot approve the next one.
+
+The review runs after autofill, so an autofilled `LastLedgerSequence` (about 20
+ledgers ahead, roughly a minute) keeps counting while the user reads. With
+`signAndSubmit`, approve within about a minute: an expired transaction fails
+without being applied. With `sign`, a transaction the adapter autofilled must be
+approved and then submitted within the same window. Supply your own
+`LastLedgerSequence` to choose the window, or `Fee` and `Sequence` to sign without
+autofill.
 
 The review fails closed. When nothing is subscribed with `onAuthPrompt()`,
 signing fails with a `SIGN_FAILED` wallet error instead of signing, so keep a

@@ -64,9 +64,12 @@ WebSocket endpoint. If the option is omitted, mainnet is used. The selected endp
 for transaction autofill and submission; the hardware device only signs the resulting bytes.
 
 When `WalletManager` restores a Ledger session after a reload, it passes the manager's
-configured `network` (or the network the session was requested on), never the endpoint
-saved in browser storage. Configure `network` on the manager so the endpoint always comes
-from your application code.
+configured `network`. Without one, it passes the network the session was requested on, read
+back from browser storage: a network requested by id (such as `'testnet'`) uses its built-in
+endpoints, while a `NetworkInfo` object is replayed with the `wss` endpoint it was requested
+with, since nothing else knows a custom endpoint. The network and endpoint the session last
+reported are never used. Configure `network` on the manager so the endpoint always comes from
+your application code rather than from browser storage.
 
 ### Sign a Transaction
 

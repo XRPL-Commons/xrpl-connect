@@ -18,17 +18,18 @@ const walletManager = new WalletManager(options: WalletManagerOptions)
 
 #### Options
 
-| Property      | Type                              | Description                                                                                                                                     |
-| ------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `adapters`    | `WalletAdapter[]`                 | Array of wallet adapters to register                                                                                                            |
-| `network`     | `NetworkConfig`                   | Default network (a standard id or a custom `NetworkInfo`)                                                                                       |
-| `autoConnect` | `boolean`                         | Auto-reconnect from stored session on initialization                                                                                            |
-| `storage`     | `StorageAdapter`                  | Custom storage adapter (defaults to `LocalStorageAdapter`)                                                                                      |
-| `logger`      | `LoggerOptions \| LoggerInstance` | `{ level?, prefix? }` to configure the built-in logger, or a custom logger object (`{ debug, info, warn, error }`) that receives all log output |
+| Property      | Type                              | Description                                                                                                                        |
+| ------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `adapters`    | `WalletAdapter[]`                 | Array of wallet adapters to register                                                                                               |
+| `network`     | `NetworkConfig`                   | Default network (a standard id or a custom `NetworkInfo`)                                                                          |
+| `autoConnect` | `boolean`                         | Auto-reconnect from stored session on initialization                                                                               |
+| `storage`     | `StorageAdapter`                  | Custom storage adapter (defaults to `LocalStorageAdapter`)                                                                         |
+| `logger`      | `LoggerOptions \| LoggerInstance` | `{ level?, prefix? }` for the built-in logger, or a custom logger object (`{ debug, info, warn, error }`) that receives its output |
 
 `NetworkConfig` is either one of the standard keys (`'mainnet' | 'testnet' | 'devnet'`) or a `NetworkInfo` object.
 
-A custom logger object may also carry a `level` property. Without an explicit level, both
+A custom logger object may also carry a `level` property, and receives only output at or
+above it. Without an explicit level, both
 the built-in logger and a custom logger object receive `'warn'` and `'error'` output only,
 unless `process.env.NODE_ENV` is `'development'` (then `'debug'`). The page hostname is not
 used to detect development. Signing operations log only the transaction type and hash, never
@@ -82,7 +83,9 @@ was originally requested on, and applies the same `NETWORK_MISMATCH` check as `c
 The network the wallet last reported (including its endpoint) is stored for reference only
 and is never requested again, so a wallet that moved to another network fails to restore
 instead of restoring there. Sessions connected without any requested network restore on
-whatever network the wallet reports.
+whatever network the wallet reports. The exception is a session saved by an earlier release
+(connection record version 1): it did not record whether a network was requested, so its
+stored network becomes its requested network and it restores only there, as it did before.
 
 A login that can return through a redirect (an adapter implementing
 [`SupportsPendingConnection`](#supportspendingconnection), such as Privy OAuth or Xaman's
@@ -584,7 +587,23 @@ The corresponding adapter-specific exports are also available from the umbrella 
 | Otsu          | `OtsuProvider`, `OTSU_NETWORK_MAP`                                                                         |
 | MetaMask Snap | `MetaMaskSnapAdapterOptions`                                                                               |
 
-The umbrella also exposes the shared core types, error primitives, capability guards, standard network definitions, storage implementations, logging utilities, `resolveNetwork`, `isMobile`, `withTimeout`, and the web component registration API. Import an individual `@xrpl-connect/adapter-*` package only when deliberately using the modular distribution.
+The umbrella also exposes:
+
+- `WalletManager`, with the properties listed [above](#properties), including `networkMismatch`;
+- the shared core types, including `WalletTransactionReview` and `WalletTransactionReviewDetail`
+  (the transaction review an adapter such as Privy shows before signing) and `PendingConnection`;
+- error primitives, capability guards, standard network definitions, storage implementations,
+  and logging utilities;
+- `resolveNetwork`, `isMobile`, and `withTimeout`;
+- `decodeMessage`, which returns the exact text a wallet must sign for `signMessage()` and
+  rejects bytes that are not valid UTF-8 with `INVALID_MESSAGE`;
+- the signed-transaction verification helpers for adapters: `assertSignedTransaction` (network,
+  account, and signature checks), `assertRequestedTransaction` (every requested field is
+  preserved), and `canonicalizeTransaction` (codec-canonical form), with their
+  `SignedTransactionExpectation` and `RequestedTransactionPolicy` option types;
+- the web component registration API.
+
+Import an individual `@xrpl-connect/adapter-*` package only when deliberately using the modular distribution.
 
 ## React API
 

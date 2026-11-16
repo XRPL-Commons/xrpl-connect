@@ -167,7 +167,10 @@ manager's configured `network`, or else the network the session was requested
 on (`StoredState.requestedNetwork`), and applies the same `NETWORK_MISMATCH`
 check as `connect()`. The wallet's last-reported network and endpoint
 (`StoredState.network`) are never requested again. A session connected without
-any requested network restores on whatever network the wallet reports.
+any requested network restores on whatever network the wallet reports, except a
+session saved by an earlier release (stored state version 1): it did not record
+whether a network was requested, so the migration makes its stored network the
+requested one, and it restores only there, as before.
 
 A login on an adapter implementing `SupportsPendingConnection` (Privy OAuth,
 Xaman's mobile sign-in) can return through a redirect, so the manager records it
@@ -901,8 +904,10 @@ raw server response).
 ### Routing logs to a custom logger
 
 Pass any object that implements `LoggerInstance` (matching the `console.*`
-shape) to send all log calls — including those emitted by individual adapters —
-into your own logging pipeline (Sentry, Datadog, pino, etc.):
+shape) to route log output — including that of individual adapters — into your
+own logging pipeline (Sentry, Datadog, pino, etc.). Like the built-in logger, it
+receives only warnings and errors outside `NODE_ENV === 'development'` unless it
+sets `level` (see below):
 
 ```typescript
 import type { LoggerInstance } from '@xrpl-connect/core';

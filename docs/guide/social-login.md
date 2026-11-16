@@ -153,6 +153,13 @@ stays disabled for a second after each review appears, so a double click cannot
 approve the next one. The adapter also refuses any fee above 2 XRP, including one
 the application supplied, except for transaction types priced at the owner reserve.
 
+The review opens after autofill, so an autofilled `LastLedgerSequence` (about 20
+ledgers, roughly a minute) keeps counting while the user reads. Approve a
+`signAndSubmit()` request within about a minute, or the transaction expires
+without being applied. A transaction that `sign()` autofilled must likewise be
+approved and then submitted within that window; set `LastLedgerSequence` yourself
+to choose it, or supply `Fee` and `Sequence` to sign without autofill.
+
 Keep a connector on the page while users sign. Without one, signing fails with an
 error until something subscribes with `adapter.onAuthPrompt()`. The
 `transactionReview` option replaces the built-in review with your own (a function
