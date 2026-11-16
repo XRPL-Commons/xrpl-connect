@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
-import type { WalletAdapter } from '@xrpl-connect/core';
+import { configureLogger, type WalletAdapter } from '@xrpl-connect/core';
 import { TIMINGS } from '../src/constants';
 import { getSafeDeepLinkUrl, getSafeImageUrl } from '../src/security';
 import { isXamanQRImage } from '../src/utils';
@@ -213,5 +213,32 @@ describe('safe wallet connector rendering', () => {
     connector.setQRCode('xaman', 'https://evil.example/xumm.app/sign/request.png');
     await vi.advanceTimersByTimeAsync(TIMINGS.QR_RENDER_DELAY);
     expect(connector.getOverlayRoot()?.querySelector('#qr-container img')).toBeNull();
+  });
+
+  it('keeps the pairing URI out of debug logs when a QR code arrives', async () => {
+    const records: unknown[][] = [];
+    const record = (...args: unknown[]) => void records.push(args);
+    configureLogger({ debug: record, info: record, warn: record, error: record });
+    try {
+      const connector = document.createElement('xrpl-wallet-connector') as HTMLElement & {
+        open(): Promise<void>;
+        showQRCodeView(walletId: string, uri?: string): void;
+        setQRCode(walletId: string, uri: string): void;
+      };
+      document.body.append(connector);
+      await connector.open();
+      connector.showQRCodeView('walletconnect');
+      const symKey = 'a'.repeat(64);
+      connector.setQRCode(
+        'walletconnect',
+        `wc:${'b'.repeat(64)}@2?relay-protocol=irn&symKey=${symKey}`
+      );
+
+      expect(records.some(([message]) => String(message).includes('setQRCode'))).toBe(true);
+      expect(JSON.stringify(records)).not.toContain(symKey);
+      expect(JSON.stringify(records)).not.toContain('b'.repeat(64));
+    } finally {
+      configureLogger(undefined);
+    }
   });
 });

@@ -1872,12 +1872,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Called by wallet adapters when QR code URI is ready
      */
     public setQRCode(walletId: string, uri: string) {
-      logger.debug('setQRCode called:', {
-        walletId,
-        uri: uri.substring(0, 60) + '...',
-        viewState: this.viewState,
-        qrCodeData: this.qrCodeData,
-      });
+      // The URI is a live pairing secret (a WalletConnect URI carries its
+      // symmetric key), so it stays out of logs.
+      logger.debug('setQRCode called:', { walletId, viewState: this.viewState });
 
       if (this.viewState === 'qr' && this.qrCodeData?.walletId === walletId) {
         this.qrCodeData.uri = uri;
