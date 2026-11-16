@@ -48,7 +48,7 @@ jobs:
           ref: refs/tags/${{ inputs.release_tag }}
           fetch-depth: 0
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
         with:
           node-version: '22'
           cache: true
