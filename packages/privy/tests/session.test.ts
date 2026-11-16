@@ -1808,7 +1808,9 @@ describe('PrivySession', () => {
     session.onSessionLost(lost);
     const completeStaleLogin = await abandonLogin(session, active);
     await session.disconnect();
-    expect(mocks.logout).toHaveBeenCalledOnce();
+    // Provider logout runs after the bounded wait for the abandoned login, which
+    // disconnect() itself does not outlast.
+    await vi.waitFor(() => expect(mocks.logout).toHaveBeenCalledOnce());
 
     // The next person connects. The abandoned login then completes, and the SDK
     // makes its user active in place of theirs.
@@ -1876,6 +1878,8 @@ describe('PrivySession', () => {
     const completeStaleLogin = await abandonLogin(session, active);
     await session.disconnect();
     await discovering;
+    // Let the disconnect's provider logout finish before the stale login lands.
+    await vi.waitFor(() => expect(mocks.logout).toHaveBeenCalledOnce());
 
     // The abandoned login completes first. Choosing a method ends its session
     // before the next person signs in.
