@@ -47,6 +47,23 @@ test.beforeEach(async ({ context }) => {
   );
 });
 
+for (const parameter of ['access_token', 'authorization_code']) {
+  test(`ignores a crafted ${parameter} link without a local sign-in attempt`, async ({ page }) => {
+    let verified = false;
+    await page.route('https://oauth2.xumm.app/userinfo', (route) => {
+      verified = true;
+      return route.fallback();
+    });
+    const link = new URL(fixture, 'http://127.0.0.1');
+    link.searchParams.set(parameter, parameter === 'access_token' ? token('forged') : 'forged');
+    await page.goto(`${link.pathname}${link.search}`);
+    await page.getByRole('button', { name: 'Recover return' }).click();
+    await expect(page.locator('#state')).toHaveText('disconnected');
+    expect(await page.evaluate(() => ({ ...localStorage }))).toEqual({});
+    expect(verified).toBe(false);
+  });
+}
+
 test('completes the original connection after explicit recovery in a separate tab', async ({
   page,
   context,

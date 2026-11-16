@@ -243,15 +243,10 @@ export class XamanAdapter
   }
 
   hasPendingConnection(): boolean {
-    if (typeof document === 'undefined' || !document.location?.search) return false;
-    // Successful OAuth return parameters consumed by the Xumm PKCE SDK.
-    const params = new URLSearchParams(document.location.search);
-    return Boolean(
-      params.get('authorization_code') ||
-      params.get('access_token') ||
-      (params.get('state')?.startsWith('xrpl-connect-') &&
-        (params.has('error') || params.has('error_description')))
-    );
+    // Only the callback of a sign-in started in this browser: a link carrying another
+    // account's credentials must not sign the user in.
+    const apiKey = this.options.apiKey;
+    return apiKey ? BrowserOAuthClient.hasPendingCallback(apiKey) : false;
   }
 
   async checkXamanState(

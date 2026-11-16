@@ -24,7 +24,7 @@ vi.mock('node-fetch', () => {
 
 import { MemoryStorageAdapter, WalletManager, WalletErrorCode } from '@xrpl-connect/core';
 import { XummSdkJwt } from 'xumm-sdk';
-import { BrowserOAuthClient, CONNECTION_TIMEOUT_MS } from '../src/browser-oauth';
+import { BrowserOAuthClient, CONNECTION_TIMEOUT_MS, usesBrowserOAuth } from '../src/browser-oauth';
 import { XamanAdapter } from '../src/xaman-adapter';
 
 const API_KEY = 'test-api-key';
@@ -287,6 +287,10 @@ function attemptFor(tab: FakeWindow, state: string): Record<string, unknown> {
   return JSON.parse(value) as Record<string, unknown>;
 }
 
+function saveSession(tab: FakeWindow, token: string, state = 'xrpl-connect-saved'): void {
+  tab.localStorage.setItem(SESSION_KEY, JSON.stringify({ jwt: token, state }));
+}
+
 function resultFor(tab: FakeWindow, state: string): Record<string, unknown> | undefined {
   const value = tab.localStorage.getItem(`xrpl-connect:xaman:${state}:result`);
   return value ? (JSON.parse(value) as Record<string, unknown>) : undefined;
@@ -298,6 +302,20 @@ function callbackHref(state: string, token: string, extra: Record<string, string
   callback.searchParams.set('access_token', token);
   for (const [key, value] of Object.entries(extra)) callback.searchParams.set(key, value);
   return callback.href;
+}
+
+/** Holds the next wallet request until released, then answers it as usual. */
+function holdNextFetch(): () => void {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const answer = fetchMock.getMockImplementation() as typeof fetch;
+  fetchMock.mockImplementationOnce(async (input: string | URL, init?: RequestInit) => {
+    await released;
+    return answer(input, init);
+  });
+  return release;
 }
 
 async function settleMicrotasks(): Promise<void> {
@@ -380,7 +398,7 @@ describe('BrowserOAuthClient', () => {
   it('does not start fresh authorization after saved-session verification is cancelled', async () => {
     const tab = makeTab(new SharedStorage());
     installBrowser(tab);
-    tab.localStorage.setItem(SESSION_KEY, JSON.stringify({ jwt: jwt() }));
+    saveSession(tab, jwt());
     let rejectVerification!: (error: Error) => void;
     fetchMock.mockImplementationOnce(
       () =>
@@ -400,7 +418,7 @@ describe('BrowserOAuthClient', () => {
   it('keeps expired saved-session restoration passive', async () => {
     const tab = makeTab(new SharedStorage());
     installBrowser(tab);
-    tab.localStorage.setItem(SESSION_KEY, JSON.stringify({ jwt: jwt({ exp: 1 }) }));
+    saveSession(tab, jwt({ exp: 1 }));
     const client = new BrowserOAuthClient(API_KEY);
     clients.push(client);
     await expect(client.user.account).rejects.toThrow(/expired/);
@@ -759,7 +777,7 @@ describe('BrowserOAuthClient', () => {
     const tab = makeTab(shared);
     installBrowser(tab);
     const token = jwt();
-    tab.localStorage.setItem(SESSION_KEY, JSON.stringify({ jwt: token }));
+    saveSession(tab, token);
     const client = new BrowserOAuthClient(API_KEY);
     clients.push(client);
 
@@ -799,47 +817,111 @@ describe('BrowserOAuthClient', () => {
     await expect(retry).rejects.toThrow(/cancelled/i);
   });
 
-  it('uses an API-scoped ignore marker for a legacy saved token', async () => {
-    const shared = new SharedStorage();
-    const tab = makeTab(shared);
+  it('does not restore a token that did not come from its own state-bound sign-in', async () => {
+    const tab = makeTab(new SharedStorage());
     installBrowser(tab);
-    const token = jwt();
+    // The universal SDK stores tokens it takes from any link; earlier versions of
+    // this client copied them into its own session without a state.
+    const token = jwt({ sub: 'attacker' });
     tab.localStorage.setItem('XummPkceJwt', JSON.stringify({ jwt: token }));
+    tab.localStorage.setItem(SESSION_KEY, JSON.stringify({ jwt: token }));
     const client = new BrowserOAuthClient(API_KEY);
     clients.push(client);
 
-    await expect(client.authorize()).resolves.toMatchObject({ jwt: token });
-    await client.logout();
-    expect(tab.localStorage.getItem('XummPkceJwt')).toBe(JSON.stringify({ jwt: token }));
-    expect(tab.localStorage.getItem(`${SESSION_KEY}:ignored`)).toBe(JSON.stringify({ jwt: token }));
-
-    const retryClient = new BrowserOAuthClient(API_KEY);
-    clients.push(retryClient);
-    const retry = track(retryClient.authorize());
+    await expect(client.user.account).resolves.toBeUndefined();
+    const retry = track(client.authorize());
     await settleMicrotasks();
     expect(tab.open).toHaveBeenCalledOnce();
-    retryClient.cancelAuthorization();
+    expect(fetchMock).not.toHaveBeenCalled();
+    client.cancelAuthorization();
     await expect(retry).rejects.toThrow(/cancelled/i);
   });
 
-  it('lets autoConnect false recover a pending callback through explicit manager.reconnect()', async () => {
+  it('completes a first callback through manager.reconnect() and restores it on the next load', async () => {
     const shared = new SharedStorage();
     const pending = await startPending(shared);
     const token = jwt();
     const returnTab = makeTab(shared, callbackHref(pending.state, token));
     installBrowser(returnTab);
+    const storage = new MemoryStorageAdapter();
     const adapter = new XamanAdapter({ apiKey: API_KEY });
-    const manager = new WalletManager({
-      adapters: [adapter],
-      storage: new MemoryStorageAdapter(),
-      autoConnect: false,
-    });
+    const manager = new WalletManager({ adapters: [adapter], storage, autoConnect: false });
 
     expect(manager.connected).toBe(false);
-    await expect(manager.reconnect()).resolves.toMatchObject({ address: ACCOUNT });
+    expect(adapter.hasPendingConnection()).toBe(true);
+    const release = holdNextFetch();
+    const reconnecting = manager.reconnect();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    // Until Xaman confirms the session, nothing is connected and the callback has
+    // already left the address bar.
+    expect(returnTab.location.href).toBe(BASE_URL);
+    expect(manager.connected).toBe(false);
+    expect(manager.account).toBeNull();
+    release();
+    await expect(reconnecting).resolves.toMatchObject({ address: ACCOUNT });
     await expect(pending.promise).resolves.toMatchObject({ jwt: token });
     expect(returnTab.open).not.toHaveBeenCalled();
     expect(manager.wallet).toBe(adapter);
+
+    // The application owns routing and may replace its callback route in place.
+    returnTab.history.replaceState(null, '', new URL('/dashboard', BASE_URL).href);
+    expect(manager.connected).toBe(true);
+    expect(adapter.hasPendingConnection()).toBe(false);
+
+    const nextLoad = makeTab(shared);
+    installBrowser(nextLoad);
+    const restored = new WalletManager({
+      adapters: [new XamanAdapter({ apiKey: API_KEY })],
+      storage,
+      autoConnect: false,
+    });
+    await expect(restored.reconnect()).resolves.toMatchObject({ address: ACCOUNT });
+    expect(nextLoad.open).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['an access token', () => `?access_token=${jwt({ sub: 'attacker' })}`],
+    ['an authorization code', () => '?authorization_code=attacker-code'],
+    ['an unissued state', () => `?state=xrpl-connect-forged&access_token=${jwt()}`],
+  ])('does not sign in from a link carrying %s', async (_name, search) => {
+    const tab = makeTab(new SharedStorage(), `${BASE_URL}${search()}`);
+    installBrowser(tab);
+    const adapter = new XamanAdapter({ apiKey: API_KEY });
+    const manager = new WalletManager({ adapters: [adapter], storage: new MemoryStorageAdapter() });
+
+    expect(usesBrowserOAuth()).toBe(true);
+    expect(adapter.hasPendingConnection()).toBe(false);
+    await expect(manager.reconnect()).resolves.toBeNull();
+    expect(manager.connected).toBe(false);
+    expect(tab.open).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(tab.localStorage.length).toBe(0);
+  });
+
+  it.each(['cancelled', 'expired', 'for another application'] as const)(
+    'does not report a callback pending when its attempt is %s',
+    async (reason) => {
+      const shared = new SharedStorage();
+      const pending = await startPending(shared);
+      const attempt = attemptFor(pending.tab, pending.state);
+      if (reason === 'cancelled') pending.client.cancelAuthorization();
+      pending.tab.localStorage.setItem(
+        `xrpl-connect:xaman:${pending.state}`,
+        JSON.stringify({
+          ...attempt,
+          ...(reason === 'expired' ? { expires: Date.now() - 1 } : {}),
+          ...(reason === 'for another application' ? { apiKey: OTHER_API_KEY } : {}),
+        })
+      );
+      installBrowser(makeTab(shared, callbackHref(pending.state, jwt())));
+      expect(new XamanAdapter({ apiKey: API_KEY }).hasPendingConnection()).toBe(false);
+    }
+  );
+
+  it('leaves xApps to the Xumm SDK', () => {
+    installBrowser(makeTab(new SharedStorage()));
+    vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 xumm/xapp:2.7.0' });
+    expect(usesBrowserOAuth()).toBe(false);
   });
 
   it('bounds a callback attempt at its expiry and cancels it on timeout', async () => {
@@ -922,7 +1004,7 @@ describe('BrowserOAuthClient', () => {
     const shared = new SharedStorage();
     const tab = makeTab(shared);
     installBrowser(tab);
-    tab.localStorage.setItem(SESSION_KEY, JSON.stringify({ jwt: jwt() }));
+    saveSession(tab, jwt());
     fetchMock.mockImplementationOnce(() => new Promise<Response>(() => {}));
     const client = new BrowserOAuthClient(API_KEY);
     clients.push(client);

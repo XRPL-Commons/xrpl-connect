@@ -287,35 +287,23 @@ async function signedAdapter(
 describe('Xaman OAuth return recovery', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it.each(['access_token', 'authorization_code'])(
-    'completes a returned %s through reconnect without a stored manager session',
-    async (parameter) => {
-      vi.stubGlobal('document', { location: { search: `?${parameter}=oauth-return` } });
-      mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
-      const adapter = new XamanAdapter({ apiKey: 'test-key' });
-      const manager = new WalletManager({
-        adapters: [adapter],
-        storage: new MemoryStorageAdapter(),
-      });
-
-      await expect(manager.reconnect()).resolves.toMatchObject({ address: CONNECTED_ACCOUNT });
-
-      expect(mockXummInstance.authorize).toHaveBeenCalledOnce();
-      expect(manager.wallet).toBe(adapter);
-    }
-  );
-
+  // Callbacks of attempts started in this browser are covered in browser-oauth.test.ts.
   it.each([
     undefined,
     '',
     '?state=ordinary-page',
     '?access_token=',
     '?error_description=Cancelled',
-  ])('leaves a page without an OAuth result idle (%s)', async (search) => {
+    '?access_token=oauth-return',
+    '?authorization_code=oauth-return',
+    '?state=xrpl-connect-forged&access_token=oauth-return',
+  ])('leaves a page without a local sign-in attempt idle (%s)', async (search) => {
     if (search !== undefined) vi.stubGlobal('document', { location: { search } });
+    mockXummInstance.authorize.mockResolvedValue({ me: { account: CONNECTED_ACCOUNT } });
     const adapter = new XamanAdapter({ apiKey: 'test-key' });
     const manager = new WalletManager({ adapters: [adapter], storage: new MemoryStorageAdapter() });
 
+    expect(adapter.hasPendingConnection()).toBe(false);
     await expect(manager.reconnect()).resolves.toBeNull();
 
     expect(mockXummInstance.authorize).not.toHaveBeenCalled();

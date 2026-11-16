@@ -36,13 +36,52 @@ type Attempt = {
   status: 'pending';
 };
 
+function readItem<T>(browser: Window, key: string): T | undefined {
+  try {
+    return JSON.parse(browser.localStorage.getItem(key) || 'null') ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** An attempt this browser started for `apiKey` that can still complete. */
+function liveAttempt(browser: Window, apiKey: string, state: string): Attempt | undefined {
+  const attempt = readItem<Attempt>(browser, `${PREFIX}${state}`);
+  if (
+    !attempt ||
+    attempt.apiKey !== apiKey ||
+    readItem(browser, `${PREFIX}${state}:cancelled`) ||
+    !Number.isFinite(attempt.expires) ||
+    attempt.expires <= Date.now()
+  ) {
+    return undefined;
+  }
+  return attempt;
+}
+
 /** Browser OAuth owns its attempts: the universal SDK shares a singleton per tab. */
 export class BrowserOAuthClient implements XamanClient {
+  /**
+   * Whether this page is the callback of a live sign-in attempt that this browser
+   * started. A link carrying a token or code without one must never sign in: it
+   * could belong to another account.
+   */
+  static hasPendingCallback(apiKey: string): boolean {
+    if (!usesBrowserOAuth()) return false;
+    const params = new URLSearchParams(document.location.search);
+    const state = params.get('state');
+    return Boolean(
+      state?.startsWith(STATE_PREFIX) &&
+      (params.get('access_token') || params.has('error') || params.has('error_description')) &&
+      liveAttempt(window, apiKey, state)
+    );
+  }
+
   private session?: ResolvedFlow;
   private loading?: Promise<ResolvedFlow | undefined>;
   private controller = new AbortController();
   private state?: string;
-  private saved?: { key: string; jwt: string; state?: string };
+  private saved?: { jwt: string; state: string };
   private popup: Window | null = null;
   private readonly sessionKey: string;
   private readonly browser = window;
@@ -115,20 +154,20 @@ export class BrowserOAuthClient implements XamanClient {
   }
 
   private readSaved(): { jwt: string } | undefined {
-    for (const key of [this.sessionKey, 'XummPkceJwt']) {
-      const saved = this.read<{ jwt?: unknown; state?: string }>(key);
-      if (saved?.state && this.read(`${PREFIX}${saved.state}:cancelled`)) return undefined;
-      if (
-        saved?.jwt &&
-        this.read<{ jwt?: unknown }>(`${this.sessionKey}:ignored`)?.jwt === saved.jwt
-      )
-        return undefined;
-      if (typeof saved?.jwt === 'string') {
-        this.saved = { key, jwt: saved.jwt, state: saved.state };
-        return { jwt: saved.jwt };
-      }
+    const saved = this.read<{ jwt?: unknown; state?: unknown }>(this.sessionKey);
+    // Restore only sessions from this client's state-bound sign-in. Entries without
+    // a state were adopted from the universal SDK, which accepts tokens from any link.
+    if (
+      typeof saved?.jwt !== 'string' ||
+      typeof saved.state !== 'string' ||
+      !saved.state.startsWith(STATE_PREFIX) ||
+      this.read(`${PREFIX}${saved.state}:cancelled`) ||
+      this.read<{ jwt?: unknown }>(`${this.sessionKey}:ignored`)?.jwt === saved.jwt
+    ) {
+      return undefined;
     }
-    return undefined;
+    this.saved = { jwt: saved.jwt, state: saved.state };
+    return { jwt: saved.jwt };
   }
 
   private invalidateSession(jwt: string, state?: string): void {
@@ -141,11 +180,7 @@ export class BrowserOAuthClient implements XamanClient {
   }
 
   private read<T>(key: string): T | undefined {
-    try {
-      return JSON.parse(this.browser.localStorage.getItem(key) || 'null') ?? undefined;
-    } catch {
-      return undefined;
-    }
+    return readItem<T>(this.browser, key);
   }
 
   private write(key: string, value: unknown): void {
@@ -153,7 +188,7 @@ export class BrowserOAuthClient implements XamanClient {
   }
 
   private attempt(): Attempt | undefined {
-    return this.state ? this.read<Attempt>(`${PREFIX}${this.state}`) : undefined;
+    return this.state ? liveAttempt(this.browser, this.apiKey, this.state) : undefined;
   }
 
   private assertActive(): void {
@@ -164,18 +199,9 @@ export class BrowserOAuthClient implements XamanClient {
       throw new Error('Xaman authorization was cancelled');
     }
     if (this.state) {
-      const attempt = this.attempt();
       if (this.read(`${PREFIX}${this.state}:rejected`))
         throw createWalletError.connectionRejected('Xaman');
-      if (
-        !attempt ||
-        attempt.apiKey !== this.apiKey ||
-        this.read(`${PREFIX}${this.state}:cancelled`) ||
-        !Number.isFinite(attempt.expires) ||
-        attempt.expires <= Date.now()
-      ) {
-        throw new Error('Xaman authorization expired or was cancelled');
-      }
+      if (!this.attempt()) throw new Error('Xaman authorization expired or was cancelled');
     }
   }
 
@@ -454,15 +480,16 @@ export class BrowserOAuthClient implements XamanClient {
   }
 }
 
+/**
+ * Browsers outside xApps always sign in here. The universal SDK's browser flow
+ * adopts an `access_token` or `authorization_code` from any link without checking
+ * that this browser requested it, so it must never handle the page URL.
+ */
 export function usesBrowserOAuth(): boolean {
   return (
     typeof window !== 'undefined' &&
     typeof document !== 'undefined' &&
     Boolean(document.location?.href) &&
-    !/xumm\/xapp|xAppBuilder/i.test(navigator.userAgent) &&
-    (!new URLSearchParams(document.location.search).has('access_token') ||
-      new URLSearchParams(document.location.search).get('state')?.startsWith(STATE_PREFIX) ===
-        true) &&
-    !new URLSearchParams(document.location.search).has('authorization_code')
+    !/xumm\/xapp|xAppBuilder/i.test(navigator.userAgent)
   );
 }

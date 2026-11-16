@@ -655,8 +655,9 @@ function supportsPendingConnection(
 
 Detection must be synchronous and side-effect free. It identifies a returned wallet
 authorization that `connect()` can complete without starting a new authorization.
-Xaman implements it for successful OAuth callback parameters and rejection callbacks
-for its own pending browser attempts. Unrelated rejected-return URLs are ignored. With empty storage, `reconnect()` attempts the first configured candidate
+Xaman implements it only for OAuth callbacks, successful or rejected, whose state
+matches a live sign-in attempt started in the same browser. Links carrying a token or
+code without one are ignored. With empty storage, `reconnect()` attempts the first configured candidate
 in registration order through the normal connection validation and persistence path.
 Automatic recovery requires `autoConnect: true`; callers may also reconnect explicitly.
 
