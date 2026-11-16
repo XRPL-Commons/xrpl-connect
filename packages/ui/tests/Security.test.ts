@@ -218,7 +218,7 @@ describe('safe wallet connector rendering', () => {
   it('keeps the pairing URI out of debug logs when a QR code arrives', async () => {
     const records: unknown[][] = [];
     const record = (...args: unknown[]) => void records.push(args);
-    configureLogger({ debug: record, info: record, warn: record, error: record });
+    configureLogger({ level: 'debug', debug: record, info: record, warn: record, error: record });
     try {
       const connector = document.createElement('xrpl-wallet-connector') as HTMLElement & {
         open(): Promise<void>;
