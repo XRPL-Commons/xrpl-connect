@@ -29,6 +29,7 @@ import {
 import {
   assertRequestedTransaction,
   assertSignedTransaction,
+  canonicalizeTransaction,
   createWalletError,
   createLogger,
   isWalletError,
@@ -678,11 +679,9 @@ export class XamanAdapter
       throw createWalletError.notConnected();
     }
 
-    // Compare against a snapshot of the serialized request, independent of both
-    // caller mutations during approval and mutations by the wallet SDK.
-    const transaction = JSON.parse(JSON.stringify(inputTransaction)) as Transaction;
-    if (!submit && transaction.LastLedgerSequence !== undefined) {
-      const expiry = transaction.LastLedgerSequence;
+    // Checked before canonicalization, which would coerce a string or null expiry.
+    if (!submit && inputTransaction.LastLedgerSequence !== undefined) {
+      const expiry = inputTransaction.LastLedgerSequence;
       if (
         !Number.isSafeInteger(expiry) ||
         expiry < MIN_ABSOLUTE_LEDGER_SEQUENCE ||
@@ -692,6 +691,17 @@ export class XamanAdapter
           'Xaman sign() requires an absolute LastLedgerSequence between 32570 and 4294967295; relative expiry offsets are not supported'
         );
       }
+    }
+
+    // Send and compare the canonical codec form of the request, so Xaman signs
+    // exactly what is verified. It is a snapshot, independent of both caller
+    // mutations during approval and mutations by the wallet SDK.
+    let transaction: Transaction;
+    try {
+      transaction = canonicalizeTransaction(inputTransaction);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`The transaction is not a valid XRPL transaction: ${message}`);
     }
 
     const client = this.client;

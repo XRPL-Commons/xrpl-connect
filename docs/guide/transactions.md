@@ -95,7 +95,11 @@ through `4_294_967_295`; invalid configuration throws `RangeError` at constructi
 
 The adapter checks the expiry in both the resolved request and the decoded,
 cryptographically verified signed blob. Other supplied transaction fields remain
-strictly compared. The original caller object is not modified. Use the returned
+strictly compared, in the canonical form the XRPL binary codec produces: Xaman
+receives that form, so equivalent encodings such as lowercase hex or an X-address
+are accepted, and a transaction that cannot be serialized rejects with
+`SIGN_FAILED` before a signing request is opened. The original caller object is
+not modified. Use the returned
 `signed.tx_json.LastLedgerSequence` (or decode `signed.tx_blob`) when recording
 the actual deadline; do not record the originally requested expiry as the signed one.
 

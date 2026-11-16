@@ -1318,6 +1318,45 @@ describe('XamanAdapter.sign', () => {
     await expect(signPromise).resolves.toMatchObject({ hash: resolved.hash });
   });
 
+  it('sends and verifies the canonical form of an equivalent request', async () => {
+    const requested = {
+      ...REQUESTED_TRANSACTION,
+      Memos: [{ Memo: { MemoData: 'cafe' } }],
+    } as Transaction;
+    const signed = SIGNING_WALLET.sign({
+      ...REQUESTED_TRANSACTION,
+      Memos: [{ Memo: { MemoData: 'CAFE' } }],
+    } as Transaction);
+    const hash = hashes.hashSignedTx(signed.tx_blob);
+    let sent: Transaction | undefined;
+    const { adapter, subscription } = await signedAdapter('mainnet', {}, (body) => {
+      sent = structuredClone(body.txjson);
+      mockXummInstance.payload.get.mockResolvedValue(
+        resolvedPayload(false, { hex: signed.tx_blob, txid: hash }, {}, body.txjson)
+      );
+    });
+
+    const signPromise = adapter.sign(requested);
+    await subscription.emit({ signed: true });
+
+    await expect(signPromise).resolves.toMatchObject({ hash });
+    expect(sent?.Memos).toEqual([{ Memo: { MemoData: 'CAFE' } }]);
+    expect(requested.Memos).toEqual([{ Memo: { MemoData: 'cafe' } }]);
+  });
+
+  it.each([false, true])(
+    'rejects a request the XRPL codec cannot serialize before creating a payload (submit: %s)',
+    async (submit) => {
+      const { adapter } = await signedAdapter();
+      const transaction = { ...REQUESTED_TRANSACTION, Destination: 'not-an-address' };
+
+      await expect(
+        submit ? adapter.signAndSubmit(transaction) : adapter.sign(transaction)
+      ).rejects.toMatchObject({ code: WalletErrorCode.SIGN_FAILED });
+      expect(mockXummInstance.payload.createAndSubscribe).not.toHaveBeenCalled();
+    }
+  );
+
   it('snapshots the caller transaction and SDK payload before approval-time mutation', async () => {
     const requested = signedExpiryFixture(MIN_ABSOLUTE_LEDGER_SEQUENCE + 10);
     const responseRequest = { ...requested.input };
