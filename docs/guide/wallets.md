@@ -17,6 +17,10 @@ XRPL Connect v1.0 ships nine adapters behind one `WalletManager` API. Register o
 | `ghostsig`      | GHOSTSIG      | Browser wallet (popup)          | Yes  |  Yes   |    No    |          No          |
 | `otsu`          | Otsu          | Browser wallet                  | Yes  |  Yes   |   Yes    |         Yes          |
 | `metamask-snap` | MetaMask Snap | MetaMask with XRPL Snap support | Yes  |  Yes   |   Yes    |          No          |
+| `privy`         | Privy         | Optional package and Privy app  | Yes  |  Yes   |    No    |          No          |
+
+The `privy` adapter is not part of `xrpl-connect`: install the optional
+`@xrpl-commons/xrpl-connect-privy` package and see [Social login](/guide/social-login).
 
 Treat this table as the default feature set and check capabilities at runtime before displaying an action:
 
@@ -83,12 +87,20 @@ step. Recovering a wallet session does not restore application state.
 - `XamanAdapter`: `apiKey`, QR callback, deep-link transformation, post-signing return URLs, and `maxLastLedgerSequenceExtension` (default 50, sign-only). See [expiry policy](/guide/transactions#xaman-expiry-policy).
 - `WalletConnectAdapter`: `projectId`, metadata, QR/deep-link callbacks, modal mode, and theme.
 - `LedgerAdapter`: derivation path, operation timeout, and WebHID preference. Ledger requires HTTPS outside localhost.
-- `MetaMaskSnapAdapter`: optional `snapId`; use the default published Snap unless developing a local Snap.
-- Xyra, Otsu, Crossmark, GemWallet, and GHOSTSIG work without application credentials.
+- `MetaMaskSnapAdapter`: optional `snapId` and `snapVersion`; use the default published Snap unless developing a local Snap. The default Snap is requested with the version range `^1.0.3`, so MetaMask refuses a different major release; a custom `snapId` has no range unless `snapVersion` is set. MetaMask is discovered only through EIP-6963 announcements (extension v11 or later), never through `window.ethereum`.
+- `PrivyAdapter`: required `appId` and `redirectUri`, plus optional `clientId`, `loginMethods`, `allowGuestLogin`, `timeoutMs`, and `transactionReview`. See the [Privy adapter reference](/guide/api-reference#privy-adapter).
+- Xyra, Otsu, Crossmark, GemWallet, and GHOSTSIG work without application credentials. GHOSTSIG accepts optional `url` and `timeoutMs`.
 
 Xaman and WalletConnect need constructor credentials to appear in wallet discovery and to support automatic reconnection. Direct calls can defer a credential for one session with `manager.connect('xaman', { apiKey })` or `manager.connect('walletconnect', { projectId })`; these options are selected from the wallet ID at compile time and are not persisted. Missing credentials fail early with `CONFIGURATION_REQUIRED`. Other connect-time options can override supported adapter settings. Configure Xaman return URLs on the adapter constructor when connecting through `WalletManager`; direct `XamanAdapter.connect()` calls can override them for one session. Return navigation may open another browser tab, so restore application state and use the signing result—not navigation—as confirmation. Keep the Xaman API key stable for the lifetime of an adapter instance.
 
 ## Networks
+
+A network requested through the manager's `network` option or `connect(id, { network })` stays
+the session's network for its whole lifetime, including restores and logins that return through a
+redirect. If the wallet later reports another network, the manager emits `error` with
+`NETWORK_MISMATCH` and signing rejects with `NETWORK_MISMATCH` until the wallet returns;
+`manager.networkMismatch` exposes that error meanwhile. See the
+[network policy](/guide/api-reference#network-policy).
 
 Xaman's network is OAuth session context, which may be restored from saved user information.
 Neither reconnecting nor `fetchAccount()` guarantees the mobile app's current selection.

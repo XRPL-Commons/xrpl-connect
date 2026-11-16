@@ -66,7 +66,8 @@ await walletManager.disconnect();
 
 The `account` property is cached. `fetchAccount()` is its explicit live
 counterpart and is available for Crossmark, GemWallet, Ledger, Otsu, and Xaman.
-WalletConnect and Xyra reject live refresh with `UNSUPPORTED_METHOD`; use
+WalletConnect, Xyra, MetaMask Snap, GHOSTSIG, and Privy reject live refresh with
+`UNSUPPORTED_METHOD`; use
 `supportsFetchAccount()` after checking that `walletManager.wallet` is non-null
 before offering refresh UI.
 
@@ -164,7 +165,7 @@ const adapter = new WalletConnectAdapter({
 });
 ```
 
-**Features:** Mobile wallet support, QR code connection, enterprise features
+**Features:** Mobile wallet support and QR code connection. Arbitrary message signing, multi-signing, and live account refresh are not supported.
 
 #### Ledger Adapter
 
@@ -203,6 +204,8 @@ import { GhostsigAdapter } from 'xrpl-connect';
 const adapter = new GhostsigAdapter();
 ```
 
+**Features:** Transaction signing, no API keys required. Arbitrary message signing is not supported.
+
 #### Otsu Adapter
 
 Connect to Otsu Wallet, a browser extension XRPL wallet.
@@ -214,6 +217,10 @@ const adapter = new OtsuAdapter();
 ```
 
 **Features:** Transaction signing, message signing, no API keys required
+
+#### Social login
+
+The optional `@xrpl-commons/xrpl-connect-privy` package adds a `PrivyAdapter` that signs users in with social accounts and connects their embedded XRPL wallet. See [Social login](/guide/social-login).
 
 ### Creating Multiple Adapters
 
@@ -305,10 +312,11 @@ Use CSS variables to customize the component's appearance:
 
 ### Attributes
 
-| Attribute        | Type   | Description                                                          |
-| ---------------- | ------ | -------------------------------------------------------------------- |
-| `primary-wallet` | string | Wallet to feature first in the list (e.g., "xaman")                  |
-| `wallets`        | string | Comma-separated list of wallet IDs to show (e.g., "xaman,crossmark") |
+| Attribute          | Type    | Description                                                          |
+| ------------------ | ------- | -------------------------------------------------------------------- |
+| `primary-wallet`   | string  | Wallet to feature first in the list (e.g., "xaman")                  |
+| `wallets`          | string  | Comma-separated list of wallet IDs to show (e.g., "xaman,crossmark") |
+| `show-unavailable` | boolean | List wallets that are not available with Install or Unavailable rows |
 
 ## How They Work Together
 
@@ -364,27 +372,32 @@ Both WalletManager and the Web Component emit events that you can listen to:
 ### WalletManager Events
 
 - **connect** - User connected a wallet
+- **disconnecting** - `disconnect()` was requested; teardown follows
 - **disconnect** - User disconnected a wallet
 - **accountChanged** - User switched accounts
 - **networkChanged** - User switched networks
+- **error** - The wallet reported a network other than the one the session was requested on (`NETWORK_MISMATCH`); signing is blocked until it returns
 
-Wallet operations report failures through rejected promises. The web component
-separately emits an `error` event for connection failures initiated from its UI.
+Wallet operations such as `connect()` and `sign()` report their failures through rejected
+promises; the manager's `error` event reports only network mismatches (see
+[Network policy](/guide/api-reference#network-policy)). The web component separately emits an
+`error` event for connection failures initiated from its UI.
 
 ### Web Component Events
 
-- **open** - Modal opened
+- **open** - Modal opened, including when a transaction review (such as Privy's) opens it
 - **close** - Modal closed
 - **connecting** - User started connecting
 - **connected** - Connection succeeded
 - **error** - Connection failed
+- **cancelled** - User returned to the wallet list, cancelling the active connection attempt
 
 ## State Management
 
 XRPL-Connect automatically manages connection state:
 
 - **Persistence** - Saves connection in localStorage
-- **Auto-reconnect** - Reconnects on page reload if user was previously connected
+- **Auto-reconnect** - With `autoConnect: true`, reconnects on page reload if user was previously connected
 - **Reactive updates** - Updates reflect immediately across all listeners
 - **Error recovery** - Handles connection failures gracefully
 

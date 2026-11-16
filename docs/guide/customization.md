@@ -284,6 +284,11 @@ The `primary-wallet` attribute controls which wallet is featured or highlighted 
 | `xyra`          | Xyra                  |
 | `ghostsig`      | GHOSTSIG              |
 | `otsu`          | Otsu                  |
+| `metamask-snap` | MetaMask Snap         |
+
+Social login adapters such as Privy (`privy`) appear behind the **Sign in with socials** button
+instead of in the wallet list, so `primary-wallet` does not apply to them. When you set the
+`wallets` attribute, include `privy` to offer Privy login.
 
 ### Effect
 
