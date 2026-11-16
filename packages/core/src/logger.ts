@@ -21,21 +21,14 @@ function normalizeLevel(level: LogLevel | undefined): InternalLogLevel | undefin
 }
 
 /**
- * Detect if running in development mode
+ * Detect if running in development mode.
+ *
+ * Only an explicit `NODE_ENV=development` counts. The page hostname is never
+ * used: production apps are served from `localhost` (Capacitor, Ionic, Electron)
+ * and from hosts that merely contain "dev" (`*.pages.dev`, `.dev` domains).
  */
 function isDevelopment(): boolean {
-  if (typeof process !== 'undefined' && process.env?.NODE_ENV) {
-    return process.env.NODE_ENV === 'development';
-  }
-  // Fallback: check for localhost
-  if (typeof window !== 'undefined') {
-    return (
-      window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1' ||
-      window.location.hostname.includes('dev')
-    );
-  }
-  return false;
+  return typeof process !== 'undefined' && process.env?.NODE_ENV === 'development';
 }
 
 /**
@@ -76,7 +69,8 @@ function setGlobalConfig(config: GlobalLoggerConfig): void {
  * when a consumer passes `logger` in `WalletManagerOptions`.
  *
  * - A `LoggerInstance` routes every subsequent log call (from the manager and
- *   all adapters) into the supplied object.
+ *   all adapters) into the supplied object. Its optional `level` filters those
+ *   calls like `LoggerOptions.level`; without one the default level applies.
  * - A `LoggerOptions` value sets a global default level. Per-logger overrides
  *   still win when explicitly set.
  * - `undefined` resets the global configuration.
@@ -87,7 +81,7 @@ export function configureLogger(option: LoggerOptions | LoggerInstance | undefin
     return;
   }
   if (isLoggerInstance(option)) {
-    setGlobalConfig({ instance: option, level: 'debug' });
+    setGlobalConfig({ instance: option, level: normalizeLevel(option.level) });
     return;
   }
   setGlobalConfig({ level: normalizeLevel(option.level) });
@@ -106,7 +100,7 @@ export function resetGlobalLogger(): void {
  * Resolution order for the effective level:
  *   1. Explicit level passed to the constructor / `setLevel`.
  *   2. Global level set via `configureLogger`.
- *   3. `'debug'` in development, `'warn'` in production.
+ *   3. `'debug'` when `NODE_ENV` is `'development'`, `'warn'` otherwise.
  *
  * When a custom `LoggerInstance` is configured globally, all log calls are
  * routed to that instance instead of `console.*`.

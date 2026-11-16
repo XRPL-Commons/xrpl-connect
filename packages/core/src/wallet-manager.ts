@@ -615,7 +615,9 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     }
     this.assertSupports('sign');
 
-    this.logger.debug('Signing transaction', transaction);
+    // Log only the transaction type and hash: transactions, signed blobs and
+    // signatures must not reach application log pipelines.
+    this.logger.debug('Signing transaction', { type: transaction.TransactionType });
 
     const adapter = this.currentAdapter;
     const signerAddress = this.currentAccount.address;
@@ -625,7 +627,10 @@ export class WalletManager extends EventEmitter<WalletEvent> {
         ...result,
         signerAddress: result.signerAddress ?? signerAddress,
       };
-      this.logger.info('Transaction signed', signed.tx_blob || signed.signature);
+      this.logger.info('Transaction signed', {
+        type: transaction.TransactionType,
+        hash: signed.hash,
+      });
       return signed;
     } catch (error) {
       this.logger.error('Failed to sign transaction:', error);
@@ -647,11 +652,14 @@ export class WalletManager extends EventEmitter<WalletEvent> {
     }
     this.assertSupports('signAndSubmit');
 
-    this.logger.debug('Signing and submitting transaction', transaction);
+    this.logger.debug('Signing and submitting transaction', { type: transaction.TransactionType });
 
     try {
       const result = await this.currentAdapter.signAndSubmit(transaction);
-      this.logger.info('Transaction submitted', result.hash || result.id);
+      this.logger.info('Transaction submitted', {
+        type: transaction.TransactionType,
+        hash: result.hash,
+      });
       return result;
     } catch (error) {
       this.logger.error('Failed to submit transaction:', error);

@@ -28,6 +28,12 @@ const walletManager = new WalletManager(options: WalletManagerOptions)
 
 `NetworkConfig` is either one of the standard keys (`'mainnet' | 'testnet' | 'devnet'`) or a `NetworkInfo` object.
 
+A custom logger object may also carry a `level` property. Without an explicit level, both
+the built-in logger and a custom logger object receive `'warn'` and `'error'` output only,
+unless `process.env.NODE_ENV` is `'development'` (then `'debug'`). The page hostname is not
+used to detect development. Signing operations log only the transaction type and hash, never
+the transaction, signed blob, or signature.
+
 ### Properties
 
 | Property           | Type                         | Description                             |

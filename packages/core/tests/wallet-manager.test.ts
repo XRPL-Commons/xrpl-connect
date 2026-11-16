@@ -711,6 +711,51 @@ describe('WalletManager signerAddress stamping', () => {
   });
 });
 
+describe('WalletManager logging', () => {
+  it('logs only the transaction type and hash when signing', async () => {
+    const logger = {
+      level: 'debug' as const,
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const adapter = createFakeAdapter();
+    adapter.sign = vi.fn(async () => ({
+      hash: 'SIGNED_HASH',
+      tx_blob: 'SECRET_BLOB',
+      signature: 'SECRET_SIGNATURE',
+    }));
+    adapter.signAndSubmit = vi.fn(async () => ({
+      hash: 'SUBMITTED_HASH',
+      id: 'REQUEST_ID',
+      tx_blob: 'SECRET_BLOB',
+    }));
+    const manager = new WalletManager({ adapters: [adapter], logger });
+    await manager.connect('fake');
+    const transaction = {
+      TransactionType: 'Payment',
+      Account: ACCOUNT.address,
+      Destination: 'rSecretDestination',
+      Amount: '1000',
+    } as Transaction;
+
+    await manager.sign(transaction);
+    await manager.signAndSubmit(transaction);
+
+    const logged = JSON.stringify([...logger.debug.mock.calls, ...logger.info.mock.calls]);
+    expect(logged).not.toMatch(/SECRET_BLOB|SECRET_SIGNATURE|rSecretDestination|REQUEST_ID/);
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('Transaction signed'), {
+      type: 'Payment',
+      hash: 'SIGNED_HASH',
+    });
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('Transaction submitted'), {
+      type: 'Payment',
+      hash: 'SUBMITTED_HASH',
+    });
+  });
+});
+
 describe('WalletManager account snapshots', () => {
   it('does not expose mutable internal state through connect, events, or the account getter', async () => {
     const adapter = createFakeAdapter();

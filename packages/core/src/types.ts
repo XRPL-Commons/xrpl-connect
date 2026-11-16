@@ -483,7 +483,7 @@ export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'silent' | 'none';
 
 /**
  * Logger configuration options
- * Level is optional - defaults to 'debug' in development, 'warn' in production
+ * Level is optional - defaults to 'debug' when `NODE_ENV` is 'development', 'warn' otherwise
  */
 export interface LoggerOptions {
   level?: LogLevel;
@@ -497,6 +497,11 @@ export interface LoggerOptions {
  * Method signatures match `console.debug/info/warn/error`.
  */
 export interface LoggerInstance {
+  /**
+   * Minimum level forwarded to this logger. Defaults like `LoggerOptions.level`:
+   * 'debug' when `NODE_ENV` is 'development', 'warn' otherwise.
+   */
+  level?: LogLevel;
   debug(message: string, ...args: unknown[]): void;
   info(message: string, ...args: unknown[]): void;
   warn(message: string, ...args: unknown[]): void;

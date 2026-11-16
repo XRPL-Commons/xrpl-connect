@@ -55,6 +55,7 @@ interface LoggerOptions {
 }
 
 interface LoggerInstance {
+  level?: 'debug' | 'info' | 'warn' | 'error' | 'silent' | 'none'; // Same default as LoggerOptions.level
   debug(message: string, ...args: unknown[]): void;
   info(message: string, ...args: unknown[]): void;
   warn(message: string, ...args: unknown[]): void;
@@ -808,8 +809,15 @@ const manager = new WalletManager({
 });
 ```
 
-**Defaults**: when no level is provided, `'debug'` is used in development
-(`NODE_ENV === 'development'` or localhost) and `'warn'` everywhere else.
+**Defaults**: when no level is provided, `'debug'` is used only when
+`process.env.NODE_ENV === 'development'` and `'warn'` everywhere else. The page
+hostname is never used to guess the environment, so browser bundles that do not
+define `NODE_ENV` (including apps served from `localhost` by Capacitor, Ionic, or
+Electron) log warnings and errors only. Set `level: 'debug'` explicitly to see
+verbose output while developing.
+
+Logs never contain transactions, signed blobs, or signatures: signing operations
+log only the transaction type and hash.
 
 **Log Levels**:
 
@@ -842,7 +850,16 @@ const manager = new WalletManager({
 ```
 
 The supplied instance receives messages from the manager and every registered
-adapter, each prefixed with its source (e.g. `[Xaman] Connecting…`).
+adapter, each prefixed with its source (e.g. `[Xaman] Connecting…`). It uses the
+same default level as the built-in logger (`'warn'` outside
+`NODE_ENV === 'development'`); add a `level` property to receive more:
+
+```typescript
+const manager = new WalletManager({
+  adapters: [...],
+  logger: { ...appLogger, level: 'info' },
+});
+```
 
 ---
 
