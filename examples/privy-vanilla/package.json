@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@xrpl-commons/xrpl-connect-privy": "workspace:*",
+    "buffer": "^6.0.3",
     "xrpl-connect": "workspace:*",
     "xrpl": "^4.4.3"
   },

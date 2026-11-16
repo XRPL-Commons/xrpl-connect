@@ -1,3 +1,4 @@
+import './polyfills.js';
 import { WalletManager, CrossmarkAdapter, GemWalletAdapter } from 'xrpl-connect';
 import { PrivyAdapter } from '@xrpl-commons/xrpl-connect-privy';
 
