@@ -65,6 +65,46 @@ registration from running during server rendering. The named `xrpl-connect` impo
 the package entry and registers the custom element, so a separate side-effect import is not
 needed. `@xrpl-commons/xrpl-connect-vue` itself remains safe to import in universal modules.
 
+## Privy social login
+
+Install the optional Privy package from the same release as `xrpl-connect`:
+
+```bash
+npm install @xrpl-commons/xrpl-connect-privy
+```
+
+Create the adapter in the same client-only plugin, so it never runs during server rendering:
+
+```ts
+// plugins/xrpl-connect.client.ts
+import { CrossmarkAdapter } from 'xrpl-connect';
+import { createXrplConnect } from '@xrpl-commons/xrpl-connect-vue';
+import { PrivyAdapter } from '@xrpl-commons/xrpl-connect-privy';
+
+export default defineNuxtPlugin((nuxtApp) => {
+  nuxtApp.vueApp.use(
+    createXrplConnect({
+      adapters: [
+        new PrivyAdapter({
+          appId: useRuntimeConfig().public.privyAppId,
+          redirectUri: `${window.location.origin}/wallet/privy`,
+        }),
+        new CrossmarkAdapter(),
+      ],
+      network: 'testnet',
+      autoConnect: true,
+    })
+  );
+});
+```
+
+Expose `privyAppId` through `runtimeConfig.public` like the Xaman key; it is a public app ID,
+never an app secret. Add a page at the callback path, such as `pages/wallet/privy.vue`, so the
+OAuth redirect returns into the application; with `autoConnect: true` the plugin completes the
+login there. Replace the callback route after a successful connection, for example with
+`navigateTo('/', { replace: true })`. See [social login](/guide/social-login) for dashboard setup
+and transaction review.
+
 ## Wallet component
 
 Create `components/WalletControls.client.vue`. The `.client.vue` suffix keeps both its setup

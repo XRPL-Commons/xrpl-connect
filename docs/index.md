@@ -20,6 +20,7 @@ XRPL-Connect is a complete solution for integrating wallet functionality into we
 - **Wallet Manager** - Central event-driven system for managing wallet connections and transactions
 - **Multiple Wallet Support** - Built-in adapters for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, GHOSTSIG, Otsu, and MetaMask Snap
 - **Official framework bindings** - Providers, composables, hooks, and connector components for React and Vue
+- **Social login** - Optional [Privy integration](/guide/social-login) that signs users in with social accounts and connects their embedded XRPL wallet
 - **Framework Agnostic** - Works seamlessly with Vanilla JS, React, Vue, Next.js, Nuxt, and any modern web framework
 - **TypeScript Ready** - Full type definitions for a great developer experience
 - **Production Ready** - Used in production applications across the XRPL ecosystem
@@ -106,6 +107,7 @@ The XRPL-Connect package includes:
 - **Web Component** - Beautiful UI component for wallet connection
 - **Adapters** - Pre-built integrations for major wallets
 - **Framework bindings** - Official React and Vue integrations with shared lifecycle management
+- **Social login** - The optional `@xrpl-commons/xrpl-connect-privy` package adds [Privy social login](/guide/social-login) to the same connector
 - **TypeScript Definitions** - Full type safety and IDE support
 - **Documentation** - Complete guides and API reference
 
@@ -134,4 +136,4 @@ Ready to get started? Here's the recommended learning path:
 
 ## License
 
-MIT License - See the [LICENSE](https://github.com/XRPL-Commons/xrpl-connect/blob/main/LICENSE) file for details.
+MIT License - See the [LICENSE](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/LICENSE) file for details.

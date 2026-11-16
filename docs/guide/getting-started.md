@@ -56,6 +56,9 @@ The `xrpl-connect` package includes:
 - **Adapters** - Built-in support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, GHOSTSIG, Otsu, and MetaMask Snap
 - **Framework bindings** - Official packages for React and Vue 3 / Nuxt
 
+Social login with Privy is a separate optional package, `@xrpl-commons/xrpl-connect-privy`. See
+[Social login](/guide/social-login).
+
 > **Note:** The `xrpl` package is required for transaction types and utilities.
 
 ## Get Your API Keys
@@ -95,7 +98,7 @@ const adapter = new WalletConnectAdapter({
 
 ### Other Adapters
 
-Crossmark, GemWallet, Xyra, Otsu, and Ledger don't require API keys - they work directly with browser extensions, wallets, or hardware devices:
+Crossmark, GemWallet, Xyra, Otsu, MetaMask Snap, GHOSTSIG, and Ledger don't require API keys - they work directly with browser extensions, wallets, hosted passkey popups, or hardware devices:
 
 ```javascript
 const crossmarkAdapter = new CrossmarkAdapter();
@@ -103,6 +106,7 @@ const gemWalletAdapter = new GemWalletAdapter();
 const xyraAdapter = new XyraAdapter();
 const otsuAdapter = new OtsuAdapter();
 const metaMaskAdapter = new MetaMaskSnapAdapter();
+const ghostsigAdapter = new GhostsigAdapter();
 ```
 
 ### Ledger Hardware Wallet
@@ -131,7 +135,7 @@ const ledgerAdapter = new LedgerAdapter({
 - User must unlock device and open the XRP app
 - Close Ledger Live if it's running (conflicts with WebHID/WebUSB)
 
-For more details on Ledger integration, see the [Ledger adapter documentation](https://github.com/XRPL-Commons/xrpl-connect/tree/main/packages/adapters/ledger).
+For more details on Ledger integration, see the [Ledger adapter documentation](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/packages/adapters/ledger).
 
 ## Quick Start
 
@@ -212,7 +216,7 @@ Once you've installed the package and have your API keys, follow the guide for y
 - **[Vanilla JavaScript](/guide/frameworks/vanilla-js)** - Pure JavaScript, no framework
 - **[React](/guide/frameworks/react)** - Complete React integration guide
 - **[Vue 3](/guide/frameworks/vue)** - Vue 3 Composition API guide
-- **[Nuxt](/guide/frameworks/nuxt)** - Nuxt 3 and Nitro integration
+- **[Nuxt](/guide/frameworks/nuxt)** - Client-only plugin integration (verified with Nuxt 4)
 
 Each guide includes:
 

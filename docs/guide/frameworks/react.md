@@ -58,9 +58,15 @@ export function App() {
 
 ## Privy social login
 
-Install `@xrpl-commons/xrpl-connect-privy` and add its `PrivyAdapter` to the stable
-configuration above. For Vite, the optional configuration used by the
-[React demo](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/examples/react) is:
+Install the optional Privy package from the same release as `xrpl-connect`; it requires the
+matching `xrpl-connect` release as a peer dependency:
+
+```bash
+pnpm add @xrpl-commons/xrpl-connect-privy
+```
+
+Then add its `PrivyAdapter` to the configuration above. For Vite, the optional configuration
+used by the [React demo](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/examples/react) is:
 
 ```tsx
 import { PrivyAdapter } from '@xrpl-commons/xrpl-connect-privy';
