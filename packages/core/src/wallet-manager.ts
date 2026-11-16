@@ -902,6 +902,19 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
+   * The `NETWORK_MISMATCH` error signing currently rejects with, because the
+   * connected wallet reports a network other than the one the session was
+   * requested on. `null` when signing is not blocked by the network, including
+   * when no wallet is connected. Recomputed from the latest wallet-reported
+   * network on each access.
+   */
+  get networkMismatch(): WalletError | null {
+    return this.currentAccount
+      ? findNetworkMismatch(this.sessionNetwork, this.currentAccount.network)
+      : null;
+  }
+
+  /**
    * Bind a signature to the account that started the request. A signer the
    * wallet reports must be that account; when the wallet reports none, the
    * account asserted by the wallet session is stamped (not verified).
@@ -933,8 +946,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * one the session was requested on, applying the same comparison as connect.
    */
   private assertSessionNetwork(): void {
-    if (!this.currentAccount) return;
-    const mismatch = findNetworkMismatch(this.sessionNetwork, this.currentAccount.network);
+    const mismatch = this.networkMismatch;
     if (mismatch) throw mismatch;
   }
 

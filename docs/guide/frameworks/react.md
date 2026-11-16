@@ -127,6 +127,8 @@ function Header() {
 ```
 
 The hook returns `manager`, `connected`, `account`, `network`, `connecting`, `error`, `connect`, and `disconnect`.
+A `NETWORK_MISMATCH` `error` reported while connected (the wallet left the requested network) clears
+once the wallet is back on that network; other errors are unaffected.
 
 ## Signing
 

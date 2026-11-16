@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Core: the stored connection record (schema version 2) keeps the requested network, and restores request the configured `network` first. An older runtime discards it, so a downgrade signs the user out once. A login that can return through a redirect is also kept for up to an hour under the `pending-connection` storage key, with the network it was requested on.
 - Core: a custom logger instance receives warnings and errors unless it sets `level`.
+- Core/React/Vue: `WalletManager.networkMismatch` returns the `NETWORK_MISMATCH` error signing rejects with while the wallet is off the requested network, and the React and Vue `error` state clears that error once the wallet is back.
 - WalletConnect: `tx_json` results are decoded from the verified blob, in canonical form; multi-signing requests reject with `UNSUPPORTED_METHOD`, and a `signAndSubmit()` that fails verification carries `transactionHash` for reconciliation.
 - Xaman: sessions saved under the legacy `XummPkceJwt` key are no longer restored, so affected users sign in once more; the token exchange needs `https://oauth2.xumm.app` in `connect-src`.
 

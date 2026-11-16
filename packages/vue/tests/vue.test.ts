@@ -324,6 +324,66 @@ describe('Vue plugin and composables', () => {
     expect(wallet!.error.value).toBeNull();
     app.unmount();
   });
+
+  describe('network mismatch errors', () => {
+    const MAINNET = { id: 'mainnet', name: 'Mainnet', wss: 'wss://mainnet.example' };
+
+    async function connectedOnTestnet() {
+      const listeners = new Map<string, (data: unknown) => void>();
+      const adapter = makeAdapter({
+        on: (event, callback) => void listeners.set(event, callback),
+        off: (event) => void listeners.delete(event),
+      });
+      let wallet!: ReturnType<typeof useWallet>;
+      const app = createApp(
+        defineComponent({
+          setup() {
+            wallet = useWallet();
+            return () => null;
+          },
+        })
+      );
+      app.use(
+        createXrplConnect({
+          adapters: [adapter],
+          network: 'testnet',
+          storage: new MemoryStorageAdapter(),
+        })
+      );
+      app.mount(document.createElement('div'));
+      await wallet.connect('fake');
+      const emit = (event: string, data: unknown) => listeners.get(event)!(data);
+      return { app, wallet, emit };
+    }
+
+    it('clears the error once the wallet is back on the requested network', async () => {
+      const { app, wallet, emit } = await connectedOnTestnet();
+
+      emit('networkChanged', MAINNET);
+      expect(wallet.error.value?.code).toBe(WalletErrorCode.NETWORK_MISMATCH);
+      expect(wallet.manager.networkMismatch?.code).toBe(WalletErrorCode.NETWORK_MISMATCH);
+
+      // Another account on the same wrong network does not resolve it.
+      emit('accountChanged', { address: 'rOTHER', network: MAINNET });
+      expect(wallet.error.value?.code).toBe(WalletErrorCode.NETWORK_MISMATCH);
+
+      emit('networkChanged', ACCOUNT.network);
+      expect(wallet.error.value).toBeNull();
+      expect(wallet.manager.networkMismatch).toBeNull();
+      app.unmount();
+    });
+
+    it('keeps an unrelated error when the network changes', async () => {
+      const { app, wallet, emit } = await connectedOnTestnet();
+      const unrelated = createWalletError.connectionFailed('Fake Wallet');
+
+      wallet.manager.emit('error', unrelated);
+      emit('networkChanged', ACCOUNT.network);
+
+      expect(wallet.error.value).toBe(unrelated);
+      app.unmount();
+    });
+  });
 });
 
 describe('client-only SSR boundaries', () => {

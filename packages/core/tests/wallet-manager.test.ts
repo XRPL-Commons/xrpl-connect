@@ -2385,6 +2385,7 @@ describe('WalletManager network policy', () => {
     'blocks signing after the wallet leaves %s and recovers when it returns',
     async (_label, options) => {
       const { adapter, manager, onNetworkChanged, onError } = await connectedOnTestnet(options);
+      expect(manager.networkMismatch).toBeNull();
 
       adapter.emitAdapterEvent('networkChanged', MAINNET);
 
@@ -2394,13 +2395,22 @@ describe('WalletManager network policy', () => {
       expect(onError).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({ code: WalletErrorCode.NETWORK_MISMATCH })
       );
+      expect(manager.networkMismatch).toMatchObject({
+        code: WalletErrorCode.NETWORK_MISMATCH,
+        message: 'Network mismatch. Expected "testnet" but wallet is connected to "mainnet".',
+      });
       await expectSigningBlocked(manager, adapter);
 
       adapter.emitAdapterEvent('networkChanged', NETWORK);
 
+      expect(manager.networkMismatch).toBeNull();
       await expect(manager.sign(PAYMENT)).resolves.toMatchObject({ hash: '0xhash' });
       await expect(manager.signMessage('hello')).resolves.toMatchObject({ signature: '0xsig' });
       expect(onError).toHaveBeenCalledOnce();
+
+      adapter.emitAdapterEvent('networkChanged', MAINNET);
+      await manager.disconnect();
+      expect(manager.networkMismatch).toBeNull();
     }
   );
 

@@ -185,7 +185,8 @@ another network (adapter event or `fetchAccount()`), the manager updates
 `account.network`, emits `networkChanged`, and then emits `error` with a
 `NETWORK_MISMATCH` `WalletError`. Until the wallet is back on the requested
 network, `sign()`, `signAndSubmit()`, and `signMessage()` reject with
-`NETWORK_MISMATCH`. Without a requested network, reported networks are adopted.
+`NETWORK_MISMATCH`, and `networkMismatch` returns that error. Without a requested
+network, reported networks are adopted.
 
 **Example**:
 
@@ -442,6 +443,21 @@ if (walletManager.wallet) {
 
 The adapter currently attempting to connect, or `null` when no connection attempt owns the
 manager. This is distinct from `wallet`, which only exposes a committed session.
+
+---
+
+#### `networkMismatch: WalletError | null`
+
+The `NETWORK_MISMATCH` error that `sign()`, `signAndSubmit()`, and `signMessage()`
+currently reject with, because the connected wallet reports a network other than
+the one the session was requested on. `null` once the wallet is back on that
+network, and when no wallet is connected. See [Network policy](#network-policy).
+
+```typescript
+walletManager.on('networkChanged', () => {
+  if (!walletManager.networkMismatch) hideSwitchNetworkPrompt();
+});
+```
 
 ---
 

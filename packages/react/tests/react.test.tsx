@@ -492,6 +492,60 @@ describe('XrplConnectProvider + hooks', () => {
     expect(signed).toMatchObject({ hash: 'H', signerAddress: ACCOUNT.address });
     expect(signedMessage).toMatchObject({ signature: 's', signerAddress: ACCOUNT.address });
   });
+
+  describe('network mismatch errors', () => {
+    async function connectedOnTestnet() {
+      const listeners = new Map<string, (data: unknown) => void>();
+      const adapter = makeAdapter({
+        on: (event, callback) => void listeners.set(event, callback),
+        off: (event) => void listeners.delete(event),
+      });
+      const rendered = renderHook(() => useWallet(), {
+        wrapper: ({ children }) => (
+          <XrplConnectProvider
+            config={{ adapters: [adapter], network: 'testnet', autoConnect: false }}
+          >
+            {children}
+          </XrplConnectProvider>
+        ),
+      });
+      await act(async () => {
+        await rendered.result.current.connect('fake');
+      });
+      const emit = (event: string, data: unknown) => act(() => listeners.get(event)!(data));
+      return { ...rendered, emit };
+    }
+
+    it('clears the error once the wallet is back on the requested network', async () => {
+      const { result, emit, unmount } = await connectedOnTestnet();
+
+      emit('networkChanged', STANDARD_NETWORKS.mainnet);
+      expect(result.current.error?.code).toBe(WalletErrorCode.NETWORK_MISMATCH);
+      expect(result.current.manager.networkMismatch?.code).toBe(WalletErrorCode.NETWORK_MISMATCH);
+
+      // Another account on the same wrong network does not resolve it.
+      emit('accountChanged', { address: 'rOTHER', network: STANDARD_NETWORKS.mainnet });
+      expect(result.current.error?.code).toBe(WalletErrorCode.NETWORK_MISMATCH);
+
+      emit('networkChanged', STANDARD_NETWORKS.testnet);
+      expect(result.current.error).toBeNull();
+      expect(result.current.manager.networkMismatch).toBeNull();
+      unmount();
+    });
+
+    it('keeps an unrelated error when the network changes', async () => {
+      const { result, emit, unmount } = await connectedOnTestnet();
+      const unrelated = createWalletError.connectionFailed('Fake');
+
+      act(() => {
+        result.current.manager.emit('error', unrelated);
+      });
+      emit('networkChanged', STANDARD_NETWORKS.testnet);
+
+      expect(result.current.error).toBe(unrelated);
+      unmount();
+    });
+  });
 });
 
 describe('<WalletConnector>', () => {

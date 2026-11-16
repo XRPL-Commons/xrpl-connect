@@ -44,6 +44,13 @@ the transaction, signed blob, or signature.
 | `connectingWallet` | `WalletAdapter \| null`      | Adapter currently attempting to connect |
 | `wallets`          | `WalletAdapter[]`            | Registered adapters as an array         |
 | `adapters`         | `Map<string, WalletAdapter>` | Registered adapters keyed by id         |
+| `defaultNetwork`   | `NetworkConfig \| undefined` | The manager's configured `network`      |
+| `networkMismatch`  | `WalletError \| null`        | Why signing is blocked by the network   |
+
+`networkMismatch` is the `NETWORK_MISMATCH` error that signing currently rejects with,
+because the connected wallet reports a network other than the one the session was
+requested on (see [Network policy](#network-policy)). It is `null` once the wallet is back
+on that network, and when no wallet is connected.
 
 ### Methods
 
@@ -95,7 +102,8 @@ network through an event or `fetchAccount()`, the manager still updates `account
 and emits `networkChanged`, then emits `error` with a `NETWORK_MISMATCH` `WalletError`.
 While the reported network differs, `sign()`, `signAndSubmit()`, and `signMessage()`
 reject with `NETWORK_MISMATCH`; they work again once the wallet is back on the requested
-network. Without a requested network the manager adopts the reported network as before.
+network. `manager.networkMismatch` exposes that error while it applies. Without a requested
+network the manager adopts the reported network as before.
 
 The extension adapters (Otsu, Crossmark, GemWallet) apply the same policy on their own, so
 it also holds when they are used without `WalletManager`. When a network was requested at
@@ -595,7 +603,9 @@ mount; use a React `key` when an intentional configuration change must rebuild i
   connector. Awaitable calls reject with a namespaced setup error until a connector registers.
 
 All hooks must be used below `XrplConnectProvider`. Signing methods reject with
-the same typed `WalletError` values as the core manager.
+the same typed `WalletError` values as the core manager. A `NETWORK_MISMATCH` `error`
+reported for the connected session clears once the wallet is back on the requested
+network; other errors are unaffected.
 
 When several connectors are mounted, modal ownership follows registration order and falls back
 when the active connector unmounts. `ready` remains `true` while any connector is registered.
@@ -632,7 +642,9 @@ composables and `<WalletConnector>` must run beneath that installation.
 Call `connect(walletId, options?)` for a headless connection flow, or mount at least one
 connector before using the modal composable. When several connectors are mounted, modal
 ownership follows registration order and falls back when the active connector unmounts. Gate
-optional signing operations with `manager.supports(...)`.
+optional signing operations with `manager.supports(...)`. As in React, a `NETWORK_MISMATCH`
+`error` reported for the connected session clears once the wallet is back on the requested
+network.
 
 ### WalletConnector
 
