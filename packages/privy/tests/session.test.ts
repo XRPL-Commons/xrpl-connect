@@ -1850,7 +1850,12 @@ describe('PrivySession', () => {
         });
       }
       await session.disconnect();
-      if (!atDeadline) completeStaleLogin();
+      if (!atDeadline) {
+        // disconnect() can resolve before the cleanup deadline; complete the
+        // login only once the deadline has passed and the first logout ran.
+        await vi.waitFor(() => expect(mocks.logout).toHaveBeenCalledOnce());
+        completeStaleLogin();
+      }
 
       await vi.waitFor(() => expect(mocks.logout).toHaveBeenCalledTimes(2));
       expect(active.user).toBeNull();
