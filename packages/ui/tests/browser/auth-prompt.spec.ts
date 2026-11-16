@@ -222,6 +222,57 @@ test('renders a private email-to-code prompt with retry, resend, and cancel reco
   expect(detailKeys.flat()).not.toContain('captchaToken');
 });
 
+test('shows typed and pasted code digits without writing them into text nodes', async ({
+  page,
+}) => {
+  const dialog = await openWalletDialog(page);
+  await dialog.getByRole('button', { name: 'Sign in with socials', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Sign in with socials' })
+    .getByRole('button', { name: 'Email', exact: true })
+    .click();
+  const emailPrompt = page.getByRole('dialog', { name: 'Sign in with email' });
+  await emailPrompt.getByLabel('Email address').fill('user@example.com');
+  await emailPrompt.getByRole('button', { name: 'Send code', exact: true }).click();
+
+  const prompt = page.getByRole('dialog', { name: 'Enter confirmation code' });
+  const code = prompt.getByLabel('Verification code');
+  const cells = prompt.locator('.auth-prompt-code-cell');
+  const digitTextNodes = () =>
+    prompt.evaluate((root) => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const found: string[] = [];
+      while (walker.nextNode()) {
+        const text = walker.currentNode.textContent ?? '';
+        if (/[0-9]/.test(text)) found.push(text);
+      }
+      return found;
+    });
+
+  await code.click();
+  await page.keyboard.type('0429');
+  await expect(code).toHaveValue('0429');
+  await expect(cells.nth(0)).toHaveValue('0');
+  await expect(cells.nth(3)).toHaveValue('9');
+  await expect(cells.nth(4)).toHaveValue('');
+  expect(await digitTextNodes()).toEqual([]);
+
+  await code.evaluate((input: HTMLInputElement) => {
+    input.setSelectionRange(0, input.value.length);
+    const clipboardData = new DataTransfer();
+    clipboardData.setData('text', '867 530');
+    input.dispatchEvent(new ClipboardEvent('paste', { clipboardData, cancelable: true }));
+  });
+  await expect(code).toHaveValue('867530');
+  expect(
+    await cells.evaluateAll((elements) => elements.map((cell) => (cell as HTMLInputElement).value))
+  ).toEqual(['8', '6', '7', '5', '3', '0']);
+  expect(await digitTextNodes()).toEqual([]);
+  // The real input stays the only focusable, submitted code field.
+  await expect(code).toBeFocused();
+  await expect(cells.first()).toBeDisabled();
+});
+
 test('cancels a prompt and ignores a late adapter result', async ({ page }) => {
   const dialog = await openWalletDialog(page);
   await dialog.getByRole('button', { name: 'Sign in with socials', exact: true }).click();

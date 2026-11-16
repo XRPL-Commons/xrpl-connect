@@ -474,18 +474,24 @@ export const mainStyles = `
   }
 
   .auth-prompt-code-cell {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    appearance: none;
+    display: block;
+    width: 100%;
     min-width: 0;
     height: 52px;
+    padding: 0;
     border: 1px solid var(--xc-background-tertiary);
     border-radius: var(--xc-secondary-button-border-radius);
     background: var(--xc-background-secondary);
     color: var(--xc-text-color);
+    /* Cells are disabled inputs; keep their digits at full contrast. */
+    -webkit-text-fill-color: var(--xc-text-color);
+    opacity: 1;
     font-size: 22px;
     font-weight: ${FONT_WEIGHTS.SEMIBOLD};
     line-height: 1;
+    text-align: center;
+    pointer-events: none;
     transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
   }
 

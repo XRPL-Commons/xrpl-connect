@@ -98,13 +98,18 @@ function appendCodeAuthField(
   inputWrapper.className = 'auth-prompt-code-input-wrapper';
   inputWrapper.style.setProperty('--auth-code-length', String(codeLength));
 
+  // Each cell shows its digit as the value of an inert input rather than as a
+  // text node: session-replay tools mask input values but record text.
   const cells = document.createElement('span');
   cells.className = 'auth-prompt-code-cells';
   cells.setAttribute('aria-hidden', 'true');
-  const cellElements: HTMLSpanElement[] = [];
+  const cellElements: HTMLInputElement[] = [];
   for (let cellIndex = 0; cellIndex < codeLength; cellIndex += 1) {
-    const cell = document.createElement('span');
+    const cell = document.createElement('input');
     cell.className = 'auth-prompt-code-cell';
+    cell.type = 'text';
+    cell.autocomplete = 'off';
+    cell.disabled = true;
     cellElements.push(cell);
     cells.append(cell);
   }
@@ -127,7 +132,7 @@ function appendCodeAuthField(
   const renderCells = (value: string, cursor = value.length): void => {
     const activeIndex = Math.min(Math.max(cursor, 0), codeLength - 1);
     for (const [cellIndex, cell] of cellElements.entries()) {
-      cell.textContent = value[cellIndex] ?? '';
+      cell.value = value[cellIndex] ?? '';
       cell.classList.toggle('auth-prompt-code-cell--filled', cellIndex < value.length);
       cell.classList.toggle('auth-prompt-code-cell--active', cellIndex === activeIndex);
     }

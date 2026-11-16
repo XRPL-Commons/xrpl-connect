@@ -100,7 +100,9 @@ describe('renderAuthPromptView', () => {
     expect(input.value).toBe('012');
     expect(onValueChange).toHaveBeenLastCalledWith('code', '012');
     expect(
-      [...host.querySelectorAll('.auth-prompt-code-cell')].map((cell) => cell.textContent)
+      [...host.querySelectorAll<HTMLInputElement>('.auth-prompt-code-cell')].map(
+        (cell) => cell.value
+      )
     ).toEqual(['0', '1', '2', '', '', '']);
 
     input.value = '12a34';
@@ -135,6 +137,36 @@ describe('renderAuthPromptView', () => {
         .querySelectorAll('.auth-prompt-code-cell')[2]
         ?.classList.contains('auth-prompt-code-cell--active')
     ).toBe(true);
+  });
+
+  it('keeps typed digits out of text nodes and markup for session-replay privacy', () => {
+    const host = mount(
+      {
+        title: 'Verify',
+        fields: [
+          { name: 'code', label: 'Code', type: 'text', inputMode: 'numeric', codeLength: 6 },
+        ],
+        cancel: vi.fn(),
+      },
+      { values: { code: '4' } }
+    );
+    const input = host.querySelector<HTMLInputElement>('input[name="code"]')!;
+    input.value = '482913';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const cells = [...host.querySelectorAll<HTMLInputElement>('.auth-prompt-code-cell')];
+    expect(cells.map((cell) => cell.value).join('')).toBe('482913');
+    for (const cell of cells) {
+      expect(cell.tagName).toBe('INPUT');
+      expect(cell.disabled).toBe(true);
+      expect(cell.name).toBe('');
+      expect(cell.hasAttribute('data-auth-field')).toBe(false);
+    }
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    const text: string[] = [];
+    while (walker.nextNode()) text.push(walker.currentNode.textContent ?? '');
+    expect(text.join('')).not.toMatch(/[0-9]/);
+    expect(host.innerHTML).not.toMatch(/48|29|13/);
   });
 
   it('maps pointer clicks to visual cells so an existing digit can be replaced', () => {
