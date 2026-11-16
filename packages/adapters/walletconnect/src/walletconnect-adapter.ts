@@ -22,10 +22,12 @@ import type {
   WalletCapabilities,
   WalletConnectionOptionsById,
   WalletAdapterEvent,
+  WalletError,
 } from '@xrpl-connect/core';
 import {
   assertRequestedTransaction,
   assertSignedTransaction,
+  canonicalizeTransaction,
   createWalletError,
   resolveNetwork,
   createLogger,
@@ -96,6 +98,13 @@ type VerifiedSignedTransaction = {
   hash: string;
   tx_blob: string;
   signature?: string;
+  tx_json: Transaction;
+};
+
+type SerializedSignTransactionResult = {
+  hash: string;
+  reportedHash: unknown;
+  tx_blob: string;
   tx_json: Transaction;
 };
 
@@ -216,18 +225,10 @@ function selectAccountForChain(
 }
 
 /**
- * Verify an untrusted `xrpl_signTransaction` result. The wallet may autofill
- * fields the request omitted, but the signed transaction must be single-signed
- * for the connected account on the requested chain, preserve every requested
- * field, and match the hash the wallet reports. A submission must report one.
+ * Serialize an untrusted `xrpl_signTransaction` result into its signed blob,
+ * decoded transaction, and hash, keeping the hash the wallet reported.
  */
-function verifySignTransactionResult(
-  result: unknown,
-  requested: Transaction,
-  account: string,
-  chainId: string,
-  submit: boolean
-): VerifiedSignedTransaction {
+function serializeSignTransactionResult(result: unknown): SerializedSignTransactionResult {
   const signedTxJson = (result as { tx_json?: unknown } | null | undefined)?.tx_json;
   if (signedTxJson === null || typeof signedTxJson !== 'object' || Array.isArray(signedTxJson)) {
     throw new Error('WalletConnect did not return a signed transaction');
@@ -235,8 +236,28 @@ function verifySignTransactionResult(
 
   const { hash: reportedHash, ...fields } = signedTxJson as Record<string, unknown>;
   const tx_blob = encode(fields as Transaction);
-  const tx_json = decode(tx_blob) as Transaction;
-  const hash = hashes.hashSignedTx(tx_blob);
+  return {
+    hash: hashes.hashSignedTx(tx_blob),
+    reportedHash,
+    tx_blob,
+    tx_json: decode(tx_blob) as Transaction,
+  };
+}
+
+/**
+ * Verify a serialized `xrpl_signTransaction` result. The wallet may autofill
+ * fields the request omitted, but the signed transaction must be single-signed
+ * for the connected account on the requested chain, preserve every requested
+ * field, and match the hash the wallet reports. A submission must report one.
+ */
+function verifySignTransactionResult(
+  signed: SerializedSignTransactionResult,
+  requested: Transaction,
+  account: string,
+  chainId: string,
+  submit: boolean
+): VerifiedSignedTransaction {
+  const { hash, reportedHash, tx_blob, tx_json } = signed;
   assertSignedTransaction(tx_json, tx_blob, {
     walletName: 'WalletConnect',
     account,
@@ -253,6 +274,35 @@ function verifySignTransactionResult(
   }
 
   return { hash, tx_blob, signature: tx_json.TxnSignature, tx_json };
+}
+
+/**
+ * Report a result that failed verification. After a submission the wallet may
+ * already have broadcast the transaction, so the error says so and carries the
+ * hash of the returned transaction as `transactionHash` when it is known.
+ */
+function createVerificationError(
+  error: unknown,
+  submit: boolean,
+  transactionHash: string | undefined
+): WalletError {
+  const reason = getErrorMessage(error);
+  const walletError = createWalletError.signFailed(
+    new Error(
+      submit
+        ? `WalletConnect returned an invalid signed transaction that it may already have submitted; check the ledger before retrying: ${reason}`
+        : `WalletConnect returned an invalid signed transaction: ${reason}`
+    )
+  );
+  if (submit && transactionHash !== undefined) {
+    Object.defineProperty(walletError, 'transactionHash', {
+      configurable: false,
+      enumerable: true,
+      value: transactionHash,
+      writable: false,
+    });
+  }
+  return walletError;
 }
 
 /**
@@ -995,11 +1045,19 @@ export class WalletConnectAdapter
 
     const account = this.currentAccount.address;
     const chainId = getXrplChainId(this.currentAccount.network);
-    // Send and verify against a snapshot of the serialized request, independent
-    // of caller mutations while the wallet is open.
-    const requested = JSON.parse(
-      JSON.stringify({ ...transaction, Account: transaction.Account || account })
-    ) as Transaction;
+    // Send the canonical form, so the wallet signs exactly what is verified. It
+    // is also a snapshot, independent of caller mutations while the wallet is open.
+    let requested: Transaction;
+    try {
+      requested = canonicalizeTransaction({
+        ...transaction,
+        Account: transaction.Account || account,
+      });
+    } catch (error) {
+      throw createWalletError.signFailed(
+        new Error(`The transaction is not a valid XRPL transaction: ${getErrorMessage(error)}`)
+      );
+    }
 
     const result = await this.client.request<unknown>({
       topic: this.session.topic,
@@ -1014,23 +1072,24 @@ export class WalletConnectAdapter
       },
     });
 
+    let signed: SerializedSignTransactionResult | undefined;
     try {
-      return verifySignTransactionResult(result, requested, account, chainId, submit);
+      signed = serializeSignTransactionResult(result);
+      return verifySignTransactionResult(signed, requested, account, chainId, submit);
     } catch (error) {
-      throw createWalletError.signFailed(
-        new Error(`WalletConnect returned an invalid signed transaction: ${getErrorMessage(error)}`)
-      );
+      throw createVerificationError(error, submit, signed?.hash);
     }
   }
 
   /**
    * Sign a transaction without submitting it to the ledger
    *
-   * The wallet returns signed transaction JSON and may autofill omitted fields
-   * such as `Fee`, `Sequence`, and `LastLedgerSequence`. The result is accepted
-   * only if it is validly signed for the connected account and network and
-   * preserves every requested field; it carries the serialized `tx_blob`, its
-   * `hash`, and the decoded `tx_json`.
+   * The transaction is sent in canonical XRPL codec form. The wallet returns
+   * signed transaction JSON and may autofill omitted fields such as `Fee`,
+   * `Sequence`, and `LastLedgerSequence`. The result is accepted only if it is
+   * validly signed for the connected account and network and preserves every
+   * requested field; it carries the serialized `tx_blob`, its `hash`, and the
+   * decoded `tx_json`.
    *
    * @param transaction - The transaction to sign
    */
@@ -1050,7 +1109,9 @@ export class WalletConnectAdapter
    * Sign and submit a transaction to the ledger
    *
    * Applies the same verification as `sign()`, and also requires the wallet to
-   * report the hash of the verified transaction it submitted.
+   * report the hash of the verified transaction it submitted. A verification
+   * failure may follow a broadcast: its error carries `transactionHash` when
+   * the returned transaction could be serialized.
    *
    * @param transaction - The transaction to sign and submit
    */
