@@ -1,0 +1,115 @@
+---
+description: Choose and configure the wallet adapters included with XRPL Connect v1.0.
+---
+
+<!-- Generated from v1.0.0; do not edit. -->
+
+::: warning Archived documentation
+You are reading the XRPL Connect 1.0.0 documentation. [Switch to the current documentation](/).
+:::
+
+
+# Wallets and capabilities
+
+XRPL Connect v1.0 ships nine adapters behind one `WalletManager` API. Register only the wallets your application intends to support; the connector checks availability before presenting them.
+
+| Adapter ID      | Wallet        | Requirement                     | Sign | Submit | Messages | Live account refresh |
+| --------------- | ------------- | ------------------------------- | :--: | :----: | :------: | :------------------: |
+| `xaman`         | Xaman         | Browser API key                 | Yes  |  Yes   |    No    |  OAuth session only  |
+| `crossmark`     | Crossmark     | Browser extension               | Yes  |  Yes   |    No    |         Yes          |
+| `gemwallet`     | GemWallet     | Browser extension               | Yes  |  Yes   |   Yes    |         Yes          |
+| `walletconnect` | WalletConnect | Project ID                      | Yes  |  Yes   |    No    |          No          |
+| `ledger`        | Ledger        | XRP app and WebHID/WebUSB       | Yes  |  Yes   |    No    |         Yes          |
+| `xyra`          | Xyra          | Browser wallet                  | Yes  |  Yes   |   Yes    |          No          |
+| `ghostsig`      | GHOSTSIG      | Browser wallet (popup)          | Yes  |  Yes   |    No    |          No          |
+| `otsu`          | Otsu          | Browser wallet                  | Yes  |  Yes   |   Yes    |         Yes          |
+| `metamask-snap` | MetaMask Snap | MetaMask with XRPL Snap support | Yes  |  Yes   |   Yes    |          No          |
+
+Treat this table as the default feature set and check capabilities at runtime before displaying an action:
+
+```ts
+if (manager.supports('signMessage')) {
+  const signed = await manager.signMessage('Sign in to Example');
+}
+```
+
+## Recommended configuration
+
+```ts
+import {
+  CrossmarkAdapter,
+  GemWalletAdapter,
+  MetaMaskSnapAdapter,
+  WalletConnectAdapter,
+  WalletManager,
+  XamanAdapter,
+} from 'xrpl-connect';
+
+export const manager = new WalletManager({
+  adapters: [
+    new XamanAdapter({ apiKey: import.meta.env.VITE_XAMAN_API_KEY }),
+    new CrossmarkAdapter(),
+    new GemWalletAdapter(),
+    new WalletConnectAdapter({ projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID }),
+    new MetaMaskSnapAdapter(),
+  ],
+  network: 'testnet',
+  autoConnect: true,
+});
+```
+
+Xaman API keys and WalletConnect project IDs are browser identifiers, not server secrets. Restrict them to your production origins in the provider dashboard. Never place private keys, seeds, API secrets, or signing credentials in client code.
+
+On a Xaman mobile OAuth return, `autoConnect: true` completes sign-in even if the
+manager has not saved its first session yet. With auto-connect omitted or disabled,
+call `manager.reconnect()` explicitly on the returned page. Mounting the connector
+does not initiate recovery.
+
+When the return opens another tab on the same origin and browser profile, completing
+that recovery also settles the original tab's pending connection. This requires
+local storage. Each browser login has its own OAuth state; expired or cancelled
+attempts cannot be adopted by a later login. Unanswered connections time out after
+five minutes with `OPERATION_TIMEOUT`. A suspended tab checks its deadline when it
+resumes. Other tabs that did not initiate a connection remain idle.
+
+Persist checkout/order state separately so the return page can resume the payment
+step. Recovering a wallet session does not restore application state.
+
+## Adapter options
+
+- `XamanAdapter`: `apiKey`, QR callback, deep-link transformation, post-signing return URLs, and `maxLastLedgerSequenceExtension` (default 50, sign-only). See [expiry policy](/1.0.0/guide/transactions#xaman-expiry-policy).
+- `WalletConnectAdapter`: `projectId`, metadata, QR/deep-link callbacks, modal mode, and theme.
+- `LedgerAdapter`: derivation path, operation timeout, and WebHID preference. Ledger requires HTTPS outside localhost.
+- `MetaMaskSnapAdapter`: optional `snapId`; use the default published Snap unless developing a local Snap.
+- Xyra, Otsu, Crossmark, GemWallet, and GHOSTSIG work without application credentials.
+
+Xaman and WalletConnect need constructor credentials to appear in wallet discovery and to support automatic reconnection. Direct calls can defer a credential for one session with `manager.connect('xaman', { apiKey })` or `manager.connect('walletconnect', { projectId })`; these options are selected from the wallet ID at compile time and are not persisted. Missing credentials fail early with `CONFIGURATION_REQUIRED`. Other connect-time options can override supported adapter settings. Configure Xaman return URLs on the adapter constructor when connecting through `WalletManager`; direct `XamanAdapter.connect()` calls can override them for one session. Return navigation may open another browser tab, so restore application state and use the signing result—not navigation—as confirmation. Keep the Xaman API key stable for the lifetime of an adapter instance.
+
+## Networks
+
+Xaman's network is OAuth session context, which may be restored from saved user information.
+Neither reconnecting nor `fetchAccount()` guarantees the mobile app's current selection.
+Signing forces the session target network and validates the resolved payload's network;
+see [Xaman network evidence](/1.0.0/guide/production#xaman-session-refresh-and-network-evidence).
+
+Pass `mainnet`, `testnet`, `devnet`, or a supported `NetworkConfig` to `WalletManager`. Adapters validate the selected network and reject contradictory wallet responses. In particular, WalletConnect accepts only a well-formed CAIP-10 account with a valid XRPL classic address on the requested chain; malformed responses or sessions without a matching chain are disconnected and rejected. Start development on testnet and display the active network beside every signing action.
+
+## Availability and ordering
+
+The web component hides unavailable wallets by default. Use its `wallets` attribute to restrict and order the list, and `show-unavailable` when you want installation links to remain visible:
+
+```html
+<xrpl-wallet-connector
+  wallets="xaman,crossmark,gemwallet,walletconnect,metamask-snap"
+  show-unavailable
+></xrpl-wallet-connector>
+```
+
+Otsu is available only when its extension has injected a provider with
+`window.xrpl?.isOtsu === true`. The adapter checks the current provider on every
+`isAvailable()` call, so applications using `WalletManager` directly can call
+`getAvailableWallets()` again after a late extension injection. The wallet
+connector retries wallets that were unavailable or timed out whenever the modal
+is opened again, so closing and reopening it refreshes late-injected providers.
+
+See the [API reference](/1.0.0/guide/api-reference) for constructor and connect-option types.

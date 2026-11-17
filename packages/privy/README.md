@@ -29,7 +29,7 @@ low-level SDK and asks developers to discuss their use with its team. See the
 [extended-chain support](https://docs.privy.io/wallets/overview/chains).
 
 ```bash
-npm install xrpl-connect @xrpl-commons/xrpl-connect-privy xrpl@^4
+npm install xrpl-connect@rc @xrpl-commons/xrpl-connect-privy@rc xrpl@^4
 ```
 
 ```js
@@ -127,6 +127,28 @@ good when:
 Neither the application nor Privy can recover the account. Offer guest login only
 for disposable use, such as testnet demos, and warn users not to fund a guest
 wallet they want to keep.
+
+## Content Security Policy
+
+Under an enforced CSP, allow the origins this integration uses in addition to
+your application's policy:
+
+- `connect-src https://auth.privy.io` for Privy's API, which the pinned SDK
+  calls at that origin, and the WebSocket endpoint of the manager's network
+  (for example `wss://s.altnet.rippletest.net:51233` on testnet) for autofill
+  and submission.
+- `frame-src https://auth.privy.io` for Privy's hidden embedded-wallet iframe.
+- `img-src data:` for the built-in login-method icons, plus the origin of any
+  custom OAuth provider icon configured in the dashboard.
+- `script-src https://challenges.cloudflare.com` (Turnstile) or
+  `https://js.hcaptcha.com` (hCaptcha) when the dashboard requires CAPTCHA. The
+  connector loads the script only when a challenge is shown; the challenge
+  widget also needs the frame and request origins listed in its provider's CSP
+  documentation.
+
+See the
+[strict CSP guide](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/docs/guide/production.md#strict-content-security-policy)
+for the connector's style nonce and the rest of the policy.
 
 ## Signing and submission
 
@@ -345,11 +367,11 @@ Keep `config` and its adapter instances stable across renders.
 React is used only by the consuming React application; it is not a dependency of
 this adapter or XRPL Connect's web component.
 
-The main [vanilla JavaScript demo](../../examples/vanilla-js) and
-[React demo](../../examples/react) include optional Privy configuration alongside
+The main [vanilla JavaScript demo](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/examples/vanilla-js) and
+[React demo](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/examples/react) include optional Privy configuration alongside
 external wallets, OAuth callback routing, testnet funding, signing, submission,
 restoration, and logout controls. Their READMEs document the public environment
 variables and allowed localhost callback URLs.
 
-The [smaller vanilla integration example](../../examples/privy-vanilla) is also
+The [smaller vanilla integration example](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/examples/privy-vanilla) is also
 available for applications focused on the Privy lifecycle.

@@ -11,13 +11,13 @@ Vue composables must also run only on the client.
 ## Installation
 
 ```bash
-npm install @xrpl-commons/xrpl-connect-vue xrpl-connect xrpl@^4 vue
+npm install @xrpl-commons/xrpl-connect-vue@rc xrpl-connect@rc xrpl@^4 vue
 ```
 
 ## Client plugin
 
-The install command selects the coordinated stable v1 packages. Keep the Vue binding and
-`xrpl-connect` on the same release line.
+The install command selects the coordinated `1.1.0-rc.0` release candidate from npm's `rc` tag.
+Keep the Vue binding and `xrpl-connect` on the same release.
 
 For Xaman OAuth, also check the served
 [popup security headers](/guide/production#xaman-oauth-popups-and-security-headers).
@@ -64,6 +64,46 @@ The `.client.ts` suffix prevents wallet adapters, plugin installation, and custo
 registration from running during server rendering. The named `xrpl-connect` import evaluates
 the package entry and registers the custom element, so a separate side-effect import is not
 needed. `@xrpl-commons/xrpl-connect-vue` itself remains safe to import in universal modules.
+
+## Privy social login
+
+Install the optional Privy package from the same release as `xrpl-connect`:
+
+```bash
+npm install @xrpl-commons/xrpl-connect-privy@rc
+```
+
+Create the adapter in the same client-only plugin, so it never runs during server rendering:
+
+```ts
+// plugins/xrpl-connect.client.ts
+import { CrossmarkAdapter } from 'xrpl-connect';
+import { createXrplConnect } from '@xrpl-commons/xrpl-connect-vue';
+import { PrivyAdapter } from '@xrpl-commons/xrpl-connect-privy';
+
+export default defineNuxtPlugin((nuxtApp) => {
+  nuxtApp.vueApp.use(
+    createXrplConnect({
+      adapters: [
+        new PrivyAdapter({
+          appId: useRuntimeConfig().public.privyAppId,
+          redirectUri: `${window.location.origin}/wallet/privy`,
+        }),
+        new CrossmarkAdapter(),
+      ],
+      network: 'testnet',
+      autoConnect: true,
+    })
+  );
+});
+```
+
+Expose `privyAppId` through `runtimeConfig.public` like the Xaman key; it is a public app ID,
+never an app secret. Add a page at the callback path, such as `pages/wallet/privy.vue`, so the
+OAuth redirect returns into the application; with `autoConnect: true` the plugin completes the
+login there. Replace the callback route after a successful connection, for example with
+`navigateTo('/', { replace: true })`. See [social login](/guide/social-login) for dashboard setup
+and transaction review.
 
 ## Wallet component
 

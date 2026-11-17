@@ -191,8 +191,8 @@ freshness is adapter-specific. Xaman queries the authenticated OAuth subject and
 retains its session network context; it does not query the mobile app's current
 account or network selection. A successful refresh is not proof of the current
 wallet network. See [Xaman network evidence](/guide/production#xaman-session-refresh-and-network-evidence).
-WalletConnect, Xyra, and custom adapters without `SupportsFetchAccount` reject
-with `UNSUPPORTED_METHOD`; the manager does not silently substitute cached
+WalletConnect, Xyra, MetaMask Snap, GHOSTSIG, Privy, and custom adapters without
+`SupportsFetchAccount` reject with `UNSUPPORTED_METHOD`; the manager does not silently substitute cached
 `getAccount()` data. Calling without a connection rejects with `NOT_CONNECTED`.
 If the wallet reports no active account, the manager clears the session, emits
 `disconnect`, and returns `null`.
@@ -267,6 +267,30 @@ forward it unchanged. See [strict CSP setup](/guide/production#strict-content-se
 | `wallets`          | `string`  | Comma-separated list of wallet IDs                                 |
 | `show-unavailable` | `boolean` | Show unavailable wallets with Install or disabled Unavailable rows |
 
+### Properties
+
+#### socialLogins
+
+```typescript
+socialLogins: readonly SocialLogin[];
+
+interface SocialLogin {
+  readonly id: string;
+  readonly label: string;
+  readonly adapterId: WalletIdentifier;
+  readonly icon?: string;
+  readonly connectOptions?: ConnectOptions<Record<string, unknown>>;
+}
+```
+
+Explicit entries for the **Sign in with socials** chooser. Each entry connects through the
+registered adapter named by `adapterId`, passing `connectOptions`; entries for an adapter that
+is not registered are ignored. This is a JavaScript
+property, not an HTML attribute; the React and Vue wrappers accept it as the `socialLogins`
+prop. Adapters that implement `getLoginMethods()`, such as Privy, are discovered without it.
+When the `wallets` attribute is set, only listed adapters are discovered, while explicit
+entries always show their adapter. See [Social login](/guide/social-login).
+
 ### Methods
 
 #### setWalletManager()
@@ -323,7 +347,9 @@ that ordering in `localStorage` under `xrpl-connect:mru-wallets`; an explicit
 
 #### open
 
-Emitted when the wallet selection modal opens.
+Emitted when the modal opens: for wallet selection, or when an adapter's transaction review
+(such as Privy's) opens it while a wallet is connected. The connector closes it again once the
+review is answered.
 
 ```javascript
 connector.addEventListener('open', () => {
@@ -510,6 +536,30 @@ const adapter = new XyraAdapter();
 **Supported Features:** Transaction signing and message signing. Live account
 refresh is not supported.
 
+### GHOSTSIG Adapter
+
+```typescript
+import { GhostsigAdapter } from 'xrpl-connect';
+
+const adapter = new GhostsigAdapter({
+  // Optional
+  // url: 'https://ghostsig.dev/?connect', // popup page: ghostsig.dev, or a copy on http://localhost
+  // timeoutMs: 60000,                      // how long one request waits for the user
+});
+```
+
+**Supported Features:** Transaction signing with a hosted passkey wallet opened in a
+popup on ghostsig.dev, with no extension and no application credentials. Each
+signature takes one passkey prompt. Arbitrary message signing and live account
+refresh are not supported.
+
+GHOSTSIG signs only on `mainnet`, `testnet`, and `devnet`; any other network id
+rejects with `NETWORK_NOT_SUPPORTED` before the popup opens. A restored session
+reconnects without opening the popup. `signAndSubmit()` submits through the
+wallet's own node and resolves only when the wallet reports the transaction
+validated successfully; otherwise it rejects with `SIGN_FAILED`, and the message
+includes the transaction hash so you can check the ledger before retrying.
+
 ### Otsu Adapter
 
 ```typescript
@@ -552,6 +602,41 @@ provider announcements with the exact identifier `io.metamask` (preferred) or
 `io.metamask.flask`; the first provider announced for an identifier is used.
 The adapter never falls back to `window.ethereum`, because other wallets also set
 `isMetaMask` there. MetaMask extension v11 and later announce through EIP-6963.
+
+### Privy Adapter
+
+The Privy adapter ships in the optional `@xrpl-commons/xrpl-connect-privy` package,
+not in the `xrpl-connect` umbrella or its `Adapters` object. Its runtime ID is `privy`.
+
+```typescript
+import { PrivyAdapter } from '@xrpl-commons/xrpl-connect-privy';
+
+const adapter = new PrivyAdapter({
+  appId: 'YOUR_PUBLIC_APP_ID',
+  redirectUri: `${window.location.origin}/wallet/privy`,
+});
+```
+
+| Option              | Type                             | Description                                                                                                                                                      |
+| ------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `appId`             | `string`                         | Required. Public Privy app ID.                                                                                                                                   |
+| `redirectUri`       | `string`                         | Required. OAuth callback URL; serve the same application there.                                                                                                  |
+| `clientId`          | `string`                         | Public Privy app client ID, when the app uses a specific client.                                                                                                 |
+| `loginMethods`      | `readonly PrivyLoginMethod[]`    | Methods added to those discovered from the Privy dashboard, such as custom JWT authentication (`getCustomToken`). An entry replaces a method with the same `id`. |
+| `allowGuestLogin`   | `boolean`                        | Offer guest login when the dashboard enables it. Default `false`: a guest wallet is lost for good on logout.                                                     |
+| `timeoutMs`         | `number`                         | Bound on each wait for the Privy SDK, in milliseconds. Default 15 seconds.                                                                                       |
+| `transactionReview` | `'prompt' \| 'none' \| function` | How the user approves each transaction. Default `'prompt'`, shown by the wallet connector. A function `(review, signal)` approves by returning `true`.           |
+
+`connect('privy', { loginMethod })` authenticates with that method's `id`; without
+`loginMethod` it resumes the current Privy session. Missing `appId` or `redirectUri`
+rejects with `CONFIGURATION_REQUIRED`.
+
+**Supported Features:** Social login with a user-owned embedded XRPL wallet,
+transaction signing, and validated submission. Arbitrary message signing,
+multi-signing, and live account refresh are not supported. Every signature first
+needs a transaction review; with `'prompt'`, signing fails with `SIGN_FAILED` while
+nothing is subscribed through `onAuthPrompt()` to show it. See
+[Social login](/guide/social-login).
 
 ## Umbrella package exports
 
@@ -635,8 +720,8 @@ when the active connector unmounts. `ready` remains `true` while any connector i
 ### WalletConnector
 
 `<WalletConnector />` wraps the web component. It accepts `primaryWallet`,
-`wallets`, `showUnavailable`, `theme`, `cssVars`, `style`, `className`, `onConnecting`, `onConnect`,
-and `onError`, plus standard host attributes such as `id`, `title`, `data-*`, and `aria-*`.
+`wallets`, `socialLogins`, `showUnavailable`, `theme`, `cssVars`, `style`, `className`,
+`onConnecting`, `onConnect`, and `onError`, plus standard host attributes such as `id`, `title`, `data-*`, and `aria-*`.
 `showUnavailable` maps to the native `show-unavailable` boolean attribute.
 Its forwarded `WalletConnectorElement` ref exposes `open()`, `openAndWait()`, `close()`, and
 `toggle()`. Explicit connector props take precedence over overlapping raw host attributes; inline
@@ -670,8 +755,8 @@ network.
 
 ### WalletConnector
 
-`<WalletConnector />` accepts `primaryWallet`, `wallets`, `showUnavailable`, `theme`, and
-`cssVars`, and emits `connecting`, `connect`, and typed `error` events. The camelCase
+`<WalletConnector />` accepts `primaryWallet`, `wallets`, `socialLogins`, `showUnavailable`,
+`theme`, and `cssVars`, and emits `connecting`, `connect`, and typed `error` events. The camelCase
 `showUnavailable` Vue prop maps to the native `show-unavailable` boolean attribute: unavailable
 wallets are hidden by default, while `true` shows an Install action when a download URL exists or
 a disabled Unavailable row otherwise. Public types include `XrplConnectConfig`,
@@ -686,10 +771,9 @@ and GemWallet adapters. Namespace exports prevent generic upstream names from
 colliding with XRPL Connect's own API:
 
 ```typescript
-import { CrossmarkSDK, GemWalletAPI, XamanOAuth2, XamanSDK } from 'xrpl-connect';
+import { CrossmarkSDK, GemWalletAPI, XamanSDK } from 'xrpl-connect';
 
 const xaman = new XamanSDK.Xumm('YOUR_API_KEY');
-const oauth = new XamanOAuth2.XummPkce('YOUR_API_KEY');
 const installed = CrossmarkSDK.default.sync.isInstalled();
 const address = await GemWalletAPI.getAddress();
 ```
@@ -697,6 +781,12 @@ const address = await GemWalletAPI.getAddress();
 The namespaces include every upstream runtime function. Xaman and GemWallet also
 preserve their upstream exported types; Crossmark uses equivalent local facade
 types because its published declarations reference private package subpaths.
+
+`XamanOAuth2` re-exports the upstream `xumm-oauth2-pkce` package unchanged.
+`XamanAdapter` does not use its `XummPkce` client: the adapter runs its own
+authorization code flow with PKCE and never restores sessions that `XummPkce`
+stores under `XummPkceJwt`. Do not sign users in with `XummPkce` alongside the
+adapter.
 
 ## Types & Interfaces
 
@@ -721,7 +811,7 @@ function adapterSupports(adapter: WalletAdapter, capability: keyof WalletCapabil
 Adapters use the optional `capabilities` property to declare operations that
 cannot succeed. Missing declarations fall back to `CAPABILITY_DEFAULTS`, so
 existing custom adapters retain support for all signing operations. Crossmark,
-Ledger, WalletConnect, and Xaman declare `signMessage: false`.
+GHOSTSIG, Ledger, Privy, WalletConnect, and Xaman declare `signMessage: false`.
 
 ### SupportsFetchAccount
 
@@ -736,8 +826,8 @@ function supportsFetchAccount(
 ```
 
 Use this type guard before calling an adapter's live-refresh method directly.
-Crossmark, GemWallet, Ledger, Otsu, and Xaman implement it. WalletConnect and
-Xyra do not.
+Crossmark, GemWallet, Ledger, Otsu, and Xaman implement it. WalletConnect, Xyra,
+MetaMask Snap, GHOSTSIG, and Privy do not.
 
 ### SupportsPendingConnection
 
@@ -755,7 +845,8 @@ Detection must be synchronous and side-effect free. It identifies a returned wal
 authorization that `connect()` can complete without starting a new authorization.
 Xaman implements it only for OAuth callbacks, successful or rejected, whose state
 matches a live sign-in attempt started in the same browser. Links carrying a token or
-code without one are ignored. With empty storage, `reconnect()` attempts the first configured candidate
+code without one are ignored. Privy implements it for an OAuth callback on its
+`redirectUri` while a login it started there is still pending. With empty storage, `reconnect()` attempts the first configured candidate
 in registration order through the normal connection validation and persistence path.
 Automatic recovery requires `autoConnect: true`; callers may also reconnect explicitly.
 
@@ -781,7 +872,7 @@ session is otherwise authoritative over a pending authorization.
 ### ConnectOptions
 
 ```typescript
-type ConnectOptions<WalletSpecificOptions extends Record<string, unknown> = {}> = {
+type ConnectOptions<WalletSpecificOptions extends object = {}> = {
   network?: NetworkConfig;
   autoReconnect?: boolean;
   skipRequestAccess?: boolean;
@@ -976,23 +1067,24 @@ code. Each code maps to exactly one category.
 
 All error codes are exposed by the `WalletErrorCode` enum.
 
-| Code                    | Category             | Description                                                | Handling                                     |
-| ----------------------- | -------------------- | ---------------------------------------------------------- | -------------------------------------------- |
-| `WALLET_NOT_FOUND`      | `WALLET_UNAVAILABLE` | Adapter not registered with the WalletManager              | Check the `adapters` array                   |
-| `WALLET_NOT_INSTALLED`  | `WALLET_UNAVAILABLE` | Browser extension / app is not installed                   | Prompt the user to install the wallet        |
-| `WALLET_NOT_AVAILABLE`  | `WALLET_UNAVAILABLE` | Wallet present but not currently usable                    | Surface a "wallet unavailable" message       |
-| `NETWORK_NOT_SUPPORTED` | `WALLET_UNAVAILABLE` | Wallet does not support the requested network              | Switch to a supported network                |
-| `NETWORK_MISMATCH`      | `WALLET_UNAVAILABLE` | Wallet is connected to a different network                 | Ask the user to switch networks              |
-| `CONNECTION_REJECTED`   | `USER_ACTION`        | User rejected the connection                               | Allow the user to retry                      |
-| `SIGN_REJECTED`         | `USER_ACTION`        | User rejected the signing prompt                           | Allow the user to retry                      |
-| `OPERATION_TIMEOUT`     | `NETWORK`            | The operation did not produce a result before its deadline | Check the existing operation before retrying |
-| `CONNECTION_FAILED`     | `NETWORK`            | Connection to the wallet failed                            | Retry or fall back to another wallet         |
-| `NOT_CONNECTED`         | `INVALID_INPUT`      | A connection is required but none is active                | Connect before calling the method            |
-| `ALREADY_CONNECTED`     | `INVALID_INPUT`      | A wallet is already connected or connecting                | Disconnect first                             |
-| `UNSUPPORTED_METHOD`    | `INVALID_INPUT`      | The wallet does not implement this method                  | Use a wallet that supports it                |
-| `INVALID_MESSAGE`       | `INVALID_INPUT`      | Message bytes passed to `signMessage()` are not UTF-8      | Pass a string or valid UTF-8 bytes           |
-| `SIGN_FAILED`           | `INTERNAL`           | Signing failed for an unspecified reason                   | Retry or surface the original error          |
-| `UNKNOWN_ERROR`         | `INTERNAL`           | Unhandled error from the adapter                           | Inspect `originalError`                      |
+| Code                     | Category             | Description                                                | Handling                                     |
+| ------------------------ | -------------------- | ---------------------------------------------------------- | -------------------------------------------- |
+| `WALLET_NOT_FOUND`       | `WALLET_UNAVAILABLE` | Adapter not registered with the WalletManager              | Check the `adapters` array                   |
+| `WALLET_NOT_INSTALLED`   | `WALLET_UNAVAILABLE` | Browser extension / app is not installed                   | Prompt the user to install the wallet        |
+| `WALLET_NOT_AVAILABLE`   | `WALLET_UNAVAILABLE` | Wallet present but not currently usable                    | Surface a "wallet unavailable" message       |
+| `NETWORK_NOT_SUPPORTED`  | `WALLET_UNAVAILABLE` | Wallet does not support the requested network              | Switch to a supported network                |
+| `NETWORK_MISMATCH`       | `WALLET_UNAVAILABLE` | Wallet is connected to a different network                 | Ask the user to switch networks              |
+| `CONNECTION_REJECTED`    | `USER_ACTION`        | User rejected the connection                               | Allow the user to retry                      |
+| `SIGN_REJECTED`          | `USER_ACTION`        | User rejected the signing prompt                           | Allow the user to retry                      |
+| `OPERATION_TIMEOUT`      | `NETWORK`            | The operation did not produce a result before its deadline | Check the existing operation before retrying |
+| `CONNECTION_FAILED`      | `NETWORK`            | Connection to the wallet failed                            | Retry or fall back to another wallet         |
+| `CONFIGURATION_REQUIRED` | `INVALID_INPUT`      | The adapter lacks required options, such as an API key     | Supply the missing adapter options           |
+| `NOT_CONNECTED`          | `INVALID_INPUT`      | A connection is required but none is active                | Connect before calling the method            |
+| `ALREADY_CONNECTED`      | `INVALID_INPUT`      | A wallet is already connected or connecting                | Disconnect first                             |
+| `UNSUPPORTED_METHOD`     | `INVALID_INPUT`      | The wallet does not implement this method                  | Use a wallet that supports it                |
+| `INVALID_MESSAGE`        | `INVALID_INPUT`      | Message bytes passed to `signMessage()` are not UTF-8      | Pass a string or valid UTF-8 bytes           |
+| `SIGN_FAILED`            | `INTERNAL`           | Signing failed for an unspecified reason                   | Retry or surface the original error          |
+| `UNKNOWN_ERROR`          | `INTERNAL`           | Unhandled error from the adapter                           | Inspect `originalError`                      |
 
 ### Error Example
 

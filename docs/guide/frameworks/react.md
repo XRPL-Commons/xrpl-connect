@@ -1,5 +1,5 @@
 ---
-description: Integrate XRPL Connect v1.0 with React and Next.js using the official provider, hooks, and connector.
+description: Integrate XRPL Connect v1 with React and Next.js using the official provider, hooks, and connector.
 ---
 
 # React and Next.js
@@ -8,11 +8,11 @@ Use the official React bindings instead of building a custom context around the 
 
 ## Install
 
-These commands install the coordinated stable v1 packages. Keep the SDK and React binding on the
-same release line.
+These commands install the coordinated `1.1.0-rc.0` release candidate from npm's `rc` tag. Keep
+the SDK and React binding on the same release.
 
 ```bash
-pnpm add xrpl-connect @xrpl-commons/xrpl-connect-react xrpl@^4 react react-dom
+pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-react@rc xrpl@^4 react react-dom
 ```
 
 ## Configure the provider
@@ -58,9 +58,15 @@ export function App() {
 
 ## Privy social login
 
-Install `@xrpl-commons/xrpl-connect-privy` and add its `PrivyAdapter` to the stable
-configuration above. For Vite, the optional configuration used by the
-[React demo](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/examples/react) is:
+Install the optional Privy package from the same release as `xrpl-connect`; it requires the
+matching `xrpl-connect` release as a peer dependency:
+
+```bash
+pnpm add @xrpl-commons/xrpl-connect-privy@rc
+```
+
+Then add its `PrivyAdapter` to the configuration above. For Vite, the optional configuration
+used by the [React demo](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/examples/react) is:
 
 ```tsx
 import { PrivyAdapter } from '@xrpl-commons/xrpl-connect-privy';

@@ -87,7 +87,12 @@ Complete example with wallet connection and transaction signing:
       </div>
 
       <div class="card" id="account-info">
-        <p>No wallet connected</p>
+        <p id="account-status">No wallet connected</p>
+        <div id="account-details" hidden>
+          <h2>Connected Account</h2>
+          <p><strong>Address:</strong> <span id="account-address"></span></p>
+          <p><strong>Network:</strong> <span id="account-network"></span></p>
+        </div>
       </div>
 
       <div class="card" id="transaction-section" style="display: none;">
@@ -103,7 +108,7 @@ Complete example with wallet connection and transaction signing:
           </div>
           <button type="submit">Send Transaction</button>
         </form>
-        <div id="tx-result"></div>
+        <p id="tx-result" role="status"></p>
       </div>
     </div>
 
@@ -123,22 +128,25 @@ Complete example with wallet connection and transaction signing:
       const connector = document.getElementById('wallet-connector');
       connector.setWalletManager(walletManager);
 
-      const accountInfo = document.getElementById('account-info');
+      const accountStatus = document.getElementById('account-status');
+      const accountDetails = document.getElementById('account-details');
       const txSection = document.getElementById('transaction-section');
       const txForm = document.getElementById('tx-form');
       const txResult = document.getElementById('tx-result');
 
+      // Wallet-provided values are rendered with textContent, never as HTML.
       function updateUI() {
         if (walletManager.connected) {
           const account = walletManager.account;
-          accountInfo.innerHTML = `
-          <h2>Connected Account</h2>
-          <p><strong>Address:</strong> ${account.address}</p>
-          <p><strong>Network:</strong> ${account.network.name}</p>
-        `;
+          document.getElementById('account-address').textContent = account.address;
+          document.getElementById('account-network').textContent = account.network.name;
+          accountStatus.hidden = true;
+          accountDetails.hidden = false;
           txSection.style.display = 'block';
         } else {
-          accountInfo.innerHTML = '<p>No wallet connected. Click the button above to connect.</p>';
+          accountStatus.textContent = 'No wallet connected. Click the button above to connect.';
+          accountStatus.hidden = false;
+          accountDetails.hidden = true;
           txSection.style.display = 'none';
         }
       }
@@ -154,7 +162,7 @@ Complete example with wallet connection and transaction signing:
         const amount = document.getElementById('amount').value;
 
         try {
-          txResult.innerHTML = '<p>Signing transaction...</p>';
+          txResult.textContent = 'Signing transaction...';
 
           const result = await walletManager.signAndSubmit({
             TransactionType: 'Payment',
@@ -163,19 +171,9 @@ Complete example with wallet connection and transaction signing:
             Amount: amount,
           });
 
-          txResult.innerHTML = `
-          <div style="background: #d4edda; padding: 1rem; border-radius: 8px;">
-            <h3>Success!</h3>
-            <p><strong>Hash:</strong> ${result.hash || 'Pending'}</p>
-          </div>
-        `;
+          txResult.textContent = `Success! Hash: ${result.hash || 'Pending'}`;
         } catch (error) {
-          txResult.innerHTML = `
-          <div style="background: #f8d7da; padding: 1rem; border-radius: 8px;">
-            <h3>Error</h3>
-            <p>${error.message}</p>
-          </div>
-        `;
+          txResult.textContent = `Error: ${error.message}`;
         }
       });
     </script>
@@ -185,7 +183,7 @@ Complete example with wallet connection and transaction signing:
 
 ## React Example
 
-> **Note:** For the maintained v1 React integration, use the [React guide](/guide/frameworks/react) and [React example application](https://github.com/XRPL-Commons/xrpl-connect/tree/main/examples/react).
+> **Note:** For the maintained v1 React integration, use the [React guide](/guide/frameworks/react) and [React example application](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/examples/react).
 
 ```jsx
 import { useEffect, useRef, useState } from 'react';
@@ -275,7 +273,7 @@ export default App;
 
     <xrpl-wallet-connector ref="connectorRef" />
 
-    <div v-if="account" style="marginTop: '2rem'">
+    <div v-if="account" style="margin-top: 2rem">
       <h2>Connected Account</h2>
       <p>Address: {{ account.address }}</p>
       <p>Network: {{ account.network.name }}</p>
@@ -450,26 +448,24 @@ Complete example integrating Ledger hardware wallet:
       ledgerAdapter.getDeviceState().then((state) => {
         switch (state) {
           case LedgerDeviceState.NOT_CONNECTED:
-            statusDiv.innerHTML = '<p>⚠️ Please connect your Ledger device via USB</p>';
+            statusDiv.textContent = '⚠️ Please connect your Ledger device via USB';
             break;
           case LedgerDeviceState.LOCKED:
-            statusDiv.innerHTML = '<p>🔒 Please unlock your Ledger device</p>';
+            statusDiv.textContent = '🔒 Please unlock your Ledger device';
             break;
           case LedgerDeviceState.APP_NOT_OPEN:
-            statusDiv.innerHTML = '<p>📱 Please open the XRP app on your Ledger</p>';
+            statusDiv.textContent = '📱 Please open the XRP app on your Ledger';
             break;
           case LedgerDeviceState.READY:
-            statusDiv.innerHTML = '<p>✅ Ledger is ready to connect!</p>';
+            statusDiv.textContent = '✅ Ledger is ready to connect!';
             break;
         }
       });
 
       walletManager.on('connect', (account) => {
-        document.getElementById('account-info').innerHTML = `
-        <h2>✅ Connected to Ledger</h2>
-        <p><strong>Address:</strong> ${account.address}</p>
-        <p><strong>Path:</strong> 44'/144'/0'/0/0</p>
-      `;
+        // Render the wallet-provided address as text, never as HTML.
+        document.getElementById('account-info').textContent =
+          `Connected to Ledger: ${account.address} (path 44'/144'/0'/0/0)`;
       });
 
       // Sign transaction with hardware confirmation
@@ -511,7 +507,6 @@ For DeFi apps, use a dark professional theme with high contrast:
     --xc-primary-color: #1f2937;
     --xc-background-color: #0f172a;
     --xc-text-color: #f1f5f9;
-    --xc-success-color: #10b981;
     --xc-danger-color: #ef4444;
   "
   wallets="xaman,crossmark"

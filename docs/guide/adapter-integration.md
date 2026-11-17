@@ -33,8 +33,13 @@ xrpl-connect/
 │   │   ├── walletconnect/       # WalletConnect adapter (reference)
 │   │   ├── ledger/              # Ledger hardware wallet adapter (reference)
 │   │   ├── xyra/                # Xyra adapter (reference)
+│   │   ├── ghostsig/            # GHOSTSIG adapter (reference)
 │   │   ├── otsu/                # Otsu adapter (reference)
+│   │   ├── metamask-snap/       # MetaMask Snap adapter (reference)
 │   │   └── README.md            # Adapter documentation
+│   ├── privy/                   # Optional Privy social login adapter package
+│   ├── react/                   # React bindings
+│   ├── vue/                     # Vue bindings
 │   └── xrpl-connect/            # Meta package (exports all adapters)
 └── docs/                        # Documentation (this file)
 ```
@@ -121,7 +126,7 @@ Use the Xaman adapter as a template. Replace `my-wallet` and `MyWallet` with you
     "@xrpl-connect/core": "workspace:*"
   },
   "peerDependencies": {
-    "xrpl": "^3.0.0 || ^4.0.0"
+    "xrpl": "^3.0.0 || ^4.0.0 || ^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
@@ -144,20 +149,32 @@ cp packages/adapters/xaman/vite.config.ts packages/adapters/my-wallet/
 
 ### 3.1 Understand the Interface
 
-First, check the `WalletAdapter` interface in `packages/core/src/types.ts`. Your adapter must implement:
+First, check the `WalletAdapter` interface in `packages/core/src/types.ts`. Your adapter must implement the required members; the optional ones opt into specific behavior:
 
 ```typescript
 interface WalletAdapter {
   // Metadata
-  readonly id: string; // 'xaman', 'crossmark', etc.
+  readonly id: WalletIdentifier; // 'xaman', 'crossmark', or your own ID
   readonly name: string; // Display name
   readonly icon?: string; // URL or base64 icon
   readonly url?: string; // Wallet website / download URL
+  readonly loginBranding?: { readonly label: string; readonly logo: string };
 
-  // Availability
+  // Declared support for sign, signAndSubmit, and signMessage (omitted flags default to true)
+  readonly capabilities?: WalletCapabilities;
+  // Keep the stored session when a restore times out (only if restoring never waits on the user)
+  readonly keepsSessionOnRestoreTimeout?: boolean;
+
+  // Availability and configuration
+  getMissingConfiguration?(options?: ConnectOptions): readonly string[];
   isAvailable(): Promise<boolean>;
 
+  // Authentication providers: sign-in choices and interactive prompts
+  getLoginMethods?(options?: { signal?: AbortSignal }): Promise<readonly WalletLoginMethod[]>;
+  onAuthPrompt?(callback: (prompt: WalletAuthPrompt | null) => void): () => void;
+
   // Connection lifecycle
+  serializeReconnectOptions?(options: ConnectOptions): ReconnectOptions | undefined;
   connect(options?: ConnectOptions): Promise<AccountInfo>;
   disconnect(): Promise<void>;
 
@@ -179,6 +196,15 @@ interface WalletAdapter {
 type WalletAdapterEvent = 'connect' | 'disconnect' | 'accountChanged' | 'networkChanged' | 'error';
 ```
 
+Missing configuration fields make the manager reject `connect()` with `CONFIGURATION_REQUIRED`.
+Optional capability interfaces add further behavior; implement them as methods on the adapter:
+
+- `SupportsFetchAccount` (`fetchAccount()`): live account refresh for `WalletManager.fetchAccount()`. Without it, the manager rejects refresh with `UNSUPPORTED_METHOD`.
+- `SupportsPendingConnection` (`hasPendingConnection()`): a login that returned to this page through a redirect, completed by `connect()` without starting a new one.
+- `SupportsPreInitialize` (`preInitialize()`) and `SupportsDeepLink` (`getDeepLinkURI()`): prepare a QR handshake before the user picks the wallet, and turn a URI into a mobile deep link.
+
+See the [API reference](/guide/api-reference#types-interfaces) for the full contracts.
+
 ### 3.2 Create the Adapter Class
 
 Create `src/my-wallet-adapter.ts`:
@@ -187,6 +213,7 @@ Create `src/my-wallet-adapter.ts`:
 import {
   WalletAdapter,
   WalletAdapterEvent,
+  WalletCapabilities,
   AccountInfo,
   NetworkInfo,
   STANDARD_NETWORKS,
@@ -197,6 +224,7 @@ import {
   ConnectOptions,
   createWalletError,
   decodeMessage,
+  isStandardNetworkId,
 } from '@xrpl-connect/core';
 
 export class MyWalletAdapter implements WalletAdapter {
@@ -204,6 +232,12 @@ export class MyWalletAdapter implements WalletAdapter {
   readonly name = 'My Wallet';
   readonly icon = 'https://example.com/wallet-icon.png';
   readonly url = 'https://example.com';
+  // Declare `false` for any operation the wallet cannot perform.
+  readonly capabilities: WalletCapabilities = {
+    sign: true,
+    signAndSubmit: true,
+    signMessage: true,
+  };
 
   private account: AccountInfo | null = null;
   private network: NetworkInfo = STANDARD_NETWORKS.mainnet;
@@ -227,7 +261,10 @@ export class MyWalletAdapter implements WalletAdapter {
 
       const address = accounts[0];
       const publicKey = await (window as any).myWallet.getPublicKey(address);
-      this.network = this.resolveNetwork(options?.network);
+      // Report the network the wallet is actually on, never just the requested
+      // `options?.network`: the manager compares the two and rejects a mismatch
+      // with NETWORK_MISMATCH instead of signing on the wrong network.
+      this.network = this.toNetworkInfo(await (window as any).myWallet.getNetwork());
 
       this.account = { address, publicKey, network: this.network };
       this.setupWalletListeners();
@@ -299,9 +336,9 @@ export class MyWalletAdapter implements WalletAdapter {
     if (!this.account) throw createWalletError.notConnected();
   }
 
-  private resolveNetwork(network?: ConnectOptions['network']): NetworkInfo {
-    if (!network) return STANDARD_NETWORKS.mainnet;
-    return typeof network === 'string' ? STANDARD_NETWORKS[network] : network;
+  private toNetworkInfo(walletNetworkId: string): NetworkInfo {
+    if (isStandardNetworkId(walletNetworkId)) return STANDARD_NETWORKS[walletNetworkId];
+    throw createWalletError.networkNotSupported(walletNetworkId, this.name);
   }
 
   private setupWalletListeners(): void {
@@ -333,7 +370,49 @@ export class MyWalletAdapter implements WalletAdapter {
 }
 ```
 
-### 3.3 Create Export File
+### 3.3 Verify Wallet-Signed Results
+
+Treat a signed result returned by the wallet as untrusted input. `@xrpl-connect/core` exports the
+checks the built-in adapters use:
+
+- `canonicalizeTransaction(transaction)` returns the codec-canonical form. Send it to the wallet,
+  so the wallet signs exactly what you verify; it throws for a transaction that cannot be serialized.
+- `assertSignedTransaction(tx_json, tx_blob, { walletName, account, networkId })` checks the network
+  ID, the signing account, and the signatures. Pass `multisign: true` for a multisign contribution.
+- `assertRequestedTransaction(request, tx_json, { walletName })` checks that every requested field
+  is preserved; the wallet may only add omitted fields such as `Fee` or `Sequence`.
+
+```typescript
+import { decode, hashes } from 'xrpl';
+import { assertRequestedTransaction, assertSignedTransaction, canonicalizeTransaction } from '@xrpl-connect/core';
+
+const XRPL_NETWORK_IDS: Record<string, number> = { mainnet: 0, testnet: 1, devnet: 2 };
+
+async sign(transaction: Transaction): Promise<SignedTransaction> {
+  this.assertConnected();
+  const account = this.account!;
+  try {
+    const request = canonicalizeTransaction({ ...transaction, Account: transaction.Account || account.address });
+    const { tx_blob } = await (window as any).myWallet.sign(request);
+    const tx_json = decode(tx_blob) as Transaction;
+    assertSignedTransaction(tx_json, tx_blob, {
+      walletName: this.name,
+      account: account.address,
+      networkId: XRPL_NETWORK_IDS[account.network.id],
+    });
+    assertRequestedTransaction(request, tx_json, { walletName: this.name });
+    return { hash: hashes.hashSignedTx(tx_blob), tx_blob, tx_json, signature: tx_json.TxnSignature };
+  } catch (error) {
+    // signFailed() passes a WalletError through unchanged, so report a user
+    // rejection from your wallet as createWalletError.signRejected() above.
+    throw createWalletError.signFailed(error as Error);
+  }
+}
+```
+
+The helpers throw plain `Error`s; wrap them in a `WalletError` as above.
+
+### 3.4 Create Export File
 
 Create `src/index.ts`:
 
@@ -346,7 +425,7 @@ export { MyWalletAdapter } from './my-wallet-adapter';
 Create a test file `src/my-wallet-adapter.test.ts`:
 
 ```typescript
-import { describe, it, expect, beforeEach } from 'vite-plus/test';
+import { describe, it, expect, beforeEach, vi } from 'vite-plus/test';
 import { MyWalletAdapter } from './my-wallet-adapter';
 
 describe('MyWalletAdapter', () => {
@@ -362,7 +441,7 @@ describe('MyWalletAdapter', () => {
   });
 
   it('should handle unavailable wallet', async () => {
-    expect(adapter.isAvailable()).toBe(false); // In test environment
+    await expect(adapter.isAvailable()).resolves.toBe(false); // In test environment
   });
 
   it('should emit events on connection', async () => {
@@ -388,59 +467,64 @@ Edit `packages/xrpl-connect/package.json` and add your adapter to dependencies:
 ```json
 {
   "dependencies": {
-    "@xrpl-connect/core": "workspace:*",
-    "@xrpl-connect/ui": "workspace:*",
-    "@xrpl-connect/adapter-xaman": "workspace:*",
     "@xrpl-connect/adapter-crossmark": "workspace:*",
     "@xrpl-connect/adapter-gemwallet": "workspace:*",
-    "@xrpl-connect/adapter-walletconnect": "workspace:*",
+    "@xrpl-connect/adapter-ghostsig": "workspace:*",
     "@xrpl-connect/adapter-ledger": "workspace:*",
-    "@xrpl-connect/adapter-xyra": "workspace:*",
+    "@xrpl-connect/adapter-metamask-snap": "workspace:*",
+    "@xrpl-connect/adapter-my-wallet": "workspace:*",
+    "@xrpl-connect/adapter-walletconnect": "workspace:*",
+    "@xrpl-connect/adapter-xaman": "workspace:*",
     "@xrpl-connect/adapter-otsu": "workspace:*",
-    "@xrpl-connect/adapter-my-wallet": "workspace:*"
+    "@xrpl-connect/adapter-xyra": "workspace:*",
+    "@xrpl-connect/core": "workspace:*",
+    "@xrpl-connect/ui": "workspace:*"
   }
 }
 ```
 
-Edit `packages/xrpl-connect/src/index.ts`:
+Re-export the adapter's public surface from `packages/xrpl-connect/src/index.ts`. Its exports must
+not collide with the other adapters' names:
 
 ```typescript
 export * from '@xrpl-connect/core';
 export * from '@xrpl-connect/ui';
 
-// Re-export all adapters
-export { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-export { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
-export { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
-export { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
-export { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
-export { XyraAdapter } from '@xrpl-connect/adapter-xyra';
-export { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
-export { MyWalletAdapter } from '@xrpl-connect/adapter-my-wallet';
+export * from '@xrpl-connect/adapter-xaman';
+// ...the other packaged adapters
+export * from '@xrpl-connect/adapter-metamask-snap';
+export * from '@xrpl-connect/adapter-my-wallet';
+export * from './adapters';
+```
 
-// Convenient grouped exports
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-import { CrossmarkAdapter } from '@xrpl-connect/adapter-crossmark';
-import { GemWalletAdapter } from '@xrpl-connect/adapter-gemwallet';
-import { WalletConnectAdapter } from '@xrpl-connect/adapter-walletconnect';
-import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
-import { XyraAdapter } from '@xrpl-connect/adapter-xyra';
-import { OtsuAdapter } from '@xrpl-connect/adapter-otsu';
+Then register the constructor in `packages/xrpl-connect/src/adapters.ts`, both in the `Adapters`
+object and in `ADAPTER_DESCRIPTORS`, the packaged adapters in display order:
+
+```typescript
 import { MyWalletAdapter } from '@xrpl-connect/adapter-my-wallet';
 
 export const Adapters = {
-  Xaman: XamanAdapter,
-  Crossmark: CrossmarkAdapter,
-  GemWallet: GemWalletAdapter,
-  WalletConnect: WalletConnectAdapter,
-  Ledger: LedgerAdapter,
-  Xyra: XyraAdapter,
-  Otsu: OtsuAdapter,
+  // ...existing adapters
   MyWallet: MyWalletAdapter,
-};
+} as const;
+
+export const ADAPTER_DESCRIPTORS = [
+  // ...existing descriptors
+  {
+    exportKey: 'MyWallet',
+    id: 'my-wallet',
+    name: 'My Wallet',
+    Adapter: Adapters.MyWallet,
+    availability: 'extension', // 'remote' | 'extension' | 'browser' | 'device'
+    configuration: { requiredOptions: [], supportsDeferredConnection: false },
+  },
+] as const satisfies readonly AdapterDescriptor[];
 ```
 
-Also update `packages/xrpl-connect/src/index.browser.ts` with the same changes.
+Finally, add `'my-wallet'` to `STANDARD_WALLET_IDS` in `packages/core/src/types.ts`, in the same
+order as `ADAPTER_DESCRIPTORS`. The packed-package tests in `packages/xrpl-connect/tests/publish`
+check that both lists match the expected IDs; update those expectations too.
+`index.browser.ts` forwards `index.ts` and needs no change.
 
 ## Step 6: Update the Vanilla JS Example
 
@@ -542,22 +626,28 @@ git push origin feat/add-my-wallet-adapter
 
 ## Common Patterns
 
-### Auto-reconnect on Load
+### Restore a Session After Reload
+
+`WalletManager` persists the session and restores it through `reconnect()` (automatically with
+`autoConnect: true`); adapters do not read the manager's storage. To restore the same account,
+implement `serializeReconnectOptions()`. The manager stores the small, JSON-safe object it returns
+and passes it back to `connect()` on restore, together with the session's network:
 
 ```typescript
-async connect(options?: ConnectOptions): Promise<void> {
-  if (options?.autoConnect && this.hasStoredSession()) {
-    // Silent reconnection
-    const session = this.getStoredSession();
-    // ... reconnect logic
+serializeReconnectOptions(): ReconnectOptions | undefined {
+  return this.account ? { myWalletAddress: this.account.address } : undefined;
+}
+
+async connect(options?: ConnectOptions<{ myWalletAddress?: string }>): Promise<AccountInfo> {
+  if (options?.myWalletAddress) {
+    // Restore without a new permission prompt, and reject if the wallet now
+    // reports a different account.
   }
   // ... normal connection flow
 }
-
-private hasStoredSession(): boolean {
-  return !!localStorage.getItem(`myWallet_session`);
-}
 ```
+
+Never return tokens, keys, or other secrets from `serializeReconnectOptions()`.
 
 ### Handle Network Switching
 
@@ -609,7 +699,7 @@ private withTimeout<T>(promise: Promise<T>, ms = 30000): Promise<T> {
 
 - [XRPL Documentation](https://xrpl.org)
 - [XRPL Transaction Types](https://xrpl.org/transaction-types.html)
-- [Existing Adapters](https://github.com/XRPL-Commons/xrpl-connect/tree/main/packages/adapters)
+- [Existing Adapters](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/packages/adapters)
 - [GitHub Issues](https://github.com/XRPL-Commons/xrpl-connect/issues)
 
 ## Support

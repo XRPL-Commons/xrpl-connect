@@ -82,10 +82,10 @@ pnpm --filter react-example... build
 ```
 
 The monorepo uses workspace links. When copying this example into a standalone project, install
-the published stable packages explicitly:
+the published packages explicitly:
 
 ```bash
-pnpm add @xrpl-commons/xrpl-connect-react @xrpl-commons/xrpl-connect-privy xrpl-connect xrpl@^4 react react-dom
+pnpm add @xrpl-commons/xrpl-connect-react@rc @xrpl-commons/xrpl-connect-privy@rc xrpl-connect@rc xrpl@^4 react react-dom
 ```
 
 ### 4. Run Development Server
@@ -208,7 +208,7 @@ transaction, message-signing, and error-handling examples.
 1. Enter a destination XRPL address (e.g., `rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT`)
 2. Enter an amount in drops (1 XRP = 1,000,000 drops)
 3. Click "Sign Transaction" to create a signed blob without submitting, or click "Sign & Submit Transaction"
-4. Approve the transaction in your wallet
+4. Approve the transaction in your wallet. With Privy, approve it in the connector's review dialog
 5. The signed or submitted transaction hash will be displayed
 
 ### Signing a Message

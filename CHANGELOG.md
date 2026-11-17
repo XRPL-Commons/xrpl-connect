@@ -7,13 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0-rc.0] - 2026-11-16
+
+### Added
+
+- New package `@xrpl-commons/xrpl-connect-privy` (`PrivyAdapter`): Privy social login with user-owned native XRPL embedded wallets, in the browser and without an application backend. Login methods come from the Privy dashboard each time the chooser opens (email, phone, OAuth, passkeys, Farcaster, and application-defined methods such as custom JWT through `loginMethods`); email and phone codes and any dashboard CAPTCHA are requested through authentication prompts. Every signature requires a transaction review: the wallet connector shows it by default, `transactionReview` accepts a custom review function or `'none'` for headless signing, and signing fails when nothing can show the review. Every fee, including one supplied by the application, is limited to 2 XRP. Guest login requires `allowGuestLogin: true`, because a guest wallet is lost on logout, and a login that completes after disconnect never replaces a newer session.
+- UI: a **Sign in with socials** entry opens a chooser of the login methods adapters report, and the connector shows authentication prompts (fields, one-time-code cells, CAPTCHA, QR code) and transaction reviews in its dialog. The `socialLogins` property and the React and Vue `socialLogins` prop add explicit chooser entries (`SocialLogin`).
+- Core: optional adapter methods `getLoginMethods()` and `onAuthPrompt()`, with the `WalletLoginMethod`, `WalletAuthField`, `WalletAuthPrompt`, `WalletTransactionReview`, and `WalletTransactionReviewDetail` types, and `PendingConnection` for logins that return through a redirect.
+- Core: `decodeMessage` and the signed-transaction verification helpers `assertSignedTransaction`, `assertRequestedTransaction`, and `canonicalizeTransaction` (`SignedTransactionExpectation`, `RequestedTransactionPolicy`) for adapter authors.
+- Core: `WalletManager.networkMismatch` returns the `NETWORK_MISMATCH` error signing rejects with while the wallet is off the requested network, or `null`.
+
 ### Security
 
 - Xaman: a link carrying another account's OAuth credentials no longer signs the visitor in; only the callback of a sign-in started in this browser completes. Sign-in uses the authorization code flow with PKCE (S256) instead of returning the access token in the page URL, logout deletes the stored token, and each signing window opens under a random name.
 - WalletConnect: verify signed results before returning them (connected account, signature, network, every requested field, and the reported hash) and return the verified `tx_blob`. Xaman and WalletConnect send and compare requests in canonical codec form, so equivalent encodings are accepted (a Payment's `DeliverMax` becomes `Amount`, as in xrpl's `autofill`) and unserializable transactions fail before the wallet opens.
-- Privy: require a transaction review before every signature. The wallet connector shows it by default; `transactionReview` accepts a custom review function or `'none'` for headless signing, and signing fails when nothing can show the review. The 2 XRP fee limit also applies to fees supplied by the application.
-- Privy: guest login requires `allowGuestLogin: true`, because a guest wallet is lost on logout; a stale login that completes after disconnect no longer replaces a newer session.
-- Core: enforce the requested network for the whole session, including restores, logins that return through a redirect (Privy OAuth, Xaman mobile), and wallet network switches; signing rejects with `NETWORK_MISMATCH` until the wallet returns to it.
+- Core: enforce the requested network for the whole session, including restores, logins that return through a redirect (Xaman mobile, and Privy OAuth in the new package), and wallet network switches; signing rejects with `NETWORK_MISMATCH` until the wallet returns to it.
 - Core: keep transactions, signed blobs, and signatures out of logs, including signing failures, which log only the error code and message; development logging depends only on `NODE_ENV`, and a custom logger instance no longer forces the debug level.
 - Core: reject message signatures for invalid UTF-8 input (`INVALID_MESSAGE`) or from a signer other than the connected account.
 - MetaMask Snap: accept only exact MetaMask EIP-6963 identifiers, drop the `window.ethereum` fallback, and pin the `xrpl-snap` version (`snapVersion` option).
@@ -24,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Core: the stored connection record (schema version 2) keeps the requested network, and restores request the configured `network` first. An older runtime discards it, so a downgrade signs the user out once. A login that can return through a redirect is also kept for up to an hour under the `pending-connection` storage key, with the network it was requested on.
 - Core: a custom logger instance receives warnings and errors unless it sets `level`.
-- Core/React/Vue: `WalletManager.networkMismatch` returns the `NETWORK_MISMATCH` error signing rejects with while the wallet is off the requested network, and the React and Vue `error` state clears that error once the wallet is back.
+- React/Vue: the `error` state holds the `NETWORK_MISMATCH` error while the wallet is off the requested network and clears it once the wallet is back.
 - WalletConnect: `tx_json` results are decoded from the verified blob, in canonical form; multi-signing requests reject with `UNSUPPORTED_METHOD`, and a `signAndSubmit()` that fails verification carries `transactionHash` for reconciliation.
 - Xaman: sessions saved under the legacy `XummPkceJwt` key are no longer restored, so affected users sign in once more; the token exchange needs `https://oauth2.xumm.app` in `connect-src`.
 

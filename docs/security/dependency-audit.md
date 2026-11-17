@@ -1,9 +1,13 @@
+---
+description: Results of the workspace dependency audit and the remaining low-severity elliptic advisory.
+---
+
 # Dependency security audit
 
-Last verified: 2026-11-06
+Last verified: 2026-11-16
 
-This audit covers all 59 open GitHub Dependabot alerts and the complete workspace
-dependency graph, including development tools:
+These commands audit the complete workspace dependency graph, including development
+tools, and its production dependencies only:
 
 ```sh
 pnpm audit
@@ -12,6 +16,12 @@ pnpm audit --prod
 
 ## Result
 
+Both commands report one low-severity advisory and nothing of moderate or higher
+severity: `elliptic` 6.6.1, [GHSA-848j-6mx2-7j84](#remaining-upstream-dependency).
+
+The 2026-11-06 dependency update addressed the 59 GitHub Dependabot alerts open at
+the time, across all dependencies:
+
 | Severity | Before (all dependencies) | After (all dependencies) |
 | -------- | ------------------------: | -----------------------: |
 | Critical |                         2 |                        0 |
@@ -19,10 +29,9 @@ pnpm audit --prod
 | Moderate |                        27 |                        0 |
 | Low      |                        11 |                        1 |
 
-The updated lockfile excludes the vulnerable versions for **58 of 59** open
-Dependabot alerts. Both audit commands report only the remaining low-severity
-`elliptic` advisory. Alerts are not dismissed; GitHub reevaluates the dependency
-graph after the changes reach the default branch.
+The updated lockfile excludes the vulnerable versions for **58 of 59** of those
+alerts; the remaining one is the `elliptic` advisory. Alerts are not dismissed;
+GitHub reevaluates the dependency graph after the changes reach the default branch.
 
 ## Dependency changes
 
@@ -44,6 +53,11 @@ graph after the changes reach the default branch.
   function, not the removed `AST` or `makeRe` exports. Verify this override with
   the React declaration build and documentation build.
 
+Since that update, the optional Privy package added `@privy-io/js-sdk-core`
+(pinned to 0.79.4), `@privy-io/routes`, `viem`, and `@noble/curves`, and the Xaman
+adapter added `@noble/hashes` for PKCE sign-in. The audit above includes them and
+reports no advisory for them.
+
 Vite+ now requires Node.js 22.18+, 24.11+, or 26+ for development. Published
 packages retain their Node.js 20.19 support: CI builds the Node 20 consumer lane
 with Node 22, then switches to Node 20 to run the packed-package compatibility
@@ -57,12 +71,16 @@ include:
 
 - Crossmark's `@crossmarkio/typings` through the legacy `@transia/xrpl` and
   `xrpl` dependency trees, including `ripple-keypairs` and `tiny-secp256k1`.
-  XRPL Connect imports those Crossmark declarations with `import type` and
-  bundles the required declarations into published artifacts.
+  This is the path `pnpm audit --prod` reports. It exists only inside this
+  workspace: XRPL Connect imports those Crossmark declarations with `import type`
+  and bundles the required declarations into the published `xrpl-connect`
+  package, so consumers do not install Crossmark typings, the legacy XRPL or
+  Transia packages, or `elliptic`, and the shipped bundle does not contain it.
 - The browser build tooling through `vite-plugin-node-polyfills` →
   `node-stdlib-browser` → `crypto-browserify` → `browserify-sign` → `elliptic`.
-  The vanilla example actively uses this polyfill plugin. This dependency
-  graph must not be described as exclusively declarations-only.
+  The `examples/vanilla-js` and `examples/privy-vanilla` Vite configurations use
+  this polyfill plugin (the Privy example enables only its `buffer` polyfill).
+  This dependency graph must not be described as exclusively declarations-only.
 
 Current upstream Crossmark typings and browser crypto polyfills still require
 these dependencies. Forcing newer XRPL, keypair, or secp256k1 major versions would

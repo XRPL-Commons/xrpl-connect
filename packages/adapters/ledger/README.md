@@ -13,12 +13,15 @@ Ledger hardware wallet adapter for XRPL Connect.
 
 ## Installation
 
+The Ledger adapter ships in the `xrpl-connect` package, which re-exports every adapter. The
+`@xrpl-connect/adapter-ledger` workspace package is not published to npm.
+
 ```bash
-npm install @xrpl-connect/adapter-ledger
+npm install xrpl-connect@rc xrpl@^4
 # or
-pnpm add @xrpl-connect/adapter-ledger
+pnpm add xrpl-connect@rc xrpl@^4
 # or
-yarn add @xrpl-connect/adapter-ledger
+yarn add xrpl-connect@rc xrpl@^4
 ```
 
 ## Usage
@@ -26,8 +29,7 @@ yarn add @xrpl-connect/adapter-ledger
 ### Basic Setup
 
 ```typescript
-import { WalletManager } from '@xrpl-connect/core';
-import { LedgerAdapter } from '@xrpl-connect/adapter-ledger';
+import { WalletManager, LedgerAdapter } from 'xrpl-connect';
 
 const walletManager = new WalletManager({
   adapters: [
@@ -143,7 +145,7 @@ verifies that signer-specific preimage locally before returning the contribution
 ### Check Device State
 
 ```typescript
-import { LedgerAdapter, LedgerDeviceState } from '@xrpl-connect/adapter-ledger';
+import { LedgerAdapter, LedgerDeviceState } from 'xrpl-connect';
 
 const adapter = new LedgerAdapter();
 const state = await adapter.getDeviceState();
@@ -221,9 +223,8 @@ accounts.forEach((account) => {
 //   Path: 44'/144'/1'/0/0
 // ...
 
-// User selects account 2, now connect with that account:
-const selectedAdapter = new LedgerAdapter({ accountIndex: 2 });
-await walletManager.connect(selectedAdapter);
+// User selects account 2; connect the manager's Ledger adapter with that account:
+await walletManager.connect('ledger', { accountIndex: 2 });
 ```
 
 ## Device States
@@ -274,7 +275,7 @@ try {
 Built-in user-friendly messages for each state:
 
 ```typescript
-import { LEDGER_STATE_MESSAGES } from '@xrpl-connect/adapter-ledger';
+import { LEDGER_STATE_MESSAGES, LedgerDeviceState } from 'xrpl-connect';
 
 // Access messages
 console.log(LEDGER_STATE_MESSAGES[LedgerDeviceState.LOCKED]);

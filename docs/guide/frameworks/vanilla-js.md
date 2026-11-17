@@ -94,8 +94,13 @@ Here's a complete example with a single HTML file:
 
 ## Privy social login
 
-Add the optional `@xrpl-commons/xrpl-connect-privy` package and register a
-`PrivyAdapter` with your public app ID and a same-application callback URL.
+Install the optional Privy package from the same release as `xrpl-connect`:
+
+```bash
+npm install @xrpl-commons/xrpl-connect-privy@rc
+```
+
+Register a `PrivyAdapter` with your public app ID and a same-application callback URL.
 The [social login guide](/guide/social-login#configure-your-application) shows the
 configuration, dashboard setup, and callback handling. The web component discovers
 your enabled login methods from Privy without a `socialLogins` property or React.
@@ -134,6 +139,18 @@ walletManager.on('accountChanged', (account) => {
 // Network change (user switched networks)
 walletManager.on('networkChanged', (network) => {
   console.log('Network changed:', network.name);
+});
+
+// Disconnect requested; emitted before asynchronous teardown
+walletManager.on('disconnecting', () => {
+  console.log('Disconnecting');
+});
+
+// The wallet left the requested network; signing rejects until it returns
+walletManager.on('error', (error) => {
+  if (error.code === 'NETWORK_MISMATCH') {
+    console.warn('Switch back to the requested network:', error.message);
+  }
 });
 ```
 
@@ -232,7 +249,8 @@ Now users will see all four wallets in the connection modal!
 ## Error Handling
 
 Wallet operations report failures through rejected promises. Handle them at the
-call site:
+call site. The manager's `error` event reports only a wallet that left the requested
+network (see [Handling Wallet Events](#handling-wallet-events)):
 
 ```javascript
 try {

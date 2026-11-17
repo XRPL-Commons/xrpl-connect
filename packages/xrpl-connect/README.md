@@ -19,6 +19,9 @@ This package acts as a facade or umbrella package that:
 
 This eliminates the need to juggle multiple imports in your application code.
 
+The `@xrpl-connect/*` packages are workspace packages that are not published to
+npm. `xrpl-connect` is the published entry point, so applications import from it.
+
 ---
 
 ## Package Structure
@@ -26,13 +29,15 @@ This eliminates the need to juggle multiple imports in your application code.
 ```
 packages/xrpl-connect/
 ├── src/
-│   └── index.ts              # Central export point
+│   ├── index.ts              # Central export point
+│   ├── index.browser.ts      # Browser entry (forwards index.ts)
+│   └── adapters.ts           # Adapters, ADAPTER_DESCRIPTORS, createAdapters
+├── scripts/                  # Type bundling, publish preparation, release checks
+├── tests/publish/            # Packed-consumer runtime and type fixtures
 ├── package.json
 ├── tsconfig.json
 ├── vite.config.ts
-├── scripts/
-│   └── build-webcomp.ts      # Build scripts
-└── CODE_DOC.md               # This file
+└── README.md                 # This file
 ```
 
 ### Main Export File
@@ -109,44 +114,105 @@ Everything exported from `xrpl-connect` comes from its dependencies:
 ```typescript
 export {
   // Classes
-  WalletManager,
+  WalletManager, // includes the networkMismatch and defaultNetwork getters
   WalletError,
+  Storage,
   LocalStorageAdapter,
   MemoryStorageAdapter,
   Logger,
 
   // Types
   WalletAdapter,
+  WalletId,
+  WalletIdentifier,
   AccountInfo,
   NetworkInfo,
+  NetworkConfig,
+  StandardNetworkId,
+  Transaction,
   SignedTransaction,
   ManagedSignedTransaction,
   SubmittedTransaction,
   SignedMessage,
   ManagedSignedMessage,
   WalletCapabilities,
+  SupportsPreInitialize,
+  SupportsDeepLink,
   SupportsFetchAccount,
+  SupportsReconnectOptions,
   SupportsPendingConnection,
   WalletEvent,
   WalletAdapterEvent,
   ConnectOptions,
+  ConnectOptionsFor,
+  WalletConnectionOptionsById,
+  ReconnectOptions,
   WalletManagerOptions,
   LoggerOptions,
+  LoggerInstance,
+  LogLevel,
   StorageAdapter,
+  StorageOptions,
+  StoredState,
+  StoredStateEnvelope,
+  StoredStateMigration,
+  PendingConnection, // a redirect login recorded with its requested network
+
+  // Login methods, authentication prompts, and transaction reviews
+  WalletLoginMethod,
+  WalletAuthField,
+  WalletAuthPrompt,
+  WalletTransactionReview,
+  WalletTransactionReviewDetail,
 
   // Enums
   WalletErrorCode,
+  WalletErrorCategory,
 
   // Constants
   STANDARD_NETWORKS,
+  STANDARD_WALLET_IDS,
   CAPABILITY_DEFAULTS,
+  STORED_STATE_VERSION,
+  STATE_MIGRATIONS,
+  TIME,
 
-  // Capability helpers
+  // Capability and configuration helpers
   adapterSupports,
+  supportsPreInitialize,
+  supportsDeepLink,
   supportsFetchAccount,
+  supportsReconnectOptions,
   supportsPendingConnection,
+  getMissingAdapterConfiguration,
+  isAdapterConfigured,
+
+  // Error, logging, network, and runtime helpers
+  createWalletError,
+  isWalletError,
+  getErrorMessage,
+  getWalletErrorCategory,
+  createLogger,
+  configureLogger,
+  isLoggerInstance,
+  isStandardNetworkId,
+  resolveNetwork,
+  isMobile,
+  withTimeout,
+
+  // Message and signed-transaction verification helpers for adapters
+  decodeMessage,
+  canonicalizeTransaction,
+  assertSignedTransaction,
+  assertRequestedTransaction,
+  SignedTransactionExpectation,
+  RequestedTransactionPolicy,
 };
 ```
+
+See the [core package documentation](../core/README.md) for the
+`networkMismatch` getter, login and authentication prompt types, and the
+verification helpers.
 
 ### From @xrpl-connect/ui
 
@@ -640,23 +706,15 @@ remain. See the [full policy and multisign limitations](https://github.com/XRPL-
 **Solution**: Use tree-shaking by importing specific adapters:
 
 ```typescript
-// Instead of importing everything
-import { WalletManager, Adapters } from 'xrpl-connect';
+import { WalletManager, XamanAdapter } from 'xrpl-connect';
+
 const manager = new WalletManager({
-  adapters: [new Adapters.Xaman({ apiKey })], // Only includes Xaman
+  adapters: [new XamanAdapter({ apiKey })], // Only includes Xaman
 });
 ```
 
-Or import from the specific adapter package:
-
-```typescript
-import { WalletManager } from '@xrpl-connect/core';
-import { XamanAdapter } from '@xrpl-connect/adapter-xaman';
-
-const manager = new WalletManager({
-  adapters: [new XamanAdapter({ apiKey })],
-});
-```
+The individual `@xrpl-connect/*` packages are not published, so import adapters
+from `xrpl-connect` by name.
 
 ---
 

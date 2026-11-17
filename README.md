@@ -10,6 +10,7 @@
 
 - **Framework Agnostic** - Works with Vanilla JS, React, Vue, and any other framework
 - **Multiple Wallets** - Support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, GHOSTSIG, Otsu, and MetaMask Snap
+- **Social Login** - Optional email, phone, OAuth, and passkey sign-in with user-owned XRPL embedded wallets through `@xrpl-commons/xrpl-connect-privy`
 - **Modular Architecture** - Install only what you need
 - **Type Safe** - Full TypeScript support with comprehensive type definitions
 - **Event Driven** - Reactive architecture for connection state changes
@@ -33,7 +34,7 @@ Please read the documentation here [DOCS](https://xrpl-commons.github.io/xrpl-co
 ### Installation
 
 ```bash
-npm install xrpl-connect xrpl@^4
+npm install xrpl-connect@rc xrpl@^4
 ```
 
 That's it! Everything you need in one package.
@@ -48,8 +49,16 @@ The easiest way to use XRPL Connect is with the plug-and-play web component:
 <!-- Add the web component to your HTML -->
 <button id="connect-btn">Connect Wallet</button>
 
-<xrpl-wallet-connector id="wallet-connector" background-color="#1a202c" primary-wallet="xaman">
-</xrpl-wallet-connector>
+<xrpl-wallet-connector id="wallet-connector" primary-wallet="xaman"></xrpl-wallet-connector>
+```
+
+**CSS:**
+
+```css
+/* Theme the connector with CSS variables */
+xrpl-wallet-connector {
+  --xc-background-color: #1a202c;
+}
 ```
 
 **JavaScript:**
@@ -110,6 +119,8 @@ try {
 That's it! The web component provides a beautiful, pre-built UI for wallet selection, QR codes, and connection states.
 
 > **Heads up on `autoConnect`:** with `autoConnect: true`, the WalletManager silently restores the previous session from `localStorage` when your page loads and emits a `connect` event before any user interaction. Register your `connect` and `disconnect` listeners **immediately** after constructing the manager so you don't miss that initial event. Handle operation failures through their rejected promises or the web component's `error` event.
+>
+> If the connected wallet switches to another network, the session stays connected but the manager emits an `error` event with a `NETWORK_MISMATCH` error, and signing rejects with that error until the wallet returns to the requested network. `walletManager.networkMismatch` returns the current mismatch, or `null`.
 
 ### Direct wallet SDK access
 
@@ -127,10 +138,11 @@ const address = await GemWalletAPI.getAddress();
 
 ## 📚 Documentation
 
-- **[Getting Started Guide](./docs/guide/getting-started.md)** - Complete introduction to XRPL Connect
-- **[Vanilla JS Integration](./docs/guide/frameworks/vanilla-js.md)** - Using XRPL Connect with vanilla JavaScript
-- **[React Integration](./docs/guide/frameworks/react.md)** - React integration patterns and best practices
-- **[Vue Integration](./docs/guide/frameworks/vue.md)** - Vue 3 integration guide
+- **[Getting Started Guide](https://xrpl-commons.github.io/xrpl-connect/guide/getting-started)** - Complete introduction to XRPL Connect
+- **[Vanilla JS Integration](https://xrpl-commons.github.io/xrpl-connect/guide/frameworks/vanilla-js)** - Using XRPL Connect with vanilla JavaScript
+- **[React Integration](https://xrpl-commons.github.io/xrpl-connect/guide/frameworks/react)** - React integration patterns and best practices
+- **[Vue Integration](https://xrpl-commons.github.io/xrpl-connect/guide/frameworks/vue)** - Vue 3 integration guide
+- **[Social Login Guide](https://xrpl-commons.github.io/xrpl-connect/guide/social-login)** - Privy sign-in and embedded XRPL wallets
 
 ## 🏗️ Architecture
 

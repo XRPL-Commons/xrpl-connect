@@ -1,0 +1,25 @@
+{
+  "version": "1.0.0",
+  "sourceTag": "v1.0.0",
+  "sourceCommit": "69a616ae02453ab7068dbf6abf1439d6d8deb00e",
+  "pages": [
+    "concepts.md",
+    "customization-builder.md",
+    "guide/adapter-integration.md",
+    "guide/api-reference.md",
+    "guide/customization.md",
+    "guide/examples.md",
+    "guide/frameworks/nuxt.md",
+    "guide/frameworks/react.md",
+    "guide/frameworks/vanilla-js.md",
+    "guide/frameworks/vue.md",
+    "guide/getting-started.md",
+    "guide/migration-v1.md",
+    "guide/production.md",
+    "guide/transactions.md",
+    "guide/wallets.md",
+    "index.md",
+    "security/dependency-audit.md",
+    "try-it-out.md"
+  ]
+}

@@ -11,13 +11,13 @@ in the application.
 ## Installation
 
 ```bash
-npm install @xrpl-commons/xrpl-connect-vue xrpl-connect xrpl@^4 vue
+npm install @xrpl-commons/xrpl-connect-vue@rc xrpl-connect@rc xrpl@^4 vue
 ```
 
 ## Configure the plugin
 
-The install command selects the coordinated stable v1 packages. Keep the Vue binding and
-`xrpl-connect` on the same release line.
+The install command selects the coordinated `1.1.0-rc.0` release candidate from npm's `rc` tag.
+Keep the Vue binding and `xrpl-connect` on the same release.
 
 Import adapters from `xrpl-connect` in the browser entry point. Evaluating that package entry
 also registers the wallet connector custom element. Then install the Vue plugin before mounting
@@ -45,6 +45,39 @@ app.mount('#app');
 
 Each plugin installation owns one `WalletManager`. Its state and event listeners are isolated
 from other Vue applications on the same page and are released when the app unmounts.
+
+## Privy social login
+
+Install the optional Privy package from the same release as `xrpl-connect`:
+
+```bash
+npm install @xrpl-commons/xrpl-connect-privy@rc
+```
+
+Create the `PrivyAdapter` once in the browser entry point and add it to the plugin's adapters:
+
+```ts
+import { PrivyAdapter } from '@xrpl-commons/xrpl-connect-privy';
+
+const privy = new PrivyAdapter({
+  appId: import.meta.env.VITE_PRIVY_APP_ID,
+  redirectUri: `${window.location.origin}/wallet/privy`,
+});
+
+app.use(
+  createXrplConnect({
+    adapters: [privy, new CrossmarkAdapter()],
+    network: 'testnet',
+    autoConnect: true,
+  })
+);
+```
+
+Keep `autoConnect: true`: the plugin attaches its listeners before restoring a session or
+completing an OAuth callback, so no separate `reconnect()` call is needed. The connector discovers
+the enabled methods from Privy without a `socialLogins` prop; if you set `wallets`, include
+`'privy'`. Allow the origin and callback in Privy and serve the same application at the callback
+path. See [social login](/guide/social-login) for dashboard setup and transaction review.
 
 ## Wallet state and modal
 

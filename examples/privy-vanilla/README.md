@@ -10,12 +10,15 @@ and no React runtime. It runs entirely in the browser.
    configuration. Login choices are read from the dashboard when the chooser opens.
 4. From the repository root, run `pnpm install`, `pnpm build`, then
    `pnpm --filter privy-vanilla-example dev`.
-5. Open `http://localhost:5176`, choose **Sign in with socials**, select one of the
+5. Open `http://localhost:5176`, not the `http://127.0.0.1:5176` address Vite prints:
+   the server binds to `127.0.0.1`, but the Privy origin allowlist uses `localhost`.
+   Choose **Sign in with socials**, select one of the
    enabled methods, and finish authentication. Toggle a method in the dashboard
    and reopen the chooser to check that the list updates.
    The callback resumes the connection after the embedded XRPL wallet is ready.
 6. Use **Fund testnet wallet**, **Sign transaction**, and **Sign and submit** to
-   verify signing and a validated XRPL testnet submission.
+   verify signing and a validated XRPL testnet submission. Approve each
+   transaction in the connector's review dialog.
 
 Reload to test restoration; log out and sign in again to verify the same wallet is
 reused. Cancel a connection and retry to check recovery. Without `VITE_PRIVY_APP_ID`,

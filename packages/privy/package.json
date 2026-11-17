@@ -1,6 +1,6 @@
 {
   "name": "@xrpl-commons/xrpl-connect-privy",
-  "version": "1.0.0",
+  "version": "1.1.0-rc.0",
   "description": "Framework-independent Privy social login and embedded XRPL wallets for XRPL Connect",
   "license": "MIT",
   "author": "XRPL Connect Contributors",
@@ -50,7 +50,7 @@
   },
   "peerDependencies": {
     "xrpl": "^3.0.0 || ^4.0.0 || ^5.0.0",
-    "xrpl-connect": "^1.0.0"
+    "xrpl-connect": "^1.1.0-rc.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

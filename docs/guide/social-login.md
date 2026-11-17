@@ -1,3 +1,7 @@
+---
+description: Add Privy social login and user-owned embedded XRPL wallets to the XRPL Connect wallet picker.
+---
+
 # Social login with Privy
 
 XRPL Connect can display social login alongside existing wallet choices. The
@@ -97,6 +101,15 @@ does not automatically send a transaction.
 
 ## Configure your application
 
+Install the Privy package alongside `xrpl-connect`:
+
+```bash
+npm install xrpl-connect@rc @xrpl-commons/xrpl-connect-privy@rc xrpl@^4
+```
+
+Keep both packages on the same release: the Privy package requires the matching
+`xrpl-connect` release as a peer dependency.
+
 ```js
 import { WalletManager, CrossmarkAdapter } from 'xrpl-connect';
 import { PrivyAdapter } from '@xrpl-commons/xrpl-connect-privy';
@@ -143,9 +156,11 @@ the adapter-owned Privy session.
 
 The embedded wallet has no wallet app of its own to ask the user, so before every
 signature the connector opens a **Review transaction** dialog. It lists every field
-of the exact transaction to be signed, with the type, amount, destination and tag,
-fee, network, and account first; XRP amounts appear in XRP, issued currencies with
-their issuer, and MPT amounts with their issuance ID. The wallet signs only after the
+of the exact transaction to be signed: the type, amount, destination, and
+destination tag first, then the transaction's other fields, then the fee, network,
+and account, and last the sequencing and signing fields such as `Sequence`,
+`LastLedgerSequence`, and `SigningPubKey`. XRP amounts appear in XRP, issued
+currencies with their issuer, and MPT amounts with their issuance ID. The wallet signs only after the
 user selects **Approve**. Rejecting or closing the dialog rejects the request with a
 `SIGN_REJECTED` wallet error, and a disconnect during the review rejects it with
 `NOT_CONNECTED`. Concurrent requests are reviewed one at a time, and **Approve**

@@ -6,7 +6,7 @@ composables, and a typed `<WalletConnector>` modal component.
 ## Install
 
 ```bash
-npm install @xrpl-commons/xrpl-connect-vue xrpl-connect xrpl@^4 vue
+npm install @xrpl-commons/xrpl-connect-vue@rc xrpl-connect@rc xrpl@^4 vue
 ```
 
 ## Usage
@@ -65,18 +65,21 @@ See the [CSP policy, nonce lifecycle, and wallet-specific limits](https://github
 - The plugin owns persisted-session restoration and calls `reconnect()` only when
   `config.autoConnect` is `true`; mounting `<WalletConnector>` does not restore a session by
   itself. Use `useWallet().manager.reconnect()` for an explicit restore when automatic restoration
-  is disabled. Reconnection also completes a returned Xaman OAuth login before the first manager
-  session has been saved.
+  is disabled. Reconnection also completes a Xaman or Privy login that returns through a redirect
+  before the first manager session has been saved.
 - `useWallet()` exposes `manager`, readonly `connected`, `account`, `network`, `connecting`,
-  and `error` refs, plus `connect` and `disconnect`.
+  and `error` refs, plus `connect` and `disconnect`. Besides connection failures, `error` holds
+  `NETWORK_MISMATCH` when the connected wallet switches away from the requested network; it clears
+  once the wallet is back on that network.
 - `useSigner()` exposes `sign`, `signAndSubmit`, and `signMessage`.
 - `useWalletModal()` exposes a readonly `ready` ref, awaitable `open()` and `openAndWait()`
   methods, and `close()` for the active connector. `openAndWait()` resolves with the connected
   account and rejects if opening fails or the modal closes first.
-- `<WalletConnector>` accepts `primaryWallet`, `wallets`, `showUnavailable`, `theme`, and
-  `cssVars`, and emits `connecting`, `connect`, and typed `error` events. Unavailable wallets are
-  hidden by default; set the camelCase Vue prop `showUnavailable` to show an Install action when
-  the adapter provides a download URL, or a disabled Unavailable row otherwise.
+- `<WalletConnector>` accepts `primaryWallet`, `wallets`, `socialLogins` (`SocialLogin` entries
+  for the **Sign in with socials** chooser), `showUnavailable`, `theme`, and `cssVars`, and emits
+  `connecting`, `connect`, and typed `error` events. Unavailable wallets are hidden by default; set
+  the camelCase Vue prop `showUnavailable` to show an Install action when the adapter provides a
+  download URL, or a disabled Unavailable row otherwise.
 
 `useWallet().connect` narrows deferred options from the wallet ID:
 

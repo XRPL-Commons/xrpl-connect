@@ -1,5 +1,5 @@
 ---
-description: Production, security, SSR, persistence, and browser guidance for XRPL Connect v1.0.
+description: Production, security, SSR, persistence, and browser guidance for XRPL Connect v1.
 ---
 
 # Production and security
@@ -32,7 +32,9 @@ template does not stop that component's setup function from running during SSR. 
 
 ## Persistence and reconnection
 
-`autoConnect: true` stores a minimal, versioned connection record and asks the adapter to restore it. It never stores arbitrary connect options or private signing material. Register manager listeners immediately after construction because reconnection may finish before UI mount.
+The manager stores a minimal, versioned connection record after every successful connection. `autoConnect: true` only restores it on page load; without it, call `manager.reconnect()`. The record never stores arbitrary connect options or private signing material. Register manager listeners immediately after construction because reconnection may finish before UI mount.
+
+A login that can return through a redirect (Privy OAuth, Xaman mobile sign-in) is also recorded, with the network it was requested on, for up to one hour, so the returning page completes it on that network. A committed session or `disconnect()` removes that record. With the default `localStorage` adapter, the keys are `xrpl-connect:wallet-state` and `xrpl-connect:pending-connection`. Privy's SDK keeps its own authentication tokens in `localStorage`; the manager record stores the Privy wallet and user IDs, never tokens.
 
 Supply a custom `StorageAdapter` when local storage is inappropriate, or `MemoryStorageAdapter` for non-persistent/test environments.
 
@@ -97,6 +99,26 @@ directives. WalletConnect's built-in inline QR logo does not require adding `dat
 `connect-src`; displaying inline images still requires `data:` in `img-src`. A report-only
 CSP warning does not block a request, but a separate enforced policy can. Never log or share
 WalletConnect pairing URIs: they contain a pairing secret.
+
+## Privy social login and CSP
+
+With the optional Privy adapter, allow these origins in an enforced policy:
+
+| Directive                                             | Origins                                       | Used for                                                                 |
+| ----------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------ |
+| `connect-src`                                         | `https://auth.privy.io`                       | Privy API: dashboard settings, login, and wallet requests                |
+| `frame-src`                                           | `https://auth.privy.io`                       | Privy's hidden embedded-wallet iframe (`/apps/<appId>/embedded-wallets`) |
+| `connect-src`                                         | The session network's `wss` endpoint          | Autofill and submission through an XRPL WebSocket client                 |
+| `script-src`, `frame-src`                             | `https://challenges.cloudflare.com`           | Cloudflare Turnstile, when the Privy dashboard requires CAPTCHA          |
+| `script-src`, `frame-src`, `style-src`, `connect-src` | `https://hcaptcha.com https://*.hcaptcha.com` | hCaptcha, when the Privy dashboard requires CAPTCHA                      |
+
+The connector loads the CAPTCHA script itself (`https://challenges.cloudflare.com/turnstile/v0/api.js`
+or `https://js.hcaptcha.com/1/api.js`) and copies its own `nonce` onto that script element. Allow only
+the provider your dashboard uses; see the
+[Turnstile](https://developers.cloudflare.com/turnstile/reference/content-security-policy/) and
+[hCaptcha](https://docs.hcaptcha.com/#content-security-policy-settings) CSP references. OAuth login
+navigates the whole page to the provider and back to `redirectUri`; it opens no popup and needs no
+`Cross-Origin-Opener-Policy` change.
 
 ## Strict Content Security Policy
 
@@ -241,3 +263,4 @@ if (isWalletError(error)) {
 - Test reconnect, disconnect, modal close, route unmount, and late wallet approval.
 - Confirm CSP, popup, deep-link, WebHID, and iframe policies.
 - Monitor failures without logging addresses, tokens, payload URLs, or credentials.
+- Review the [dependency security audit](/security/dependency-audit) for known advisories.

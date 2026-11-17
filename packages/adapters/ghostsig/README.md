@@ -17,10 +17,13 @@ approves one transaction.
 
 ## Installation
 
+The GHOSTSIG adapter ships in the `xrpl-connect` package, which re-exports every adapter. The
+`@xrpl-connect/adapter-ghostsig` workspace package is not published to npm.
+
 ```bash
-npm install @xrpl-connect/adapter-ghostsig
+npm install xrpl-connect@rc xrpl@^4
 # or
-pnpm add @xrpl-connect/adapter-ghostsig
+pnpm add xrpl-connect@rc xrpl@^4
 ```
 
 ## Usage
@@ -28,8 +31,7 @@ pnpm add @xrpl-connect/adapter-ghostsig
 ### Basic Setup
 
 ```typescript
-import { WalletManager } from '@xrpl-connect/core';
-import { GhostsigAdapter } from '@xrpl-connect/adapter-ghostsig';
+import { WalletManager, GhostsigAdapter } from 'xrpl-connect';
 
 const walletManager = new WalletManager({
   adapters: [new GhostsigAdapter()],

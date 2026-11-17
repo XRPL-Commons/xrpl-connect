@@ -10,43 +10,45 @@ Get up and running with XRPL-Connect in minutes.
 
 ### Release channel
 
-Stable v1 is published under npm's default channel. Install the coordinated packages by their
-bare names and keep the framework binding and `xrpl-connect` versions aligned. The examples below
-pin `xrpl@^4`; the stable packages also declare compatibility with the supported v3 and v5 ranges.
+This documentation tracks the `1.1.0-rc.0` release candidate, published under npm's `rc` tag.
+Install the coordinated packages with `@rc` and keep the framework binding, the optional Privy
+package, and `xrpl-connect` on the same release. The examples below pin `xrpl@^4`; the packages
+also declare compatibility with the supported v3 and v5 ranges. For the stable release, follow the
+[1.0.0 documentation](/1.0.0/guide/getting-started).
 
 A local tarball may retain a prerelease version while containing newer merged fixes; record its
 source commit and integrity hash rather than treating the version label as proof of its contents.
 
 ### Using npm
 
-The stable release supports `xrpl` v3, v4, and v5. The installation commands below remain pinned
+The packages support `xrpl` v3, v4, and v5. The installation commands below remain pinned
 to v4 for a consistent baseline. Applications already using v5 can retain it without pnpm
 compatibility overrides; upgrade the SDK and framework binding together.
 
 ```bash
-npm install xrpl-connect xrpl@^4
+npm install xrpl-connect@rc xrpl@^4
 ```
 
 Add the official bindings for your framework:
 
 ```bash
 # React
-npm install @xrpl-commons/xrpl-connect-react react react-dom
+npm install @xrpl-commons/xrpl-connect-react@rc react react-dom
 
 # Vue 3 or Nuxt
-npm install @xrpl-commons/xrpl-connect-vue vue
+npm install @xrpl-commons/xrpl-connect-vue@rc vue
 ```
 
 ### Using pnpm
 
 ```bash
-pnpm add xrpl-connect xrpl@^4
+pnpm add xrpl-connect@rc xrpl@^4
 ```
 
 ### Using yarn
 
 ```bash
-yarn add xrpl-connect xrpl@^4
+yarn add xrpl-connect@rc xrpl@^4
 ```
 
 The `xrpl-connect` package includes:
@@ -55,6 +57,9 @@ The `xrpl-connect` package includes:
 - **UI** - Beautiful web component for wallet connection
 - **Adapters** - Built-in support for Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, GHOSTSIG, Otsu, and MetaMask Snap
 - **Framework bindings** - Official packages for React and Vue 3 / Nuxt
+
+Social login with Privy is a separate optional package, `@xrpl-commons/xrpl-connect-privy`. See
+[Social login](/guide/social-login).
 
 > **Note:** The `xrpl` package is required for transaction types and utilities.
 
@@ -95,7 +100,7 @@ const adapter = new WalletConnectAdapter({
 
 ### Other Adapters
 
-Crossmark, GemWallet, Xyra, Otsu, and Ledger don't require API keys - they work directly with browser extensions, wallets, or hardware devices:
+Crossmark, GemWallet, Xyra, Otsu, MetaMask Snap, GHOSTSIG, and Ledger don't require API keys - they work directly with browser extensions, wallets, hosted passkey popups, or hardware devices:
 
 ```javascript
 const crossmarkAdapter = new CrossmarkAdapter();
@@ -103,6 +108,7 @@ const gemWalletAdapter = new GemWalletAdapter();
 const xyraAdapter = new XyraAdapter();
 const otsuAdapter = new OtsuAdapter();
 const metaMaskAdapter = new MetaMaskSnapAdapter();
+const ghostsigAdapter = new GhostsigAdapter();
 ```
 
 ### Ledger Hardware Wallet
@@ -131,7 +137,7 @@ const ledgerAdapter = new LedgerAdapter({
 - User must unlock device and open the XRP app
 - Close Ledger Live if it's running (conflicts with WebHID/WebUSB)
 
-For more details on Ledger integration, see the [Ledger adapter documentation](https://github.com/XRPL-Commons/xrpl-connect/tree/main/packages/adapters/ledger).
+For more details on Ledger integration, see the [Ledger adapter documentation](https://github.com/XRPL-Commons/xrpl-connect/tree/develop/packages/adapters/ledger).
 
 ## Quick Start
 
@@ -212,7 +218,7 @@ Once you've installed the package and have your API keys, follow the guide for y
 - **[Vanilla JavaScript](/guide/frameworks/vanilla-js)** - Pure JavaScript, no framework
 - **[React](/guide/frameworks/react)** - Complete React integration guide
 - **[Vue 3](/guide/frameworks/vue)** - Vue 3 Composition API guide
-- **[Nuxt](/guide/frameworks/nuxt)** - Nuxt 3 and Nitro integration
+- **[Nuxt](/guide/frameworks/nuxt)** - Client-only plugin integration (verified with Nuxt 4)
 
 Each guide includes:
 

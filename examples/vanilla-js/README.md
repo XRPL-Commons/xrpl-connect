@@ -6,6 +6,7 @@ This is a demo application showcasing the XRPL Connect wallet toolkit with a van
 
 - Connect to Xaman Wallet (OAuth2 PKCE flow)
 - Connect to WalletConnect (QR code modal)
+- Connect to Crossmark, GemWallet, Ledger, Xyra, GHOSTSIG, Otsu, and MetaMask Snap
 - Optionally sign in with Privy and use an embedded XRPL wallet
 - Sign XRPL transactions
 - Request testnet funding and sign a transaction without submitting it
@@ -80,11 +81,31 @@ pnpm --filter vanilla-js-example... build
 The trailing `...` builds this example and its workspace dependencies before running it. A full
 `pnpm build` from the repository root is equivalent when you are already building every package.
 
-The monorepo uses workspace links. When copying this example into a standalone project, install the
-published stable package and its XRPL peer explicitly:
+The monorepo uses workspace links: `src/main.js` imports the core, UI, and adapter workspace packages
+(`@xrpl-connect/*`), which are not published to npm. When copying this example into a standalone
+project, install the published packages and their XRPL peer explicitly:
 
 ```bash
-pnpm add xrpl-connect @xrpl-commons/xrpl-connect-privy xrpl@^4
+pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-privy@rc xrpl@^4
+```
+
+Then import the same names from `xrpl-connect`, which re-exports the core, every adapter, and the web
+component, and registers `<xrpl-wallet-connector>` when imported:
+
+```javascript
+import {
+  WalletManager,
+  XamanAdapter,
+  WalletConnectAdapter,
+  CrossmarkAdapter,
+  GemWalletAdapter,
+  LedgerAdapter,
+  XyraAdapter,
+  GhostsigAdapter,
+  OtsuAdapter,
+  MetaMaskSnapAdapter,
+} from 'xrpl-connect';
+import { PrivyAdapter } from '@xrpl-commons/xrpl-connect-privy';
 ```
 
 ### 4. Run Development Server
@@ -102,7 +123,9 @@ pnpm --filter vanilla-js-example dev
 ```
 
 The application will be available at [http://localhost:5170](http://localhost:5170). The Vite server
-uses a strict port so the origin remains stable for wallet and Privy callback configuration.
+uses a strict port so the origin remains stable for wallet and Privy callback configuration. It binds
+to `127.0.0.1` and prints that address; open `http://localhost:5170` instead, because the Privy
+allowed origin and callback URL above use `localhost`.
 
 ## Usage
 
@@ -123,8 +146,8 @@ uses a strict port so the origin remains stable for wallet and Privy callback co
 3. To send a payment, enter a destination XRPL address (e.g.,
    `rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT`) and an amount in drops (1 XRP = 1,000,000 drops), then
    click **Sign & Submit Transaction**.
-4. Approve the transaction in your wallet. The signed transaction hash and validated result are
-   displayed.
+4. Approve the transaction in your wallet. With Privy, approve it in the connector's review dialog.
+   The signed transaction hash and validated result are displayed.
 
 The demo never submits a transaction automatically during login or restoration. Privy supports XRPL
 transaction signing and submission, but not arbitrary message signing, so the message form remains
