@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 import { createReleasePublisher } from './publish-release.mjs';
 import {
@@ -159,7 +159,9 @@ test('trusted release workflow publishes before tagging and calls exact-tag docs
   assert.match(workflow, /id-token: write/);
   assert.match(workflow, /environment: npm/);
   assert.match(workflow, /NPM_CONFIG_PROVENANCE: true/);
-  assert.match(workflow, /npm@11\.6\.2/);
+  assert.match(workflow, /node-version: '24\.11\.1'/);
+  assert.match(workflow, /test "\$\(npm --version\)" = 11\.6\.2/);
+  assert.doesNotMatch(workflow, /npm install --global/);
   assert.match(workflow, /secrets\.NPM_READ_TOKEN/);
   assert.match(workflow, /secrets\.NPM_DIST_TAG_TOKEN/);
   assert.doesNotMatch(workflow, /env:\n\s+NODE_AUTH_TOKEN:/);
@@ -191,6 +193,31 @@ test('trusted release workflow publishes before tagging and calls exact-tag docs
   );
   assert.doesNotMatch(docsWorkflow, /branches: \[develop\]/);
   assert.doesNotMatch(docsWorkflow, /release:\n\s+types:/);
+  const deployJob = docsWorkflow.indexOf('\n  deploy:');
+  assert(deployJob > 0, 'documentation workflow has a deploy job');
+  for (const permission of ['pages: write', 'id-token: write']) {
+    assert(
+      docsWorkflow.indexOf(permission) > deployJob,
+      `${permission} is granted only to the deploy job`
+    );
+  }
+});
+
+test('workflows pin every external action to a full commit SHA', () => {
+  const workflowsDir = new URL('../../../.github/workflows/', import.meta.url);
+  const unpinned = readdirSync(workflowsDir)
+    .filter((name) => /\.ya?ml$/.test(name))
+    .flatMap((name) =>
+      [
+        ...readFileSync(new URL(name, workflowsDir), 'utf-8').matchAll(
+          /^\s*(?:-\s+)?uses:\s*(\S+)/gm
+        ),
+      ]
+        .map(([, ref]) => ref)
+        .filter((ref) => !ref.startsWith('./') && !/@[0-9a-f]{40}$/.test(ref))
+        .map((ref) => `${name}: ${ref}`)
+    );
+  assert.deepEqual(unpinned, []);
 });
 
 test('RC policy accepts fresh and subsequent candidates while preserving latest', () => {
