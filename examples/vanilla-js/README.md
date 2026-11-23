@@ -86,7 +86,7 @@ The monorepo uses workspace links: `src/main.js` imports the core, UI, and adapt
 project, install the published packages and their XRPL peer explicitly:
 
 ```bash
-pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-privy@rc xrpl@^4
+pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-privy@rc xrpl@^5
 ```
 
 Then import the same names from `xrpl-connect`, which re-exports the core, every adapter, and the web

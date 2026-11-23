@@ -29,7 +29,7 @@ low-level SDK and asks developers to discuss their use with its team. See the
 [extended-chain support](https://docs.privy.io/wallets/overview/chains).
 
 ```bash
-npm install xrpl-connect@rc @xrpl-commons/xrpl-connect-privy@rc xrpl@^4
+npm install xrpl-connect@rc @xrpl-commons/xrpl-connect-privy@rc xrpl@^5
 ```
 
 ```js

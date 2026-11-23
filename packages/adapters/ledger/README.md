@@ -17,11 +17,11 @@ The Ledger adapter ships in the `xrpl-connect` package, which re-exports every a
 `@xrpl-connect/adapter-ledger` workspace package is not published to npm.
 
 ```bash
-npm install xrpl-connect@rc xrpl@^4
+npm install xrpl-connect@rc xrpl@^5
 # or
-pnpm add xrpl-connect@rc xrpl@^4
+pnpm add xrpl-connect@rc xrpl@^5
 # or
-yarn add xrpl-connect@rc xrpl@^4
+yarn add xrpl-connect@rc xrpl@^5
 ```
 
 ## Usage

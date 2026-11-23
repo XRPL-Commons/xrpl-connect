@@ -12,7 +12,7 @@ These commands install the coordinated `1.1.0-rc.0` release candidate from npm's
 the SDK and React binding on the same release.
 
 ```bash
-pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-react@rc xrpl@^4 react react-dom
+pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-react@rc xrpl@^5 react react-dom
 ```
 
 ## Configure the provider

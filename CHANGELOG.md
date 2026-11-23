@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Packaging: the `xrpl-connect` ESM bundle no longer carries the AMD fallbacks of bundled CommonJS dependencies (crypto-js, fetch-ponyfill, qr-code-styling). Next.js builds with Turbopack failed with `Can't resolve './core'`, and pages with an AMD loader could capture fetch-ponyfill's export. Packed-consumer verification now builds a Next.js App Router page with Turbopack.
+- Documentation: install commands use `xrpl@^5`, the current supported major; v3 and v4 remain supported.
 
 ## [1.1.0-rc.0] - 2026-11-16
 

@@ -12,8 +12,8 @@ Get up and running with XRPL-Connect in minutes.
 
 This documentation tracks the `1.1.0-rc.0` release candidate, published under npm's `rc` tag.
 Install the coordinated packages with `@rc` and keep the framework binding, the optional Privy
-package, and `xrpl-connect` on the same release. The examples below pin `xrpl@^4`; the packages
-also declare compatibility with the supported v3 and v5 ranges. For the stable release, follow the
+package, and `xrpl-connect` on the same release. The examples below pin `xrpl@^5`; the packages
+also declare compatibility with the supported v3 and v4 ranges. For the stable release, follow the
 [1.0.0 documentation](/1.0.0/guide/getting-started).
 
 A local tarball may retain a prerelease version while containing newer merged fixes; record its
@@ -26,7 +26,7 @@ to v4 for a consistent baseline. Applications already using v5 can retain it wit
 compatibility overrides; upgrade the SDK and framework binding together.
 
 ```bash
-npm install xrpl-connect@rc xrpl@^4
+npm install xrpl-connect@rc xrpl@^5
 ```
 
 Add the official bindings for your framework:
@@ -42,13 +42,13 @@ npm install @xrpl-commons/xrpl-connect-vue@rc vue
 ### Using pnpm
 
 ```bash
-pnpm add xrpl-connect@rc xrpl@^4
+pnpm add xrpl-connect@rc xrpl@^5
 ```
 
 ### Using yarn
 
 ```bash
-yarn add xrpl-connect@rc xrpl@^4
+yarn add xrpl-connect@rc xrpl@^5
 ```
 
 The `xrpl-connect` package includes:
