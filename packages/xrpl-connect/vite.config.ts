@@ -48,6 +48,13 @@ export default defineConfig({
       ),
     },
   },
+  // Bundled CommonJS dependencies keep UMD fallbacks for an AMD loader (crypto-js, fetch-ponyfill,
+  // qr-code-styling). Consumer bundlers such as Turbopack try to resolve their dependencies
+  // (`define(["./core"], ...)`), and fetch-ponyfill would hand its export to a page's AMD loader.
+  // With no AMD loader in scope these branches are dropped; the UMD build keeps its own wrapper.
+  define: {
+    define: 'undefined',
+  },
   plugins: [
     {
       name: 'normalize-xumm-mocked-websocket-constructor',
