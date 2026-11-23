@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
-import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -529,6 +537,18 @@ try {
       `${entry} does not contain the guarded direct MockedWebSocket constructor`
     );
   }
+  // Consumer bundlers such as Turbopack resolve the dependencies of AMD fallbacks left in
+  // bundled UMD modules (crypto-js `define(["./core"], ...)`). Only the UMD wrapper may use AMD.
+  for (const entry of readdirSync(installedUmbrellaFolder).filter((file) => /\.m?js$/.test(file))) {
+    const amdChecks = readFileSync(path.join(installedUmbrellaFolder, entry), 'utf-8').match(
+      /\bdefine\.amd\b/g
+    );
+    assert.equal(
+      amdChecks?.length ?? 0,
+      entry === 'xrpl-connect.umd.js' ? 1 : 0,
+      `${entry} contains a bundled dependency's AMD fallback`
+    );
+  }
 
   assert.throws(
     () =>
@@ -738,6 +758,7 @@ try {
       '@types/react@19',
       '@types/react-dom@19',
       'jsdom@^22.1.0',
+      'next@16.4.6',
     ],
     { ...runOptions, cwd: react19ConsumerFolder }
   );
@@ -746,6 +767,28 @@ try {
   verifyConsumerDependencies(react19ConsumerFolder, RELEASE_PACKAGE_NAMES.slice(0, 2), runOptions);
   copyReactFixtures(react19ConsumerFolder);
   verifyPackedReactConsumer(react19ConsumerFolder, 19, tscPath, runOptions);
+  console.log('→ Building packed React and umbrella ESM with Next.js and Turbopack');
+  const nextAppFolder = path.join(react19ConsumerFolder, 'app');
+  mkdirSync(nextAppFolder);
+  for (const page of ['layout', 'page', 'wallet']) {
+    copyFileSync(
+      path.join(reactFixturesFolder, `next-${page}.jsx`),
+      path.join(nextAppFolder, `${page}.jsx`)
+    );
+  }
+  run(
+    process.execPath,
+    [
+      path.join(react19ConsumerFolder, 'node_modules', 'next', 'dist', 'bin', 'next'),
+      'build',
+      '--turbopack',
+    ],
+    {
+      ...runOptions,
+      env: { ...runOptions.env, NEXT_TELEMETRY_DISABLED: '1' },
+      cwd: react19ConsumerFolder,
+    }
+  );
 
   console.log('→ Type-checking packed Vue ESM and CommonJS consumers');
   run(process.execPath, [tscPath, '--project', 'tsconfig.vue.json'], {
