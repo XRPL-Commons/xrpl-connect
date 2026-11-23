@@ -13,7 +13,7 @@ import type {
   SignedMessage,
   SignedTransaction,
   SubmittedTransaction,
-  Transaction,
+  SubmittableTransaction,
   WalletAdapter,
   WalletAdapterEvent,
   WalletCapabilities,
@@ -655,7 +655,7 @@ describe('WalletManager signerAddress stamping', () => {
     const manager = new WalletManager({ adapters: [adapter] });
     await manager.connect('fake');
 
-    const signed = await manager.sign({} as Transaction);
+    const signed = await manager.sign({} as SubmittableTransaction);
     const message = await manager.signMessage('hello');
 
     expect(signed.signerAddress).toBe(ACCOUNT.address);
@@ -674,7 +674,7 @@ describe('WalletManager signerAddress stamping', () => {
     const manager = new WalletManager({ adapters: [adapter] });
     await manager.connect('fake');
 
-    const signed = await manager.sign({} as Transaction);
+    const signed = await manager.sign({} as SubmittableTransaction);
     expect(signed.signerAddress).toBe(ACCOUNT.address);
   });
 
@@ -701,7 +701,7 @@ describe('WalletManager signerAddress stamping', () => {
       message: `Signer mismatch. Expected "${ACCOUNT.address}" but the wallet signed with "rOtherSigner".`,
     };
 
-    await expect(manager.sign({} as Transaction)).rejects.toMatchObject(expected);
+    await expect(manager.sign({} as SubmittableTransaction)).rejects.toMatchObject(expected);
     await expect(manager.signMessage('hello')).rejects.toMatchObject(expected);
   });
 
@@ -714,7 +714,7 @@ describe('WalletManager signerAddress stamping', () => {
     const manager = new WalletManager({ adapters: [adapter] });
     await manager.connect('fake');
 
-    const signing = manager.sign({} as Transaction);
+    const signing = manager.sign({} as SubmittableTransaction);
     adapter.emitAdapterEvent('accountChanged', {
       ...ACCOUNT,
       address: 'rChanged00000000000000000000000000',
@@ -731,7 +731,7 @@ describe('WalletManager signerAddress stamping', () => {
     const manager = new WalletManager({ adapters: [adapter] });
     await manager.connect('fake');
 
-    const signed = await manager.sign({} as Transaction);
+    const signed = await manager.sign({} as SubmittableTransaction);
 
     expect(signed).not.toBe(result);
     expect(signed).toEqual({ hash: '0xhash', signerAddress: ACCOUNT.address });
@@ -766,7 +766,7 @@ describe('WalletManager logging', () => {
       Account: ACCOUNT.address,
       Destination: 'rSecretDestination',
       Amount: '1000',
-    } as Transaction;
+    } as SubmittableTransaction;
 
     await manager.sign(transaction);
     await manager.signAndSubmit(transaction);
@@ -802,7 +802,7 @@ describe('WalletManager logging', () => {
     });
     const manager = new WalletManager({ adapters: [adapter], logger });
     await manager.connect('fake');
-    const transaction = { TransactionType: 'Payment' } as Transaction;
+    const transaction = { TransactionType: 'Payment' } as SubmittableTransaction;
 
     await expect(manager.sign(transaction)).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_FAILED,
@@ -2233,7 +2233,7 @@ describe('WalletManager.reconnect()', () => {
 });
 
 describe('WalletManager redirect logins', () => {
-  const PAYMENT = { TransactionType: 'Payment' } as Transaction;
+  const PAYMENT = { TransactionType: 'Payment' } as SubmittableTransaction;
 
   /** The wallet on the page its authorization returned to. */
   function returnedLogin(account: AccountInfo = ACCOUNT) {
@@ -2389,7 +2389,7 @@ describe('WalletManager redirect logins', () => {
 });
 
 describe('WalletManager network policy', () => {
-  const PAYMENT = { TransactionType: 'Payment' } as Transaction;
+  const PAYMENT = { TransactionType: 'Payment' } as SubmittableTransaction;
 
   async function connectedOnTestnet(options: { configured: boolean } = { configured: true }) {
     const adapter = createFakeAdapter();

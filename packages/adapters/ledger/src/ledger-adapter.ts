@@ -18,7 +18,7 @@ import type {
   AccountInfo,
   ConnectOptions,
   NetworkInfo,
-  Transaction,
+  SubmittableTransaction,
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
@@ -60,7 +60,7 @@ const DEFAULT_TIMEOUT = 60000;
 
 interface LedgerSignedTransaction {
   tx_blob: string;
-  tx_json: Transaction;
+  tx_json: SubmittableTransaction;
   signature: string;
 }
 
@@ -318,7 +318,7 @@ export class LedgerAdapter
 
   /** Encode and sign a prepared transaction with the Ledger device. */
   private async signPreparedTransaction(
-    transaction: Transaction,
+    transaction: SubmittableTransaction,
     account: AccountInfo,
     xrpApp: Xrp,
     multisigned: boolean
@@ -384,7 +384,7 @@ export class LedgerAdapter
             ...txForSigning,
             TxnSignature: normalizedSignature,
           }
-    ) as Transaction;
+    ) as SubmittableTransaction;
 
     return {
       tx_blob: encode(tx_json),
@@ -399,7 +399,7 @@ export class LedgerAdapter
     return { account: this.currentAccount, xrpApp: this.xrpApp };
   }
 
-  private validateSigningInput(transaction: Transaction): boolean {
+  private validateSigningInput(transaction: SubmittableTransaction): boolean {
     if (transaction.TxnSignature !== undefined || transaction.Signers !== undefined) {
       throw new Error('Ledger signing input must not contain TxnSignature or Signers');
     }
@@ -438,14 +438,14 @@ export class LedgerAdapter
   /**
    * Sign a transaction without submitting it to the ledger
    */
-  async sign(transaction: Transaction): Promise<SignedTransaction> {
+  async sign(transaction: SubmittableTransaction): Promise<SignedTransaction> {
     try {
       const { account, xrpApp } = this.getSigningContext();
       const multisigned = this.validateSigningInput(transaction);
       const tx = {
         ...transaction,
         Account: transaction.Account || account.address,
-      } as Transaction;
+      } as SubmittableTransaction;
       const signed = multisigned
         ? await this.signPreparedTransaction(tx, account, xrpApp, true)
         : await this.withClient(account.network, async (client) => {
@@ -469,7 +469,7 @@ export class LedgerAdapter
   /**
    * Sign and submit a transaction to the ledger
    */
-  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+  async signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction> {
     try {
       const { account, xrpApp } = this.getSigningContext();
       if (this.validateSigningInput(transaction)) {
@@ -482,7 +482,7 @@ export class LedgerAdapter
         const tx = {
           ...transaction,
           Account: transaction.Account || account.address,
-        } as Transaction;
+        } as SubmittableTransaction;
         const prepared = await client.autofill(tx);
         const signed = await this.signPreparedTransaction(prepared, account, xrpApp, false);
         const result = await client.submitAndWait(signed.tx_blob);

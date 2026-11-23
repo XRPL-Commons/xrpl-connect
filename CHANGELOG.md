@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Core: `SubmittableTransaction`, the type `sign()` and `signAndSubmit()` accept, named after the xrpl.js type it is. xrpl.js's broader `Transaction` also includes validator pseudo-transactions, which wallets cannot sign.
+
+### Deprecated
+
+- Core: the `Transaction` type. It is an alias for `SubmittableTransaction` and not interchangeable with xrpl.js's `Transaction`.
+
 ### Fixed
 
 - Packaging: the `xrpl-connect` ESM bundle no longer carries the AMD fallbacks of bundled CommonJS dependencies (crypto-js, fetch-ponyfill, qr-code-styling). Next.js builds with Turbopack failed with `Can't resolve './core'`, and pages with an AMD loader could capture fetch-ponyfill's export. Packed-consumer verification now builds a Next.js App Router page with Turbopack.

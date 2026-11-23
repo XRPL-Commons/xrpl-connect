@@ -1,5 +1,5 @@
 import { secp256k1 } from '@noble/curves/secp256k1';
-import { WalletManager, type Transaction } from '@xrpl-connect/core';
+import { WalletManager, type SubmittableTransaction } from '@xrpl-connect/core';
 import { PrivyAdapter } from '../../../privy/src/privy-adapter';
 import '../../src/wallet-connector';
 
@@ -12,7 +12,7 @@ const ISSUER = 'rU74NBjYiU8pyrSd57Mo62K75hAFPspaLb';
 
 type Outcome =
   | { status: 'pending' }
-  | { status: 'signed'; transaction: Transaction | undefined }
+  | { status: 'signed'; transaction: SubmittableTransaction | undefined }
   | { status: 'error'; code: string };
 
 let signatureCount = 0;
@@ -50,7 +50,7 @@ const connector = document.querySelector('#wallet-connector') as HTMLElement & {
 };
 connector.setWalletManager(manager);
 
-function track(signing: Promise<{ tx_json?: Transaction }>): number {
+function track(signing: Promise<{ tx_json?: SubmittableTransaction }>): number {
   const index = outcomes.push({ status: 'pending' }) - 1;
   signing.then(
     (signed) => {

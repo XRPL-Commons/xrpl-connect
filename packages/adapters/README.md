@@ -70,8 +70,8 @@ interface WalletAdapter {
   getNetwork(): Promise<NetworkInfo>;
 
   // ==================== Signing Operations ====================
-  sign(transaction: Transaction): Promise<SignedTransaction>;
-  signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction>;
+  sign(transaction: SubmittableTransaction): Promise<SignedTransaction>;
+  signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction>;
   signMessage(message: string | Uint8Array): Promise<SignedMessage>;
 
   // ==================== Event Listeners (Optional) ====================

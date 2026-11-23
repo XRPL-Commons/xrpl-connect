@@ -62,6 +62,12 @@ const manager = new WalletManager({ adapters: packagedAdapters });
 declare const preparedTransaction: import('xrpl').SubmittableTransaction;
 void manager.sign(preparedTransaction);
 void manager.signAndSubmit(preparedTransaction);
+const exportedTransaction: import('xrpl-connect').SubmittableTransaction = preparedTransaction;
+const xrplSubmittableTransaction: import('xrpl').SubmittableTransaction = exportedTransaction;
+const deprecatedTransaction: import('xrpl-connect').Transaction = xrplSubmittableTransaction;
+declare const xrplTransaction: import('xrpl').Transaction;
+// @ts-expect-error Validator pseudo-transactions (EnableAmendment, SetFee, UNLModify) cannot be submitted.
+void manager.signAndSubmit(xrplTransaction);
 const configuredXaman = new XamanAdapter({ apiKey: 'api-key', maxLastLedgerSequenceExtension: 0 });
 // @ts-expect-error The expiry extension is a numeric ledger count.
 new XamanAdapter({ maxLastLedgerSequenceExtension: '50' });
@@ -204,6 +210,7 @@ void [
   descriptorWalletId,
   packagedAdapters,
   manager,
+  deprecatedTransaction,
   configuredXaman,
   deferredXaman,
   configuredWalletConnect,

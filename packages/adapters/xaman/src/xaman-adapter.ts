@@ -16,7 +16,7 @@ import {
   AccountInfo,
   ConnectOptions,
   NetworkInfo,
-  Transaction,
+  SubmittableTransaction,
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
@@ -667,13 +667,13 @@ export class XamanAdapter
    * actual signed data and dispatch result come from `payload.get()`.
    */
   private async createAndWaitForPayload(
-    inputTransaction: Transaction,
+    inputTransaction: SubmittableTransaction,
     submit: boolean
   ): Promise<{
     txid: string;
     tx_blob: string;
     signature?: string;
-    tx_json: Transaction;
+    tx_json: SubmittableTransaction;
   }> {
     if (!this.client || !this.currentAccount) {
       throw createWalletError.notConnected();
@@ -696,7 +696,7 @@ export class XamanAdapter
     // Send and compare the canonical codec form of the request, so Xaman signs
     // exactly what is verified. It is a snapshot, independent of both caller
     // mutations during approval and mutations by the wallet SDK.
-    let transaction: Transaction;
+    let transaction: SubmittableTransaction;
     try {
       transaction = canonicalizeTransaction(inputTransaction);
     } catch (error) {
@@ -718,7 +718,7 @@ export class XamanAdapter
 
     // oxlint-disable-next-line typescript/no-explicit-any
     const payloadBody: any = {
-      txjson: JSON.parse(JSON.stringify(transaction)) as Transaction,
+      txjson: JSON.parse(JSON.stringify(transaction)) as SubmittableTransaction,
       options: {
         submit,
         force_network: xamanNetwork.forceNetwork,
@@ -888,10 +888,10 @@ export class XamanAdapter
         throw new Error('Xaman unexpectedly submitted a sign-only transaction');
       }
 
-      let tx_json: Transaction;
+      let tx_json: SubmittableTransaction;
       let txid: string;
       try {
-        tx_json = decode(response.hex) as Transaction;
+        tx_json = decode(response.hex) as SubmittableTransaction;
         txid = hashes.hashSignedTx(response.hex);
         this.validateSignedTransaction(
           tx_json,
@@ -934,7 +934,7 @@ export class XamanAdapter
    * Sign a transaction without submitting it to the ledger.
    * Note: Xaman uses a popup flow for signing.
    */
-  async sign(transaction: Transaction): Promise<SignedTransaction> {
+  async sign(transaction: SubmittableTransaction): Promise<SignedTransaction> {
     try {
       const result = await this.createAndWaitForPayload(transaction, false);
 
@@ -955,7 +955,7 @@ export class XamanAdapter
   /**
    * Sign and submit a transaction to the ledger.
    */
-  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+  async signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction> {
     try {
       const result = await this.createAndWaitForPayload(transaction, true);
 
@@ -1169,7 +1169,7 @@ export class XamanAdapter
   }
 
   private validateSignedTransaction(
-    transaction: Transaction,
+    transaction: SubmittableTransaction,
     blob: string,
     expectedAccount: string,
     multisign: boolean,
@@ -1201,7 +1201,7 @@ export class XamanAdapter
   }
 
   private validateRequestedTransaction(
-    requested: Transaction,
+    requested: SubmittableTransaction,
     actual: Record<string, unknown> | undefined
   ): void {
     assertRequestedTransaction(requested, actual, {

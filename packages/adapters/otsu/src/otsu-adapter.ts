@@ -17,7 +17,7 @@ import type {
   ConnectOptions,
   StandardNetworkId,
   NetworkInfo,
-  Transaction,
+  SubmittableTransaction,
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
@@ -266,7 +266,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
    * @param transaction - The XRPL transaction object
    * @returns The signed transaction with tx_blob and hash
    */
-  async sign(transaction: Transaction): Promise<SignedTransaction> {
+  async sign(transaction: SubmittableTransaction): Promise<SignedTransaction> {
     if (!this.currentAccount) {
       throw createWalletError.notConnected();
     }
@@ -307,7 +307,7 @@ export class OtsuAdapter implements WalletAdapter, SupportsFetchAccount {
    * @param transaction - The XRPL transaction object
    * @returns The submitted transaction result with hash
    */
-  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+  async signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction> {
     if (!this.currentAccount) {
       throw createWalletError.notConnected();
     }

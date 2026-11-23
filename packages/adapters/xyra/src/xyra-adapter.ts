@@ -22,7 +22,7 @@ import type {
   AccountInfo,
   ConnectOptions,
   NetworkInfo,
-  Transaction,
+  SubmittableTransaction,
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
@@ -230,7 +230,7 @@ export class XyraAdapter implements WalletAdapter {
    * @param transaction - The XRPL transaction object
    * @returns The signed transaction with tx_blob
    */
-  async sign(transaction: Transaction): Promise<SignedTransaction> {
+  async sign(transaction: SubmittableTransaction): Promise<SignedTransaction> {
     if (!this.currentAccount || !this.currentXyraNetwork) {
       throw createWalletError.notConnected();
     }
@@ -276,7 +276,7 @@ export class XyraAdapter implements WalletAdapter {
    * @param transaction - The XRPL transaction object
    * @returns The submitted transaction result
    */
-  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+  async signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction> {
     if (!this.currentAccount || !this.currentXyraNetwork) {
       throw createWalletError.notConnected();
     }

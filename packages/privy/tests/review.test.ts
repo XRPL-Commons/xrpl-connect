@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vite-plus/test';
-import { STANDARD_NETWORKS, type Transaction } from 'xrpl-connect';
+import { STANDARD_NETWORKS, type SubmittableTransaction } from 'xrpl-connect';
 import { createTransactionReview, formatAmount, formatXrpDrops } from '../src/review';
 import { assertFeeWithinLimit } from '../src/signing';
 
@@ -45,7 +45,7 @@ describe('transaction review', () => {
       TakerGets: '25000000',
       TakerPays: { currency: 'USD', issuer, value: '10' },
       Memos: [{ Memo: { MemoData: '68656C6C6F' } }],
-    } as Transaction;
+    } as SubmittableTransaction;
     const review = createTransactionReview(transaction, STANDARD_NETWORKS.mainnet, 'sign');
 
     expect(review.details.map(({ name }) => name)).toEqual([
@@ -75,7 +75,7 @@ describe('transaction review', () => {
       Amount: { mpt_issuance_id: '0000012FFD9EE5DA93AC614B4DB94D7E0FCE415CA51BED47', value: '7' },
       Fee: '12',
       Sequence: 1,
-    } as Transaction;
+    } as SubmittableTransaction;
     const review = createTransactionReview(transaction, STANDARD_NETWORKS.testnet, 'signAndSubmit');
 
     expect(detail(review, 'Amount')).toBe(
@@ -91,7 +91,7 @@ describe('transaction review', () => {
 });
 
 describe('fee limit', () => {
-  const base = { TransactionType: 'Payment', Account: account } as Transaction;
+  const base = { TransactionType: 'Payment', Account: account } as SubmittableTransaction;
 
   it('caps every fee at 2 XRP except owner-reserve priced transactions', () => {
     expect(() => assertFeeWithinLimit({ ...base, Fee: '2000000' })).not.toThrow();
@@ -103,14 +103,14 @@ describe('fee limit', () => {
     );
     for (const TransactionType of ['AccountDelete', 'AMMCreate', 'VaultCreate']) {
       expect(() =>
-        assertFeeWithinLimit({ ...base, TransactionType, Fee: '5000000' } as Transaction)
+        assertFeeWithinLimit({ ...base, TransactionType, Fee: '5000000' } as SubmittableTransaction)
       ).not.toThrow();
     }
   });
 
   it('requires a whole number of drops', () => {
     for (const Fee of [undefined, '', '1.5', '-1', '1e6', ' 12']) {
-      expect(() => assertFeeWithinLimit({ ...base, Fee } as Transaction)).toThrow(
+      expect(() => assertFeeWithinLimit({ ...base, Fee } as SubmittableTransaction)).toThrow(
         'whole number of drops'
       );
     }

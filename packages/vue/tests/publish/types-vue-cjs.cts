@@ -11,7 +11,7 @@ import {
 import type {
   ManagedSignedMessage,
   ManagedSignedTransaction,
-  Transaction,
+  SubmittableTransaction,
   AccountInfo,
   WalletError,
 } from 'xrpl-connect';
@@ -67,7 +67,9 @@ void wallet.connect('custom-wallet', { customCredential: 'credential' });
 void wallet.connect('typed-custom-wallet', { credential: 'credential' });
 // @ts-expect-error Augmented custom wallet mappings reject unrelated options.
 void wallet.connect('typed-custom-wallet', { otherCredential: 'credential' });
-const signedTransaction: Promise<ManagedSignedTransaction> = signer.sign({} as Transaction);
+const signedTransaction: Promise<ManagedSignedTransaction> = signer.sign(
+  {} as SubmittableTransaction
+);
 const signedMessage: Promise<ManagedSignedMessage> = signer.signMessage('message');
 const errorGuard: (error: unknown) => error is WalletError = isWalletError;
 

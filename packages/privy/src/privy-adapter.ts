@@ -11,7 +11,7 @@ import {
   type SignedMessage,
   type SignedTransaction,
   type SubmittedTransaction,
-  type Transaction,
+  type SubmittableTransaction,
   type WalletAdapter,
   type WalletAdapterEvent,
   type WalletAuthPrompt,
@@ -239,7 +239,7 @@ export class PrivyAdapter implements WalletAdapter {
     return { ...this.account.network };
   }
 
-  async sign(transaction: Transaction): Promise<SignedTransaction> {
+  async sign(transaction: SubmittableTransaction): Promise<SignedTransaction> {
     try {
       const { wallet, account, controller } = this.signingContext();
       const input = prepareSigningInput(transaction, wallet);
@@ -254,7 +254,7 @@ export class PrivyAdapter implements WalletAdapter {
     }
   }
 
-  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+  async signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction> {
     try {
       const { wallet, account, controller } = this.signingContext();
       const input = prepareSigningInput(transaction, wallet);
@@ -314,10 +314,10 @@ export class PrivyAdapter implements WalletAdapter {
   }
 
   private autofill(
-    input: Transaction,
+    input: SubmittableTransaction,
     network: NetworkInfo,
     controller: AbortController
-  ): Promise<Transaction> {
+  ): Promise<SubmittableTransaction> {
     return this.withClient(network, async (client) => {
       this.assertActive(controller);
       return client.autofill(input);
@@ -325,7 +325,7 @@ export class PrivyAdapter implements WalletAdapter {
   }
 
   private async signPrepared(
-    transaction: Transaction,
+    transaction: SubmittableTransaction,
     wallet: PrivyWallet,
     network: NetworkInfo,
     controller: AbortController,
@@ -348,7 +348,7 @@ export class PrivyAdapter implements WalletAdapter {
    * at a time, so an answer always belongs to the transaction on screen.
    */
   private async review(
-    transaction: Transaction,
+    transaction: SubmittableTransaction,
     network: NetworkInfo,
     action: WalletTransactionReview['action'],
     controller: AbortController

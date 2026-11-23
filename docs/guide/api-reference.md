@@ -124,7 +124,7 @@ so switching away from the requested network blocks manager signing too.
 
 ```typescript
 async sign(
-  transaction: Transaction
+  transaction: SubmittableTransaction
 ): Promise<ManagedSignedTransaction>
 ```
 
@@ -133,7 +133,7 @@ Sign a transaction without submitting it to the ledger. Depending on the adapter
 #### signAndSubmit()
 
 ```typescript
-async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction>
+async signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction>
 ```
 
 Sign and submit a transaction to the ledger. Returns the transaction hash and, depending on the adapter, the signed transaction JSON (`tx_json`), serialized transaction blob (`tx_blob`), and/or raw signature.
@@ -905,9 +905,10 @@ interface NetworkInfo {
 }
 ```
 
-### Transaction
+### SubmittableTransaction
 
-`Transaction` is an alias for `SubmittableTransaction` from the `xrpl` package — any XRPL transaction object, e.g.:
+`SubmittableTransaction` is the `SubmittableTransaction` type from the `xrpl` package: any
+transaction a wallet can sign and submit, for example:
 
 ```typescript
 const payment = {
@@ -918,6 +919,12 @@ const payment = {
 };
 ```
 
+xrpl.js's broader `Transaction` type also includes the validator pseudo-transactions `EnableAmendment`,
+`SetFee` and `UNLModify`, which no wallet can sign, so `sign()` and `signAndSubmit()` reject it at
+compile time. Type your transactions as `SubmittableTransaction` or as a specific type such as
+`Payment`. Earlier versions exported this type as `Transaction`; that name remains as a deprecated
+alias.
+
 ### SignedTransaction
 
 ```typescript
@@ -926,7 +933,7 @@ interface SignedTransaction {
   tx_blob?: string;
   signature?: string;
   signerAddress?: string;
-  tx_json?: Transaction;
+  tx_json?: SubmittableTransaction;
   [key: string]: unknown;
 }
 
@@ -947,7 +954,7 @@ interface SubmittedTransaction {
   id?: string;
   tx_blob?: string;
   signature?: string;
-  tx_json?: Transaction;
+  tx_json?: SubmittableTransaction;
   [key: string]: unknown;
 }
 ```

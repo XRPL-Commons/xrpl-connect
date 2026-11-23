@@ -8,7 +8,7 @@ import type {
   WalletAdapterEvent,
   WalletManagerOptions,
   AccountInfo,
-  Transaction,
+  SubmittableTransaction,
   ManagedSignedTransaction,
   ManagedSignedMessage,
   SignedTransaction,
@@ -659,7 +659,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * @param transaction - The transaction to sign
    * @returns SignedTransaction with signed transaction JSON, a blob, and/or a signature
    */
-  async sign(transaction: Transaction): Promise<ManagedSignedTransaction> {
+  async sign(transaction: SubmittableTransaction): Promise<ManagedSignedTransaction> {
     if (!this.currentAdapter || !this.currentAccount) {
       throw createWalletError.notConnected();
     }
@@ -691,7 +691,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    * @param transaction - The transaction to sign and submit
    * @returns SubmittedTransaction with hash from ledger confirmation
    */
-  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+  async signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction> {
     if (!this.currentAdapter) {
       throw createWalletError.notConnected();
     }

@@ -5,7 +5,7 @@ import {
   assertSignedTransaction,
   canonicalizeTransaction,
 } from './transaction-verification';
-import type { Transaction } from './types';
+import type { SubmittableTransaction } from './types';
 
 const ACCOUNT_WALLET = Wallet.generate(ECDSA.secp256k1);
 const OTHER_WALLET = Wallet.generate(ECDSA.secp256k1);
@@ -17,13 +17,13 @@ const REQUEST = {
   Account: ACCOUNT,
   Destination: 'rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe',
   Amount: '1000000',
-} as Transaction;
+} as SubmittableTransaction;
 const AUTOFILLED = { ...REQUEST, Fee: '12', Sequence: 7, LastLedgerSequence: 100_000 };
 const MULTISIGN_REQUEST = {
   ...AUTOFILLED,
   Account: MULTISIGN_SOURCE.address,
   SigningPubKey: '',
-} as Transaction;
+} as SubmittableTransaction;
 const ISSUED_AMOUNT = {
   currency: 'USD',
   issuer: 'rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe',
@@ -37,18 +37,18 @@ const NON_CANONICAL_REQUEST = {
   Amount: ISSUED_AMOUNT,
   Flags: { tfPartialPayment: true },
   Memos: [{ Memo: { MemoData: 'abcd' } }],
-} as Transaction;
+} as SubmittableTransaction;
 
 const EXPECTED = { walletName: 'Test Wallet', account: ACCOUNT, networkId: 0 };
 const POLICY = { walletName: 'Test Wallet' };
 
-function signed(wallet: Wallet, transaction: Transaction, multisign = false) {
-  return serialized(decode(wallet.sign(transaction, multisign).tx_blob) as Transaction);
+function signed(wallet: Wallet, transaction: SubmittableTransaction, multisign = false) {
+  return serialized(decode(wallet.sign(transaction, multisign).tx_blob) as SubmittableTransaction);
 }
 
-function serialized(transaction: Transaction) {
+function serialized(transaction: SubmittableTransaction) {
   const blob = encode(transaction);
-  return { blob, transaction: decode(blob) as Transaction };
+  return { blob, transaction: decode(blob) as SubmittableTransaction };
 }
 
 describe('assertSignedTransaction', () => {
@@ -103,7 +103,7 @@ describe('assertSignedTransaction', () => {
   });
 
   it('rejects an unsigned transaction', () => {
-    const { transaction, blob } = serialized(AUTOFILLED as Transaction);
+    const { transaction, blob } = serialized(AUTOFILLED as SubmittableTransaction);
 
     expect(() => assertSignedTransaction(transaction, blob, EXPECTED)).toThrow();
   });
@@ -204,7 +204,7 @@ describe('assertRequestedTransaction', () => {
 
   it('compares nested requested values', () => {
     const issued = { currency: 'USD', issuer: OTHER_WALLET.address, value: '10' };
-    const requested = { ...REQUEST, Amount: issued } as Transaction;
+    const requested = { ...REQUEST, Amount: issued } as SubmittableTransaction;
 
     expect(() =>
       assertRequestedTransaction(requested, { ...SIGNED, Amount: issued }, POLICY)
@@ -225,13 +225,13 @@ describe('assertRequestedTransaction', () => {
   });
 
   it('ignores a requested signature, which the wallet produces', () => {
-    const requested = { ...REQUEST, TxnSignature: 'DEADBEEF' } as Transaction;
+    const requested = { ...REQUEST, TxnSignature: 'DEADBEEF' } as SubmittableTransaction;
 
     expect(() => assertRequestedTransaction(requested, SIGNED, POLICY)).not.toThrow();
   });
 
   it('requires an exact requested LastLedgerSequence by default', () => {
-    const requested = { ...REQUEST, LastLedgerSequence: 100_000 } as Transaction;
+    const requested = { ...REQUEST, LastLedgerSequence: 100_000 } as SubmittableTransaction;
 
     expect(() => assertRequestedTransaction(requested, SIGNED, POLICY)).not.toThrow();
     expect(() =>
@@ -245,7 +245,7 @@ describe('assertRequestedTransaction', () => {
     [99_999, false],
     [undefined, false],
   ])('bounds an extended LastLedgerSequence of %s (accepted: %s)', (actual, accepted) => {
-    const requested = { ...REQUEST, LastLedgerSequence: 100_000 } as Transaction;
+    const requested = { ...REQUEST, LastLedgerSequence: 100_000 } as SubmittableTransaction;
     const check = () =>
       assertRequestedTransaction(
         requested,
@@ -261,7 +261,11 @@ describe('assertRequestedTransaction', () => {
     ['multisigning', { SigningPubKey: '' }],
     ['Batch', { TransactionType: 'Batch' }],
   ])('requires an exact LastLedgerSequence when %s', (_description, fields) => {
-    const requested = { ...REQUEST, ...fields, LastLedgerSequence: 100_000 } as Transaction;
+    const requested = {
+      ...REQUEST,
+      ...fields,
+      LastLedgerSequence: 100_000,
+    } as SubmittableTransaction;
 
     expect(() =>
       assertRequestedTransaction(
@@ -276,7 +280,7 @@ describe('assertRequestedTransaction', () => {
     const first = { Signer: { Account: ACCOUNT, SigningPubKey: 'AA', TxnSignature: 'A1' } };
     const second = { Signer: { Account: ACCOUNT, SigningPubKey: 'BB', TxnSignature: 'B1' } };
     const added = { Signer: { Account: ACCOUNT, SigningPubKey: 'CC', TxnSignature: 'C1' } };
-    const requested = { ...REQUEST, Signers: [first, second] } as Transaction;
+    const requested = { ...REQUEST, Signers: [first, second] } as SubmittableTransaction;
 
     expect(() =>
       assertRequestedTransaction(requested, { ...SIGNED, Signers: [added, second, first] }, POLICY)
@@ -294,7 +298,7 @@ describe('assertRequestedTransaction', () => {
       Flags: 131072,
       Fee: '12',
       Sequence: 7,
-    } as Transaction).transaction;
+    } as SubmittableTransaction).transaction;
 
     it('accepts the transaction a wallet signed from it', () => {
       expect(() =>
@@ -319,7 +323,7 @@ describe('assertRequestedTransaction', () => {
   });
 
   it('rejects a request that cannot be serialized', () => {
-    const requested = { ...REQUEST, Amount: 5 } as unknown as Transaction;
+    const requested = { ...REQUEST, Amount: 5 } as unknown as SubmittableTransaction;
 
     expect(() => assertRequestedTransaction(requested, SIGNED, POLICY)).toThrow(
       'Test Wallet signing request is not a valid XRPL transaction'
@@ -327,7 +331,7 @@ describe('assertRequestedTransaction', () => {
   });
 
   it('compares a requested DeliverMax as the Amount it stands for', () => {
-    const requested = { ...REQUEST, DeliverMax: '1000000' } as Transaction;
+    const requested = { ...REQUEST, DeliverMax: '1000000' } as SubmittableTransaction;
 
     expect(() => assertRequestedTransaction(requested, SIGNED, POLICY)).not.toThrow();
     expect(() => assertRequestedTransaction(requested, { ...SIGNED, Amount: '1' }, POLICY)).toThrow(
@@ -338,7 +342,7 @@ describe('assertRequestedTransaction', () => {
 
 describe('canonicalizeTransaction', () => {
   it('returns a canonical transaction unchanged', () => {
-    expect(canonicalizeTransaction(AUTOFILLED as Transaction)).toEqual(AUTOFILLED);
+    expect(canonicalizeTransaction(AUTOFILLED as SubmittableTransaction)).toEqual(AUTOFILLED);
   });
 
   it('converts equivalent encodings to codec form without modifying the input', () => {
@@ -361,7 +365,9 @@ describe('canonicalizeTransaction', () => {
     ['an unknown flag', { Flags: { tfUnknown: true } }],
     ['an unknown field', { Unknown: 'value' }],
   ])('throws for %s', (_description, fields) => {
-    expect(() => canonicalizeTransaction({ ...REQUEST, ...fields } as Transaction)).toThrow();
+    expect(() =>
+      canonicalizeTransaction({ ...REQUEST, ...fields } as SubmittableTransaction)
+    ).toThrow();
   });
 
   describe('with a Payment DeliverMax', () => {
@@ -378,7 +384,7 @@ describe('canonicalizeTransaction', () => {
         Account: ACCOUNT,
         Destination: 'rPT1Sjq2YGrBMTttX4GZHjKu9dyfzbpAYe',
         DeliverMax: '1000000',
-      } as Transaction;
+      } as SubmittableTransaction;
       const snapshot = JSON.stringify(request);
 
       expect(canonicalizeTransaction(request)).toEqual(REQUEST);
@@ -389,11 +395,11 @@ describe('canonicalizeTransaction', () => {
       ['XRP amount', '1000000', '1000000'],
       ['issued amount, in any key order and encoding', ISSUED_AMOUNT, REORDERED_ISSUED_AMOUNT],
     ])('drops a DeliverMax equal to Amount for an %s', (_description, Amount, DeliverMax) => {
-      const request = { ...REQUEST, Amount, DeliverMax } as Transaction;
+      const request = { ...REQUEST, Amount, DeliverMax } as SubmittableTransaction;
       const snapshot = JSON.stringify(request);
 
       expect(canonicalizeTransaction(request)).toEqual(
-        canonicalizeTransaction({ ...REQUEST, Amount } as Transaction)
+        canonicalizeTransaction({ ...REQUEST, Amount } as SubmittableTransaction)
       );
       expect(JSON.stringify(request)).toBe(snapshot);
     });
@@ -405,7 +411,7 @@ describe('canonicalizeTransaction', () => {
       'rejects a DeliverMax that differs from Amount for an %s',
       (_description, Amount, DeliverMax) => {
         expect(() =>
-          canonicalizeTransaction({ ...REQUEST, Amount, DeliverMax } as Transaction)
+          canonicalizeTransaction({ ...REQUEST, Amount, DeliverMax } as SubmittableTransaction)
         ).toThrow(
           'PaymentTransaction: Amount and DeliverMax fields must be identical when both are provided'
         );
@@ -419,7 +425,7 @@ describe('canonicalizeTransaction', () => {
         CheckID: 'A'.repeat(64),
         Amount: '1000000',
         DeliverMax: '1000000',
-      } as unknown as Transaction;
+      } as unknown as SubmittableTransaction;
 
       expect(() => canonicalizeTransaction(check)).toThrow(
         'Field DeliverMax is not defined in the definitions'
@@ -441,7 +447,7 @@ describe('canonicalizeTransaction', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       const legacy = await import('./transaction-verification');
-      const request = { ...REQUEST, Flags: { tfPartialPayment: true } } as Transaction;
+      const request = { ...REQUEST, Flags: { tfPartialPayment: true } } as SubmittableTransaction;
 
       expect(legacy.canonicalizeTransaction(request)).toMatchObject({ Flags: 131072 });
       expect(setTransactionFlagsToNumber).toHaveBeenCalledOnce();

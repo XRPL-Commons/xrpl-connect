@@ -21,6 +21,7 @@ export type {
   NetworkInfo,
   StandardNetworkId,
   NetworkConfig,
+  SubmittableTransaction,
   Transaction,
   SignedTransaction,
   SignedMessage,

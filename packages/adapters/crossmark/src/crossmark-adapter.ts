@@ -8,7 +8,7 @@ import type {
   AccountInfo,
   ConnectOptions,
   NetworkInfo,
-  Transaction,
+  SubmittableTransaction,
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
@@ -317,7 +317,7 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
    * Sign a transaction without submitting it to the ledger
    * @param transaction - The transaction to sign
    */
-  async sign(transaction: Transaction): Promise<SignedTransaction> {
+  async sign(transaction: SubmittableTransaction): Promise<SignedTransaction> {
     if (!this.currentAccount) {
       throw createWalletError.notConnected();
     }
@@ -351,7 +351,7 @@ export class CrossmarkAdapter implements WalletAdapter, SupportsFetchAccount {
    * Sign and submit a transaction to the ledger
    * @param transaction - The transaction to sign and submit
    */
-  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+  async signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction> {
     if (!this.currentAccount) {
       throw createWalletError.notConnected();
     }

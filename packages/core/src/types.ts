@@ -2,7 +2,7 @@
  * Core types and interfaces for xrpl-connect
  */
 
-import type { SubmittableTransaction as XRPLTransaction } from 'xrpl';
+import type { SubmittableTransaction as XRPLSubmittableTransaction } from 'xrpl';
 
 /** Canonical runtime IDs for the adapters packaged by `xrpl-connect`. */
 export const STANDARD_WALLET_IDS = [
@@ -82,9 +82,18 @@ export interface AccountInfo {
 }
 
 /**
- * Transaction type (extends XRPL transaction)
+ * A transaction a wallet can sign and submit: xrpl.js's `SubmittableTransaction`.
+ *
+ * xrpl.js's broader `Transaction` type also includes the validator pseudo-transactions
+ * `EnableAmendment`, `SetFee` and `UNLModify`, which no wallet can sign or submit.
  */
-export type Transaction = XRPLTransaction;
+export type SubmittableTransaction = XRPLSubmittableTransaction;
+
+/**
+ * @deprecated Use {@link SubmittableTransaction}. Unlike xrpl.js's `Transaction`, this alias
+ * excludes pseudo-transactions, so the two are not interchangeable.
+ */
+export type Transaction = SubmittableTransaction;
 
 /**
  * Result of signing a transaction
@@ -94,7 +103,7 @@ export interface SignedTransaction {
   tx_blob?: string; // Signed transaction or multisign-contribution blob
   signature?: string; // Top-level or signer-contribution signature
   signerAddress?: string; // Address of the account that produced the signature
-  tx_json?: Transaction; // Signed transaction or multisign contribution
+  tx_json?: SubmittableTransaction; // Signed transaction or multisign contribution
   [key: string]: unknown; // Allow additional wallet-specific fields
 }
 
@@ -136,7 +145,7 @@ export interface SubmittedTransaction {
   id?: string; // Request/submission ID (wallet-specific)
   tx_blob?: string; // Signed transaction blob
   signature?: string; // Signature
-  tx_json?: Transaction; // Complete signed transaction JSON
+  tx_json?: SubmittableTransaction; // Complete signed transaction JSON
   [key: string]: unknown; // Allow additional wallet-specific fields
 }
 
@@ -308,7 +317,7 @@ export interface WalletTransactionReview {
   action: 'sign' | 'signAndSubmit';
   network: NetworkInfo;
   /** A copy of the exact transaction that is signed once approved. */
-  transaction: Transaction;
+  transaction: SubmittableTransaction;
   /** Every transaction field and the network, key fields first. */
   details: readonly WalletTransactionReviewDetail[];
 }
@@ -367,8 +376,8 @@ export interface WalletAdapter {
   getNetwork(): Promise<NetworkInfo>;
 
   // Signing and submission operations
-  sign(transaction: Transaction): Promise<SignedTransaction>;
-  signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction>;
+  sign(transaction: SubmittableTransaction): Promise<SignedTransaction>;
+  signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction>;
   signMessage(message: string | Uint8Array): Promise<SignedMessage>;
 
   // Events (optional, for wallets that support event listening)

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { webcrypto } from 'node:crypto';
 import { secp256k1 } from '@noble/curves/secp256k1';
 import { Wallet, decode, deriveAddress, verifyKeypairSignature, encodeForSigning } from 'xrpl';
-import type { Transaction } from 'xrpl-connect';
+import type { SubmittableTransaction } from 'xrpl-connect';
 import { prepareSigningInput, signPreparedTransaction, validateWallet } from '../src/signing';
 
 const privateKey = '1'.padStart(64, '0');
@@ -18,7 +18,7 @@ const wallet = {
   publicKey,
   address: deriveAddress(publicKey),
 };
-const transaction: Transaction = {
+const transaction: SubmittableTransaction = {
   TransactionType: 'AccountSet',
   Account: wallet.address,
   Fee: '12',
