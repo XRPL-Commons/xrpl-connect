@@ -120,6 +120,11 @@ The web component hides unavailable wallets by default. Use its `wallets` attrib
 ></xrpl-wallet-connector>
 ```
 
+Wallets whose adapter lacks required configuration, such as Xaman without `apiKey` or WalletConnect
+without `projectId`, are never listed, even with `show-unavailable`: the modal cannot connect them.
+The component logs one console warning per wallet naming the missing option. Credentials passed only
+to `connect()` do not reach the modal, so pass them to the adapter constructor.
+
 Otsu is available only when its extension has injected a provider with
 `window.xrpl?.isOtsu === true`. The adapter checks the current provider on every
 `isAvailable()` call, so applications using `WalletManager` directly can call
