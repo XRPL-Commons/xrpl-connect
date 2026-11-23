@@ -232,7 +232,7 @@ pnpm --filter xrpl-connect run publish:rc -- --confirm 1.1.0-rc.0
 The packed-consumer checks also read the install commands of the root README, the React and Vue
 package READMEs, the example READMEs, and the getting-started, framework, and migration guides
 (`DOCUMENTED_INSTALL_PATHS` in `packages/xrpl-connect/scripts/test-publish.mjs`). Each must install
-`xrpl@^4` and at least one coordinated package, and every coordinated package must be spelled
+`xrpl@^5` and at least one coordinated package, and every coordinated package must be spelled
 `<package>@rc` for a candidate and as the bare package name for a stable release. Switch those
 commands as part of preparing each channel.
 

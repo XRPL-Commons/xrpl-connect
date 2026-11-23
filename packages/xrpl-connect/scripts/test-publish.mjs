@@ -26,7 +26,7 @@ import { verifyConsumerDependencies } from './consumer-dependencies.mjs';
 
 const cliArgs = process.argv.slice(2);
 const xrplVersionIndex = cliArgs.indexOf('--xrpl-version');
-const xrplVersion = xrplVersionIndex === -1 ? '^4' : cliArgs[xrplVersionIndex + 1];
+const xrplVersion = xrplVersionIndex === -1 ? '^5' : cliArgs[xrplVersionIndex + 1];
 assert(['^4', '5.0.0', '^5'].includes(xrplVersion), 'Unsupported xrpl compatibility version');
 if (xrplVersionIndex !== -1) cliArgs.splice(xrplVersionIndex, 2);
 const channelIndex = cliArgs.indexOf('--channel');
@@ -38,7 +38,7 @@ const CANDIDATE_VERSION = releaseConfig.version;
 const FRAMEWORK_PEER_RANGE = `^${CANDIDATE_VERSION}`;
 const NPM_ORGANIZATION = 'xrpl-commons';
 const SUPPORTED_NODE_RANGE = '^20.19.0 || ^22.18.0 || >=24.11.0';
-const DOCUMENTED_XRPL_SPEC = 'xrpl@^4';
+const DOCUMENTED_XRPL_SPEC = 'xrpl@^5';
 const DOCUMENTED_INSTALL_PATHS = [
   'README.md',
   'packages/react/README.md',
@@ -185,7 +185,7 @@ function verifyDocumentedXrplSpecs() {
       assert.equal(
         spec,
         DOCUMENTED_XRPL_SPEC,
-        `${relativePath} does not pin documented xrpl to v4`
+        `${relativePath} does not pin documented xrpl to v5`
       );
     }
     const releaseSpecCount = installCommands.reduce(
@@ -197,7 +197,7 @@ function verifyDocumentedXrplSpecs() {
   }
 
   console.log(
-    `✓ Current install documentation consistently pins xrpl to v4 and the ${releaseConfig.channel} channel`
+    `✓ Current install documentation consistently pins xrpl to v5 and the ${releaseConfig.channel} channel`
   );
   return findInstallCommand(
     path.join(repositoryRoot, 'packages', 'react', 'README.md'),
@@ -829,9 +829,9 @@ try {
   rmSync(temporaryRoot, { recursive: true, force: true });
 }
 
-// Reuse all consumer checks for the v5 floor and current v5 release, not just imports.
+// Reuse all consumer checks for xrpl v4 and the v5 floor, not just imports.
 if (xrplVersionIndex === -1) {
-  for (const version of ['5.0.0', '^5']) {
+  for (const version of ['^4', '5.0.0']) {
     run(
       process.execPath,
       [
