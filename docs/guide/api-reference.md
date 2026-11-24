@@ -905,6 +905,8 @@ interface NetworkInfo {
 }
 ```
 
+<a id="transaction"></a>
+
 ### SubmittableTransaction
 
 `SubmittableTransaction` is the `SubmittableTransaction` type from the `xrpl` package: any
