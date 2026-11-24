@@ -21,10 +21,6 @@ source commit and integrity hash rather than treating the version label as proof
 
 ### Using npm
 
-The packages support `xrpl` v3, v4, and v5. The installation commands below remain pinned
-to v4 for a consistent baseline. Applications already using v5 can retain it without pnpm
-compatibility overrides; upgrade the SDK and framework binding together.
-
 ```bash
 npm install xrpl-connect@rc xrpl@^5
 ```

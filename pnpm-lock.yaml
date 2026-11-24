@@ -45,6 +45,11 @@ overrides:
   gray-matter>js-yaml: ^3.15.2
   vite: npm:@voidzero-dev/vite-plus-core@1.5.0
 
+patchedDependencies:
+  fetch-ponyfill@7.1.0:
+    hash: d1a14b2ac0bce51093e0f9595548d349ad44a5df225c678e15ea5d00adf15106
+    path: patches/fetch-ponyfill@7.1.0.patch
+
 importers:
 
   .:
@@ -6681,7 +6686,7 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.7
 
-  fetch-ponyfill@7.1.0:
+  fetch-ponyfill@7.1.0(patch_hash=d1a14b2ac0bce51093e0f9595548d349ad44a5df225c678e15ea5d00adf15106):
     dependencies:
       node-fetch: 2.6.13
     transitivePeerDependencies:
@@ -8736,7 +8741,7 @@ snapshots:
       buffer: 6.0.3
       debug: 4.4.3
       events: 3.3.0
-      fetch-ponyfill: 7.1.0
+      fetch-ponyfill: 7.1.0(patch_hash=d1a14b2ac0bce51093e0f9595548d349ad44a5df225c678e15ea5d00adf15106)
       node-fetch: 2.7.0
       os-browserify: 0.3.0
       websocket: 1.0.35
