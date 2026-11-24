@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
+import yaml from 'js-yaml';
 import { createReleasePublisher } from './publish-release.mjs';
 import {
   NPM_REGISTRY,
@@ -193,30 +194,32 @@ test('trusted release workflow publishes before tagging and calls exact-tag docs
   );
   assert.doesNotMatch(docsWorkflow, /branches: \[develop\]/);
   assert.doesNotMatch(docsWorkflow, /release:\n\s+types:/);
-  const deployJob = docsWorkflow.indexOf('\n  deploy:');
-  assert(deployJob > 0, 'documentation workflow has a deploy job');
-  for (const permission of ['pages: write', 'id-token: write']) {
-    assert(
-      docsWorkflow.indexOf(permission) > deployJob,
-      `${permission} is granted only to the deploy job`
-    );
+  const { permissions, jobs } = yaml.safeLoad(docsWorkflow);
+  assert.deepEqual(permissions, { contents: 'read' });
+  assert.deepEqual(jobs.deploy.permissions, { pages: 'write', 'id-token': 'write' });
+  for (const [name, job] of Object.entries(jobs)) {
+    if (name === 'deploy') continue;
+    const effective = job.permissions ?? permissions;
+    assert.notEqual(effective, 'write-all', `${name} must not have write-all permissions`);
+    for (const scope of ['pages', 'id-token']) {
+      assert.notEqual(effective[scope], 'write', `${name} must not have ${scope}: write`);
+    }
   }
 });
 
 test('workflows pin every external action to a full commit SHA', () => {
   const workflowsDir = new URL('../../../.github/workflows/', import.meta.url);
-  const unpinned = readdirSync(workflowsDir)
-    .filter((name) => /\.ya?ml$/.test(name))
-    .flatMap((name) =>
-      [
-        ...readFileSync(new URL(name, workflowsDir), 'utf-8').matchAll(
-          /^\s*(?:-\s+)?uses:\s*(\S+)/gm
-        ),
-      ]
-        .map(([, ref]) => ref)
-        .filter((ref) => !ref.startsWith('./') && !/@[0-9a-f]{40}$/.test(ref))
-        .map((ref) => `${name}: ${ref}`)
-    );
+  const unpinned = [];
+  for (const name of readdirSync(workflowsDir).filter((file) => /\.ya?ml$/.test(file))) {
+    const { jobs } = yaml.safeLoad(readFileSync(new URL(name, workflowsDir), 'utf-8'));
+    for (const [jobName, job] of Object.entries(jobs)) {
+      for (const { uses } of [job, ...(job.steps ?? [])]) {
+        if (uses && !uses.startsWith('./') && !/@[0-9a-f]{40}$/i.test(uses)) {
+          unpinned.push(`${name} (${jobName}): ${uses}`);
+        }
+      }
+    }
+  }
   assert.deepEqual(unpinned, []);
 });
 
