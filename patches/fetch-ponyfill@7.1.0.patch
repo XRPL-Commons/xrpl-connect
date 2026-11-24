@@ -1,0 +1,13 @@
+diff --git a/build/fetch-browser.js b/build/fetch-browser.js
+--- a/build/fetch-browser.js
++++ b/build/fetch-browser.js
+@@ -8,5 +8,9 @@
+     return (function () {
+       var globalThis = Object.create(global, {
++        // Shadow the host's setters so the ponyfill only modifies this object.
++        Headers: { writable: true },
++        Request: { writable: true },
++        Response: { writable: true },
+         fetch: {
+           value: undefined,
+           writable: true

@@ -49,9 +49,9 @@ Review the [upstream v5 release notes](https://github.com/XRPLF/xrpl.js/releases
 when upgrading an existing application. XRPL Connect does not derive users' wallets
 from seeds or mnemonics.
 
-Packed-consumer verification covers the documented v4 dependency, the v5.0.0
-minimum, and the current v5 release with strict peers, transaction types,
-ESM/CommonJS, React/Vue, SSR, offline signing/codec checks, and a Nuxt build.
+Packed-consumer verification covers the documented `xrpl@^5` dependency, the v5.0.0
+minimum, and the current v4 release with strict peers, transaction types,
+ESM/CommonJS, React/Vue, SSR, offline signing/codec checks, and Next.js and Nuxt builds.
 This does not replace live-wallet acceptance tests. Upgrading the upstream
 dependency can also change browser assets: the tested v5.1.0 Nuxt build emits an
 additional WebAssembly asset, so review your application's bundle and deployment
