@@ -39,19 +39,20 @@ jobs:
         run: test "$REF_NAME" = "$DEFAULT_BRANCH"
 
       - name: Checkout exact release source
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
 
       - name: Setup Node.js for trusted publishing
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '24.11'
+          # Node 24.11.1 bundles npm 11.6.2, the trusted-publishing client this workflow requires.
+          node-version: '24.11.1'
           registry-url: https://registry.npmjs.org/
           package-manager-cache: false
 
-      - name: Pin trusted-publishing npm client
-        run: npm install --global npm@11.6.2
+      - name: Require the trusted-publishing npm client
+        run: test "$(npm --version)" = 11.6.2
 
       - name: Enable pnpm
         run: |

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
+import yaml from 'js-yaml';
 import { createReleasePublisher } from './publish-release.mjs';
 import {
   NPM_REGISTRY,
@@ -159,7 +160,9 @@ test('trusted release workflow publishes before tagging and calls exact-tag docs
   assert.match(workflow, /id-token: write/);
   assert.match(workflow, /environment: npm/);
   assert.match(workflow, /NPM_CONFIG_PROVENANCE: true/);
-  assert.match(workflow, /npm@11\.6\.2/);
+  assert.match(workflow, /node-version: '24\.11\.1'/);
+  assert.match(workflow, /test "\$\(npm --version\)" = 11\.6\.2/);
+  assert.doesNotMatch(workflow, /npm install --global/);
   assert.match(workflow, /secrets\.NPM_READ_TOKEN/);
   assert.match(workflow, /secrets\.NPM_DIST_TAG_TOKEN/);
   assert.doesNotMatch(workflow, /env:\n\s+NODE_AUTH_TOKEN:/);
@@ -191,6 +194,33 @@ test('trusted release workflow publishes before tagging and calls exact-tag docs
   );
   assert.doesNotMatch(docsWorkflow, /branches: \[develop\]/);
   assert.doesNotMatch(docsWorkflow, /release:\n\s+types:/);
+  const { permissions, jobs } = yaml.safeLoad(docsWorkflow);
+  assert.deepEqual(permissions, { contents: 'read' });
+  assert.deepEqual(jobs.deploy.permissions, { pages: 'write', 'id-token': 'write' });
+  for (const [name, job] of Object.entries(jobs)) {
+    if (name === 'deploy') continue;
+    const effective = job.permissions ?? permissions;
+    assert.notEqual(effective, 'write-all', `${name} must not have write-all permissions`);
+    for (const scope of ['pages', 'id-token']) {
+      assert.notEqual(effective[scope], 'write', `${name} must not have ${scope}: write`);
+    }
+  }
+});
+
+test('workflows pin every external action to a full commit SHA', () => {
+  const workflowsDir = new URL('../../../.github/workflows/', import.meta.url);
+  const unpinned = [];
+  for (const name of readdirSync(workflowsDir).filter((file) => /\.ya?ml$/.test(file))) {
+    const { jobs } = yaml.safeLoad(readFileSync(new URL(name, workflowsDir), 'utf-8'));
+    for (const [jobName, job] of Object.entries(jobs)) {
+      for (const { uses } of [job, ...(job.steps ?? [])]) {
+        if (uses && !uses.startsWith('./') && !/@[0-9a-f]{40}$/i.test(uses)) {
+          unpinned.push(`${name} (${jobName}): ${uses}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(unpinned, []);
 });
 
 test('RC policy accepts fresh and subsequent candidates while preserving latest', () => {
