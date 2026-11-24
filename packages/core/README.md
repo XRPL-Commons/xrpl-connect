@@ -207,13 +207,13 @@ const account = await walletManager.reconnect();
 
 ### Signing Methods
 
-#### `sign(transaction: Transaction): Promise<ManagedSignedTransaction>`
+#### `sign(transaction: SubmittableTransaction): Promise<ManagedSignedTransaction>`
 
 Signs a transaction without submitting it to the network.
 
 **Parameters**:
 
-- `transaction` (Transaction): An XRPL transaction object
+- `transaction` (`SubmittableTransaction`): An XRPL transaction a wallet can sign
 
 **Returns**: A `SignedTransaction` with a required `signerAddress` identifying
 the account that produced the signature. The result may also contain `tx_blob`,
@@ -238,7 +238,11 @@ before submitting the final transaction.
 **Example**:
 
 ```typescript
-const txn = {
+import type { SubmittableTransaction } from 'xrpl-connect';
+
+if (!walletManager.account) throw new Error('Connect a wallet before signing.');
+
+const txn: SubmittableTransaction = {
   TransactionType: 'Payment',
   Account: walletManager.account.address,
   Destination: 'rN7n7otQDd6FczFgLdkqsL...',
@@ -254,13 +258,13 @@ console.log('Signed by:', signed.signerAddress);
 
 ---
 
-#### `signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction>`
+#### `signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction>`
 
 Signs a transaction and submits it to the network.
 
 **Parameters**:
 
-- `transaction` (Transaction): An XRPL transaction object
+- `transaction` (`SubmittableTransaction`): An XRPL transaction a wallet can sign
 
 **Returns**: `SubmittedTransaction` (may contain `hash`, `id`, `tx_blob`, `tx_json`, etc.)
 
@@ -272,7 +276,11 @@ Signs a transaction and submits it to the network.
 **Example**:
 
 ```typescript
-const txn = {
+import type { SubmittableTransaction } from 'xrpl-connect';
+
+if (!walletManager.account) throw new Error('Connect a wallet before signing.');
+
+const txn: SubmittableTransaction = {
   TransactionType: 'Payment',
   Account: walletManager.account.address,
   Destination: 'rN7n7otQDd6FczFgLdkqsL...',
@@ -676,7 +684,7 @@ interface WalletAuthPrompt {
 interface WalletTransactionReview {
   action: 'sign' | 'signAndSubmit';
   network: NetworkInfo;
-  transaction: Transaction; // Copy of the exact transaction signed once approved
+  transaction: SubmittableTransaction; // Copy of the exact transaction signed once approved
   details: readonly WalletTransactionReviewDetail[]; // { name, label, value }, key fields first
 }
 ```
@@ -727,7 +735,7 @@ interface SignedTransaction {
   tx_blob?: string; // Signed transaction or multisign-contribution blob
   signature?: string; // Top-level or signer-contribution signature
   signerAddress?: string; // Optional on direct adapter results
-  tx_json?: Transaction; // Signed transaction or multisign contribution
+  tx_json?: SubmittableTransaction; // Signed transaction or multisign contribution
   [key: string]: unknown; // Additional wallet-specific fields
 }
 ```
@@ -755,7 +763,7 @@ interface SubmittedTransaction {
   id?: string; // Optional transaction ID
   tx_blob?: string; // Signed transaction blob
   signature?: string; // Transaction signature
-  tx_json?: Transaction; // Complete signed transaction JSON
+  tx_json?: SubmittableTransaction; // Complete signed transaction JSON
   [key: string]: unknown; // Additional submission response data
 }
 ```
@@ -872,16 +880,16 @@ with `INVALID_MESSAGE`.
 ### Signed Transaction Verification
 
 ```typescript
-function canonicalizeTransaction(transaction: Transaction): Transaction;
+function canonicalizeTransaction(transaction: SubmittableTransaction): SubmittableTransaction;
 
 function assertSignedTransaction(
-  transaction: Transaction, // Decoded from blob
+  transaction: SubmittableTransaction, // Decoded from blob
   blob: string,
   expected: SignedTransactionExpectation // { walletName, account, networkId, multisign? }
 ): void;
 
 function assertRequestedTransaction(
-  request: Transaction,
+  request: SubmittableTransaction,
   actual: Record<string, unknown> | undefined,
   policy: RequestedTransactionPolicy // { walletName, maxLastLedgerSequenceExtension? }
 ): void;
@@ -1196,7 +1204,11 @@ try {
 ### Signing a Transaction
 
 ```typescript
-const txn = {
+import type { SubmittableTransaction } from 'xrpl-connect';
+
+if (!walletManager.account) throw new Error('Connect a wallet before signing.');
+
+const txn: SubmittableTransaction = {
   TransactionType: 'Payment',
   Account: walletManager.account.address,
   Destination: 'rN7n7...',
@@ -1209,7 +1221,7 @@ try {
   const result = await walletManager.signAndSubmit(txn);
   console.log('Submitted:', result.hash);
 } catch (error) {
-  console.error('Transaction failed:', error.message);
+  console.error('Transaction failed:', error);
 }
 ```
 

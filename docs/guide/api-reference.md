@@ -911,7 +911,9 @@ interface NetworkInfo {
 transaction a wallet can sign and submit, for example:
 
 ```typescript
-const payment = {
+import type { SubmittableTransaction } from 'xrpl-connect';
+
+const payment: SubmittableTransaction = {
   TransactionType: 'Payment',
   Account: 'r...',
   Destination: 'r...',
