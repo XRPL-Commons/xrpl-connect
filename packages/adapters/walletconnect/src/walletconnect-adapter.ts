@@ -13,7 +13,7 @@ import type {
   ConnectOptions,
   NetworkConfig,
   NetworkInfo,
-  Transaction,
+  SubmittableTransaction,
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
@@ -98,16 +98,16 @@ type VerifiedSignedTransaction = {
   hash: string;
   tx_blob: string;
   signature?: string;
-  tx_json: Transaction;
+  tx_json: SubmittableTransaction;
 };
 
 type SerializedSignTransactionResult = {
   hash: string;
   reportedHash: unknown;
   /** The returned transaction JSON, without its hash */
-  reported: Transaction;
+  reported: SubmittableTransaction;
   tx_blob: string;
-  tx_json: Transaction;
+  tx_json: SubmittableTransaction;
 };
 
 type ConnectionProposal = {
@@ -241,7 +241,7 @@ function serializeSignTransactionResult(result: unknown): SerializedSignTransact
   }
 
   const { hash: reportedHash, ...fields } = signedTxJson as Record<string, unknown>;
-  const reported = fields as Transaction;
+  const reported = fields as SubmittableTransaction;
   let signedFields = reported;
   if (reported.TransactionType === 'Payment' && reported.DeliverMax != null) {
     const { DeliverMax: deliverMax, ...payment } = reported;
@@ -253,7 +253,7 @@ function serializeSignTransactionResult(result: unknown): SerializedSignTransact
     reportedHash,
     reported,
     tx_blob,
-    tx_json: decode(tx_blob) as Transaction,
+    tx_json: decode(tx_blob) as SubmittableTransaction,
   };
 }
 
@@ -266,7 +266,7 @@ function serializeSignTransactionResult(result: unknown): SerializedSignTransact
  */
 function verifySignTransactionResult(
   signed: SerializedSignTransactionResult,
-  requested: Transaction,
+  requested: SubmittableTransaction,
   account: string,
   chainId: string,
   submit: boolean
@@ -1038,7 +1038,7 @@ export class WalletConnectAdapter
    * Send a WalletConnect sign transaction request and verify the wallet's result
    */
   private async requestSignTransaction(
-    transaction: Transaction,
+    transaction: SubmittableTransaction,
     submit: boolean
   ): Promise<VerifiedSignedTransaction> {
     if (!this.client || !this.session || !this.currentAccount) {
@@ -1063,7 +1063,7 @@ export class WalletConnectAdapter
     const chainId = getXrplChainId(this.currentAccount.network);
     // Send the canonical form, so the wallet signs exactly what is verified. It
     // is also a snapshot, independent of caller mutations while the wallet is open.
-    let requested: Transaction;
+    let requested: SubmittableTransaction;
     try {
       requested = canonicalizeTransaction({
         ...transaction,
@@ -1109,7 +1109,7 @@ export class WalletConnectAdapter
    *
    * @param transaction - The transaction to sign
    */
-  async sign(transaction: Transaction): Promise<SignedTransaction> {
+  async sign(transaction: SubmittableTransaction): Promise<SignedTransaction> {
     try {
       return await this.requestSignTransaction(transaction, false);
     } catch (error) {
@@ -1131,7 +1131,7 @@ export class WalletConnectAdapter
    *
    * @param transaction - The transaction to sign and submit
    */
-  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+  async signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction> {
     try {
       return await this.requestSignTransaction(transaction, true);
     } catch (error) {

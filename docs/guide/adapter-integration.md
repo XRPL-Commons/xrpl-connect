@@ -183,8 +183,8 @@ interface WalletAdapter {
   getNetwork(): Promise<NetworkInfo>;
 
   // Signing
-  sign(transaction: Transaction): Promise<SignedTransaction>;
-  signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction>;
+  sign(transaction: SubmittableTransaction): Promise<SignedTransaction>;
+  signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction>;
   signMessage(message: string | Uint8Array): Promise<SignedMessage>;
 
   // Optional event hooks
@@ -220,7 +220,7 @@ import {
   SignedTransaction,
   SubmittedTransaction,
   SignedMessage,
-  Transaction,
+  SubmittableTransaction,
   ConnectOptions,
   createWalletError,
   decodeMessage,
@@ -297,14 +297,14 @@ export class MyWalletAdapter implements WalletAdapter {
     return this.network;
   }
 
-  async sign(transaction: Transaction): Promise<SignedTransaction> {
+  async sign(transaction: SubmittableTransaction): Promise<SignedTransaction> {
     this.assertConnected();
     const tx = { ...transaction, Account: transaction.Account || this.account!.address };
     const result = await (window as any).myWallet.sign(tx);
     return { hash: result.hash, tx_blob: result.tx_blob, signature: result.signature };
   }
 
-  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+  async signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction> {
     this.assertConnected();
     const tx = { ...transaction, Account: transaction.Account || this.account!.address };
     const result = await (window as any).myWallet.signAndSubmit(tx);
@@ -388,13 +388,13 @@ import { assertRequestedTransaction, assertSignedTransaction, canonicalizeTransa
 
 const XRPL_NETWORK_IDS: Record<string, number> = { mainnet: 0, testnet: 1, devnet: 2 };
 
-async sign(transaction: Transaction): Promise<SignedTransaction> {
+async sign(transaction: SubmittableTransaction): Promise<SignedTransaction> {
   this.assertConnected();
   const account = this.account!;
   try {
     const request = canonicalizeTransaction({ ...transaction, Account: transaction.Account || account.address });
     const { tx_blob } = await (window as any).myWallet.sign(request);
-    const tx_json = decode(tx_blob) as Transaction;
+    const tx_json = decode(tx_blob) as SubmittableTransaction;
     assertSignedTransaction(tx_json, tx_blob, {
       walletName: this.name,
       account: account.address,

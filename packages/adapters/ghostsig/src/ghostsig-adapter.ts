@@ -18,7 +18,7 @@ import type {
   ConnectOptions,
   ReconnectOptions,
   SupportsReconnectOptions,
-  Transaction,
+  SubmittableTransaction,
   SignedTransaction,
   SubmittedTransaction,
   SignedMessage,
@@ -195,7 +195,7 @@ export class GhostsigAdapter implements WalletAdapter, SupportsReconnectOptions 
    * @param transaction - The XRPL transaction object
    * @returns The signed transaction with tx_blob
    */
-  async sign(transaction: Transaction): Promise<SignedTransaction> {
+  async sign(transaction: SubmittableTransaction): Promise<SignedTransaction> {
     const signed = await this.signRequest(transaction, false);
     return this.toSignedTransaction(signed);
   }
@@ -206,7 +206,7 @@ export class GhostsigAdapter implements WalletAdapter, SupportsReconnectOptions 
    * @param transaction - The XRPL transaction object
    * @returns The submitted transaction with the ledger outcome
    */
-  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+  async signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction> {
     const signed = await this.signRequest(transaction, true);
     const submitted = signed.submitted;
     const result: SubmittedTransaction = { ...this.toSignedTransaction(signed) };
@@ -262,7 +262,7 @@ export class GhostsigAdapter implements WalletAdapter, SupportsReconnectOptions 
    * Ask the wallet to sign the transaction for the connected account.
    */
   private async signRequest(
-    transaction: Transaction,
+    transaction: SubmittableTransaction,
     submit: boolean
   ): Promise<GhostsigSignResult> {
     if (!this.currentAccount) throw createWalletError.notConnected();

@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import type {
-  Transaction,
+  SubmittableTransaction,
   ManagedSignedTransaction,
   SubmittedTransaction,
   ManagedSignedMessage,
@@ -34,11 +34,13 @@ export function useSigner() {
   const { manager } = useXrplConnectContext();
 
   const sign = useCallback(
-    (transaction: Transaction): Promise<ManagedSignedTransaction> => manager.sign(transaction),
+    (transaction: SubmittableTransaction): Promise<ManagedSignedTransaction> =>
+      manager.sign(transaction),
     [manager]
   );
   const signAndSubmit = useCallback(
-    (transaction: Transaction): Promise<SubmittedTransaction> => manager.signAndSubmit(transaction),
+    (transaction: SubmittableTransaction): Promise<SubmittedTransaction> =>
+      manager.signAndSubmit(transaction),
     [manager]
   );
   const signMessage = useCallback(

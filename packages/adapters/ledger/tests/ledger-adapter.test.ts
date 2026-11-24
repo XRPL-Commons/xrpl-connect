@@ -6,7 +6,7 @@ import {
   WalletErrorCategory,
   WalletErrorCode,
   WalletManager,
-  type Transaction,
+  type SubmittableTransaction,
 } from '@xrpl-connect/core';
 import {
   decode,
@@ -74,7 +74,7 @@ const SINGLE_TRANSACTION = {
   Amount: '20000000',
   Sequence: 1,
   Fee: '12',
-} satisfies Transaction;
+} satisfies SubmittableTransaction;
 
 const MULTISIGN_TRANSACTION = {
   Account: 'rEuLyBCvcw4CFmzv8RepSiAoNgF8tTGJQC',
@@ -88,7 +88,7 @@ const MULTISIGN_TRANSACTION = {
   Sequence: 2,
   SigningPubKey: '',
   TransactionType: 'TrustSet',
-} satisfies Transaction;
+} satisfies SubmittableTransaction;
 
 const LEDGER_SIGNER = {
   Account: 'rsA2LpzuawewSBQXkiju3YQTMzW13pAAdW',
@@ -115,8 +115,8 @@ const COMBINED_MULTISIGN_BLOB =
 
 function signWithSingleSigner(rawTransaction: string): string {
   const signed = decode(
-    SINGLE_SIGNER.sign(decode(rawTransaction) as Transaction).tx_blob
-  ) as Transaction;
+    SINGLE_SIGNER.sign(decode(rawTransaction) as SubmittableTransaction).tx_blob
+  ) as SubmittableTransaction;
   if (!signed.TxnSignature) throw new Error('Missing test signature');
   return signed.TxnSignature;
 }
@@ -140,7 +140,7 @@ beforeEach(() => {
   transportWebUSB.create.mockResolvedValue(mockTransport);
   client.connect.mockReset().mockResolvedValue(undefined);
   client.disconnect.mockReset().mockResolvedValue(undefined);
-  client.autofill.mockReset().mockImplementation(async (tx: Transaction) => ({
+  client.autofill.mockReset().mockImplementation(async (tx: SubmittableTransaction) => ({
     ...tx,
     Sequence: tx.Sequence ?? 1,
     Fee: tx.Fee ?? '10',
@@ -363,7 +363,7 @@ describe('LedgerAdapter.sign', () => {
 
     const result = await adapter.sign(SINGLE_TRANSACTION);
     const expected = SINGLE_SIGNER.sign(SINGLE_TRANSACTION);
-    const decoded = decode(result.tx_blob!) as Transaction;
+    const decoded = decode(result.tx_blob!) as SubmittableTransaction;
 
     expect(result).toMatchObject({
       hash: '',
@@ -399,7 +399,7 @@ describe('LedgerAdapter.sign', () => {
     xrpAppInstance.signTransaction.mockResolvedValue(LEDGER_SIGNER.TxnSignature);
 
     const result = await adapter.sign(MULTISIGN_TRANSACTION);
-    const decoded = decode(result.tx_blob!) as Transaction;
+    const decoded = decode(result.tx_blob!) as SubmittableTransaction;
 
     expect(xrpAppInstance.signTransaction).toHaveBeenCalledWith(
       "44'/144'/0'/0/0",
@@ -465,7 +465,7 @@ describe('LedgerAdapter.sign', () => {
   ])('rejects multisign input that already contains %s', async (_field, transaction) => {
     const adapter = await connected(LEDGER_SIGNER.Account, LEDGER_SIGNER.SigningPubKey);
 
-    await expect(adapter.sign(transaction as Transaction)).rejects.toMatchObject({
+    await expect(adapter.sign(transaction as SubmittableTransaction)).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_FAILED,
       message: expect.stringContaining('must not contain TxnSignature or Signers'),
     });
@@ -477,7 +477,7 @@ describe('LedgerAdapter.sign', () => {
     const adapter = await connected(LEDGER_SIGNER.Account, LEDGER_SIGNER.SigningPubKey);
     const { Account: _account, ...transaction } = MULTISIGN_TRANSACTION;
 
-    await expect(adapter.sign(transaction as Transaction)).rejects.toMatchObject({
+    await expect(adapter.sign(transaction as SubmittableTransaction)).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_FAILED,
       message: expect.stringContaining('requires the source Account'),
     });
@@ -490,7 +490,7 @@ describe('LedgerAdapter.sign', () => {
   ])('requires a prepared multisign transaction with %s', async (_field, transaction) => {
     const adapter = await connected(LEDGER_SIGNER.Account, LEDGER_SIGNER.SigningPubKey);
 
-    await expect(adapter.sign(transaction as Transaction)).rejects.toMatchObject({
+    await expect(adapter.sign(transaction as SubmittableTransaction)).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_FAILED,
       message: expect.stringContaining('requires a prepared transaction with Fee and Sequence'),
     });

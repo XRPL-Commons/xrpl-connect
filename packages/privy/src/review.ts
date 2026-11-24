@@ -1,6 +1,6 @@
 import type {
   NetworkInfo,
-  Transaction,
+  SubmittableTransaction,
   WalletTransactionReview,
   WalletTransactionReviewDetail,
 } from 'xrpl-connect';
@@ -93,7 +93,7 @@ function formatField(name: string, value: unknown): string {
  * key details first; amounts are formatted and anything else keeps its raw value.
  */
 export function createTransactionReview(
-  transaction: Transaction,
+  transaction: SubmittableTransaction,
   network: NetworkInfo,
   action: WalletTransactionReview['action']
 ): WalletTransactionReview {

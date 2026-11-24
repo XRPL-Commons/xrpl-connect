@@ -262,26 +262,41 @@ describe('WalletConnectorElement availability rendering', () => {
   });
 
   it('omits unconfigured wallets instead of presenting them as installable', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const getMissingConfiguration = vi.fn(() => ['credential']);
     const unconfiguredWallet = {
       id: 'unconfigured',
       name: 'Unconfigured Wallet',
       url: 'https://example.com/install',
-      getMissingConfiguration: vi.fn(() => ['credential']),
+      getMissingConfiguration,
       isAvailable: vi.fn(async () => true),
     } as unknown as WalletAdapter;
-    const connector = mount([unconfiguredWallet]);
+    const connector = mount([unconfiguredWallet, createWallet('available', true)]);
     connector.setAttribute('show-unavailable', '');
 
     await connector.open();
     await vi.waitFor(() =>
-      expect(connector.getOverlayRoot()?.querySelector('[aria-busy="true"]')).toBeNull()
+      expect(
+        connector.getOverlayRoot()?.querySelector('[data-wallet-id="available"]')
+      ).not.toBeNull()
     );
+    // Re-evaluating the list must not repeat the report.
+    connector.setAttribute('wallets', 'available,unconfigured');
+    await vi.waitFor(() => expect(getMissingConfiguration.mock.calls.length).toBeGreaterThan(1));
 
     const modal = connector.getOverlayRoot()?.innerHTML ?? '';
-    expect(unconfiguredWallet.getMissingConfiguration).toHaveBeenCalledWith(undefined);
+    expect(getMissingConfiguration).toHaveBeenCalledWith(undefined);
     expect(unconfiguredWallet.isAvailable).not.toHaveBeenCalled();
     expect(modal).not.toContain('data-wallet-id="unconfigured"');
     expect(modal).not.toContain('Unconfigured Wallet');
+    const reports = warn.mock.calls.filter(([message]) =>
+      String(message).includes('Unconfigured Wallet is hidden')
+    );
+    expect(reports).toHaveLength(1);
+    expect(reports[0][0]).toContain(
+      'Unconfigured Wallet is hidden from the wallet modal: pass credential to its adapter constructor.'
+    );
+    warn.mockRestore();
   });
 
   it('renders configured social methods outside the normal wallet allowlist and hides duplicates', async () => {

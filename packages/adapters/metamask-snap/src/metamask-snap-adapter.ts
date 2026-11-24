@@ -12,7 +12,7 @@ import type {
   NetworkInfo,
   NetworkConfig,
   StandardNetworkId,
-  Transaction,
+  SubmittableTransaction,
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
@@ -296,7 +296,7 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
   /**
    * Sign a transaction without submitting
    */
-  async sign(transaction: Transaction): Promise<SignedTransaction> {
+  async sign(transaction: SubmittableTransaction): Promise<SignedTransaction> {
     if (!this.currentAccount) {
       throw createWalletError.notConnected();
     }
@@ -331,7 +331,7 @@ export class MetaMaskSnapAdapter implements WalletAdapter {
   /**
    * Sign and submit a transaction
    */
-  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+  async signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction> {
     if (!this.currentAccount) {
       throw createWalletError.notConnected();
     }

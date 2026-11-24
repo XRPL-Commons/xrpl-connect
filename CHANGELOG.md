@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Core: `SubmittableTransaction`, the type `sign()` and `signAndSubmit()` accept, named after the xrpl.js type it is. xrpl.js's broader `Transaction` also includes validator pseudo-transactions, which wallets cannot sign.
+
+### Deprecated
+
+- Core: the `Transaction` type. It is an alias for `SubmittableTransaction` and not interchangeable with xrpl.js's `Transaction`.
+
+### Fixed
+
+- Packaging: the `xrpl-connect` ESM bundle no longer carries the AMD fallbacks of bundled CommonJS dependencies (crypto-js, fetch-ponyfill, qr-code-styling). Next.js builds with Turbopack failed with `Can't resolve './core'`, and pages with an AMD loader could capture fetch-ponyfill's export. Packed-consumer verification now builds a Next.js App Router page with Turbopack.
+- Packaging: importing `xrpl-connect` on Node 20 preserves the native `Headers`, `Request`, and `Response` constructors. The bundled Xaman dependency previously replaced them during import, breaking Next.js prerendering.
+- UI: the wallet connector logs one warning per wallet it hides for missing configuration, naming the option (for example Xaman `apiKey` or WalletConnect `projectId`), instead of omitting it silently.
+- Documentation: install commands use `xrpl@^5`, the current supported major; v3 and v4 remain supported.
+
 ## [1.1.0-rc.0] - 2026-11-16
 
 ### Added

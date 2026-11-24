@@ -5,7 +5,7 @@ import {
   WalletManager,
   WalletErrorCode,
   type NetworkConfig,
-  type Transaction,
+  type SubmittableTransaction,
 } from '@xrpl-connect/core';
 import { decode, encode, hashes, Wallet } from 'xrpl';
 
@@ -47,7 +47,7 @@ const SIGNED_TRANSACTION = SIGNING_WALLET.sign({
   Flags: 0,
 });
 const SIGNED_TX_HEX = SIGNED_TRANSACTION.tx_blob;
-const SIGNED_TX_JSON = decode(SIGNED_TX_HEX) as Transaction;
+const SIGNED_TX_JSON = decode(SIGNED_TX_HEX) as SubmittableTransaction;
 const SIGNED_TX_HASH = hashes.hashSignedTx(SIGNED_TX_HEX);
 const REQUESTED_TRANSACTION = {
   TransactionType: 'Payment',
@@ -57,7 +57,7 @@ const REQUESTED_TRANSACTION = {
   Fee: '10',
   Sequence: 1,
   Flags: 0,
-} as Transaction;
+} as SubmittableTransaction;
 const MIN_ABSOLUTE_LEDGER_SEQUENCE = 32570;
 const MAX_LEDGER_SEQUENCE = 0xffffffff;
 
@@ -66,13 +66,13 @@ function signedExpiryFixture(lastLedgerSequence: number, overrides: Record<strin
     ...REQUESTED_TRANSACTION,
     ...overrides,
     LastLedgerSequence: lastLedgerSequence,
-  } as Transaction;
+  } as SubmittableTransaction;
   const signed = SIGNING_WALLET.sign(input);
   return {
     input,
     blob: signed.tx_blob,
     hash: hashes.hashSignedTx(signed.tx_blob),
-    tx_json: decode(signed.tx_blob) as Transaction,
+    tx_json: decode(signed.tx_blob) as SubmittableTransaction,
   };
 }
 const MULTISIGN_SOURCE = Wallet.generate();
@@ -84,23 +84,26 @@ const MULTISIGN_INPUT = {
   Fee: '10',
   Sequence: 1,
   SigningPubKey: '',
-} as Transaction;
+} as SubmittableTransaction;
 const MULTISIGNED_TRANSACTION = SIGNING_WALLET.sign(MULTISIGN_INPUT, true);
-const MULTISIGNED_TX_JSON = decode(MULTISIGNED_TRANSACTION.tx_blob) as Transaction;
+const MULTISIGNED_TX_JSON = decode(MULTISIGNED_TRANSACTION.tx_blob) as SubmittableTransaction;
 const MULTISIGNED_TX_HASH = hashes.hashSignedTx(MULTISIGNED_TRANSACTION.tx_blob);
 const EXISTING_MULTISIGNER = Wallet.generate();
 const PARTIALLY_SIGNED_INPUT = decode(
   EXISTING_MULTISIGNER.sign(MULTISIGN_INPUT, true).tx_blob
-) as Transaction;
+) as SubmittableTransaction;
 
 function multisignedExpiryFixture(lastLedgerSequence: number) {
-  const input = { ...MULTISIGN_INPUT, LastLedgerSequence: lastLedgerSequence } as Transaction;
+  const input = {
+    ...MULTISIGN_INPUT,
+    LastLedgerSequence: lastLedgerSequence,
+  } as SubmittableTransaction;
   const signed = SIGNING_WALLET.sign(input, true);
   return {
     input,
     blob: signed.tx_blob,
     hash: hashes.hashSignedTx(signed.tx_blob),
-    tx_json: decode(signed.tx_blob) as Transaction,
+    tx_json: decode(signed.tx_blob) as SubmittableTransaction,
   };
 }
 
@@ -134,7 +137,7 @@ function signedFixture(networkId = 0) {
     Sequence: 1,
     Flags: 0,
     ...(networkId > 1024 ? { NetworkID: networkId } : {}),
-  } as Transaction;
+  } as SubmittableTransaction;
   const signed = SIGNING_WALLET.sign(input);
   return {
     input,
@@ -148,7 +151,7 @@ type PayloadEventCallback = (event: {
   payload: { meta: { app_opened: boolean } };
 }) => unknown | Promise<unknown>;
 
-type PayloadBody = { txjson: Transaction; options: Record<string, unknown> };
+type PayloadBody = { txjson: SubmittableTransaction; options: Record<string, unknown> };
 
 function createSubscriptionHarness(onCreate?: (body: PayloadBody) => void) {
   let callback: PayloadEventCallback | undefined;
@@ -1073,7 +1076,7 @@ describe('XamanAdapter.sign', () => {
     expect(subscription.close).toHaveBeenCalledTimes(1);
     expectTypeOf(result.tx_blob).toEqualTypeOf<string | undefined>();
     expectTypeOf(result.signature).toEqualTypeOf<string | undefined>();
-    expectTypeOf(result.tx_json).toEqualTypeOf<Transaction | undefined>();
+    expectTypeOf(result.tx_json).toEqualTypeOf<SubmittableTransaction | undefined>();
   });
 
   it('keeps the signing link out of debug logs', async () => {
@@ -1298,7 +1301,7 @@ describe('XamanAdapter.sign', () => {
     const transaction = {
       ...REQUESTED_TRANSACTION,
       LastLedgerSequence: expiry,
-    } as unknown as Transaction;
+    } as unknown as SubmittableTransaction;
 
     await expect(adapter.sign(transaction)).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_FAILED,
@@ -1342,13 +1345,13 @@ describe('XamanAdapter.sign', () => {
     const requested = {
       ...REQUESTED_TRANSACTION,
       Memos: [{ Memo: { MemoData: 'cafe' } }],
-    } as Transaction;
+    } as SubmittableTransaction;
     const signed = SIGNING_WALLET.sign({
       ...REQUESTED_TRANSACTION,
       Memos: [{ Memo: { MemoData: 'CAFE' } }],
-    } as Transaction);
+    } as SubmittableTransaction);
     const hash = hashes.hashSignedTx(signed.tx_blob);
-    let sent: Transaction | undefined;
+    let sent: SubmittableTransaction | undefined;
     const { adapter, subscription } = await signedAdapter('mainnet', {}, (body) => {
       sent = structuredClone(body.txjson);
       mockXummInstance.payload.get.mockResolvedValue(
@@ -1374,9 +1377,9 @@ describe('XamanAdapter.sign', () => {
       Fee: '10',
       Sequence: 1,
       Flags: 0,
-    } as Transaction;
+    } as SubmittableTransaction;
     const snapshot = structuredClone(requested);
-    let sent: Transaction | undefined;
+    let sent: SubmittableTransaction | undefined;
     const { adapter, subscription } = await signedAdapter('mainnet', {}, (body) => {
       sent = structuredClone(body.txjson);
       mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false, {}, {}, body.txjson));
@@ -1564,7 +1567,7 @@ describe('XamanAdapter.sign', () => {
     const signPromise = adapter.sign({
       ...wrongNetworkFixture.input,
       NetworkID: 21338,
-    } as Transaction);
+    } as SubmittableTransaction);
     const rejection = expect(signPromise).rejects.toMatchObject({
       code: WalletErrorCode.SIGN_FAILED,
     });
@@ -1612,7 +1615,7 @@ describe('XamanAdapter.sign', () => {
       ...REQUESTED_TRANSACTION,
       Destination: Wallet.generate().address,
       Amount: '5000000',
-    } as Transaction;
+    } as SubmittableTransaction;
     const { adapter, subscription } = await signedAdapter();
     mockXummInstance.payload.get.mockResolvedValue(resolvedPayload(false, {}, {}, requested));
 
@@ -1628,7 +1631,10 @@ describe('XamanAdapter.sign', () => {
   it('rejects a resolved payload whose request differs from the original transaction', async () => {
     const { adapter, subscription } = await signedAdapter();
     mockXummInstance.payload.get.mockResolvedValue(
-      resolvedPayload(false, {}, {}, { ...REQUESTED_TRANSACTION, Amount: '5000000' } as Transaction)
+      resolvedPayload(false, {}, {}, {
+        ...REQUESTED_TRANSACTION,
+        Amount: '5000000',
+      } as SubmittableTransaction)
     );
 
     const signPromise = adapter.sign(REQUESTED_TRANSACTION);
@@ -1656,7 +1662,7 @@ describe('XamanAdapter.sign', () => {
   });
 
   it('cryptographically rejects a corrupted single signature', async () => {
-    const corrupted = { ...SIGNED_TX_JSON } as Transaction;
+    const corrupted = { ...SIGNED_TX_JSON } as SubmittableTransaction;
     const signature = corrupted.TxnSignature as string;
     corrupted.TxnSignature = `${signature.slice(0, -1)}${signature.endsWith('0') ? '1' : '0'}`;
     const corruptedBlob = encode(corrupted);
@@ -1712,7 +1718,7 @@ describe('XamanAdapter.sign', () => {
   });
 
   it('cryptographically rejects a corrupted multi-signature', async () => {
-    const corrupted = JSON.parse(JSON.stringify(MULTISIGNED_TX_JSON)) as Transaction;
+    const corrupted = JSON.parse(JSON.stringify(MULTISIGNED_TX_JSON)) as SubmittableTransaction;
     const signature = corrupted.Signers![0].Signer.TxnSignature;
     corrupted.Signers![0].Signer.TxnSignature = `${signature.slice(0, -1)}${
       signature.endsWith('0') ? '1' : '0'
@@ -2026,7 +2032,7 @@ describe('XamanAdapter.signAndSubmit', () => {
   it('still rejects an invalid signature after wallet-owned submission', async () => {
     const requested = signedExpiryFixture(100_000);
     const changed = signedExpiryFixture(100_150);
-    const invalidBlob = encode({ ...changed.tx_json, Amount: '2' } as Transaction);
+    const invalidBlob = encode({ ...changed.tx_json, Amount: '2' } as SubmittableTransaction);
     const { adapter, subscription } = await signedAdapter();
     mockXummInstance.payload.get.mockResolvedValue(
       resolvedPayload(
@@ -2072,7 +2078,7 @@ describe('XamanAdapter.signAndSubmit', () => {
     expect(subscription.close).toHaveBeenCalledTimes(1);
     expectTypeOf(result.tx_blob).toEqualTypeOf<string | undefined>();
     expectTypeOf(result.signature).toEqualTypeOf<string | undefined>();
-    expectTypeOf(result.tx_json).toEqualTypeOf<Transaction | undefined>();
+    expectTypeOf(result.tx_json).toEqualTypeOf<SubmittableTransaction | undefined>();
   });
 
   it('retries authoritative result retrieval after a signed submission', async () => {

@@ -18,7 +18,7 @@ import {
 // Namespace access for exports that differ across the supported xrpl majors.
 import * as xrpl from 'xrpl';
 import { getErrorMessage } from './errors';
-import type { Transaction } from './types';
+import type { SubmittableTransaction } from './types';
 
 const MAX_LEDGER_SEQUENCE = 0xffffffff;
 // Fields a wallet produces while signing. A request cannot pre-specify them.
@@ -62,14 +62,16 @@ export interface RequestedTransactionPolicy {
  * @throws If the transaction cannot be serialized, or is a Payment whose
  * `Amount` and `DeliverMax` differ
  */
-export function canonicalizeTransaction(transaction: Transaction): Transaction {
+export function canonicalizeTransaction(
+  transaction: SubmittableTransaction
+): SubmittableTransaction {
   const resolved = resolveDeliverMax(transaction);
   const flags = resolved.Flags;
   const serializable =
     flags !== null && typeof flags === 'object'
       ? { ...resolved, Flags: convertFlagsToNumber(resolved) }
       : resolved;
-  return decode(encode(serializable)) as Transaction;
+  return decode(encode(serializable)) as SubmittableTransaction;
 }
 
 /**
@@ -79,7 +81,7 @@ export function canonicalizeTransaction(transaction: Transaction): Transaction {
  * identity, they are compared in codec form here, so equal issued-currency
  * objects match regardless of key order.
  */
-function resolveDeliverMax(transaction: Transaction): Transaction {
+function resolveDeliverMax(transaction: SubmittableTransaction): SubmittableTransaction {
   if (transaction.TransactionType !== 'Payment' || transaction.DeliverMax == null) {
     return transaction;
   }
@@ -94,14 +96,17 @@ function resolveDeliverMax(transaction: Transaction): Transaction {
 
 function isSameAmount(amount: unknown, other: unknown): boolean {
   // The codec serializes a lone field; a transaction type is not required.
-  return encode({ Amount: amount } as Transaction) === encode({ Amount: other } as Transaction);
+  return (
+    encode({ Amount: amount } as SubmittableTransaction) ===
+    encode({ Amount: other } as SubmittableTransaction)
+  );
 }
 
-function convertFlagsToNumber(transaction: Transaction): number {
+function convertFlagsToNumber(transaction: SubmittableTransaction): number {
   // xrpl 4.1+ exports a pure converter. xrpl 3.x and 4.0 export only the
   // mutating setTransactionFlagsToNumber, which later versions deprecate.
   const { convertTxFlagsToNumber } = xrpl as {
-    convertTxFlagsToNumber?: (transaction: Transaction) => number;
+    convertTxFlagsToNumber?: (transaction: SubmittableTransaction) => number;
   };
   if (convertTxFlagsToNumber) return convertTxFlagsToNumber(transaction);
   const converted = { ...transaction };
@@ -123,7 +128,7 @@ function convertFlagsToNumber(transaction: Transaction): number {
  * @param expected - The account and network the transaction must be bound to
  */
 export function assertSignedTransaction(
-  transaction: Transaction,
+  transaction: SubmittableTransaction,
   blob: string,
   expected: SignedTransactionExpectation
 ): void {
@@ -201,7 +206,7 @@ export function assertSignedTransaction(
  * @param policy - How strictly to compare `LastLedgerSequence`
  */
 export function assertRequestedTransaction(
-  request: Transaction,
+  request: SubmittableTransaction,
   actual: Record<string, unknown> | undefined,
   policy: RequestedTransactionPolicy
 ): void {
@@ -209,7 +214,7 @@ export function assertRequestedTransaction(
   if (!actual) {
     throw new Error(`${walletName} returned a transaction that did not match the signing request`);
   }
-  let requested: Transaction;
+  let requested: SubmittableTransaction;
   try {
     requested = canonicalizeTransaction(request);
   } catch (error) {

@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
-import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,7 +26,7 @@ import { verifyConsumerDependencies } from './consumer-dependencies.mjs';
 
 const cliArgs = process.argv.slice(2);
 const xrplVersionIndex = cliArgs.indexOf('--xrpl-version');
-const xrplVersion = xrplVersionIndex === -1 ? '^4' : cliArgs[xrplVersionIndex + 1];
+const xrplVersion = xrplVersionIndex === -1 ? '^5' : cliArgs[xrplVersionIndex + 1];
 assert(['^4', '5.0.0', '^5'].includes(xrplVersion), 'Unsupported xrpl compatibility version');
 if (xrplVersionIndex !== -1) cliArgs.splice(xrplVersionIndex, 2);
 const channelIndex = cliArgs.indexOf('--channel');
@@ -30,7 +38,7 @@ const CANDIDATE_VERSION = releaseConfig.version;
 const FRAMEWORK_PEER_RANGE = `^${CANDIDATE_VERSION}`;
 const NPM_ORGANIZATION = 'xrpl-commons';
 const SUPPORTED_NODE_RANGE = '^20.19.0 || ^22.18.0 || >=24.11.0';
-const DOCUMENTED_XRPL_SPEC = 'xrpl@^4';
+const DOCUMENTED_XRPL_SPEC = 'xrpl@^5';
 const DOCUMENTED_INSTALL_PATHS = [
   'README.md',
   'packages/react/README.md',
@@ -177,7 +185,7 @@ function verifyDocumentedXrplSpecs() {
       assert.equal(
         spec,
         DOCUMENTED_XRPL_SPEC,
-        `${relativePath} does not pin documented xrpl to v4`
+        `${relativePath} does not pin documented xrpl to v5`
       );
     }
     const releaseSpecCount = installCommands.reduce(
@@ -189,7 +197,7 @@ function verifyDocumentedXrplSpecs() {
   }
 
   console.log(
-    `✓ Current install documentation consistently pins xrpl to v4 and the ${releaseConfig.channel} channel`
+    `✓ Current install documentation consistently pins xrpl to v5 and the ${releaseConfig.channel} channel`
   );
   return findInstallCommand(
     path.join(repositoryRoot, 'packages', 'react', 'README.md'),
@@ -529,6 +537,18 @@ try {
       `${entry} does not contain the guarded direct MockedWebSocket constructor`
     );
   }
+  // Consumer bundlers such as Turbopack resolve the dependencies of AMD fallbacks left in
+  // bundled UMD modules (crypto-js `define(["./core"], ...)`). Only the UMD wrapper may use AMD.
+  for (const entry of readdirSync(installedUmbrellaFolder).filter((file) => /\.m?js$/.test(file))) {
+    const amdChecks = readFileSync(path.join(installedUmbrellaFolder, entry), 'utf-8').match(
+      /\bdefine\.amd\b/g
+    );
+    assert.equal(
+      amdChecks?.length ?? 0,
+      entry === 'xrpl-connect.umd.js' ? 1 : 0,
+      `${entry} contains a bundled dependency's AMD fallback`
+    );
+  }
 
   assert.throws(
     () =>
@@ -738,6 +758,7 @@ try {
       '@types/react@19',
       '@types/react-dom@19',
       'jsdom@^22.1.0',
+      'next@16.4.6',
     ],
     { ...runOptions, cwd: react19ConsumerFolder }
   );
@@ -746,6 +767,28 @@ try {
   verifyConsumerDependencies(react19ConsumerFolder, RELEASE_PACKAGE_NAMES.slice(0, 2), runOptions);
   copyReactFixtures(react19ConsumerFolder);
   verifyPackedReactConsumer(react19ConsumerFolder, 19, tscPath, runOptions);
+  console.log('→ Building packed React and umbrella ESM with Next.js and Turbopack');
+  const nextAppFolder = path.join(react19ConsumerFolder, 'app');
+  mkdirSync(nextAppFolder);
+  for (const page of ['layout', 'page', 'wallet']) {
+    copyFileSync(
+      path.join(reactFixturesFolder, `next-${page}.jsx`),
+      path.join(nextAppFolder, `${page}.jsx`)
+    );
+  }
+  run(
+    process.execPath,
+    [
+      path.join(react19ConsumerFolder, 'node_modules', 'next', 'dist', 'bin', 'next'),
+      'build',
+      '--turbopack',
+    ],
+    {
+      ...runOptions,
+      env: { ...runOptions.env, NEXT_TELEMETRY_DISABLED: '1' },
+      cwd: react19ConsumerFolder,
+    }
+  );
 
   console.log('→ Type-checking packed Vue ESM and CommonJS consumers');
   run(process.execPath, [tscPath, '--project', 'tsconfig.vue.json'], {
@@ -786,9 +829,9 @@ try {
   rmSync(temporaryRoot, { recursive: true, force: true });
 }
 
-// Reuse all consumer checks for the v5 floor and current v5 release, not just imports.
+// Reuse all consumer checks for xrpl v4 and the v5 floor, not just imports.
 if (xrplVersionIndex === -1) {
-  for (const version of ['5.0.0', '^5']) {
+  for (const version of ['^4', '5.0.0']) {
     run(
       process.execPath,
       [

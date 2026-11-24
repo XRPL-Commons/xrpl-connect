@@ -9,7 +9,11 @@ import {
   verifyKeypairSignature,
   xrpToDrops,
 } from 'xrpl';
-import { createWalletError, type SignedTransaction, type Transaction } from 'xrpl-connect';
+import {
+  createWalletError,
+  type SignedTransaction,
+  type SubmittableTransaction,
+} from 'xrpl-connect';
 import type { PrivyWallet } from './session-types';
 
 /**
@@ -26,7 +30,7 @@ const RESERVE_COST_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /** Apply the autofill fee cap to every fee, including one the application supplied. */
-export function assertFeeWithinLimit(transaction: Transaction): void {
+export function assertFeeWithinLimit(transaction: SubmittableTransaction): void {
   const fee = transaction.Fee;
   if (typeof fee !== 'string' || !/^[0-9]+$/.test(fee)) {
     throw new Error('Transaction Fee must be a whole number of drops');
@@ -50,7 +54,10 @@ export function validateWallet(wallet: PrivyWallet): void {
 }
 
 /** Snapshot the request before any asynchronous wallet or network operation. */
-export function prepareSigningInput(transaction: Transaction, wallet: PrivyWallet): Transaction {
+export function prepareSigningInput(
+  transaction: SubmittableTransaction,
+  wallet: PrivyWallet
+): SubmittableTransaction {
   if (transaction.TxnSignature !== undefined || transaction.Signers !== undefined) {
     throw new Error('Signing input must not contain signatures');
   }
@@ -66,7 +73,7 @@ export function prepareSigningInput(transaction: Transaction, wallet: PrivyWalle
   ) {
     throw new Error('Transaction SigningPubKey must match the connected Privy wallet');
   }
-  const tx: Transaction = JSON.parse(JSON.stringify(transaction));
+  const tx: SubmittableTransaction = JSON.parse(JSON.stringify(transaction));
   tx.Account = wallet.address;
   tx.SigningPubKey = wallet.publicKey.toUpperCase();
   validate(tx);
@@ -74,7 +81,7 @@ export function prepareSigningInput(transaction: Transaction, wallet: PrivyWalle
 }
 
 export async function signPreparedTransaction(
-  transaction: Transaction,
+  transaction: SubmittableTransaction,
   wallet: PrivyWallet,
   signHash: (hash: `0x${string}`) => Promise<string>
 ): Promise<SignedTransaction> {
@@ -95,7 +102,7 @@ export async function signPreparedTransaction(
   if (!verifyKeypairSignature(signingBytes, signature, wallet.publicKey)) {
     throw new Error('Privy signature does not match the connected XRPL account');
   }
-  const tx_json = { ...transaction, TxnSignature: signature } as Transaction;
+  const tx_json = { ...transaction, TxnSignature: signature } as SubmittableTransaction;
   const tx_blob = encode(tx_json);
   return {
     hash: hashes.hashSignedTx(tx_blob),

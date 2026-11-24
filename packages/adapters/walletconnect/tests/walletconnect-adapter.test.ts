@@ -4,7 +4,7 @@ import {
   STANDARD_NETWORKS,
   WalletErrorCategory,
   WalletErrorCode,
-  type Transaction,
+  type SubmittableTransaction,
 } from '@xrpl-connect/core';
 import { classicAddressToXAddress, decode, ECDSA, encode, hashes, Wallet } from 'xrpl';
 
@@ -44,7 +44,7 @@ const PAYMENT = {
   TransactionType: 'Payment',
   Destination: DESTINATION,
   Amount: '1000000',
-} as Transaction;
+} as SubmittableTransaction;
 const ISSUED_AMOUNT = { currency: 'USD', issuer: OTHER_WALLET.address };
 const VERIFICATION_FAILURE = {
   sign: 'WalletConnect returned an invalid signed transaction: ',
@@ -54,7 +54,7 @@ const VERIFICATION_FAILURE = {
 
 type SignTransactionRequest = {
   chainId: string;
-  request: { params: { tx_json: Transaction } };
+  request: { params: { tx_json: SubmittableTransaction } };
 };
 
 function walletConnectUri(topic: string): string {
@@ -67,7 +67,8 @@ function walletConnectUri(topic: string): string {
  */
 function walletResponse(
   wallet: Wallet,
-  tamper: (transaction: Transaction) => Transaction = (transaction) => transaction,
+  tamper: (transaction: SubmittableTransaction) => SubmittableTransaction = (transaction) =>
+    transaction,
   multisign = false
 ) {
   return async ({ chainId, request }: SignTransactionRequest) => {
@@ -78,9 +79,9 @@ function walletResponse(
       LastLedgerSequence: 100_000,
       ...(networkId > 1024 ? { NetworkID: networkId } : {}),
       ...request.params.tx_json,
-    } as Transaction;
+    } as SubmittableTransaction;
     const { tx_blob, hash } = wallet.sign(tamper(autofilled), multisign);
-    return { tx_json: { ...(decode(tx_blob) as Transaction), hash } };
+    return { tx_json: { ...(decode(tx_blob) as SubmittableTransaction), hash } };
   };
 }
 
@@ -1143,7 +1144,7 @@ describe('WalletConnectAdapter.sign', () => {
     });
     expect(result.hash).toBe(hashes.hashSignedTx(result.tx_blob!));
     expect(result.signature).toBe(result.tx_json?.TxnSignature);
-    expectTypeOf(result.tx_json).toEqualTypeOf<Transaction | undefined>();
+    expectTypeOf(result.tx_json).toEqualTypeOf<SubmittableTransaction | undefined>();
   });
 
   it('accepts a sign-only response that does not report a hash', async () => {
@@ -1236,7 +1237,7 @@ describe('WalletConnectAdapter.signAndSubmit', () => {
     expect(result.tx_json).toMatchObject({ ...PAYMENT, Account: MAINNET_ADDRESS, Sequence: 7 });
     expect(result.signature).toBe(result.tx_json?.TxnSignature);
     expectTypeOf(result.signature).toEqualTypeOf<string | undefined>();
-    expectTypeOf(result.tx_json).toEqualTypeOf<Transaction | undefined>();
+    expectTypeOf(result.tx_json).toEqualTypeOf<SubmittableTransaction | undefined>();
   });
 
   it('rejects a submission that does not report its hash, reporting it for reconciliation', async () => {
@@ -1306,7 +1307,10 @@ describe.each(['sign', 'signAndSubmit'] as const)(
     async function forgedSignature(request: SignTransactionRequest) {
       // Signed by another key while claiming the connected account's key.
       const { tx_json } = await walletResponse(OTHER_WALLET)(request);
-      const forged = { ...tx_json, SigningPubKey: MAINNET_WALLET.publicKey } as Transaction;
+      const forged = {
+        ...tx_json,
+        SigningPubKey: MAINNET_WALLET.publicKey,
+      } as SubmittableTransaction;
       return { tx_json: { ...forged, hash: hashes.hashSignedTx(encode(forged)) } };
     }
 
@@ -1324,7 +1328,7 @@ describe.each(['sign', 'signAndSubmit'] as const)(
       ],
       [
         'a changed Amount',
-        walletResponse(MAINNET_WALLET, (tx) => ({ ...tx, Amount: '1' }) as Transaction),
+        walletResponse(MAINNET_WALLET, (tx) => ({ ...tx, Amount: '1' }) as SubmittableTransaction),
         'returned a transaction that did not match the signing request',
       ],
       [
@@ -1375,7 +1379,10 @@ describe.each(['sign', 'signAndSubmit'] as const)(
       const adapter = await connected();
       let signedHash: string | undefined;
       mockClient.request.mockImplementation(async (request: SignTransactionRequest) => {
-        const tamper = (tx: Transaction) => ({ ...tx, Destination: OTHER_WALLET.address });
+        const tamper = (tx: SubmittableTransaction) => ({
+          ...tx,
+          Destination: OTHER_WALLET.address,
+        });
         const response = await walletResponse(MAINNET_WALLET, tamper)(request);
         signedHash = response.tx_json.hash;
         return response;
@@ -1414,7 +1421,7 @@ describe.each(['sign', 'signAndSubmit'] as const)(
         { Flags: 0 },
       ],
     ])('with %s', (_description, fields, canonicalFields, tampered) => {
-      const request = { ...PAYMENT, ...fields } as Transaction;
+      const request = { ...PAYMENT, ...fields } as SubmittableTransaction;
 
       it('sends the canonical form and accepts the signed equivalent', async () => {
         const adapter = await connected();
@@ -1438,7 +1445,7 @@ describe.each(['sign', 'signAndSubmit'] as const)(
       it('rejects a signed equivalent with a changed value', async () => {
         const adapter = await connected();
         mockClient.request.mockImplementation(
-          walletResponse(MAINNET_WALLET, (tx) => ({ ...tx, ...tampered }) as Transaction)
+          walletResponse(MAINNET_WALLET, (tx) => ({ ...tx, ...tampered }) as SubmittableTransaction)
         );
 
         await expect(adapter[method](request)).rejects.toMatchObject({
@@ -1457,7 +1464,7 @@ describe.each(['sign', 'signAndSubmit'] as const)(
 
       function reportingDeliverMax(
         report: (fields: Record<string, unknown>) => Record<string, unknown>,
-        tamper?: (transaction: Transaction) => Transaction
+        tamper?: (transaction: SubmittableTransaction) => SubmittableTransaction
       ) {
         return async (request: SignTransactionRequest) => {
           const { tx_json } = await walletResponse(MAINNET_WALLET, tamper)(request);
@@ -1478,7 +1485,7 @@ describe.each(['sign', 'signAndSubmit'] as const)(
         const request = { TransactionType: 'Payment', Destination: DESTINATION, ...fields };
         const snapshot = structuredClone(request);
 
-        const result = await adapter[method](request as Transaction);
+        const result = await adapter[method](request as SubmittableTransaction);
 
         expect(mockClient.request).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -1498,7 +1505,7 @@ describe.each(['sign', 'signAndSubmit'] as const)(
         const adapter = await connected();
 
         await expect(
-          adapter[method]({ ...PAYMENT, DeliverMax: '1' } as Transaction)
+          adapter[method]({ ...PAYMENT, DeliverMax: '1' } as SubmittableTransaction)
         ).rejects.toMatchObject({
           code: WalletErrorCode.SIGN_FAILED,
           message: expect.stringContaining(DELIVER_MAX_ERROR),
@@ -1542,7 +1549,7 @@ describe.each(['sign', 'signAndSubmit'] as const)(
         mockClient.request.mockImplementation(
           reportingDeliverMax(
             ({ Amount, ...fields }) => ({ ...fields, DeliverMax: Amount }),
-            (tx) => ({ ...tx, Amount: '1' }) as Transaction
+            (tx) => ({ ...tx, Amount: '1' }) as SubmittableTransaction
           )
         );
 
@@ -1584,7 +1591,7 @@ describe.each(['sign', 'signAndSubmit'] as const)(
       const adapter = await connected();
 
       await expect(
-        adapter[method]({ ...PAYMENT, ...fields } as unknown as Transaction)
+        adapter[method]({ ...PAYMENT, ...fields } as unknown as SubmittableTransaction)
       ).rejects.toMatchObject({
         code: WalletErrorCode.SIGN_FAILED,
         message: expect.stringContaining('The transaction is not a valid XRPL transaction'),
@@ -1599,7 +1606,7 @@ describe.each(['sign', 'signAndSubmit'] as const)(
       );
 
       await expect(
-        adapter[method]({ ...PAYMENT, LastLedgerSequence: 100_000 } as Transaction)
+        adapter[method]({ ...PAYMENT, LastLedgerSequence: 100_000 } as SubmittableTransaction)
       ).rejects.toMatchObject({
         code: WalletErrorCode.SIGN_FAILED,
         message: expect.stringContaining('outside the permitted signing expiry range'),
@@ -1612,7 +1619,7 @@ describe.each(['sign', 'signAndSubmit'] as const)(
         const adapter = await connected();
 
         await expect(
-          adapter[method]({ ...PAYMENT, ...fields } as Transaction)
+          adapter[method]({ ...PAYMENT, ...fields } as SubmittableTransaction)
         ).rejects.toMatchObject({ code: WalletErrorCode.UNSUPPORTED_METHOD });
         expect(mockClient.request).not.toHaveBeenCalled();
       }

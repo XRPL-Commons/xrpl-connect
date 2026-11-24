@@ -16,7 +16,7 @@ import type {
   AccountInfo,
   ConnectOptions,
   NetworkInfo,
-  Transaction,
+  SubmittableTransaction,
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
@@ -30,7 +30,6 @@ import {
   TIME,
   withTimeout,
 } from '@xrpl-connect/core';
-import type { SubmittableTransaction } from 'xrpl';
 import iconSvg from './assets/icon.svg';
 
 const ICON_DATA_URL = `data:image/svg+xml,${encodeURIComponent(iconSvg)}`;
@@ -279,7 +278,7 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
    * Sign a transaction without submitting it to the ledger
    * @param transaction - The transaction to sign
    */
-  async sign(transaction: Transaction): Promise<SignedTransaction> {
+  async sign(transaction: SubmittableTransaction): Promise<SignedTransaction> {
     if (!this.currentAccount) {
       throw createWalletError.notConnected();
     }
@@ -315,7 +314,7 @@ export class GemWalletAdapter implements WalletAdapter, SupportsFetchAccount {
    * Sign and submit a transaction to the ledger
    * @param transaction - The transaction to sign and submit
    */
-  async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
+  async signAndSubmit(transaction: SubmittableTransaction): Promise<SubmittedTransaction> {
     if (!this.currentAccount) {
       throw createWalletError.notConnected();
     }

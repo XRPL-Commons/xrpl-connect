@@ -8,7 +8,7 @@ import {
   MemoryStorageAdapter,
   WalletErrorCode,
   WalletManager,
-  type Transaction,
+  type SubmittableTransaction,
   type WalletAuthPrompt,
 } from 'xrpl-connect';
 import {
@@ -76,7 +76,7 @@ const reviewedOptions: PrivyAdapterOptions = {
 // Lifecycle and signing-mechanics tests sign headlessly; the transaction
 // review, which is on by default, has its own tests below.
 const options: PrivyAdapterOptions = { ...reviewedOptions, transactionReview: 'none' };
-const transaction: Transaction = {
+const transaction: SubmittableTransaction = {
   TransactionType: 'AccountSet',
   Account: wallet.address,
   Fee: '12',
@@ -333,7 +333,7 @@ describe('PrivyAdapter', () => {
     const adapter = new PrivyAdapter(options);
     await adapter.connect();
     const { LastLedgerSequence: _lastLedgerSequence, ...unbounded } = transaction;
-    const result = await adapter.signAndSubmit(unbounded as Transaction);
+    const result = await adapter.signAndSubmit(unbounded as SubmittableTransaction);
     expect(result.tx_json?.LastLedgerSequence).toBe(100);
     expect(mocks.autofill).toHaveBeenCalledTimes(1);
     await adapter.disconnect();
@@ -481,7 +481,7 @@ describe('PrivyAdapter transaction review', () => {
       v.toString(16).padStart(2, '0')
     ).join('')
   );
-  const payment: Transaction = {
+  const payment: SubmittableTransaction = {
     TransactionType: 'Payment',
     Account: wallet.address,
     Destination: destination,
@@ -552,7 +552,7 @@ describe('PrivyAdapter transaction review', () => {
     const adapter = await connected();
     const { nextReview } = watchPrompts(adapter);
     const { Fee: _fee, Sequence: _sequence, LastLedgerSequence: _bound, ...partial } = payment;
-    const submitting = adapter.signAndSubmit(partial as Transaction);
+    const submitting = adapter.signAndSubmit(partial as SubmittableTransaction);
 
     const prompt = await nextReview(1);
     expect(prompt.review?.action).toBe('signAndSubmit');
@@ -685,7 +685,7 @@ describe('PrivyAdapter transaction review', () => {
   it('reviews concurrent requests one at a time and never applies a stale answer', async () => {
     const adapter = await connected();
     const { prompts, nextReview } = watchPrompts(adapter);
-    const larger: Transaction = { ...payment, Amount: '25000000', Sequence: 8 };
+    const larger: SubmittableTransaction = { ...payment, Amount: '25000000', Sequence: 8 };
     const first = adapter.sign(payment);
     const second = adapter.sign(larger);
     const secondRejected = expect(second).rejects.toMatchObject({

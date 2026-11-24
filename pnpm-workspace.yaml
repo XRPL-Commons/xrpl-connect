@@ -5,6 +5,9 @@ packages:
   - apps/*
   - docs
 
+patchedDependencies:
+  fetch-ponyfill@7.1.0: patches/fetch-ponyfill@7.1.0.patch
+
 onlyBuiltDependencies:
   - bufferutil
   - es5-ext

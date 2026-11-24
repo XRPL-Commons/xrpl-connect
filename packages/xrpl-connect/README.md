@@ -129,7 +129,8 @@ export {
   NetworkInfo,
   NetworkConfig,
   StandardNetworkId,
-  Transaction,
+  SubmittableTransaction,
+  Transaction, // Deprecated alias for SubmittableTransaction
   SignedTransaction,
   ManagedSignedTransaction,
   SubmittedTransaction,

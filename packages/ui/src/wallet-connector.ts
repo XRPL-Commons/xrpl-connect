@@ -6,6 +6,7 @@
 import type { AccountInfo, WalletAdapter, WalletManager } from '@xrpl-connect/core';
 import {
   createLogger,
+  getMissingAdapterConfiguration,
   isAdapterConfigured,
   supportsPreInitialize,
   withTimeout,
@@ -277,6 +278,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     // Specified wallets that are NOT installed/available — shown with an
     // "Install" affordance only when the `show-unavailable` attribute is set.
     private unavailableWallets: WalletAdapter[] = [];
+    // `${walletId}:${missingFields}` already reported as hidden for missing configuration.
+    private readonly reportedUnconfiguredWallets = new Set<string>();
     private walletAvailabilityChecked: boolean = false;
     private walletAvailabilityPromise: Promise<void> | null = null;
     private walletAvailabilityUpdatedAt = -Infinity;
@@ -685,13 +688,32 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       const allowedIds = new Set(this.parseWalletAttribute());
       for (const wallet of manager.wallets) {
         if (typeof wallet.getLoginMethods !== 'function' || !allowedIds.has(wallet.id)) continue;
-        try {
-          if (isAdapterConfigured(wallet)) adapterIds.add(wallet.id);
-        } catch (error) {
-          logger.warn(`Error checking configuration for ${wallet.id}:`, error);
-        }
+        if (this.isListableAdapter(wallet)) adapterIds.add(wallet.id);
       }
       return adapterIds;
+    }
+
+    /**
+     * The modal lists only adapters it can connect: credentials passed to `connect()` never
+     * reach it. Hidden adapters are reported once so a missing key is not a silent omission.
+     */
+    private isListableAdapter(wallet: WalletAdapter): boolean {
+      let missing: readonly string[];
+      try {
+        missing = getMissingAdapterConfiguration(wallet);
+      } catch (error) {
+        logger.warn(`Error checking configuration for ${wallet.id}:`, error);
+        return false;
+      }
+      if (missing.length === 0) return true;
+      const report = `${wallet.id}:${missing.join(',')}`;
+      if (!this.reportedUnconfiguredWallets.has(report)) {
+        this.reportedUnconfiguredWallets.add(report);
+        logger.warn(
+          `${wallet.name} is hidden from the wallet modal: pass ${missing.join(', ')} to its adapter constructor.`
+        );
+      }
+      return false;
     }
 
     private getLoginAdapters(
@@ -927,15 +949,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       const socialAdapterIds = this.getConfiguredSocialAdapterIds(manager);
       return [...new Set([...this.parseWalletAttribute(), ...socialAdapterIds])]
         .map((id) => walletsById.get(id))
-        .filter((wallet): wallet is WalletAdapter => {
-          if (!wallet) return false;
-          try {
-            return isAdapterConfigured(wallet);
-          } catch (error) {
-            logger.warn(`Error checking configuration for ${wallet.id}:`, error);
-            return false;
-          }
-        });
+        .filter(
+          (wallet): wallet is WalletAdapter =>
+            wallet !== undefined && this.isListableAdapter(wallet)
+        );
     }
 
     private getConfiguredSocialLogins(
@@ -945,12 +962,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       const configured: Array<{ login: SocialLogin; wallet: WalletAdapter }> = [];
       for (const login of this.validatedSocialLogins) {
         const wallet = walletsById.get(login.adapterId);
-        if (!wallet) continue;
-        try {
-          if (isAdapterConfigured(wallet)) configured.push({ login, wallet });
-        } catch (error) {
-          logger.warn(`Error checking configuration for ${wallet.id}:`, error);
-        }
+        if (wallet && this.isListableAdapter(wallet)) configured.push({ login, wallet });
       }
       return configured;
     }
