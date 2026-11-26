@@ -258,8 +258,43 @@ Every fee, computed or supplied by the application, is limited to 2 XRP, the
 xrpl.js autofill limit; like xrpl.js, the adapter exempts `AccountDelete`,
 `AMMCreate`, and `VaultCreate`, whose fee is the ledger's owner reserve. A larger
 fee fails with a `SIGN_FAILED` wallet error before any review or signature.
-Multisigning and arbitrary message signing are not supported; `signMessage` is
-declared unavailable through the standard capabilities contract.
+Arbitrary message signing is not supported; `signMessage` is declared
+unavailable through the standard capabilities contract. Prepared ordinary
+multisign requests are supported as one contribution: set `SigningPubKey` to
+the empty string and call `sign()` once for each signer. The Privy contribution
+contains one `Signers` entry and must be combined with the other contributions
+using `xrpl.multisign()` before submission. `signAndSubmit()` rejects this
+shape, because one contribution cannot satisfy a signer quorum.
+
+XLS-56 `Batch` transactions use the adapter's dedicated `signBatch()` hook:
+
+```ts
+import { multisign } from 'xrpl';
+
+const contribution = await privy.sign({
+  ...prepared,
+  SigningPubKey: '',
+});
+const combined = multisign([contribution.tx_blob!, otherContributionBlob]);
+await client.submitAndWait(combined);
+
+const batchContribution = await privy.signBatch(batch, {
+  // Defaults to the connected wallet address. It must occur in RawTransactions.
+  batchAccount: connectedAccount,
+  // `true` creates BatchSigner.Signers for the connected account. Omit it for
+  // a regular-key BatchSigner entry.
+  multisign: true,
+});
+// Combine BatchSigners from independent contributions before submission.
+```
+
+`signBatch()` requires a fully prepared outer Batch (`Fee` plus `Sequence` or
+`TicketSequence`), rejects existing signatures and `BatchSigners`, and returns
+one contribution with `hash: ''`. Use the `combineBatchSigners` helper from
+your installed `xrpl` version or an equivalent server-side combiner; never
+submit an individual contribution. The adapter uses xrpl's public batch
+preimage encoder when available and the canonical pre-XLS-56-v1.1 payload on
+xrpl v4 releases that do not export it.
 
 ### Transaction review
 
@@ -355,10 +390,12 @@ async function approveAndSign(prepared) {
 Allow only one open approval sheet per manager in this example. The returned
 `signed.hash` identifies the blob at this stage. If a backend attaches a
 sponsor signature later, use the hash of the final submitted blob for tracking.
-The adapter signs locally serialized, single-signer transactions using
-`raw_sign`, including supported transaction types your installed `xrpl`
-codec can encode. A dedicated multisign or BatchSigner signature uses a
-different signing payload.
+The adapter signs locally serialized transactions using `raw_sign`, including
+supported transaction types your installed `xrpl` codec can encode. Single
+signatures use `encodeForSigning`; ordinary multisignatures use
+`encodeForMultiSigning` with the connected signer account; BatchSigner
+contributions use the XLS-56 batch preimage. All three paths go through the
+same fail-closed transaction review and transaction MFA flow.
 
 `transactionReview: 'none'` turns the review off: the adapter signs headlessly,
 whenever any code calls `sign` or `signAndSubmit`. **Any script running in the
