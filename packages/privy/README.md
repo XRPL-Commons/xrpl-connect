@@ -330,6 +330,7 @@ const adapter = new PrivyAdapter({
     return (
       expected !== undefined &&
       review.action === 'sign' &&
+      review.signingRole === 'single' &&
       review.network.id === expected.network &&
       encode(review.transaction) === expected.bytes
     );

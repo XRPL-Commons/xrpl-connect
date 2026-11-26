@@ -45,7 +45,10 @@ client.setMessagePoster({
       if (event === 'privy:iframe:ready') {
         client.embeddedWallet.onMessage({ id, event, data: {} });
       } else if (event === 'privy:user-signer:sign') {
-        if (!data.mfaCode) {
+        if (
+          !data.mfaCode ||
+          document.querySelector<HTMLInputElement>('#reject-assertion')!.checked
+        ) {
           client.embeddedWallet.onMessage({
             id,
             event,

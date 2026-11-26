@@ -25,4 +25,15 @@ test('the pinned Privy SDK resumes and cancels signing with a browser passkey', 
   await page.getByRole('button', { name: 'Request signature' }).click();
   await page.getByRole('button', { name: 'Cancel' }).click();
   await expect(page.locator('output')).toHaveText('mfa_cancelled');
+
+  // js-sdk-core replaces its deferred without emitting a second MFA event.
+  await page.getByLabel('Reject assertion at provider').check();
+  await page.getByRole('button', { name: 'Request signature' }).click();
+  await page.getByRole('button', { name: 'Confirm with passkey' }).click();
+  await expect(page.locator('output')).toHaveText('mfa_required');
+
+  await page.getByLabel('Reject assertion at provider').uncheck();
+  await page.getByRole('button', { name: 'Request signature' }).click();
+  await page.getByRole('button', { name: 'Confirm with passkey' }).click();
+  await expect(page.locator('output')).toHaveText('verified-fixture');
 });
