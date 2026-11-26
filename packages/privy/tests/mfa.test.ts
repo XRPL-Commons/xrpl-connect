@@ -208,7 +208,7 @@ describe('Privy transaction MFA', () => {
     fixture.submitPromise.current = deferred();
     const prompt = prompts.find((value) => value !== null);
     await (prompt?.submit as () => Promise<void>)();
-    await vi.waitFor(() => expect(fixture.submitPromise.current).not.toBeNull());
+    await vi.waitFor(() => expect(challenge.resolve).toHaveBeenCalledOnce());
 
     const replacement = deferred();
     const invalid = Object.assign(new Error('MFA verification failed'), {

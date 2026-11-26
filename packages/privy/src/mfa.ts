@@ -110,6 +110,12 @@ export interface PrivyMfaInvocation {
   readonly token: symbol;
 }
 
+interface SigningInvocation extends PrivyMfaInvocation {
+  abandoned: boolean;
+  reason?: MfaReason;
+  challenged: boolean;
+}
+
 type MfaReason = 'mfa_required' | 'mfa_cancelled' | 'mfa_timeout';
 
 function isMissingOrInvalidMfa(error: unknown): boolean {
@@ -254,26 +260,14 @@ function passkeyStatus(user: unknown): PrivyMfaStatus {
 export class PrivyMfaController implements PrivyMfaApi {
   private client: MfaClient | undefined;
   private listener: (() => void) | undefined;
-  private invocation:
-    | {
-        token: symbol;
-        abandoned: boolean;
-        reason?: MfaReason;
-        challenged: boolean;
-      }
-    | undefined;
+  private invocation?: SigningInvocation;
   private active:
     | {
         token: symbol;
         controller: AbortController;
         previous: DeferredValue | null;
         rootPromise: Deferred;
-        invocation?: {
-          token: symbol;
-          abandoned: boolean;
-          reason?: MfaReason;
-          challenged: boolean;
-        };
+        invocation?: SigningInvocation;
         deferred?: DeferredValue;
         submitPromise?: SubmitPromise;
         submitOriginal?: SubmitDeferredValue | null;
@@ -323,7 +317,7 @@ export class PrivyMfaController implements PrivyMfaApi {
       const controller = new AbortController();
       this.active = { token, controller, previous, rootPromise, invocation };
       queueMicrotask(() => {
-        const deferred = rootPromise.current;
+        const deferred = rootPromise.current !== previous ? rootPromise.current : undefined;
         if (this.active?.token === token) this.active.deferred = deferred ?? undefined;
         void this.handle(token, controller, previous, deferred ?? undefined, invocation);
       });
@@ -347,12 +341,7 @@ export class PrivyMfaController implements PrivyMfaApi {
 
   beginInvocation(): PrivyMfaInvocation {
     if (this.invocation) throw new Error('Another Privy signing invocation is still active');
-    const invocation: {
-      token: symbol;
-      abandoned: boolean;
-      reason?: MfaReason;
-      challenged: boolean;
-    } = {
+    const invocation: SigningInvocation = {
       token: Symbol('signing'),
       abandoned: false,
       challenged: false,
@@ -504,11 +493,7 @@ export class PrivyMfaController implements PrivyMfaApi {
     controller: AbortController,
     previous: DeferredValue | null,
     captured?: DeferredValue,
-    invocation?: {
-      token: symbol;
-      abandoned: boolean;
-      reason: MfaReason;
-    }
+    invocation?: SigningInvocation
   ): Promise<void> {
     const client = this.client;
     const rootPromise = client?.mfaPromises?.rootPromise;
@@ -528,7 +513,9 @@ export class PrivyMfaController implements PrivyMfaApi {
           captured,
           controller.signal
         );
-        root?.reject(mfaError('Privy MFA request was abandoned', ownedInvocation.reason));
+        root?.reject(
+          mfaError('Privy MFA request was abandoned', ownedInvocation.reason ?? 'mfa_cancelled')
+        );
         return;
       }
       if (this.mode === 'none') {
@@ -569,21 +556,24 @@ export class PrivyMfaController implements PrivyMfaApi {
       const root = await this.challengeDeferred(rootPromise, previous, captured, controller.signal);
       if (!root) throw mfaError('Privy MFA did not start', 'mfa_required');
       if (ownedInvocation?.abandoned) {
-        root.reject(mfaError('Privy MFA request was abandoned', ownedInvocation.reason));
+        root.reject(
+          mfaError('Privy MFA request was abandoned', ownedInvocation.reason ?? 'mfa_cancelled')
+        );
         return;
       }
-      root.resolve(answer);
-      keepActive = true;
       const submitPromise = client.mfaPromises?.submitPromise;
       const active = this.active;
       if (submitPromise && active?.token === token) {
         this.installSubmitObserver(active, submitPromise, rootPromise, root);
       }
+      root.resolve(answer);
+      keepActive = true;
     } catch (error) {
       const mapped = this.mapError(error, controller.signal, timedOut);
-      if (invocation && (mapped as { reason?: MfaReason }).reason) {
-        invocation.reason = (mapped as { reason: MfaReason }).reason;
-        invocation.abandoned = invocation.reason !== 'mfa_required';
+      const reason = (mapped as Error & { reason?: MfaReason }).reason;
+      if (invocation && reason) {
+        invocation.reason = reason;
+        invocation.abandoned = reason !== 'mfa_required';
       }
       let root = this.active?.token === token ? this.active.deferred : captured;
       if (!root && this.active?.token === token) {

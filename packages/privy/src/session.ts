@@ -767,7 +767,7 @@ export class PrivySession {
     while (this.signingInvocation) {
       const previous = this.signingInvocation;
       await this.runOperation(
-        () => previous.promise.then(() => undefined),
+        () => previous.promise.catch(() => undefined),
         signal,
         generation,
         'Privy previous hash signing'
