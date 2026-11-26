@@ -3,6 +3,8 @@
  * Web component UI library for XRPL Connect
  */
 
+import './register';
+
 export {
   WalletConnectorElement,
   type WalletConnectorElementInstance,
