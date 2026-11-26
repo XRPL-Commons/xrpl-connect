@@ -3,6 +3,7 @@
  */
 
 import type { SubmittableTransaction as XRPLTransaction } from 'xrpl';
+import type { WalletError } from './errors';
 
 /** Canonical runtime IDs for the adapters packaged by `xrpl-connect`. */
 export const STANDARD_WALLET_IDS = [
@@ -468,13 +469,16 @@ export function supportsPendingConnection(
 /**
  * Events emitted by WalletManager
  */
-export type WalletEvent =
-  | 'connect'
-  | 'disconnecting'
-  | 'disconnect'
-  | 'accountChanged'
-  | 'networkChanged'
-  | 'error';
+export interface WalletEventMap {
+  connect: [account: AccountInfo];
+  disconnecting: [];
+  disconnect: [];
+  accountChanged: [account: AccountInfo];
+  networkChanged: [network: NetworkInfo];
+  error: [error: WalletError];
+}
+
+export type WalletEvent = keyof WalletEventMap;
 
 /**
  * Wallet manager configuration options

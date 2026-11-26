@@ -71,12 +71,17 @@ whose provider APIs do not support silent access may ignore it.
 #### reconnect()
 
 ```typescript
-async reconnect(): Promise<AccountInfo | null>
+async reconnect(options?: { throwOnError?: boolean }): Promise<AccountInfo | null>
 ```
 
 Reconnect to the previously connected wallet using stored state. When storage is empty,
 configured adapters can also complete an authorization returned to this page, such as
 Xaman's first mobile OAuth login. Returns `null` when neither can be restored.
+
+Overlapping calls share one restore, including automatic restoration on page load.
+Pass `{ throwOnError: true }` to distinguish an adapter failure from an empty or
+expired session. Each caller can choose its own error handling. An explicit
+`connect()` still requires exclusive access to the manager.
 
 A restore requests the manager's configured `network`, or else the network the session
 was originally requested on, and applies the same `NETWORK_MISMATCH` check as `connect()`.
@@ -974,11 +979,16 @@ results retain the optional base field.
 class WalletError extends Error {
   readonly code: WalletErrorCode;
   readonly category: WalletErrorCategory;
+  readonly reason?: WalletErrorReason;
   readonly originalError?: Error;
 }
 ```
 
 Use `isWalletError(error)` to narrow `unknown` to `WalletError`. For UX decisions, switch on `error.category` (5 high-level buckets); for finer behavior, switch on `error.code`. See [Error Categories](#error-categories) for the recommended UX response per category.
+
+Adapters can also set `reason` to identify a particular failure, such as
+`iframe_not_ready`, `mfa_timeout`, or `origin_not_allowed`. The reason is
+included in the error's JSON representation.
 
 ## Events
 

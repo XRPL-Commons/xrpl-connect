@@ -39,13 +39,24 @@ export function getWalletErrorCategory(code: WalletErrorCode): WalletErrorCatego
   return CODE_TO_CATEGORY[code] ?? WalletErrorCategory.INTERNAL;
 }
 
-/**
- * Custom error class for wallet operations
- */
+/** A stable cause for wallet failures that share a public error code. */
+export type WalletErrorReason =
+  | 'iframe_not_ready'
+  | 'mfa_required'
+  | 'mfa_cancelled'
+  | 'mfa_timeout'
+  | 'origin_not_allowed'
+  | 'no_reviewer'
+  | 'cancelled'
+  | 'request_timeout'
+  | 'user_action_timeout'
+  | 'teardown_timeout';
+
 export class WalletError extends Error {
   public readonly code: WalletErrorCode;
   public readonly category: WalletErrorCategory;
   public readonly originalError?: Error;
+  public readonly reason?: WalletErrorReason;
 
   static [Symbol.hasInstance](value: unknown): boolean {
     if (!value || typeof value !== 'object') return false;
@@ -59,12 +70,18 @@ export class WalletError extends Error {
     );
   }
 
-  constructor(code: WalletErrorCode, message: string, originalError?: Error) {
+  constructor(
+    code: WalletErrorCode,
+    message: string,
+    originalError?: Error,
+    reason?: WalletErrorReason
+  ) {
     super(message);
     this.name = 'WalletError';
     this.code = code;
     this.category = getWalletErrorCategory(code);
     this.originalError = originalError;
+    this.reason = reason;
 
     // Maintain proper stack trace for where error was thrown (only available on V8)
     if (Error.captureStackTrace) {
@@ -79,6 +96,7 @@ export class WalletError extends Error {
     return {
       name: this.name,
       code: this.code,
+      ...(this.reason && { reason: this.reason }),
       category: this.category,
       message: this.message,
       stack: this.stack,
@@ -153,8 +171,17 @@ export const createWalletError = {
       originalError
     ),
 
-  operationTimeout: (operation: string, originalError?: Error): WalletError =>
-    new WalletError(WalletErrorCode.OPERATION_TIMEOUT, `${operation} timed out.`, originalError),
+  operationTimeout: (
+    operation: string,
+    originalError?: Error,
+    reason?: WalletErrorReason
+  ): WalletError =>
+    new WalletError(
+      WalletErrorCode.OPERATION_TIMEOUT,
+      `${operation} timed out.`,
+      originalError,
+      reason
+    ),
 
   invalidMessage: (reason: string, originalError?: Error): WalletError =>
     new WalletError(WalletErrorCode.INVALID_MESSAGE, `Invalid message. ${reason}`, originalError),
