@@ -176,6 +176,8 @@ const distPkg = {
     './ui.js',
     './register.mjs',
     './register.js',
+    './chunks/*.mjs',
+    './chunks/*.js',
   ],
   // External declaration imports must be installed alongside the package.
   dependencies: externalDependencies,
