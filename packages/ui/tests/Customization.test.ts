@@ -11,7 +11,7 @@ import {
 import { mainStyles } from '../src/styles/main';
 import { renderAccountModal } from '../src/views/AccountModal';
 import { renderLoadingView } from '../src/views/LoadingView';
-import '../src/wallet-connector';
+import '../src/register';
 
 function partNames(root: ParentNode): string[] {
   return [...root.querySelectorAll('[part]')]

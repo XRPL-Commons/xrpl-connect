@@ -603,6 +603,8 @@ try {
     './ui.js',
     './register.mjs',
     './register.js',
+    './chunks/*.mjs',
+    './chunks/*.js',
   ]);
   const thirdPartyNotices = readFileSync(
     path.join(installedUmbrellaFolder, 'THIRD_PARTY_NOTICES.md'),
@@ -930,6 +932,15 @@ try {
   verifyConsumerDependencies(react19ConsumerFolder, RELEASE_PACKAGE_NAMES.slice(0, 2), runOptions);
   copyReactFixtures(react19ConsumerFolder);
   verifyPackedReactConsumer(react19ConsumerFolder, 19, tscPath, runOptions);
+  copyFileSync(
+    path.join(fixturesFolder, 'registration-consumer.mjs'),
+    path.join(react19ConsumerFolder, 'registration-consumer.mjs')
+  );
+  console.log('→ Building and executing the optimized focused registration consumer');
+  run(process.execPath, ['registration-consumer.mjs'], {
+    ...runOptions,
+    cwd: react19ConsumerFolder,
+  });
   console.log('→ Building packed React and umbrella ESM with Next.js and Turbopack');
   const nextAppFolder = path.join(react19ConsumerFolder, 'app');
   mkdirSync(nextAppFolder);

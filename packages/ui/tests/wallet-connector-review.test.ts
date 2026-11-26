@@ -7,7 +7,7 @@ import type {
   WalletTransactionReview,
 } from '@xrpl-connect/core';
 import { TIMINGS } from '../src/constants';
-import '../src/wallet-connector';
+import '../src/register';
 
 const NETWORK: NetworkInfo = { id: 'testnet', name: 'Testnet', wss: 'wss://example' };
 

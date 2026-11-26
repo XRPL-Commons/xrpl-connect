@@ -1,6 +1,6 @@
 import { WalletManager, type Transaction } from '@xrpl-connect/core';
 import { MockPrivyAdapter } from '../../../privy/src/testing';
-import '../../src/wallet-connector';
+import '../../src/register';
 
 const PRIVATE_KEY = new Uint8Array(32);
 PRIVATE_KEY[31] = 1;

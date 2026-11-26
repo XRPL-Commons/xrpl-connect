@@ -117,7 +117,9 @@
     "./dist/ui.js",
     "./dist/ui.mjs",
     "./dist/register.js",
-    "./dist/register.mjs"
+    "./dist/register.mjs",
+    "./dist/chunks/*.js",
+    "./dist/chunks/*.mjs"
   ],
   "files": [
     "dist",

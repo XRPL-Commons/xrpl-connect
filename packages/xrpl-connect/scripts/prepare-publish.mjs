@@ -168,9 +168,9 @@ const distPkg = {
       ])
     ),
   },
-  // The umbrella and UI entries register the custom element. Keep these
-  // modules observable to consumer bundlers while allowing core and adapter
-  // subpaths to be tree-shaken independently.
+  // The umbrella, UI, and explicit registration entries register the custom
+  // element. Keep these modules observable to consumer bundlers while allowing
+  // core and adapter subpaths to be tree-shaken independently.
   sideEffects: [
     './xrpl-connect.mjs',
     './xrpl-connect.js',
@@ -178,6 +178,8 @@ const distPkg = {
     './ui.js',
     './register.mjs',
     './register.js',
+    './chunks/*.mjs',
+    './chunks/*.js',
   ],
   // External declaration imports must be installed alongside the package.
   dependencies: externalDependencies,
