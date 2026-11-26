@@ -718,10 +718,12 @@ const manager = new WalletManager({
 });
 ```
 
-Available focused entry points are `core`, `ui`, `xaman`, `crossmark`,
+Available focused entry points are `core`, `ui`, `register`, `xaman`, `crossmark`,
 `gemwallet`, `walletconnect`, `ledger`, `xyra`, `ghostsig`, `otsu`, and
 `metamask-snap`. The `ui` entry registers the `<xrpl-wallet-connector>` custom
-element. The root entry remains backwards compatible and includes that UI.
+element. Use `register` as a side-effect-only custom-element registration import
+from framework bindings. The root entry remains backwards compatible and
+includes that UI.
 
 ---
 

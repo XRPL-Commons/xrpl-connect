@@ -1,3 +1,5 @@
+import 'xrpl-connect/register';
+
 import {
   defineComponent,
   h,

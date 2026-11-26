@@ -2406,10 +2406,19 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
   // Assign the class to the export variable
   WalletConnectorElement = WalletConnectorElementImpl;
+  // Preserve direct imports of this implementation module for existing users
+  // while exposing the same operation through the explicit register entry.
+  registerWalletConnector();
+}
 
-  // Register the custom element
-  if (!customElements.get('xrpl-wallet-connector')) {
-    customElements.define('xrpl-wallet-connector', WalletConnectorElementImpl);
+/** Register the connector element when a browser custom-elements registry exists. */
+export function registerWalletConnector(): void {
+  if (
+    WalletConnectorElement &&
+    typeof customElements !== 'undefined' &&
+    !customElements.get('xrpl-wallet-connector')
+  ) {
+    customElements.define('xrpl-wallet-connector', WalletConnectorElement);
   }
 }
 

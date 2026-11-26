@@ -36,10 +36,11 @@ import { WalletManager } from 'xrpl-connect/core';
 import { XamanAdapter } from 'xrpl-connect/xaman';
 ```
 
-The available subpaths are `core`, `ui`, `xaman`, `crossmark`, `gemwallet`,
+The available subpaths are `core`, `ui`, `register`, `xaman`, `crossmark`, `gemwallet`,
 `walletconnect`, `ledger`, `xyra`, `ghostsig`, `otsu`, and `metamask-snap`.
-`ui` registers the `<xrpl-wallet-connector>` element. The root entry point
-continues to register it as before.
+`ui` registers the `<xrpl-wallet-connector>` element. Use `register` as an
+explicit side-effect-only registration import from framework bindings. The root
+entry point continues to register it as before.
 
 ## Documentation
 

@@ -3,6 +3,11 @@
  * Web component UI library for XRPL Connect
  */
 
+// Preserve the historical side effect of importing the UI package while
+// keeping the registration operation available as an explicit entrypoint for
+// framework bindings and applications that import only focused runtime code.
+import './register';
+
 export { WalletConnectorElement, type WalletConnectorElementInstance } from './wallet-connector';
 export * from './customization';
 
