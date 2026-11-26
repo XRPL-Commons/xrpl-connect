@@ -74,12 +74,15 @@ See the [CSP policy, nonce lifecycle, and wallet-specific limits](https://github
 - `useSigner()` exposes `sign`, `signAndSubmit`, and `signMessage`.
 - `useWalletModal()` exposes a readonly `ready` ref, awaitable `open()` and `openAndWait()`
   methods, and `close()` for the active connector. `openAndWait()` resolves with the connected
-  account and rejects if opening fails or the modal closes first.
+  account and rejects if opening fails or the modal closes first. Pass `{ loginMethod: 'email' }`
+  (an adapter method ID or label) to target a sign-in flow; concurrent calls for the same method
+  share the connection attempt.
 - `<WalletConnector>` accepts `primaryWallet`, `wallets`, `socialLogins` (`SocialLogin` entries
-  for the **Sign in with socials** chooser), `showUnavailable`, `theme`, and `cssVars`, and emits
-  `connecting`, `connect`, and typed `error` events. Unavailable wallets are hidden by default; set
-  the camelCase Vue prop `showUnavailable` to show an Install action when the adapter provides a
-  download URL, or a disabled Unavailable row otherwise.
+  for the **Sign in with socials** chooser), `showUnavailable`, `headless`, `theme`, and `cssVars`,
+  and emits `connecting`, `connect`, and typed `error` events. Unavailable wallets are hidden by
+  default; set the camelCase Vue prop `showUnavailable` to show an Install action when the adapter
+  provides a download URL, or a disabled Unavailable row otherwise. `headless` hides the launcher
+  while retaining the body-level modal portals.
 
 `useWallet().connect` narrows deferred options from the wallet ID:
 

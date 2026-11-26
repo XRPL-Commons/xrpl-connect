@@ -162,12 +162,18 @@ function areSocialLoginsEqual(
   );
 }
 
+/** Options for an awaitable modal connection. */
+export interface WalletConnectorOpenOptions {
+  /** Select a discovered login method, such as `email` or `google`. */
+  loginMethod?: string;
+}
+
 /** Public API exposed by the `<xrpl-wallet-connector>` custom element. */
 export interface WalletConnectorElementInstance extends HTMLElement {
   socialLogins: readonly SocialLogin[];
   setWalletManager(manager: WalletManager): void;
   open(): Promise<void>;
-  openAndWait(): Promise<AccountInfo>;
+  openAndWait(options?: WalletConnectorOpenOptions): Promise<AccountInfo>;
   close(): void;
   toggle(): void;
 }
@@ -293,6 +299,9 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     private walletDialogOpener: FocusReturnTarget | null = null;
     private accountDialogOpener: FocusReturnTarget | null = null;
     private readonly connectionWaiters = new Set<ConnectionWaiter>();
+    private requestedLoginMethod: string | null = null;
+    private loginMethodGeneration = 0;
+    private loginMethodController: AbortController | null = null;
     private qrRenderTimer: ReturnType<typeof setTimeout> | null = null;
     private bodyScrollLocked = false;
     private walletManagerHandlers: {
@@ -303,7 +312,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     // Observed attributes
     static get observedAttributes() {
-      return ['primary-wallet', 'wallets', 'show-unavailable'];
+      return ['primary-wallet', 'wallets', 'show-unavailable', 'headless'];
     }
 
     public get socialLogins(): readonly SocialLogin[] {
@@ -327,6 +336,11 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     /** Whether unavailable wallets are listed with an "Install" link. */
     private get showUnavailable(): boolean {
       return this.hasAttribute('show-unavailable');
+    }
+
+    /** Whether the host should provide portals without rendering its launcher. */
+    private get headless(): boolean {
+      return this.hasAttribute('headless');
     }
 
     constructor() {
@@ -368,6 +382,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.rejectConnectionWaiters(
         new Error('Wallet connector was disconnected before a wallet was connected.')
       );
+      this.requestedLoginMethod = null;
+      this.cancelLoginMethodSelection(false);
       this.resetWalletAvailability();
       this.eventHandler?.detachEventListeners();
       this.detachWalletManagerHandlers();
@@ -500,12 +516,16 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       }
 
       const previousManager = this.walletManager;
-      // A review belongs to the replaced manager's wallet: reject it and close its modal.
-      if (this.authPromptData?.prompt.review) this.close();
+      // A connected prompt belongs to the replaced manager's wallet: reject it
+      // and close its modal.
+      if (this.authPromptData?.prompt.review || this.authPromptData?.prompt.kind === 'mfa') {
+        this.close();
+      }
       this.cancelAuthPrompt();
       this.invalidateSocialDiscovery();
       const cancelledAttempt = this.walletService?.cancelPendingWork() ?? null;
       this.managerGeneration += 1;
+      this.cancelLoginMethodSelection(false);
       this.invalidateWalletConnectPreInitialization(
         !this.managerOwnsPreInitializationTeardown(cancelledAttempt)
       );
@@ -538,6 +558,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
       this.render();
       if (this.isConnected || this.isOpen) void this.refreshWalletAvailability();
+      if (this.isOpen && this.requestedLoginMethod && !manager.connectingWallet) {
+        const generation = ++this.loginMethodGeneration;
+        void this.selectLoginMethod(this.requestedLoginMethod, generation).catch((error) => {
+          this.failLoginMethodSelection(generation, error);
+        });
+      }
     }
 
     private attachWalletManagerHandlers(): void {
@@ -581,8 +607,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         disconnect: () => {
           if (manager !== this.walletManager) return;
           this.walletService?.stopTransactionReviews();
-          // A review of the wallet that left can no longer be approved.
-          if (this.authPromptData?.prompt.review) this.close();
+          // A connected prompt of the wallet that left can no longer be answered.
+          if (this.authPromptData?.prompt.review || this.authPromptData?.prompt.kind === 'mfa') {
+            this.close();
+          }
           if (this.accountModalOpen) this.closeAccountModal();
           else this.render();
         },
@@ -1187,7 +1215,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * user closes the modal first. Lets callers `await` a connection in one call
      * instead of wiring up `connected` / `close` event listeners themselves.
      */
-    openAndWait(): Promise<AccountInfo> {
+    openAndWait(options: WalletConnectorOpenOptions = {}): Promise<AccountInfo> {
       const manager = this.walletManager;
       if (!manager) {
         return Promise.reject(new Error('WalletManager must be set before opening the modal.'));
@@ -1196,11 +1224,37 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         return Promise.resolve(manager.account);
       }
 
+      const loginMethod = options.loginMethod?.trim() || null;
+      if (
+        loginMethod &&
+        this.requestedLoginMethod &&
+        this.requestedLoginMethod.toLowerCase() !== loginMethod.toLowerCase()
+      ) {
+        return Promise.reject(
+          new Error(
+            `A connection is already waiting for the ${this.requestedLoginMethod} sign-in method.`
+          )
+        );
+      }
+      const sameRequestedMethod =
+        loginMethod !== null &&
+        this.requestedLoginMethod?.toLowerCase() === loginMethod.toLowerCase();
+      const connectionAlreadyInFlight = Boolean(manager.connectingWallet);
+      const shouldSelectLoginMethod =
+        loginMethod !== null && !sameRequestedMethod && !connectionAlreadyInFlight;
+      if (shouldSelectLoginMethod) this.requestedLoginMethod = loginMethod;
+
       return new Promise<AccountInfo>((resolve, reject) => {
         this.connectionWaiters.add({ resolve, reject });
         if (!this.isOpen) {
           void this.open().catch((error) => {
             this.rejectConnectionWaiters(error instanceof Error ? error : new Error(String(error)));
+          });
+        }
+        if (shouldSelectLoginMethod) {
+          const generation = ++this.loginMethodGeneration;
+          void this.selectLoginMethod(loginMethod, generation).catch((error) => {
+            this.failLoginMethodSelection(generation, error);
           });
         }
       });
@@ -1216,6 +1270,8 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       const cancelledAttempt = this.cancelPendingConnection();
       this.openGeneration += 1;
       this.isOpen = false;
+      this.requestedLoginMethod = null;
+      this.cancelLoginMethodSelection(false);
       this.clearWalletAvailabilityTimer();
       this.invalidateWalletConnectPreInitialization(
         !this.managerOwnsPreInitializationTeardown(cancelledAttempt)
@@ -1318,6 +1374,131 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       });
     }
 
+    private cancelLoginMethodSelection(clearRequested = true): void {
+      this.loginMethodController?.abort();
+      this.loginMethodController = null;
+      this.loginMethodGeneration += 1;
+      if (clearRequested) this.requestedLoginMethod = null;
+    }
+
+    private failLoginMethodSelection(generation: number, value: unknown): void {
+      if (generation !== this.loginMethodGeneration) return;
+      const error = value instanceof Error ? value : new Error(String(value));
+      this.requestedLoginMethod = null;
+      this.loginMethodController = null;
+      this.rejectConnectionWaiters(error);
+      this.showWalletList();
+    }
+
+    /** Find and start a discovered login method requested by openAndWait(). */
+    private async selectLoginMethod(method: string, generation: number): Promise<void> {
+      const manager = this.walletManager;
+      if (!manager || !this.walletService) return;
+      if (manager.connectingWallet) return;
+      const controller = new AbortController();
+      this.loginMethodController = controller;
+      const isCurrent = () =>
+        this.isOpen &&
+        generation === this.loginMethodGeneration &&
+        manager === this.walletManager &&
+        !controller.signal.aborted &&
+        this.loginMethodController === controller;
+      try {
+        await this.refreshWalletAvailability(true);
+        if (!isCurrent() || manager.connectingWallet) return;
+
+        const normalized = method.trim().toLowerCase();
+        const explicitLogins = this.getAvailableSocialLogins();
+        const explicitIdMatches = explicitLogins.filter(
+          (login) => login.id.toLowerCase() === normalized
+        );
+        if (explicitIdMatches.length > 1) {
+          throw new Error(`Sign-in method "${method}" is ambiguous.`);
+        }
+        if (explicitIdMatches.length === 1) {
+          this.connectSocialLogin(explicitIdMatches[0].id);
+          return;
+        }
+
+        type LoginCandidate = {
+          adapterId: string;
+          id: string;
+          label: string;
+          icon?: string;
+          connectOptions?: WalletLoginMethod['connectOptions'];
+        };
+        const labelCandidates: LoginCandidate[] = explicitLogins
+          .filter((login) => login.label.trim().toLowerCase() === normalized)
+          .map((login) => ({
+            adapterId: login.adapterId,
+            id: login.id,
+            label: login.label,
+            icon: login.icon,
+            connectOptions: login.connectOptions,
+          }));
+        const exactIdCandidates: LoginCandidate[] = [];
+
+        for (const wallet of this.getAvailableLoginAdapters(manager)) {
+          if (!wallet.getLoginMethods) continue;
+          const adapterController = new AbortController();
+          const abortAdapter = (): void => adapterController.abort();
+          if (controller.signal.aborted) adapterController.abort();
+          else controller.signal.addEventListener('abort', abortAdapter, { once: true });
+          let methods: readonly WalletLoginMethod[];
+          try {
+            methods = await withTimeout(
+              () => wallet.getLoginMethods!({ signal: adapterController.signal }),
+              TIMINGS.SOCIAL_DISCOVERY_TIMEOUT,
+              [] as readonly WalletLoginMethod[]
+            );
+          } catch (error) {
+            if (!controller.signal.aborted) {
+              logger.warn(`Failed to select sign-in method for ${wallet.id}:`, error);
+            }
+            continue;
+          } finally {
+            controller.signal.removeEventListener('abort', abortAdapter);
+            adapterController.abort();
+          }
+          if (!isCurrent() || manager.connectingWallet) return;
+          for (const candidate of methods) {
+            const id = candidate.id?.trim();
+            const label = candidate.label?.trim();
+            if (!id || !label) continue;
+            const normalizedId = id.toLowerCase();
+            const normalizedLabel = label.toLowerCase();
+            const mapped = {
+              adapterId: wallet.id,
+              id,
+              label,
+              icon: candidate.icon ?? wallet.icon,
+              connectOptions: candidate.connectOptions,
+            } satisfies LoginCandidate;
+            if (normalizedId === normalized) exactIdCandidates.push(mapped);
+            else if (normalizedLabel === normalized) labelCandidates.push(mapped);
+          }
+        }
+
+        const matches = exactIdCandidates.length > 0 ? exactIdCandidates : labelCandidates;
+        if (matches.length !== 1) {
+          throw new Error(
+            matches.length > 1
+              ? `Sign-in method "${method}" is ambiguous.`
+              : `Sign-in method "${method}" is not available.`
+          );
+        }
+        if (!isCurrent() || manager.connectingWallet) return;
+        const selected = matches[0];
+        this.walletService.connectWallet(selected.adapterId, selected.connectOptions, {
+          socialLoginId: selected.id,
+          label: selected.label,
+          icon: selected.icon,
+        });
+      } finally {
+        if (this.loginMethodController === controller) this.loginMethodController = null;
+      }
+    }
+
     public showAuthPrompt(
       prompt: WalletAuthPrompt,
       walletId: string,
@@ -1326,6 +1507,10 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     ): void {
       if (prompt.review) {
         this.showTransactionReview(prompt, walletId, walletName, walletIcon);
+        return;
+      }
+      if (prompt.kind === 'mfa') {
+        this.showMfaPrompt(prompt, walletId, walletName, walletIcon);
         return;
       }
       if (!this.isOpen) {
@@ -1350,6 +1535,40 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
       this.errorData = null;
       this.accountSelectionData = null;
       this.render();
+    }
+
+    /** Show a connected-wallet MFA challenge, opening the portal when necessary. */
+    private showMfaPrompt(
+      prompt: WalletAuthPrompt,
+      walletId: string,
+      walletName: string,
+      walletIcon?: string
+    ): void {
+      if (this.authPromptData?.prompt === prompt) return;
+      this.clearAuthPromptState(true);
+      this.invalidateSocialDiscovery();
+      this.clearWalletAvailabilityTimer();
+      if (this.accountModalOpen) this.closeAccountModal();
+      const opening = !this.isOpen;
+      if (opening) this.beginOpen();
+
+      this.authPromptData = {
+        prompt,
+        walletId,
+        walletName,
+        walletIcon,
+        values: Object.create(null) as Record<string, string>,
+        busy: false,
+        error: null,
+        approvalLocked: false,
+      };
+      this.viewState = 'auth-prompt';
+      this.qrCodeData = null;
+      this.loadingData = null;
+      this.errorData = null;
+      this.accountSelectionData = null;
+      this.render();
+      if (opening) this.dispatchEvent(new CustomEvent('open'));
     }
 
     /**
@@ -1408,8 +1627,12 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     public endTransactionReview(walletId: string): void {
       const state = this.authPromptData;
-      if (!state?.prompt.review || state.walletId !== walletId) return;
-      // The wallet already settled this review; there is nothing to cancel.
+      if (
+        state?.walletId !== walletId ||
+        (!state.prompt.review && state.prompt.kind !== 'mfa')
+      )
+        return;
+      // The wallet already settled this connected prompt; there is nothing to cancel.
       this.clearAuthPromptState(false);
       this.close();
     }
@@ -1659,6 +1882,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
     public showSocialLoginList(): void {
       const manager = this.walletManager;
       if (!manager || !this.hasAvailableSocialLogin(manager)) return;
+      this.cancelLoginMethodSelection();
       this.clearWalletAvailabilityTimer();
       this.invalidateSocialDiscovery();
       const generation = this.socialDiscoveryGeneration;
@@ -1879,6 +2103,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
      * Show wallet list view
      */
     public showWalletList() {
+      this.cancelLoginMethodSelection();
       this.cancelAuthPrompt();
       this.invalidateSocialDiscovery();
       this.clearQRRenderTimer();
@@ -2205,13 +2430,18 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
         this.isFirstOpen = false;
       }
 
-      // Connect button stays in the component's own shadow root
-      const connectButton = document.createElement('button');
-      connectButton.className = 'connect-button';
-      connectButton.id = 'connect-wallet-button';
-      connectButton.setAttribute('part', WALLET_CONNECTOR_PARTS.connector.connectButton);
-      connectButton.textContent = buttonText;
-      replaceViewChildren(this.shadow, createMainStyleElement(this.nonce), connectButton);
+      // The launcher is optional: headless consumers keep the host mounted for
+      // the body portals while opening it from their own controls.
+      const shadowChildren: Node[] = [createMainStyleElement(this.nonce)];
+      if (!this.headless) {
+        const connectButton = document.createElement('button');
+        connectButton.className = 'connect-button';
+        connectButton.id = 'connect-wallet-button';
+        connectButton.setAttribute('part', WALLET_CONNECTOR_PARTS.connector.connectButton);
+        connectButton.textContent = buttonText;
+        shadowChildren.push(connectButton);
+      }
+      replaceViewChildren(this.shadow, ...shadowChildren);
 
       // Wallet connection overlay — rendered in a portal on document.body to guarantee
       // position: fixed is always relative to the viewport (not a transformed ancestor)

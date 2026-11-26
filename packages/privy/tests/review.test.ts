@@ -88,6 +88,35 @@ describe('transaction review', () => {
     expect(Object.isFrozen(review.details)).toBe(true);
     expect(Object.isFrozen(transaction)).toBe(false);
   });
+
+  it('labels the fee as sponsor-paid only when SponsorFlags opts into the fee', () => {
+    const base = {
+      TransactionType: 'Payment',
+      Account: account,
+      Fee: '15',
+      Sponsor: issuer,
+      Sequence: 1,
+    } as Transaction;
+    const sponsorPays = createTransactionReview(
+      { ...base, SponsorFlags: 1 } as Transaction,
+      STANDARD_NETWORKS.testnet,
+      'sign'
+    );
+    const sponsorDoesNotPay = createTransactionReview(
+      { ...base, SponsorFlags: 2 } as Transaction,
+      STANDARD_NETWORKS.testnet,
+      'sign'
+    );
+    const sponsorFlagOmitted = createTransactionReview(
+      base,
+      STANDARD_NETWORKS.testnet,
+      'sign'
+    );
+
+    expect(detail(sponsorPays, 'Fee')).toBe('0.000015 XRP (paid by sponsor)');
+    expect(detail(sponsorDoesNotPay, 'Fee')).toBe('0.000015 XRP');
+    expect(detail(sponsorFlagOmitted, 'Fee')).toBe('0.000015 XRP');
+  });
 });
 
 describe('fee limit', () => {

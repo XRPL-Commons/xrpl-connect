@@ -61,6 +61,8 @@ export const mainStyles = `
     --xc-modal-background: var(--xc-background-color);
     --xc-modal-border-radius: var(--xc-border-radius);
     --xc-modal-box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    --xc-modal-width: 343px;
+    --xc-modal-z-index: 9999;
 
     /* Miscellaneous */
     --xc-focus-color: var(--xc-primary-color);
@@ -108,7 +110,7 @@ export const mainStyles = `
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: ${Z_INDEX.OVERLAY};
+    z-index: var(--xc-modal-z-index);
   }
 
   .overlay.fade-in {
@@ -124,7 +126,7 @@ export const mainStyles = `
     background: var(--xc-modal-background);
     color: var(--xc-text-color);
     border-radius: var(--xc-modal-border-radius);
-    width: ${SIZES.MODAL_WIDTH}px;
+    width: var(--xc-modal-width);
     max-width: calc(100vw - 32px);
     max-height: 85vh;
     overflow: hidden;
@@ -609,6 +611,54 @@ export const mainStyles = `
     text-align: left;
   }
 
+  .auth-prompt-review-details,
+  .auth-prompt-review-batch {
+    width: 100%;
+    border-top: 1px solid var(--xc-background-tertiary);
+    padding: 9px 0;
+  }
+
+  .auth-prompt-review-details > summary,
+  .auth-prompt-review-batch > summary,
+  .auth-prompt-review-batch-transaction > summary {
+    color: var(--xc-text-muted-color);
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .auth-prompt-review-details-list,
+  .auth-prompt-review-batch-fields {
+    margin: 6px 0 0;
+    padding: 0;
+  }
+
+  .auth-prompt-review-details-list .auth-prompt-review-row:first-child,
+  .auth-prompt-review-batch-fields .auth-prompt-review-row:first-child {
+    border-top: 0;
+  }
+
+  .auth-prompt-review-batch-transaction {
+    margin-top: 8px;
+    padding: 0 8px;
+    border-radius: var(--xc-secondary-button-border-radius);
+    background: var(--xc-background-tertiary);
+  }
+
+  .auth-prompt-review-batch-transaction > summary {
+    padding: 7px 0;
+    color: var(--xc-text-color);
+  }
+
+  .auth-prompt-review-batch-fields .auth-prompt-review-row {
+    gap: 10px;
+    padding: 7px 0;
+  }
+
+  .auth-prompt-review-batch-fields dd {
+    font-size: 12px;
+  }
+
   .auth-prompt-actions--review {
     gap: 12px;
   }
@@ -893,31 +943,32 @@ export const mainStyles = `
   .error-button {
     flex: 1;
     padding: 14px ${SIZES.BUTTON_PADDING_HORIZONTAL}px;
-    border-radius: ${SIZES.BUTTON_BORDER_RADIUS}px;
     border: none;
+    border-radius: var(--xc-primary-button-border-radius);
     font-size: 15px;
-    font-weight: ${FONT_WEIGHTS.SEMIBOLD};
+    font-weight: var(--xc-primary-button-font-weight);
     cursor: pointer;
     transition: all 0.2s;
   }
 
   .error-button-primary {
-    background: var(--primary-color);
-    color: white;
+    background: var(--xc-primary-button-background);
+    color: var(--xc-primary-button-color);
   }
 
   .error-button-primary:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(14, 165, 233, 0.3);
+    background: var(--xc-primary-button-hover-background);
   }
 
   .error-button-secondary {
-    background: var(--wallet-btn-bg);
-    color: var(--text-color);
+    background: var(--xc-secondary-button-background);
+    color: var(--xc-secondary-button-color);
+    border-radius: var(--xc-secondary-button-border-radius);
+    font-weight: var(--xc-secondary-button-font-weight);
   }
 
   .error-button-secondary:hover {
-    background: var(--wallet-btn-hover);
+    background: var(--xc-secondary-button-hover-background);
   }
 
   /* Account Selection Styles */
@@ -1070,7 +1121,7 @@ export const mainStyles = `
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: ${Z_INDEX.OVERLAY};
+    z-index: var(--xc-modal-z-index);
     animation: fadeIn ${TIMINGS.ANIMATION_DURATION}ms ease-out;
   }
 

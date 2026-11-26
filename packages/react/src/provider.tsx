@@ -14,6 +14,7 @@ import type {
   XrplConnectContextValue,
   XrplConnectProviderProps,
   WalletConnectorElement,
+  WalletConnectorOpenOptions,
 } from './types';
 
 const XrplConnectContext = createContext<XrplConnectContextValue | null>(null);
@@ -249,7 +250,8 @@ export function XrplConnectProvider({ config, children }: XrplConnectProviderPro
     [runWithActiveConnector]
   );
   const openAndWaitModal = useCallback(
-    () => runWithActiveConnector((connector) => connector.openAndWait()),
+    (options?: WalletConnectorOpenOptions) =>
+      runWithActiveConnector((connector) => connector.openAndWait(options)),
     [runWithActiveConnector]
   );
   const closeModal = useCallback(() => {

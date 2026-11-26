@@ -105,6 +105,8 @@ In your CSS file or global styles:
 | `--xc-modal-background`        | `#000637`                        | Modal container background |
 | `--xc-modal-border-radius`     | `12px`                           | Modal border roundness     |
 | `--xc-modal-box-shadow`        | `0 10px 40px rgba(0, 0, 0, 0.2)` | Modal shadow               |
+| `--xc-modal-width`             | `343px`                          | Wallet modal width         |
+| `--xc-modal-z-index`           | `9999`                           | Wallet modal stacking order |
 
 ### Spacing & Typography Variables
 
@@ -187,6 +189,9 @@ The following selectors and part names are stable public API:
 | `[data-xrpl-overlay-portal]`       | `::part(overlay)`                | Wallet modal backdrop      | Shadow content exists while the wallet modal is open  |
 | `[data-xrpl-overlay-portal]`       | `::part(modal)`                  | Wallet modal container     | Shadow content exists while the wallet modal is open  |
 | `[data-xrpl-overlay-portal]`       | `::part(close-button)`           | Wallet modal close button  | Present in every wallet modal view                    |
+| `[data-xrpl-overlay-portal]`       | `::part(approve-button)`         | Transaction review approve button | Present while a transaction review is open       |
+| `[data-xrpl-overlay-portal]`       | `::part(reject-button)`          | Transaction review reject button  | Present while a transaction review is open        |
+| `[data-xrpl-overlay-portal]`       | `::part(input)`                  | Authentication input       | Present while an auth prompt has an input field       |
 | `[data-xrpl-account-modal-portal]` | `::part(overlay)`                | Account modal backdrop     | Shadow content exists while the account modal is open |
 | `[data-xrpl-account-modal-portal]` | `::part(modal)`                  | Account modal container    | Shadow content exists while the account modal is open |
 | `[data-xrpl-account-modal-portal]` | `::part(close-button)`           | Account modal close button | Present while the account modal is open               |
@@ -257,6 +262,23 @@ export default defineNuxtConfig({
 ```
 
 Scoped descendant selectors and `:deep()` cannot reach these body-level portal hosts.
+
+## Headless connector and targeted sign-in
+
+Keep the connector mounted for its portals while supplying your own launcher by
+using the `headless` attribute (or the `headless` prop in React/Vue):
+
+```html
+<xrpl-wallet-connector id="connector" headless></xrpl-wallet-connector>
+<button type="button" onclick="void document.getElementById('connector').openAndWait({ loginMethod: 'email' })">
+  Sign in with email
+</button>
+```
+
+`openAndWait({ loginMethod })` accepts a login method id or label returned by the
+adapter (for example `email` or `google`), coalesces concurrent waits, and rejects
+when the modal is closed. The framework `useWalletModal().openAndWait` helpers
+accept the same optional object.
 
 ## Primary Wallet Attribute
 

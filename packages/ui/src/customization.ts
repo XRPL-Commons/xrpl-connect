@@ -32,6 +32,8 @@ export const WALLET_CONNECTOR_CSS_VARIABLES = [
   '--xc-modal-background',
   '--xc-modal-border-radius',
   '--xc-modal-box-shadow',
+  '--xc-modal-width',
+  '--xc-modal-z-index',
   '--xc-focus-color',
   '--xc-danger-color',
 ] as const;
@@ -63,6 +65,9 @@ export const WALLET_CONNECTOR_PARTS = {
     overlay: 'overlay',
     modal: 'modal',
     closeButton: 'close-button',
+    approveButton: 'approve-button',
+    rejectButton: 'reject-button',
+    input: 'input',
   },
   accountModal: {
     overlay: 'overlay',

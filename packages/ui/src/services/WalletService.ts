@@ -104,10 +104,11 @@ interface TransactionReviewSubscription {
 }
 
 /**
- * Reviews already shown by a connector. Every connector sharing a manager
- * receives each review; only the first one to receive it opens its modal.
+ * Connected prompts already shown by a connector. Every connector sharing a
+ * manager receives each prompt; only the first one to receive it opens its
+ * modal.
  */
-const shownTransactionReviews = new WeakSet<WalletAuthPrompt>();
+const shownConnectedPrompts = new WeakSet<WalletAuthPrompt>();
 
 export class WalletService {
   private nextConnectionAttemptId = 0;
@@ -124,10 +125,7 @@ export class WalletService {
     private component: WalletConnectorContext
   ) {}
 
-  /**
-   * Route the connected wallet's transaction reviews to the modal. Sign-in
-   * prompts stay with the connection attempt that asked for them.
-   */
+  /** Route connected-wallet reviews and additional-auth prompts to the modal. */
   watchTransactionReviews(): void {
     const wallet = this.walletManager.connected ? this.walletManager.wallet : null;
     if (this.transactionReviewSubscription?.wallet === wallet) return;
@@ -141,9 +139,12 @@ export class WalletService {
         if (this.transactionReviewSubscription !== subscription) return;
         if (!prompt) {
           this.component.endTransactionReview(wallet.id);
-        } else if (prompt.review && !shownTransactionReviews.has(prompt)) {
-          shownTransactionReviews.add(prompt);
-          this.component.showTransactionReview(prompt, wallet.id, wallet.name, wallet.icon);
+        } else if (
+          (prompt.review || prompt.kind === 'mfa') &&
+          !shownConnectedPrompts.has(prompt)
+        ) {
+          shownConnectedPrompts.add(prompt);
+          this.component.showAuthPrompt(prompt, wallet.id, wallet.name, wallet.icon);
         }
       });
     } catch (error) {
