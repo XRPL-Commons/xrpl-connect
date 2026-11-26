@@ -32,7 +32,9 @@ every time **Sign in with socials** opens, bypassing cached browser responses.
 There is no provider list to duplicate
 in application code or environment variables.
 
-The integration pins `@privy-io/js-sdk-core` to `0.79.4`. Privy describes this as a
+The integration pins `@privy-io/js-sdk-core` to `0.79.4`. The adapter also
+installs `viem` because this SDK version imports it and declares it as an
+optional peer. Privy describes js-sdk-core as a
 low-level SDK and asks developers to discuss their use with its team. See the
 [vanilla SDK guide](https://docs.privy.io/recipes/core-js) and
 [extended-chain support](https://docs.privy.io/wallets/overview/chains).
@@ -100,6 +102,10 @@ an application callback to obtain its token; a dashboard switch alone cannot
 provide that callback. Each entry accepts an optional `label` for its button;
 without one the button uses the dashboard label of the method it overrides, then
 the OAuth provider's name, then the `id`.
+
+Set `allowedLoginMethods: ['email', 'google']` to offer just those configured
+methods. The same list applies when calling `manager.connect('privy', { loginMethod })`
+directly. Email, phone and passkey-only configurations can omit `redirectUri`.
 
 Choosing a login method always authenticates with that method. If a previous
 Privy session is still present, for example because an earlier logout could not
@@ -319,7 +325,7 @@ approved and then submitted within the same window. Supply your own
 autofill.
 
 The review fails closed. When nothing is subscribed with `onAuthPrompt()`,
-signing fails with a `SIGN_FAILED` wallet error instead of signing, so keep a
+signing fails with a `SIGN_FAILED` wallet error and reason `no_reviewer`, so keep a
 connector on the page while users sign. To use your own interface, subscribe with
 `adapter.onAuthPrompt()` and answer prompts that carry a `review` with
 `prompt.submit({})` or `prompt.cancel()`, or pass a function:

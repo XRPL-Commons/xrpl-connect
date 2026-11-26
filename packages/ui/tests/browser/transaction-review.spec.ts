@@ -36,6 +36,26 @@ function detail(dialog: Locator, label: string): Locator {
 const outcomes = (page: Page) => page.evaluate(() => window.getOutcomes());
 const signatureCount = (page: Page) => page.evaluate(() => window.getSignatureCount());
 
+test('a headless pay link opens email directly and can approve after a page reload', async ({
+  page,
+}) => {
+  await page.goto(fixturePath + '?headless');
+  await page.getByRole('button', { name: 'Continue with email' }).click();
+  const prompt = page.getByRole('dialog', { name: 'Enter the test verification code' });
+  await prompt.getByLabel('Verification code').fill('000000');
+  await prompt.getByRole('button', { name: 'Verify', exact: true }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-ready', 'true');
+
+  await page.reload();
+  await expect(page.locator('body')).toHaveAttribute('data-ready', 'true');
+  await expect(page.locator('xrpl-wallet-connector button.connect-button')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Sign payment', exact: true }).click();
+  const dialog = reviewDialog(page);
+  await expect(detail(dialog, 'Amount')).toHaveText('1.5 XRP');
+  await dialog.getByRole('button', { name: 'Approve', exact: true }).click();
+  await expect.poll(() => signatureCount(page)).toBe(1);
+});
+
 test('reviews a Privy payment in the connector and signs only after approval', async ({ page }) => {
   await openFixture(page);
   const trigger = page.getByRole('button', { name: 'Sign payment', exact: true });

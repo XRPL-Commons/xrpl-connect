@@ -39,7 +39,10 @@ const REVIEW_BOOKKEEPING_FIELDS = new Set([
   'SigningPubKey',
 ]);
 
-function appendReviewRow(list: HTMLElement, detail: WalletTransactionReview['details'][number]): void {
+function appendReviewRow(
+  list: HTMLElement,
+  detail: WalletTransactionReview['details'][number]
+): void {
   const row = document.createElement('div');
   row.className =
     detail.value.includes('\n') || detail.value.length > INLINE_REVIEW_VALUE_LENGTH
@@ -53,7 +56,10 @@ function appendReviewRow(list: HTMLElement, detail: WalletTransactionReview['det
   list.append(row);
 }
 
-function appendBatchTransactions(list: HTMLElement, detail: WalletTransactionReview['details'][number]): boolean {
+function appendBatchTransactions(
+  list: HTMLElement,
+  detail: WalletTransactionReview['details'][number]
+): boolean {
   let transactions: unknown;
   try {
     transactions = JSON.parse(detail.value);
@@ -95,7 +101,7 @@ function appendBatchTransactions(list: HTMLElement, detail: WalletTransactionRev
           ? value
           : typeof value === 'number' || typeof value === 'boolean'
             ? String(value)
-            : JSON.stringify(value, null, 2) ?? String(value);
+            : (JSON.stringify(value, null, 2) ?? String(value));
       appendReviewRow(fields, { name, label: name, value: formatted });
     }
     transactionDetails.append(fields);

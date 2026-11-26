@@ -1,4 +1,6 @@
 import { forwardRef, useCallback, useEffect, useRef, type CSSProperties } from 'react';
+import 'xrpl-connect/register';
+
 import {
   createWalletError,
   getErrorMessage,

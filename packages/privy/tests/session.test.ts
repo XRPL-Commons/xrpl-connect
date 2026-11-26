@@ -531,6 +531,60 @@ describe('PrivySession', () => {
     await session.disconnect();
   });
 
+  it('can select built-in dashboard methods explicitly in allowlist mode', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValue({
+      email_auth: true,
+      google_oauth: true,
+      passkey_auth: true,
+    });
+    const session = new PrivySession({
+      appId: 'app-216',
+      loginMethods: [{ id: 'company', getCustomToken: async () => 'custom-token' }],
+      allowedLoginMethods: ['email'],
+    });
+
+    await expect(session.getLoginMethods()).resolves.toEqual([
+      expect.objectContaining({ id: 'email', connectOptions: { loginMethod: 'email' } }),
+    ]);
+    await expect(session.connect('company', new AbortController().signal)).rejects.toThrow(
+      'not configured'
+    );
+    await session.disconnect();
+  });
+
+  it('allows non-OAuth sessions to omit redirectUri', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValue({ email_auth: true });
+    const session = new PrivySession({ appId: 'app-216' });
+
+    await expect(session.getLoginMethods()).resolves.toEqual([
+      expect.objectContaining({ id: 'email' }),
+    ]);
+    await session.disconnect();
+  });
+
+  it('retries an iframe readiness ping that resolves false', async () => {
+    mocks.ping.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const session = new PrivySession({ ...options(), requestTimeoutMs: 1_000 });
+
+    await expect(session.connect('custom', new AbortController().signal)).resolves.toMatchObject({
+      id: walletId,
+    });
+    expect(mocks.ping).toHaveBeenCalledTimes(2);
+    await session.disconnect();
+  });
+
+  it('returns a token only while it belongs to the connected user', async () => {
+    mocks.getAccessToken.mockResolvedValue(accessToken(userId));
+    const session = makeSession();
+    await session.connect('custom', new AbortController().signal);
+
+    await expect(session.getAccessToken()).resolves.toBe(accessToken(userId));
+    mocks.getAccessToken.mockResolvedValue(accessToken('did:privy:other'));
+    await expect(session.getAccessToken()).resolves.toBeNull();
+    await session.disconnect();
+    await expect(session.getAccessToken()).resolves.toBeNull();
+  });
+
   it('does not initialize a fresh client after an immediate discovery disconnect', async () => {
     const session = new PrivySession({
       appId: 'app-216',
@@ -1546,7 +1600,16 @@ describe('PrivySession', () => {
     const lost = vi.fn();
     session.onSessionLost(lost);
 
-    await expect(session.connect('google', new AbortController().signal)).rejects.toBe(failure);
+    if (details.code === 'invalid_origin') {
+      await expect(session.connect('google', new AbortController().signal)).rejects.toMatchObject({
+        code: 'CONFIGURATION_REQUIRED',
+        reason: 'origin_not_allowed',
+        message: 'Origin not allowed. Add http://localhost:3000 to Allowed origins.',
+        originalError: failure,
+      });
+    } else {
+      await expect(session.connect('google', new AbortController().signal)).rejects.toBe(failure);
+    }
     expect(lost).not.toHaveBeenCalled();
     expect(window.location.assign).not.toHaveBeenCalled();
     expect(window.sessionStorage.length).toBe(0);
@@ -1744,6 +1807,7 @@ describe('PrivySession', () => {
 
     await expect(session.connect('custom', new AbortController().signal)).rejects.toMatchObject({
       code: 'OPERATION_TIMEOUT',
+      reason: 'iframe_not_ready',
     });
     expect(mocks.create).not.toHaveBeenCalled();
     await session.disconnect();
@@ -2130,8 +2194,11 @@ describe('PrivySession', () => {
       .catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toBe('Origin not allowed');
-    expect((failure as { code?: string }).code).not.toBe('CONNECTION_REJECTED');
+    expect((failure as Error).message).toBe(
+      'Origin not allowed. Add http://localhost:3000 to Allowed origins.'
+    );
+    expect((failure as { code?: string }).code).toBe('CONFIGURATION_REQUIRED');
+    expect((failure as { reason?: string }).reason).toBe('origin_not_allowed');
 
     await first.disconnect();
     await second.disconnect();

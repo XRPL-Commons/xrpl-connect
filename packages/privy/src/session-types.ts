@@ -60,9 +60,7 @@ export interface PrivySessionOptions {
    * these entries extend them and replace a dashboard entry with the same id.
    */
   loginMethods?: readonly PrivyLoginMethod[];
-  /** Restrict discovery to the supplied methods instead of extending dashboard methods. */
-  loginMethodsMode?: 'extend' | 'allowlist';
-  /** Built-in/dashboard method IDs to retain when `loginMethodsMode` is `allowlist`. */
+  /** Limit the chooser and direct sign-ins to these method IDs. Omit to offer all configured methods. */
   allowedLoginMethods?: readonly string[];
   /** How transaction MFA is answered when Privy requests it. */
   mfa?: PrivyMfaMode;

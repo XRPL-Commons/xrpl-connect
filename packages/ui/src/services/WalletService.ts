@@ -139,10 +139,7 @@ export class WalletService {
         if (this.transactionReviewSubscription !== subscription) return;
         if (!prompt) {
           this.component.endTransactionReview(wallet.id);
-        } else if (
-          (prompt.review || prompt.kind === 'mfa') &&
-          !shownConnectedPrompts.has(prompt)
-        ) {
+        } else if ((prompt.review || prompt.kind === 'mfa') && !shownConnectedPrompts.has(prompt)) {
           shownConnectedPrompts.add(prompt);
           this.component.showAuthPrompt(prompt, wallet.id, wallet.name, wallet.icon);
         }

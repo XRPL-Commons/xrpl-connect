@@ -28,6 +28,7 @@ const adapterAliases = {
 const subpathEntries = {
   core: resolve(__dirname, 'src/core.ts'),
   ui: resolve(__dirname, 'src/ui.ts'),
+  register: resolve(__dirname, 'src/register.ts'),
   xaman: resolve(__dirname, 'src/xaman.ts'),
   crossmark: resolve(__dirname, 'src/crossmark.ts'),
   gemwallet: resolve(__dirname, 'src/gemwallet.ts'),
@@ -43,6 +44,16 @@ const sharedEntries = {
   'xrpl-connect': resolve(__dirname, 'src/index.ts'),
   ...subpathEntries,
 };
+
+function normalizeMockedWebSocketConstructor(code: string): string {
+  // Rolldown rewrites xumm-sdk's guarded constructor to `new
+  // (globalThis?.MockedWebSocket)`, which Nuxt's production parser rejects.
+  // The preceding type guard guarantees the property exists here.
+  return code.replace(
+    /new\s*\(\s*globalThis\?\.MockedWebSocket\s*\)/g,
+    'new globalThis.MockedWebSocket'
+  );
+}
 
 function findEsmFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -63,15 +74,12 @@ async function emitCommonJsGraph() {
   const esmFiles = findEsmFiles(publishDir);
   await Promise.all(
     esmFiles.map(async (esmPath) => {
-      const { code } = await transformWithEsbuild(
-        readFileSync(esmPath, 'utf8'),
-        esmPath,
-        { format: 'cjs', target: 'node20', sourcemap: false }
-      );
-      writeFileSync(
-        esmPath.replace(/\.mjs$/, '.js'),
-        code.replace(/\.mjs(?=["'])/g, '.js')
-      );
+      const { code } = await transformWithEsbuild(readFileSync(esmPath, 'utf8'), esmPath, {
+        format: 'cjs',
+        target: 'node20',
+        sourcemap: false,
+      });
+      writeFileSync(esmPath.replace(/\.mjs$/, '.js'), code.replace(/\.mjs(?=["'])/g, '.js'));
     })
   );
 }
@@ -90,6 +98,16 @@ async function buildSharedEntries() {
     define: { define: 'undefined' },
     plugins: [
       inject({ Buffer: ['buffer', 'Buffer'] }),
+      {
+        name: 'normalize-shared-xumm-mocked-websocket-constructor',
+        generateBundle(_options, bundle) {
+          for (const output of Object.values(bundle)) {
+            if (output.type === 'chunk') {
+              output.code = normalizeMockedWebSocketConstructor(output.code);
+            }
+          }
+        },
+      },
       {
         name: 'shared-entry-svg-as-text',
         enforce: 'pre',
@@ -162,15 +180,9 @@ export default defineConfig({
     {
       name: 'normalize-xumm-mocked-websocket-constructor',
       generateBundle(_options, bundle) {
-        // Rolldown rewrites xumm-sdk's guarded constructor to `new
-        // (globalThis?.MockedWebSocket)`, which Nuxt's production parser rejects.
-        // The preceding type guard guarantees the property exists here.
         for (const output of Object.values(bundle)) {
           if (output.type !== 'chunk') continue;
-          output.code = output.code.replace(
-            /new\s*\(\s*globalThis\?\.MockedWebSocket\s*\)/g,
-            'new globalThis.MockedWebSocket'
-          );
+          output.code = normalizeMockedWebSocketConstructor(output.code);
         }
       },
     },

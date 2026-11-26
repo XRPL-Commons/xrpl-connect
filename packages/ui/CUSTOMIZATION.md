@@ -181,7 +181,10 @@ connector's shadow root:
 
 ```html
 <xrpl-wallet-connector id="connector" headless></xrpl-wallet-connector>
-<button type="button" onclick="void document.getElementById('connector').openAndWait({ loginMethod: 'email' })">
+<button
+  type="button"
+  onclick="void document.getElementById('connector').openAndWait({ loginMethod: 'email' })"
+>
   Sign in with email
 </button>
 ```

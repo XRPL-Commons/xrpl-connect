@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   copyFileSync,
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readdirSync,
@@ -91,6 +92,7 @@ const candidatePackages = [
       'licenses/XRPL-ISC-LICENSE.txt',
       'licenses/NODE-FORGE-TYPES-MIT-LICENSE.txt',
       'index.d.ts',
+      'register.d.ts',
       'types/crossmark/build/src/sdk/index.d.ts',
       'types/crossmark/build/src/crossmark/models/common/tx.d.ts',
       'types/forge.d.ts',
@@ -101,6 +103,8 @@ const candidatePackages = [
       'core.js',
       'ui.mjs',
       'ui.js',
+      'register.mjs',
+      'register.js',
       'xaman.mjs',
       'xaman.js',
       'crossmark.mjs',
@@ -505,14 +509,33 @@ try {
   const umbrellaManifest = installedManifests['xrpl-connect'];
   const subpathExports = {
     core: { exportName: 'WalletManager', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
-    ui: { exportName: 'WALLET_CONNECTOR_CSS_VARIABLES', forbidden: ['WalletManager', 'XamanAdapter'] },
-    xaman: { exportName: 'XamanAdapter', forbidden: ['CrossmarkAdapter', 'WalletConnectorElement'] },
-    crossmark: { exportName: 'CrossmarkAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
-    gemwallet: { exportName: 'GemWalletAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
-    walletconnect: { exportName: 'WalletConnectAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
+    ui: {
+      exportName: 'WALLET_CONNECTOR_CSS_VARIABLES',
+      forbidden: ['WalletManager', 'XamanAdapter'],
+    },
+    register: { exportName: null, forbidden: ['WalletManager', 'XamanAdapter'] },
+    xaman: {
+      exportName: 'XamanAdapter',
+      forbidden: ['CrossmarkAdapter', 'WalletConnectorElement'],
+    },
+    crossmark: {
+      exportName: 'CrossmarkAdapter',
+      forbidden: ['XamanAdapter', 'WalletConnectorElement'],
+    },
+    gemwallet: {
+      exportName: 'GemWalletAdapter',
+      forbidden: ['XamanAdapter', 'WalletConnectorElement'],
+    },
+    walletconnect: {
+      exportName: 'WalletConnectAdapter',
+      forbidden: ['XamanAdapter', 'WalletConnectorElement'],
+    },
     ledger: { exportName: 'LedgerAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
     xyra: { exportName: 'XyraAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
-    ghostsig: { exportName: 'GhostsigAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
+    ghostsig: {
+      exportName: 'GhostsigAdapter',
+      forbidden: ['XamanAdapter', 'WalletConnectorElement'],
+    },
     otsu: { exportName: 'OtsuAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
     'metamask-snap': {
       exportName: 'MetaMaskSnapAdapter',
@@ -522,10 +545,12 @@ try {
   for (const [name, { exportName, forbidden }] of Object.entries(subpathExports)) {
     assert(umbrellaManifest.exports?.[`./${name}`], `Missing published export ./` + name);
     const esm = await import(pathToFileURL(path.join(installedUmbrellaFolder, `${name}.mjs`)));
-    assert(
-      name === 'ui' ? esm[exportName] !== undefined : typeof esm[exportName] === 'function',
-      `./${name} is missing ${exportName}`
-    );
+    if (exportName) {
+      assert(
+        name === 'ui' ? esm[exportName] !== undefined : typeof esm[exportName] === 'function',
+        `./${name} is missing ${exportName}`
+      );
+    }
     for (const forbiddenName of forbidden) {
       assert.equal(
         typeof esm[forbiddenName],
@@ -534,10 +559,12 @@ try {
       );
     }
     const cjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, `${name}.js`));
-    assert(
-      name === 'ui' ? cjs[exportName] !== undefined : typeof cjs[exportName] === 'function',
-      `CommonJS ./${name} is missing ${exportName}`
-    );
+    if (exportName) {
+      assert(
+        name === 'ui' ? cjs[exportName] !== undefined : typeof cjs[exportName] === 'function',
+        `CommonJS ./${name} is missing ${exportName}`
+      );
+    }
     for (const forbiddenName of forbidden) {
       assert.equal(
         typeof cjs[forbiddenName],
@@ -546,7 +573,9 @@ try {
       );
     }
   }
-  const rootEsm = await import(pathToFileURL(path.join(installedUmbrellaFolder, 'xrpl-connect.mjs')));
+  const rootEsm = await import(
+    pathToFileURL(path.join(installedUmbrellaFolder, 'xrpl-connect.mjs'))
+  );
   const coreEsm = await import(pathToFileURL(path.join(installedUmbrellaFolder, 'core.mjs')));
   const uiEsm = await import(pathToFileURL(path.join(installedUmbrellaFolder, 'ui.mjs')));
   const xamanEsm = await import(pathToFileURL(path.join(installedUmbrellaFolder, 'xaman.mjs')));
@@ -554,7 +583,9 @@ try {
   assert.strictEqual(rootEsm.XamanAdapter, xamanEsm.XamanAdapter);
   assert.strictEqual(rootEsm.WalletConnectorElement, uiEsm.WalletConnectorElement);
   assert.equal(typeof coreEsm.XamanAdapter, 'undefined');
-  const rootCjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, 'xrpl-connect.js'));
+  const rootCjs = createRequire(import.meta.url)(
+    path.join(installedUmbrellaFolder, 'xrpl-connect.js')
+  );
   const coreCjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, 'core.js'));
   const uiCjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, 'ui.js'));
   const xamanCjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, 'xaman.js'));
@@ -567,6 +598,8 @@ try {
     './xrpl-connect.js',
     './ui.mjs',
     './ui.js',
+    './register.mjs',
+    './register.js',
   ]);
   const thirdPartyNotices = readFileSync(
     path.join(installedUmbrellaFolder, 'THIRD_PARTY_NOTICES.md'),
@@ -609,7 +642,50 @@ try {
     /import\s*\(\s*(?:\/\*[\s\S]*?\*\/\s*)?[`'"]@xyrawallet\/sdk[`'"]\s*\)/;
   const optionalChainConstructor = /new\s*\(\s*globalThis\?\.MockedWebSocket\s*\)/;
   const directMockedWebSocketConstructor = /new\s+globalThis\.MockedWebSocket\s*\(/;
-  for (const entry of ['xrpl-connect.mjs', 'xrpl-connect.umd.js']) {
+  const relativeModuleSpecifier =
+    /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)["']([^"']+)["']/g;
+  const resolveBundledModule = (sourceFile, specifier) => {
+    if (!specifier.startsWith('.')) return undefined;
+    const candidate = path.resolve(path.dirname(sourceFile), specifier);
+    for (const file of [candidate, `${candidate}.mjs`, `${candidate}.js`]) {
+      if (existsSync(file)) return file;
+    }
+    return undefined;
+  };
+  const collectReachableModules = (entryFile) => {
+    const pending = [entryFile];
+    const visited = new Set();
+    while (pending.length > 0) {
+      const sourceFile = pending.pop();
+      if (visited.has(sourceFile)) continue;
+      assert(existsSync(sourceFile), `Missing published module ${sourceFile}`);
+      visited.add(sourceFile);
+      const contents = readFileSync(sourceFile, 'utf-8');
+      for (const [, specifier] of contents.matchAll(relativeModuleSpecifier)) {
+        const resolved = resolveBundledModule(sourceFile, specifier);
+        if (resolved) pending.push(resolved);
+      }
+    }
+    return visited;
+  };
+  const bundledModuleFiles = readdirSync(installedUmbrellaFolder, { recursive: true }).filter(
+    (file) => /\.m?js$/.test(file)
+  );
+  for (const [format, entry] of [
+    ['ESM', 'xrpl-connect.mjs'],
+    ['CommonJS', 'xrpl-connect.js'],
+  ]) {
+    const reachableModules = collectReachableModules(path.join(installedUmbrellaFolder, entry));
+    const modernBundle = [...reachableModules]
+      .map((sourceFile) => readFileSync(sourceFile, 'utf-8'))
+      .join('\n');
+    assert.match(
+      modernBundle,
+      directMockedWebSocketConstructor,
+      `${format} shared graph does not contain the guarded direct MockedWebSocket constructor`
+    );
+  }
+  for (const entry of bundledModuleFiles) {
     const contents = readFileSync(path.join(installedUmbrellaFolder, entry), 'utf-8');
     assert.doesNotMatch(
       contents,
@@ -621,15 +697,10 @@ try {
       optionalChainConstructor,
       `${entry} contains an optional-chain constructor that consumer builds cannot parse`
     );
-    assert.match(
-      contents,
-      directMockedWebSocketConstructor,
-      `${entry} does not contain the guarded direct MockedWebSocket constructor`
-    );
   }
   // Consumer bundlers such as Turbopack resolve the dependencies of AMD fallbacks left in
   // bundled UMD modules (crypto-js `define(["./core"], ...)`). Only the UMD wrapper may use AMD.
-  for (const entry of readdirSync(installedUmbrellaFolder).filter((file) => /\.m?js$/.test(file))) {
+  for (const entry of bundledModuleFiles) {
     const amdChecks = readFileSync(path.join(installedUmbrellaFolder, entry), 'utf-8').match(
       /\bdefine\.amd\b/g
     );

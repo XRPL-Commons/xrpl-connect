@@ -141,34 +141,44 @@ const distPkg = {
       import: './xrpl-connect.mjs',
       require: './xrpl-connect.js',
     },
-    ...Object.fromEntries([
-      'core',
-      'ui',
-      'xaman',
-      'crossmark',
-      'gemwallet',
-      'walletconnect',
-      'ledger',
-      'xyra',
-      'ghostsig',
-      'otsu',
-      'metamask-snap',
-    ].map((name) => [
-      `./${name}`,
-      {
-        // Each focused declaration is an explicit projection of the canonical
-        // root declaration. This prevents TypeScript from accepting adapter or
-        // UI symbols that the focused runtime entry does not export.
-        types: `./${name}.d.ts`,
-        import: `./${name}.mjs`,
-        require: `./${name}.js`,
-      },
-    ])),
+    ...Object.fromEntries(
+      [
+        'core',
+        'ui',
+        'register',
+        'xaman',
+        'crossmark',
+        'gemwallet',
+        'walletconnect',
+        'ledger',
+        'xyra',
+        'ghostsig',
+        'otsu',
+        'metamask-snap',
+      ].map((name) => [
+        `./${name}`,
+        {
+          // Each focused declaration is an explicit projection of the canonical
+          // root declaration. This prevents TypeScript from accepting adapter or
+          // UI symbols that the focused runtime entry does not export.
+          types: `./${name}.d.ts`,
+          import: `./${name}.mjs`,
+          require: `./${name}.js`,
+        },
+      ])
+    ),
   },
   // The umbrella and UI entries register the custom element. Keep these
   // modules observable to consumer bundlers while allowing core and adapter
   // subpaths to be tree-shaken independently.
-  sideEffects: ['./xrpl-connect.mjs', './xrpl-connect.js', './ui.mjs', './ui.js'],
+  sideEffects: [
+    './xrpl-connect.mjs',
+    './xrpl-connect.js',
+    './ui.mjs',
+    './ui.js',
+    './register.mjs',
+    './register.js',
+  ],
   // External declaration imports must be installed alongside the package.
   dependencies: externalDependencies,
   // Carry the `xrpl` peer dependency into the published manifest. The rolled
