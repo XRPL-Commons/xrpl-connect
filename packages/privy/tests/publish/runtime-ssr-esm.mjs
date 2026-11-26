@@ -6,6 +6,10 @@ delete globalThis.document;
 delete globalThis.customElements;
 
 const api = await import('@xrpl-commons/xrpl-connect-privy');
+const { MockPrivyAdapter } = await import('@xrpl-commons/xrpl-connect-privy/testing');
+const mock = new MockPrivyAdapter();
+assert.ok((await mock.connect()).address);
+await mock.disconnect();
 assert.equal(typeof api.PrivyAdapter, 'function');
 
 const adapter = new api.PrivyAdapter({

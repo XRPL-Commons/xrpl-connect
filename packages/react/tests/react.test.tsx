@@ -23,6 +23,9 @@ import {
   type WalletConnectorProps,
 } from '../src';
 
+// These wrapper tests register a controllable connector in the same DOM.
+vi.mock('xrpl-connect/register', () => ({}));
+
 const ACCOUNT: AccountInfo = { address: 'rTEST', network: STANDARD_NETWORKS.testnet };
 
 function deferred<T>() {

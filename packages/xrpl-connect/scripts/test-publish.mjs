@@ -162,6 +162,9 @@ const candidatePackages = [
       'dist/index.d.mts',
       'dist/index.js',
       'dist/index.mjs',
+      'dist/testing.d.ts',
+      'dist/testing.js',
+      'dist/testing.mjs',
     ],
   },
 ];
