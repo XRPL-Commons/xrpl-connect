@@ -1,5 +1,5 @@
 import { WalletManager, type WalletAdapter } from '@xrpl-connect/core';
-import '../../src/wallet-connector';
+import '../../src/register';
 
 const params = new URLSearchParams(location.search);
 const uri = 'wc:0123456789abcdef0123456789abcdef@2?relay-protocol=irn&symKey=' + 'ab'.repeat(32);

@@ -1,7 +1,7 @@
 import { secp256k1 } from '@noble/curves/secp256k1';
 import { WalletManager, type Transaction } from '@xrpl-connect/core';
 import { PrivyAdapter } from '../../../privy/src/privy-adapter';
-import '../../src/wallet-connector';
+import '../../src/register';
 
 // Deterministic test keys: private keys 1 and 2 on secp256k1.
 const PRIVATE_KEY = '1'.padStart(64, '0');

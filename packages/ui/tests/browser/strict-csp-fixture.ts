@@ -1,5 +1,5 @@
 import { WalletManager, type NetworkInfo, type WalletAdapter } from '@xrpl-connect/core';
-import '../../src/wallet-connector';
+import '../../src/register';
 
 const STRICT_CSP_NONCE = 'strict-csp-test-nonce';
 const network: NetworkInfo = {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
 import { MemoryStorageAdapter, Storage, TIME, WalletManager } from '@xrpl-connect/core';
 import type { NetworkInfo, WalletAdapter, WalletAuthPrompt } from '@xrpl-connect/core';
-import '../src/wallet-connector';
+import '../src/register';
 import { COLOR_ADJUSTMENT, TIMINGS } from '../src/constants';
 import { adjustColorBrightness } from '../src/utils';
 

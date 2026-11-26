@@ -28,7 +28,7 @@ vi.mock('../src/services/Captcha', () => ({
   ),
 }));
 
-await import('../src/wallet-connector');
+await import('../src/register');
 
 const NETWORK: NetworkInfo = { id: 'testnet', name: 'Testnet', wss: 'wss://example' };
 

@@ -6,7 +6,7 @@ import { createApp, h, ref } from 'vue';
 import { createXrplConnect } from '../../../vue/src/context';
 import { WalletConnector as VueWalletConnector } from '../../../vue/src/WalletConnector';
 import { type NetworkInfo, type WalletAdapter } from '@xrpl-connect/core';
-import '../../src/wallet-connector';
+import '../../src/register';
 
 const STRICT_CSP_NONCE = 'strict-csp-test-nonce';
 const network: NetworkInfo = {

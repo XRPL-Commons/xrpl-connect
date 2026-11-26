@@ -5,7 +5,7 @@ import {
   type NetworkInfo,
   type WalletAdapter,
 } from '@xrpl-connect/core';
-import '../../src/wallet-connector';
+import '../../src/register';
 
 const network: NetworkInfo = {
   id: 'testnet',
