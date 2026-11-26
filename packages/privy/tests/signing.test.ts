@@ -2,9 +2,22 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { webcrypto } from 'node:crypto';
 import { secp256k1 } from '@noble/curves/secp256k1';
-import { Wallet, decode, deriveAddress, verifyKeypairSignature, encodeForSigning } from 'xrpl';
+import {
+  Wallet,
+  decode,
+  deriveAddress,
+  encodeForMultiSigning,
+  encodeForSigning,
+  verifyKeypairSignature,
+} from 'xrpl';
 import type { Transaction } from 'xrpl-connect';
-import { prepareSigningInput, signPreparedTransaction, validateWallet } from '../src/signing';
+import {
+  prepareMultisigningInput,
+  prepareSigningInput,
+  signPreparedMultisignedTransaction,
+  signPreparedTransaction,
+  validateWallet,
+} from '../src/signing';
 
 const privateKey = '1'.padStart(64, '0');
 const publicKey = Array.from(secp256k1.getPublicKey(privateKey), (v) =>
@@ -109,5 +122,48 @@ describe('Privy XRPL serialization', () => {
     original.Memos[0].Memo.MemoData = '02';
     expect(input.Memos?.[0].Memo.MemoData).toBe('01');
     expect(original).not.toHaveProperty('SigningPubKey');
+  });
+
+  it('returns one canonical ordinary multisign contribution without autofill', async () => {
+    vi.stubGlobal('crypto', webcrypto);
+    const source = {
+      ...transaction,
+      Account: Wallet.generate().classicAddress,
+      SigningPubKey: '',
+    } as Transaction;
+    const input = prepareMultisigningInput(source, wallet);
+    const signed = await signPreparedMultisignedTransaction(input, wallet, sign);
+    const decoded = decode(signed.tx_blob!);
+
+    expect(signed.hash).toBe('');
+    expect(decoded.SigningPubKey).toBe('');
+    expect(decoded.TxnSignature).toBeUndefined();
+    expect(decoded.Signers).toEqual([
+      {
+        Signer: {
+          Account: wallet.address,
+          SigningPubKey: wallet.publicKey,
+          TxnSignature: signed.signature,
+        },
+      },
+    ]);
+    expect(
+      verifyKeypairSignature(encodeForMultiSigning(input, wallet.address), signed.signature!, publicKey)
+    ).toBe(true);
+  });
+
+  it('requires a fully prepared multisign input and rejects existing contributions', () => {
+    expect(() => prepareMultisigningInput({ ...transaction, Fee: undefined }, wallet)).toThrow(
+      'prepared transaction'
+    );
+    expect(() => prepareMultisigningInput({ ...transaction, Sequence: undefined }, wallet)).toThrow(
+      'prepared transaction'
+    );
+    expect(() => prepareMultisigningInput({ ...transaction, Signers: [] }, wallet)).toThrow(
+      'signatures'
+    );
+    expect(() => prepareMultisigningInput({ ...transaction, SigningPubKey: publicKey }, wallet)).toThrow(
+      'empty'
+    );
   });
 });
