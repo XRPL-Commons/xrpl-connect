@@ -18,7 +18,7 @@ import {
   type WalletCapabilities,
   type WalletLoginMethod,
   type WalletTransactionReview,
-} from 'xrpl-connect';
+} from 'xrpl-connect/core';
 import { PrivySession } from './session';
 import type { PrivyMfaApi } from './mfa';
 import { PRIVY_ATTRIBUTION, PRIVY_SYMBOL } from './branding';

@@ -3,7 +3,7 @@ import type {
   Transaction,
   WalletTransactionReview,
   WalletTransactionReviewDetail,
-} from 'xrpl-connect';
+} from 'xrpl-connect/core';
 
 /**
  * Details are ordered by what the user needs first: what moves and where, then

@@ -151,9 +151,207 @@ if (!rolled.includes("'xrpl-wallet-connector': WalletConnectorElementInstance"))
   rolled += walletConnectorTagDeclaration;
 }
 writeFileSync(rolledPath, rolled);
+const publishedFolder = path.dirname(rolledPath);
+
+// Keep focused entrypoint declarations as explicit projections of the canonical
+// umbrella declaration. Using `export * from './index.d.ts'` here would make a
+// core-only import type-check adapter/UI symbols that are not available at
+// runtime. Re-exporting the public names below keeps the runtime and type
+// boundaries aligned while sharing one source of declaration truth.
+const coreValues = [
+  'WalletManager',
+  'STANDARD_WALLET_IDS',
+  'STANDARD_NETWORKS',
+  'isStandardNetworkId',
+  'WalletErrorCode',
+  'WalletErrorCategory',
+  'supportsPreInitialize',
+  'supportsDeepLink',
+  'supportsFetchAccount',
+  'adapterSupports',
+  'CAPABILITY_DEFAULTS',
+  'supportsReconnectOptions',
+  'supportsPendingConnection',
+  'getMissingAdapterConfiguration',
+  'isAdapterConfigured',
+  'WalletError',
+  'createWalletError',
+  'isWalletError',
+  'getErrorMessage',
+  'getWalletErrorCategory',
+  'Storage',
+  'LocalStorageAdapter',
+  'MemoryStorageAdapter',
+  'STORED_STATE_VERSION',
+  'STATE_MIGRATIONS',
+  'Logger',
+  'createLogger',
+  'configureLogger',
+  'isLoggerInstance',
+  'TIME',
+  'resolveNetwork',
+  'decodeMessage',
+  'isMobile',
+  'withTimeout',
+  'assertSignedTransaction',
+  'assertRequestedTransaction',
+  'canonicalizeTransaction',
+];
+const coreTypes = [
+  'WalletAdapter',
+  'WalletLoginMethod',
+  'WalletAuthField',
+  'WalletAuthPrompt',
+  'WalletTransactionReview',
+  'WalletTransactionReviewDetail',
+  'WalletId',
+  'WalletIdentifier',
+  'WalletManagerOptions',
+  'AccountInfo',
+  'NetworkInfo',
+  'StandardNetworkId',
+  'NetworkConfig',
+  'Transaction',
+  'SignedTransaction',
+  'SignedMessage',
+  'ManagedSignedTransaction',
+  'ManagedSignedMessage',
+  'SubmittedTransaction',
+  'ConnectOptions',
+  'ConnectOptionsFor',
+  'WalletConnectionOptionsById',
+  'ReconnectOptions',
+  'WalletEvent',
+  'WalletAdapterEvent',
+  'StorageAdapter',
+  'StoredState',
+  'PendingConnection',
+  'LoggerOptions',
+  'LoggerInstance',
+  'LogLevel',
+  'SupportsPreInitialize',
+  'SupportsDeepLink',
+  'SupportsFetchAccount',
+  'WalletCapabilities',
+  'SupportsReconnectOptions',
+  'SupportsPendingConnection',
+  'StorageOptions',
+  'StoredStateEnvelope',
+  'StoredStateMigration',
+  'SignedTransactionExpectation',
+  'RequestedTransactionPolicy',
+];
+const uiValues = [
+  'WalletConnectorElement',
+  'WALLET_CONNECTOR_CSS_VARIABLES',
+  'WALLET_CONNECTOR_PORTAL_ATTRIBUTES',
+  'WALLET_CONNECTOR_PORTAL_SELECTORS',
+  'WALLET_CONNECTOR_PARTS',
+  'SIZES',
+  'TIMINGS',
+  'Z_INDEX',
+  'DEFAULT_THEME',
+  'QR_CONFIG',
+  'LUMINANCE',
+  'COLOR_ADJUSTMENT',
+  'BROWSER_PATTERNS',
+  'ERROR_CODES',
+  'XAMAN',
+  'FONT_WEIGHTS',
+  'ADDRESS_DISPLAY',
+  'GRADIENT',
+  'isMobile',
+  'calculateLuminance',
+  'getContrastTextColor',
+  'adjustColorBrightness',
+  'isSafari',
+  'isXamanQRImage',
+  'truncateString',
+  'delay',
+  'getSafeExternalUrl',
+  'orderWalletsByMru',
+];
+const uiTypes = [
+  'WalletConnectorElementInstance',
+  'WalletConnectorCssVariable',
+  'WalletConnectorCssVars',
+  'WalletManager',
+  'SocialLogin',
+];
+const adapterProjections = {
+  xaman: {
+    values: ['XamanAdapter', 'XamanSDK', 'XamanOAuth2'],
+    types: ['XamanAdapterOptions', 'XamanConnectOptions', 'XamanReturnUrl'],
+  },
+  crossmark: {
+    values: ['CrossmarkAdapter', 'CrossmarkSDK'],
+    types: [
+      'CrossmarkActiveRequest',
+      'CrossmarkAsyncMethods',
+      'CrossmarkClient',
+      'CrossmarkEnvironment',
+      'CrossmarkEventEmitter',
+      'CrossmarkListener',
+      'CrossmarkMount',
+      'CrossmarkRequestAPI',
+      'CrossmarkResponse',
+      'CrossmarkSDKNamespace',
+      'CrossmarkSession',
+      'CrossmarkSyncMethods',
+      'CrossmarkAdapterOptions',
+    ],
+  },
+  gemwallet: {
+    values: ['GemWalletAdapter', 'GemWalletAPI'],
+    types: ['GemWalletAdapterOptions'],
+  },
+  walletconnect: {
+    values: ['WalletConnectAdapter', 'XRPLMethod'],
+    types: ['WalletConnectAdapterOptions', 'WalletConnectConnectOptions'],
+  },
+  ledger: {
+    values: ['LedgerAdapter', 'LedgerDeviceState', 'LEDGER_STATE_MESSAGES'],
+    types: ['LedgerAdapterOptions', 'LedgerConnectOptions'],
+  },
+  xyra: {
+    values: ['XyraAdapter', 'XRPL_CONNECT_TO_XYRA_NETWORK', 'XYRA_TO_XRPL_CONNECT_NETWORK'],
+    types: ['XyraAdapterOptions', 'XyraConnectOptions'],
+  },
+  ghostsig: {
+    values: ['GhostsigAdapter'],
+    types: ['GhostsigAdapterOptions', 'GhostsigConnectOptions'],
+  },
+  otsu: {
+    values: ['OtsuAdapter', 'OTSU_NETWORK_MAP'],
+    types: ['OtsuProvider'],
+  },
+  'metamask-snap': {
+    values: ['MetaMaskSnapAdapter'],
+    types: ['MetaMaskSnapAdapterOptions'],
+  },
+};
+
+function writeProjection(fileName, values, types) {
+  const lines = [
+    '// Generated by scripts/build-types.mjs. Do not edit by hand.',
+    '',
+    'export {',
+    ...values.map((name) => `  ${name},`),
+    "} from './index.d.ts';",
+  ];
+  if (types.length > 0) {
+    lines.push('', 'export type {', ...types.map((name) => `  ${name},`), "} from './index.d.ts';");
+  }
+  writeFileSync(path.join(publishedFolder, fileName), `${lines.join('\n')}\n`);
+}
+
+writeProjection('core.d.ts', coreValues, coreTypes);
+writeProjection('ui.d.ts', uiValues, uiTypes);
+for (const [name, projection] of Object.entries(adapterProjections)) {
+  writeProjection(name + '.d.ts', [...coreValues, ...projection.values], [...coreTypes, ...projection.types]);
+}
 
 const importedModules = new Set();
-const publishedFolder = path.dirname(rolledPath);
 for (const relative of readdirSync(publishedFolder, { recursive: true })) {
   if (!relative.endsWith('.d.ts')) continue;
   const file = path.join(publishedFolder, relative);

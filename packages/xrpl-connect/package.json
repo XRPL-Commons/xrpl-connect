@@ -49,8 +49,64 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.mjs",
+      "require": "./dist/core.js"
+    },
+    "./ui": {
+      "types": "./dist/ui.d.ts",
+      "import": "./dist/ui.mjs",
+      "require": "./dist/ui.js"
+    },
+    "./xaman": {
+      "types": "./dist/xaman.d.ts",
+      "import": "./dist/xaman.mjs",
+      "require": "./dist/xaman.js"
+    },
+    "./crossmark": {
+      "types": "./dist/crossmark.d.ts",
+      "import": "./dist/crossmark.mjs",
+      "require": "./dist/crossmark.js"
+    },
+    "./gemwallet": {
+      "types": "./dist/gemwallet.d.ts",
+      "import": "./dist/gemwallet.mjs",
+      "require": "./dist/gemwallet.js"
+    },
+    "./walletconnect": {
+      "types": "./dist/walletconnect.d.ts",
+      "import": "./dist/walletconnect.mjs",
+      "require": "./dist/walletconnect.js"
+    },
+    "./ledger": {
+      "types": "./dist/ledger.d.ts",
+      "import": "./dist/ledger.mjs",
+      "require": "./dist/ledger.js"
+    },
+    "./xyra": {
+      "types": "./dist/xyra.d.ts",
+      "import": "./dist/xyra.mjs",
+      "require": "./dist/xyra.js"
+    },
+    "./ghostsig": {
+      "types": "./dist/ghostsig.d.ts",
+      "import": "./dist/ghostsig.mjs",
+      "require": "./dist/ghostsig.js"
+    },
+    "./otsu": {
+      "types": "./dist/otsu.d.ts",
+      "import": "./dist/otsu.mjs",
+      "require": "./dist/otsu.js"
+    },
+    "./metamask-snap": {
+      "types": "./dist/metamask-snap.d.ts",
+      "import": "./dist/metamask-snap.mjs",
+      "require": "./dist/metamask-snap.js"
     }
   },
+  "sideEffects": ["./dist/index.js", "./dist/index.mjs", "./dist/ui.js", "./dist/ui.mjs"],
   "files": [
     "dist",
     "README.md",
