@@ -1,4 +1,12 @@
 import { type WalletAuthPrompt } from 'xrpl-connect';
+import {
+  asPasskeyCredential,
+  bytesToBase64Url,
+  passkeyAuthenticationOptions,
+  passkeyRegistrationOptions,
+  toRegistrationResponse,
+  type PasskeyCredentialLike,
+} from './webauthn';
 
 type RecordLike = Record<string, unknown>;
 
@@ -10,20 +18,6 @@ type Deferred<T = unknown> = {
 };
 
 type DeferredValue = NonNullable<Deferred['current']>;
-
-type PasskeyCredentialLike = {
-  id: string;
-  rawId: ArrayBuffer;
-  type: string;
-  authenticatorAttachment?: string | null;
-  response: {
-    clientDataJSON: ArrayBuffer;
-    authenticatorData?: ArrayBuffer;
-    signature?: ArrayBuffer;
-    userHandle?: ArrayBuffer | null;
-  };
-  getClientExtensionResults(): RecordLike;
-};
 
 type MfaClient = {
   auth?: {
@@ -109,69 +103,11 @@ function nonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
-function toBytes(value: string): ArrayBuffer {
-  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
-  const binary = atob(padded);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0)).slice().buffer;
-}
-
-function toBase64Url(value: ArrayBuffer): string {
-  const bytes = new Uint8Array(value);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function descriptors(value: unknown): PublicKeyCredentialDescriptor[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const result = value.flatMap((entry) => {
-    const record = asRecord(entry);
-    if (!record || !nonEmptyString(record.id) || record.type !== 'public-key') return [];
-    const transports = Array.isArray(record.transports)
-      ? record.transports.filter(nonEmptyString)
-      : undefined;
-    return [
-      {
-        id: toBytes(record.id),
-        type: 'public-key' as const,
-        ...(transports && transports.length
-          ? { transports: transports as AuthenticatorTransport[] }
-          : {}),
-      },
-    ];
-  });
-  return result.length ? result : undefined;
-}
-
-function extensions(value: unknown): AuthenticationExtensionsClientInputs | undefined {
-  const record = asRecord(value);
-  if (!record) return undefined;
-  const result: AuthenticationExtensionsClientInputs = {};
-  if (nonEmptyString(record.app_id)) result.appid = record.app_id;
-  if (record.cred_props !== undefined) result.credProps = true;
-  if (typeof record.hmac_create_secret === 'boolean') {
-    (result as RecordLike).hmacCreateSecret = record.hmac_create_secret;
-  }
-  return Object.keys(result).length ? result : undefined;
-}
-
 function requestOptions(response: unknown): PublicKeyCredentialRequestOptions {
-  const options = asRecord(asRecord(response)?.options);
-  if (!options || !nonEmptyString(options.challenge)) {
-    throw new Error('Privy did not return passkey MFA options');
-  }
-  const allowCredentials = descriptors(options.allow_credentials);
-  const extensionInputs = extensions(options.extensions);
+  const result = passkeyAuthenticationOptions(response);
   return {
-    challenge: toBytes(options.challenge),
-    ...(nonEmptyString(options.rp_id) ? { rpId: options.rp_id } : {}),
-    ...(allowCredentials ? { allowCredentials } : {}),
-    ...(typeof options.timeout === 'number' ? { timeout: options.timeout } : {}),
-    userVerification: (nonEmptyString(options.user_verification)
-      ? options.user_verification
-      : 'required') as UserVerificationRequirement,
-    ...(extensionInputs ? { extensions: extensionInputs } : {}),
+    ...result,
+    userVerification: result.userVerification ?? 'required',
   };
 }
 
@@ -202,17 +138,17 @@ function assertion(value: unknown): PrivyMfaAssertion {
   }
   return {
     id: credential.id,
-    raw_id: toBase64Url(credential.rawId),
+      raw_id: bytesToBase64Url(credential.rawId),
     type: 'public-key',
     ...(nonEmptyString(credential.authenticatorAttachment)
       ? { authenticator_attachment: credential.authenticatorAttachment }
       : {}),
     response: {
-      client_data_json: toBase64Url(credential.response.clientDataJSON),
-      authenticator_data: toBase64Url(credential.response.authenticatorData),
-      signature: toBase64Url(credential.response.signature),
+      client_data_json: bytesToBase64Url(credential.response.clientDataJSON),
+      authenticator_data: bytesToBase64Url(credential.response.authenticatorData),
+      signature: bytesToBase64Url(credential.response.signature),
       ...(credential.response.userHandle instanceof ArrayBuffer
-        ? { user_handle: toBase64Url(credential.response.userHandle) }
+        ? { user_handle: bytesToBase64Url(credential.response.userHandle) }
         : {}),
     },
     client_extension_results: clientExtensionResults,
@@ -408,7 +344,11 @@ export class PrivyMfaController implements PrivyMfaApi {
     const client = this.client;
     const rootPromise = client?.mfaPromises?.rootPromise;
     if (!client || !rootPromise) return;
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.timeoutMs);
     try {
       if (this.mode === 'none') {
         const root = await this.challengeDeferred(
@@ -456,7 +396,7 @@ export class PrivyMfaController implements PrivyMfaApi {
       if (!root) throw mfaError('Privy MFA did not start', 'mfa_required');
       root.resolve(answer);
     } catch (error) {
-      const mapped = this.mapError(error, controller.signal);
+      const mapped = this.mapError(error, controller.signal, timedOut);
       const root = this.active?.token === token ? this.active.deferred : captured;
       root?.reject(mapped);
     } finally {
@@ -568,78 +508,19 @@ export class PrivyMfaController implements PrivyMfaApi {
     };
   }
 
-  private mapError(error: unknown, signal: AbortSignal): Error {
+  private mapError(error: unknown, signal: AbortSignal, timedOut: boolean): Error {
+    if (timedOut) return mfaError('Passkey MFA timed out', 'mfa_timeout');
     if ((error as { reason?: string })?.reason === 'mfa_cancelled') return error as Error;
     if (signal.aborted) return mfaError('Passkey MFA timed out', 'mfa_timeout');
     return error instanceof Error ? error : new Error(String(error));
   }
 
   private registrationOptions(response: unknown): PublicKeyCredentialCreationOptions {
-    const options = asRecord(asRecord(response)?.options);
-    const rp = asRecord(options?.rp);
-    const user = asRecord(options?.user);
-    const algorithms = Array.isArray(options?.pub_key_cred_params)
-      ? options.pub_key_cred_params.flatMap((value) => {
-          const algorithm = asRecord(value)?.alg;
-          return typeof algorithm === 'number'
-            ? [{ type: 'public-key' as const, alg: algorithm }]
-            : [];
-        })
-      : [];
-    if (
-      !options ||
-      !nonEmptyString(options.challenge) ||
-      !rp ||
-      !nonEmptyString(rp.name) ||
-      !user ||
-      !nonEmptyString(user.id) ||
-      !nonEmptyString(user.name) ||
-      algorithms.length === 0
-    ) {
-      throw new Error('Privy did not return passkey enrollment options');
-    }
-    return {
-      challenge: toBytes(options.challenge),
-      rp: { name: rp.name, ...(nonEmptyString(rp.id) ? { id: rp.id } : {}) },
-      user: {
-        id: toBytes(user.id),
-        name: user.name,
-        displayName: nonEmptyString(user.display_name) ? user.display_name : user.name,
-      },
-      pubKeyCredParams: algorithms,
-      ...(typeof options.timeout === 'number' ? { timeout: options.timeout } : {}),
-    };
+    return passkeyRegistrationOptions(response);
   }
 
   private registrationResponse(value: unknown): RecordLike & { id: string } {
-    const credential = value as PasskeyCredentialLike | null;
-    if (
-      !credential ||
-      !nonEmptyString(credential.id) ||
-      !(credential.rawId instanceof ArrayBuffer) ||
-      !(credential.response.clientDataJSON instanceof ArrayBuffer) ||
-      !((credential.response as RecordLike).attestationObject instanceof ArrayBuffer) ||
-      typeof credential.getClientExtensionResults !== 'function'
-    ) {
-      throw new Error('The passkey did not answer');
-    }
-    const response = credential.response as PasskeyCredentialLike['response'] & {
-      attestationObject: ArrayBuffer;
-      getTransports?: () => string[];
-    };
-    return {
-      id: credential.id,
-      rawId: toBase64Url(credential.rawId),
-      type: credential.type,
-      ...(nonEmptyString(credential.authenticatorAttachment)
-        ? { authenticatorAttachment: credential.authenticatorAttachment }
-        : {}),
-      response: {
-        clientDataJSON: toBase64Url(response.clientDataJSON),
-        attestationObject: toBase64Url(response.attestationObject),
-        transports: response.getTransports?.() ?? [],
-      },
-      clientExtensionResults: credential.getClientExtensionResults(),
-    };
+    const credential = asPasskeyCredential(value as Credential | null);
+    return toRegistrationResponse(credential) as RecordLike & { id: string };
   }
 }
