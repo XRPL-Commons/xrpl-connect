@@ -13,13 +13,7 @@ import {
   type WalletAuthPrompt,
   type WalletLoginMethod,
   type WalletTransactionReview,
-} from 'xrpl-connect';
-
-declare module 'xrpl-connect' {
-  interface WalletConnectionOptionsById {
-    privy: PrivyConnectOptions;
-  }
-}
+} from 'xrpl-connect/core';
 
 const oauthProvider: PrivyOAuthProvider = 'apple';
 const customLoginMethod: PrivyLoginMethod = {
@@ -48,6 +42,9 @@ const connectOptions: ConnectOptions<PrivyConnectOptions> = {
 };
 const manager = new WalletManager({ adapters: [adapter], network: 'testnet' });
 void manager.connect('privy', connectOptions);
+
+// @ts-expect-error loginMetod is deliberately misspelled
+void manager.connect('privy', { loginMetod: 'apple' });
 
 const dashboardAdapter: WalletAdapter = new PrivyAdapter({
   appId: 'publish-smoke-test',

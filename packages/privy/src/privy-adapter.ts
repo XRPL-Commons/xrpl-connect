@@ -17,7 +17,7 @@ import {
   type WalletAuthPrompt,
   type WalletLoginMethod,
   type WalletTransactionReview,
-} from 'xrpl-connect';
+} from 'xrpl-connect/core';
 import { PrivySession } from './session';
 import { PRIVY_ATTRIBUTION, PRIVY_SYMBOL } from './branding';
 import { createTransactionReview } from './review';

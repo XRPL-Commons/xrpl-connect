@@ -25,6 +25,22 @@ The `xrpl-connect` package includes everything you need:
 - **UI**: Beautiful pre-built web component with QR codes and wallet selection
 - **Adapters**: All nine XRPL wallet adapters (Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, GHOSTSIG, Otsu, and MetaMask Snap)
 
+### Focused imports
+
+The root entry point keeps the one-package setup backwards compatible and
+includes every adapter and the UI. Use focused subpaths when bundle size
+matters:
+
+```ts
+import { WalletManager } from 'xrpl-connect/core';
+import { XamanAdapter } from 'xrpl-connect/xaman';
+```
+
+The available subpaths are `core`, `ui`, `xaman`, `crossmark`, `gemwallet`,
+`walletconnect`, `ledger`, `xyra`, `ghostsig`, `otsu`, and `metamask-snap`.
+`ui` registers the `<xrpl-wallet-connector>` element. The root entry point
+continues to register it as before.
+
 ## Documentation
 
 Please read the documentation here [DOCS](https://xrpl-commons.github.io/xrpl-connect/) as it is way more detailed than the README.

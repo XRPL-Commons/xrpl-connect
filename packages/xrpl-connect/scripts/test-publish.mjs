@@ -10,7 +10,8 @@ import {
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   NPM_REGISTRY,
   PUBLISH_CONFIG,
@@ -94,7 +95,30 @@ const candidatePackages = [
       'types/crossmark/build/src/crossmark/models/common/tx.d.ts',
       'types/forge.d.ts',
       'xrpl-connect.mjs',
+      'xrpl-connect.js',
       'xrpl-connect.umd.js',
+      'core.mjs',
+      'core.js',
+      'ui.mjs',
+      'ui.js',
+      'xaman.mjs',
+      'xaman.js',
+      'crossmark.mjs',
+      'crossmark.js',
+      'gemwallet.mjs',
+      'gemwallet.js',
+      'walletconnect.mjs',
+      'walletconnect.js',
+      'ledger.mjs',
+      'ledger.js',
+      'xyra.mjs',
+      'xyra.js',
+      'ghostsig.mjs',
+      'ghostsig.js',
+      'otsu.mjs',
+      'otsu.js',
+      'metamask-snap.mjs',
+      'metamask-snap.js',
     ],
   },
   {
@@ -478,6 +502,72 @@ try {
   }
 
   const installedUmbrellaFolder = path.join(consumerFolder, 'node_modules', 'xrpl-connect');
+  const umbrellaManifest = installedManifests['xrpl-connect'];
+  const subpathExports = {
+    core: { exportName: 'WalletManager', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
+    ui: { exportName: 'WALLET_CONNECTOR_CSS_VARIABLES', forbidden: ['WalletManager', 'XamanAdapter'] },
+    xaman: { exportName: 'XamanAdapter', forbidden: ['CrossmarkAdapter', 'WalletConnectorElement'] },
+    crossmark: { exportName: 'CrossmarkAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
+    gemwallet: { exportName: 'GemWalletAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
+    walletconnect: { exportName: 'WalletConnectAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
+    ledger: { exportName: 'LedgerAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
+    xyra: { exportName: 'XyraAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
+    ghostsig: { exportName: 'GhostsigAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
+    otsu: { exportName: 'OtsuAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
+    'metamask-snap': {
+      exportName: 'MetaMaskSnapAdapter',
+      forbidden: ['XamanAdapter', 'WalletConnectorElement'],
+    },
+  };
+  for (const [name, { exportName, forbidden }] of Object.entries(subpathExports)) {
+    assert(umbrellaManifest.exports?.[`./${name}`], `Missing published export ./` + name);
+    const esm = await import(pathToFileURL(path.join(installedUmbrellaFolder, `${name}.mjs`)));
+    assert(
+      name === 'ui' ? esm[exportName] !== undefined : typeof esm[exportName] === 'function',
+      `./${name} is missing ${exportName}`
+    );
+    for (const forbiddenName of forbidden) {
+      assert.equal(
+        typeof esm[forbiddenName],
+        'undefined',
+        `./${name} unexpectedly exports ${forbiddenName}`
+      );
+    }
+    const cjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, `${name}.js`));
+    assert(
+      name === 'ui' ? cjs[exportName] !== undefined : typeof cjs[exportName] === 'function',
+      `CommonJS ./${name} is missing ${exportName}`
+    );
+    for (const forbiddenName of forbidden) {
+      assert.equal(
+        typeof cjs[forbiddenName],
+        'undefined',
+        `CommonJS ./${name} unexpectedly exports ${forbiddenName}`
+      );
+    }
+  }
+  const rootEsm = await import(pathToFileURL(path.join(installedUmbrellaFolder, 'xrpl-connect.mjs')));
+  const coreEsm = await import(pathToFileURL(path.join(installedUmbrellaFolder, 'core.mjs')));
+  const uiEsm = await import(pathToFileURL(path.join(installedUmbrellaFolder, 'ui.mjs')));
+  const xamanEsm = await import(pathToFileURL(path.join(installedUmbrellaFolder, 'xaman.mjs')));
+  assert.strictEqual(rootEsm.WalletManager, coreEsm.WalletManager);
+  assert.strictEqual(rootEsm.XamanAdapter, xamanEsm.XamanAdapter);
+  assert.strictEqual(rootEsm.WalletConnectorElement, uiEsm.WalletConnectorElement);
+  assert.equal(typeof coreEsm.XamanAdapter, 'undefined');
+  const rootCjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, 'xrpl-connect.js'));
+  const coreCjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, 'core.js'));
+  const uiCjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, 'ui.js'));
+  const xamanCjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, 'xaman.js'));
+  assert.strictEqual(rootCjs.WalletManager, coreCjs.WalletManager);
+  assert.strictEqual(rootCjs.XamanAdapter, xamanCjs.XamanAdapter);
+  assert.strictEqual(rootCjs.WalletConnectorElement, uiCjs.WalletConnectorElement);
+  assert.equal(typeof coreCjs.XamanAdapter, 'undefined');
+  assert.deepEqual(umbrellaManifest.sideEffects, [
+    './xrpl-connect.mjs',
+    './xrpl-connect.js',
+    './ui.mjs',
+    './ui.js',
+  ]);
   const thirdPartyNotices = readFileSync(
     path.join(installedUmbrellaFolder, 'THIRD_PARTY_NOTICES.md'),
     'utf-8'
@@ -621,7 +711,6 @@ try {
     'xrpl-connect': FRAMEWORK_PEER_RANGE,
   });
 
-  const umbrellaManifest = installedManifests['xrpl-connect'];
   assert.equal(
     umbrellaManifest.dependencies?.['@xrpl-commons/xrpl-connect-privy'],
     undefined,

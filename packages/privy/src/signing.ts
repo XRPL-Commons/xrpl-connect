@@ -9,7 +9,7 @@ import {
   verifyKeypairSignature,
   xrpToDrops,
 } from 'xrpl';
-import { createWalletError, type SignedTransaction, type Transaction } from 'xrpl-connect';
+import { createWalletError, type SignedTransaction, type Transaction } from 'xrpl-connect/core';
 import type { PrivyWallet } from './session-types';
 
 /**

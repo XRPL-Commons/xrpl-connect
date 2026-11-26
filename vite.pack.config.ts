@@ -1,4 +1,5 @@
 interface PackOverrides {
+  entry?: string[];
   deps?: { neverBundle?: string[] };
   loader?: Record<string, 'dataurl' | 'text'>;
 }
@@ -6,7 +7,7 @@ interface PackOverrides {
 /** Shared library packaging defaults for every published workspace package. */
 export function createPackConfig(overrides: PackOverrides = {}) {
   return {
-    entry: ['src/index.ts'],
+    entry: overrides.entry ?? ['src/index.ts'],
     format: ['cjs', 'esm'] as const,
     dts: true,
     clean: true,

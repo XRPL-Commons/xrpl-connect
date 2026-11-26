@@ -6,7 +6,7 @@ import {
   WalletErrorCode,
   type WalletAuthPrompt,
   type WalletLoginMethod,
-} from 'xrpl-connect';
+} from 'xrpl-connect/core';
 import { resolveLoginIcon } from './login-icons';
 import type {
   PrivyLoginMethod,
