@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { decode, ECDSA, encodeForSigningBatch, hashes, verifyKeypairSignature, Wallet } from 'xrpl';
+import * as xrplModule from 'xrpl';
+
+const { decode, ECDSA, encodeForSigningBatch, hashes, verifyKeypairSignature, Wallet } =
+  xrplModule.default ?? xrplModule;
 
 delete globalThis.window;
 delete globalThis.document;

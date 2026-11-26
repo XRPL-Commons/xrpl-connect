@@ -48,7 +48,7 @@
     "@xrpl-connect/core": "workspace:*",
     "@walletconnect/modal": "^2.7.0",
     "@walletconnect/sign-client": "^2.23.10",
-    "@walletconnect/types": "^2.23.10",
+    "@walletconnect/types": "2.23.10",
     "@walletconnect/utils": "^2.23.10"
   },
   "peerDependencies": {

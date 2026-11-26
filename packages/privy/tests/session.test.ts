@@ -1771,13 +1771,13 @@ describe('PrivySession', () => {
     await session.disconnect();
   });
 
-  it('quarantines a timed-out raw sign until its SDK invocation settles', async () => {
+  it('allows signing again after the wallet API times out and refuses its late signer request', async () => {
     configureExistingUser();
-    let release!: (value: unknown) => void;
+    let lateSign!: () => Promise<unknown>;
     mocks.rawSign.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          release = resolve;
+      (_client, sign) =>
+        new Promise(() => {
+          lateSign = () => sign({ message: 'expired' });
         })
     );
     const session = new PrivySession({ ...options(), requestTimeoutMs: 25 });
@@ -1789,16 +1789,42 @@ describe('PrivySession', () => {
     await vi.waitFor(() => expect(mocks.rawSign).toHaveBeenCalledOnce());
     await firstFailure;
 
-    const second = session.signHash(wallet, hash, new AbortController().signal);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(mocks.rawSign).toHaveBeenCalledOnce();
-
-    release({
-      method: 'raw_sign',
-      data: { encoding: 'hex', signature: `0x${'ab'.repeat(64)}` },
-    });
-    await expect(second).resolves.toBe(`0x${'ab'.repeat(64)}`);
+    await expect(session.signHash(wallet, hash, new AbortController().signal)).resolves.toBe(
+      `0x${'ab'.repeat(64)}`
+    );
+    await expect(lateSign()).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+    expect(mocks.signWithUserSigner).not.toHaveBeenCalled();
     expect(mocks.rawSign).toHaveBeenCalledTimes(2);
+    await session.disconnect();
+  });
+
+  it('creates a fresh signer after disconnecting a stalled embedded MFA invocation', async () => {
+    configureExistingUser();
+    mocks.rawSign.mockImplementation(async (_client, sign) => {
+      await sign({ message: 'wallet-api-request' });
+      return { data: { encoding: 'hex', signature: `0x${'ab'.repeat(64)}` } };
+    });
+    let release!: () => void;
+    mocks.signWithUserSigner.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        })
+    );
+    const session = new PrivySession({ ...options(), requestTimeoutMs: 30, teardownTimeoutMs: 10 });
+    const signal = new AbortController().signal;
+    const hash = `0x${'12'.repeat(32)}` as const;
+    const wallet = await session.connect('custom', signal);
+    await expect(session.signHash(wallet, hash, signal)).rejects.toMatchObject({
+      code: 'OPERATION_TIMEOUT',
+    });
+    await expect(session.signHash(wallet, hash, signal)).rejects.toThrow('previous hash signing');
+    expect(mocks.signWithUserSigner).toHaveBeenCalledOnce();
+    await session.disconnect();
+    const restored = await session.connect('custom', signal);
+    expect(mocks.Privy).toHaveBeenCalledTimes(2);
+    await expect(session.signHash(restored, hash, signal)).resolves.toBe(`0x${'ab'.repeat(64)}`);
+    release();
     await session.disconnect();
   });
 

@@ -408,9 +408,7 @@ export class PrivySession {
   private disconnectPromise: Promise<void> | undefined;
   private disconnectLogsOut = false;
   private activePromptReject: (() => void) | undefined;
-  private signingInvocation:
-    | { promise: Promise<Awaited<ReturnType<typeof rawSign>>>; mfa: PrivyMfaInvocation }
-    | undefined;
+  private signingInvocation: { promise: Promise<unknown>; mfa: PrivyMfaInvocation } | undefined;
 
   constructor(private readonly options: PrivySessionOptions) {
     this.requestTimeoutMs = Math.max(
@@ -712,28 +710,40 @@ export class PrivySession {
     }
 
     await this.waitForSigningInvocation(signal, expectedGeneration);
-    const mfaInvocation = this.mfaController.beginInvocation();
-    const rawInvocation = Promise.resolve().then(() =>
-      rawSign(client, (request) => client.embeddedWallet.signWithUserSigner(request), {
-        wallet_id: wallet.id,
-        params: { hash },
-      })
-    );
-    this.signingInvocation = { promise: rawInvocation, mfa: mfaInvocation };
+    let acceptingSignerRequests = true;
+    let mfaInvocation: PrivyMfaInvocation | undefined;
     let mfaReason: 'mfa_required' | 'mfa_cancelled' | 'mfa_timeout' | undefined;
-    const finish = (): void => {
-      mfaReason = this.finishSigningInvocation(mfaInvocation);
-    };
-    rawInvocation.then(finish, finish);
-    // The enclosing operation may time out before the SDK promise does. Keep a
-    // rejection handler attached so a late raw-sign failure cannot become an
-    // unhandled rejection while its challenge is being quarantined.
-    rawInvocation.catch(() => undefined);
-
     let result: Awaited<ReturnType<typeof rawSign>>;
     try {
       result = await this.runOperation(
-        () => rawInvocation,
+        () =>
+          rawSign(
+            client,
+            async (request) => {
+              this.assertGeneration(expectedGeneration, signal);
+              if (!acceptingSignerRequests)
+                throw operationTimeout('Privy hash signing', 'request_timeout');
+              // Only the embedded signer uses Privy's shared MFA deferred. The
+              // subsequent wallet API request may outlive its network deadline.
+              const invocation = this.mfaController.beginInvocation();
+              mfaInvocation = invocation;
+              const finish = () => {
+                if (this.signingInvocation?.mfa === invocation) this.signingInvocation = undefined;
+                return this.mfaController.finishInvocation(invocation);
+              };
+              try {
+                const promise = client.embeddedWallet.signWithUserSigner(request);
+                this.signingInvocation = { promise, mfa: invocation };
+                const signedRequest = await promise;
+                finish();
+                return signedRequest;
+              } catch (error) {
+                mfaReason = finish();
+                throw error;
+              }
+            },
+            { wallet_id: wallet.id, params: { hash } }
+          ),
         signal,
         expectedGeneration,
         'Privy hash signing',
@@ -747,7 +757,7 @@ export class PrivySession {
         signal.aborted || (error as { reason?: string })?.reason === 'mfa_cancelled'
           ? 'mfa_cancelled'
           : 'mfa_timeout';
-      this.mfaController.abandonInvocation(mfaInvocation, reason);
+      if (mfaInvocation) this.mfaController.abandonInvocation(mfaInvocation, reason);
       if (!(error as { reason?: unknown })?.reason && mfaReason) {
         const original = error instanceof Error ? error : new Error(String(error));
         const wrapped = new Error(original.message);
@@ -756,6 +766,8 @@ export class PrivySession {
         throw wrapped;
       }
       throw error;
+    } finally {
+      acceptingSignerRequests = false;
     }
     if (result.data.encoding !== 'hex' || !/^0x[0-9a-f]+$/i.test(result.data.signature)) {
       throw new Error('Privy returned an invalid raw signature');
@@ -772,20 +784,17 @@ export class PrivySession {
         generation,
         'Privy previous hash signing'
       );
-      // `finishSigningInvocation` is registered before this waiter. The extra
-      // turn also covers an already-settled promise whose cleanup callback is
-      // still queued.
-      await Promise.resolve();
-      if (this.signingInvocation === previous) this.finishSigningInvocation(previous.mfa);
     }
   }
 
-  private finishSigningInvocation(
-    invocation: PrivyMfaInvocation
-  ): 'mfa_required' | 'mfa_cancelled' | 'mfa_timeout' | undefined {
-    if (this.signingInvocation?.mfa !== invocation) return undefined;
+  private retireStalledSigner(): void {
+    if (!this.signingInvocation) return;
+    // An iframe call can outlive teardown. A new session must own a fresh
+    // client and MFA deferred even if that old call never settles.
+    this.mfaController.finishInvocation(this.signingInvocation.mfa);
     this.signingInvocation = undefined;
-    return this.mfaController.finishInvocation(invocation);
+    this.client = undefined;
+    this.initializePromise = undefined;
   }
 
   /**
@@ -2275,6 +2284,7 @@ export class PrivySession {
     this.lifecycleGeneration += 1;
     this.abortMfaOperations();
     this.mfaController.detach();
+    this.retireStalledSigner();
     this.activePromptReject?.();
     this.activePromptReject = undefined;
     this.currentWallet = undefined;
@@ -2440,6 +2450,7 @@ export class PrivySession {
     } finally {
       this.disconnectPromise = undefined;
       this.cleanupIframe();
+      this.retireStalledSigner();
     }
   }
 

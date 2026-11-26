@@ -371,7 +371,7 @@ importers:
         specifier: ^2.23.10
         version: 2.23.10(bufferutil@4.0.9)(typescript@5.9.3)(utf-8-validate@5.0.10)
       '@walletconnect/types':
-        specifier: ^2.23.10
+        specifier: 2.23.10
         version: 2.23.10
       '@walletconnect/utils':
         specifier: ^2.23.10
