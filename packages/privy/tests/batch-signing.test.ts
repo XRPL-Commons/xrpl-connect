@@ -155,13 +155,23 @@ describe('Privy XLS-56 BatchSigner serialization', () => {
         { ...batch, Sequence: 1, TicketSequence: 2 } as Transaction,
         wallet
       )
-    ).toThrow('only Sequence or TicketSequence');
+    ).toThrow('Sequence must be 0 when TicketSequence is provided');
     expect(() => prepareBatchSignerInput(batch, wallet, { batchAccount: null } as never)).toThrow(
       'BatchSigner Account'
     );
     expect(() => prepareBatchSignerInput(batch, wallet, { multisign: 1 } as never)).toThrow(
       'Batch multisign must be a boolean'
     );
+  });
+
+  it('preserves a valid zero Sequence with TicketSequence in the signing preimage', () => {
+    const ticketBatch = {
+      ...batch,
+      Sequence: 0,
+      TicketSequence: 19,
+    } as Transaction;
+    const prepared = prepareBatchSignerInput(ticketBatch, wallet);
+    expect(prepared.transaction).toMatchObject({ Sequence: 0, TicketSequence: 19 });
   });
 });
 

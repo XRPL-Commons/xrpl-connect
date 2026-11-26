@@ -5,7 +5,7 @@ import {
   isValidClassicAddress,
   validate,
 } from 'xrpl';
-import type { SignedTransaction, Transaction } from 'xrpl-connect/core';
+import { createWalletError, type SignedTransaction, type Transaction } from 'xrpl-connect/core';
 import type { PrivyWallet } from './session-types';
 import { signEncodedPayload, type SignHash } from './signing';
 
@@ -29,7 +29,6 @@ export interface PreparedBatchSigner {
   readonly signingBytes: string;
 }
 
-const BATCH_SIGNING_PREFIX = '42434800';
 const UINT32_MAX = 0xffffffff;
 
 function asRecord(value: unknown, label: string): Record<string, unknown> {
@@ -60,23 +59,8 @@ function requireAddress(value: unknown, label: string): string {
 
 function requireFee(value: unknown): void {
   if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) {
-    throw new Error('BatchSigner requires a prepared transaction with Fee and Sequence');
+    throw new Error('BatchSigner requires a prepared transaction with Fee and Sequence or TicketSequence');
   }
-}
-
-function encodeLegacyBatchSigningPayload(flags: number, txIDs: readonly string[]): string {
-  const ids = txIDs.map((txID, index) => {
-    if (!/^[0-9a-f]{64}$/i.test(txID)) {
-      throw new Error(`Batch RawTransactions[${index}] produced an invalid transaction hash`);
-    }
-    return txID.toUpperCase();
-  });
-  return [
-    BATCH_SIGNING_PREFIX,
-    flags.toString(16).padStart(8, '0'),
-    ids.length.toString(16).padStart(8, '0'),
-    ...ids,
-  ].join('');
 }
 
 function encodeBatchSigningPayload(
@@ -87,18 +71,20 @@ function encodeBatchSigningPayload(
   sequence: number,
   txIDs: readonly string[]
 ): string {
-  // `encodeForSigningBatch` was added to xrpl's public utility exports after
-  // the initial XLS-56 release. Keep the old, public XRPL v4 codec payload as
-  // a capability fallback rather than importing ripple-binary-codec directly.
+  // Batch signing is only safe when the installed xrpl package exposes its
+  // canonical full-context encoder. The older signMultiBatch wrapper accepts
+  // fewer fields and cannot safely bind a contribution to its account.
   const encodeForSigningBatch = (
     xrpl as unknown as {
       encodeForSigningBatch?: (fields: Record<string, unknown>) => string;
     }
   ).encodeForSigningBatch;
   if (typeof encodeForSigningBatch !== 'function') {
-    return encodeLegacyBatchSigningPayload(flags, txIDs);
+    throw createWalletError.unsupportedMethod(
+      'The installed xrpl package does not expose encodeForSigningBatch'
+    );
   }
-  return encodeForSigningBatch({
+  const payload = encodeForSigningBatch({
     account: transaction.Account,
     sequence,
     flags,
@@ -106,6 +92,17 @@ function encodeBatchSigningPayload(
     batchAccount,
     ...(signerAccount === undefined ? {} : { signerAccount }),
   });
+  // XLS-56 V1_1 is positional: prefix, account, sequence, flags, count, IDs,
+  // batchAccount, and optional signerAccount. Older codecs may expose the
+  // function but silently serialize only the pre-V1_1 prefix/flags/IDs shape.
+  const expectedHexLength =
+    8 + 40 + 8 + 8 + 8 + txIDs.length * 64 + 40 + (signerAccount === undefined ? 0 : 40);
+  if (!/^[0-9a-f]+$/i.test(payload) || payload.length !== expectedHexLength) {
+    throw createWalletError.unsupportedMethod(
+      'The installed xrpl codec does not support the XLS-56 BatchSigner preimage'
+    );
+  }
+  return payload;
 }
 
 /** Validate and snapshot a prepared XLS-56 Batch before any asynchronous work. */
@@ -132,12 +129,12 @@ export function prepareBatchSignerInput(
   requireFee(input.Fee);
 
   const sequence =
-    input.Sequence === undefined
-      ? input.TicketSequence
-      : input.TicketSequence === undefined
-        ? input.Sequence
+    input.TicketSequence === undefined
+      ? input.Sequence
+      : input.Sequence === undefined || input.Sequence === 0
+        ? input.TicketSequence
         : (() => {
-            throw new Error('Batch transaction must contain only Sequence or TicketSequence');
+            throw new Error('Batch Sequence must be 0 when TicketSequence is provided');
           })();
   const sequenceNumber = requireUInt32(sequence, 'Batch Sequence');
   const flags = input.Flags === undefined ? 0 : requireUInt32(input.Flags, 'Batch Flags');
@@ -212,6 +209,98 @@ export function prepareBatchSignerInput(
     txIDs
   );
   return { transaction: snapshot, batchAccount, signerAccount, signingBytes };
+}
+
+/**
+ * Reject an outer Batch that cannot be submitted safely yet. A Batch with no
+ * foreign inner accounts is a normal outer transaction. Once foreign inner
+ * accounts are present, every one must have exactly one completed
+ * BatchSigner contribution; a single contribution from `signBatch` is not
+ * enough to submit.
+ */
+export function assertBatchSubmissionReady(transaction: Transaction): void {
+  const input = asRecord(transaction, 'Batch submission');
+  if (input.TransactionType !== 'Batch') return;
+
+  const outerAccount = requireAddress(input.Account, 'Batch Account');
+  const rawTransactions = input.RawTransactions;
+  if (!Array.isArray(rawTransactions) || rawTransactions.length === 0) {
+    throw createWalletError.unsupportedMethod(
+      'Privy cannot submit a malformed Batch transaction'
+    );
+  }
+  const innerAccounts = new Set<string>();
+  for (const [index, raw] of rawTransactions.entries()) {
+    const inner = asRecord(
+      asRecord(raw, `Batch RawTransactions[${index}]`).RawTransaction,
+      `Batch RawTransactions[${index}].RawTransaction`
+    );
+    innerAccounts.add(
+      requireAddress(inner.Account, `Batch RawTransactions[${index}].RawTransaction.Account`)
+    );
+  }
+  innerAccounts.delete(outerAccount);
+  if (innerAccounts.size === 0 && input.BatchSigners === undefined) return;
+
+  const batchSigners = input.BatchSigners;
+  if (!Array.isArray(batchSigners) || batchSigners.length === 0) {
+    throw createWalletError.unsupportedMethod(
+      'Privy will not submit a Batch with foreign inner accounts until all BatchSigner contributions are combined'
+    );
+  }
+  const signedAccounts = new Set<string>();
+  for (const [index, value] of batchSigners.entries()) {
+    const record = asRecord(value, `BatchSigners[${index}]`);
+    const signer = asRecord(record.BatchSigner, `BatchSigners[${index}].BatchSigner`);
+    const account = requireAddress(signer.Account, `BatchSigners[${index}].BatchSigner.Account`);
+    if (!innerAccounts.has(account) || signedAccounts.has(account)) {
+      throw createWalletError.unsupportedMethod(
+        'Privy will not submit a Batch with incomplete or duplicate foreign BatchSigner contributions'
+      );
+    }
+    if (
+      typeof signer.TxnSignature === 'string' &&
+      signer.TxnSignature.length > 0 &&
+      typeof signer.SigningPubKey === 'string' &&
+      signer.SigningPubKey.length > 0
+    ) {
+      signedAccounts.add(account);
+      continue;
+    }
+    const nested = signer.Signers;
+    if (!Array.isArray(nested) || nested.length === 0) {
+      throw createWalletError.unsupportedMethod(
+        'Privy will not submit a Batch with an incomplete BatchSigner contribution'
+      );
+    }
+    for (const [signerIndex, nestedValue] of nested.entries()) {
+      const nestedRecord = asRecord(nestedValue, `BatchSigners[${index}].BatchSigner.Signers[${signerIndex}]`);
+      const nestedSigner = asRecord(
+        nestedRecord.Signer,
+        `BatchSigners[${index}].BatchSigner.Signers[${signerIndex}].Signer`
+      );
+      if (
+        typeof nestedSigner.SigningPubKey !== 'string' ||
+        nestedSigner.SigningPubKey.length === 0 ||
+        typeof nestedSigner.TxnSignature !== 'string' ||
+        nestedSigner.TxnSignature.length === 0
+      ) {
+        throw createWalletError.unsupportedMethod(
+          'Privy will not submit a Batch with an incomplete nested BatchSigner contribution'
+        );
+      }
+      requireAddress(
+        nestedSigner.Account,
+        `BatchSigners[${index}].BatchSigner.Signers[${signerIndex}].Signer.Account`
+      );
+    }
+    signedAccounts.add(account);
+  }
+  if (signedAccounts.size !== innerAccounts.size) {
+    throw createWalletError.unsupportedMethod(
+      'Privy will not submit a Batch until all foreign inner accounts have BatchSigner contributions'
+    );
+  }
 }
 
 /** Sign a validated Batch preimage and return one independent BatchSigner contribution. */

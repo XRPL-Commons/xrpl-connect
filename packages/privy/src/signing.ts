@@ -91,9 +91,6 @@ export function prepareMultisigningInput(
   if (transaction.TxnSignature !== undefined || transaction.Signers !== undefined) {
     throw new Error('Multisigning input must not contain signatures');
   }
-  if (transaction.TransactionType === 'Batch') {
-    throw new Error('Use the BatchSigner path for Batch transactions');
-  }
   if (typeof transaction.Account !== 'string' || !isValidClassicAddress(transaction.Account)) {
     throw new Error('Multisigning requires a valid source Account');
   }

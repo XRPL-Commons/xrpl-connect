@@ -288,13 +288,23 @@ const batchContribution = await privy.signBatch(batch, {
 // Combine BatchSigners from independent contributions before submission.
 ```
 
+`manager.sign(batch)` and `manager.signAndSubmit(batch)` remain the ordinary
+outer-Batch signing paths; they add the connected wallet's normal transaction
+signature and, for `signAndSubmit`, submit that complete outer transaction.
+Only the explicit `adapter.signBatch(batch, options)` hook creates a
+`BatchSigner` contribution. It never submits and is intended for a caller that
+will combine all inner-account contributions first.
+
 `signBatch()` requires a fully prepared outer Batch (`Fee` plus `Sequence` or
 `TicketSequence`), rejects existing signatures and `BatchSigners`, and returns
 one contribution with `hash: ''`. Use the `combineBatchSigners` helper from
 your installed `xrpl` version or an equivalent server-side combiner; never
-submit an individual contribution. The adapter uses xrpl's public batch
-preimage encoder when available and the canonical pre-XLS-56-v1.1 payload on
-xrpl v4 releases that do not export it.
+submit an individual contribution. The adapter requires the installed
+`xrpl` package to export a canonical full-context `encodeForSigningBatch`
+utility that emits the XLS-56 V1_1 layout, including the authorized account
+IDs. Older packages, including ones that expose a legacy function but omit
+those IDs, report `UNSUPPORTED_METHOD` rather than signing an ambiguous
+preimage.
 
 ### Transaction review
 

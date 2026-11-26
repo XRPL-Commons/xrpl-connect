@@ -5,8 +5,11 @@ export {
   PrivyAdapter,
   type PrivyAdapterOptions,
   type PrivyConnectOptions,
+  type PrivySigningRole,
+  type PrivyTransactionReview,
   type PrivyTransactionReviewOption,
 } from './privy-adapter';
+export type { PrivyBatchSigningOptions } from './batch-signing';
 export type {
   PrivyMfaApi,
   PrivyMfaAnswer,
