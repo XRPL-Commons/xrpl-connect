@@ -1379,7 +1379,28 @@ describe('WalletManager.reconnect()', () => {
     expect(adapter.connect).toHaveBeenCalledOnce();
   });
 
-  it('shares the failure, respects each caller’s error policy and permits a retry', async () => {
+  it('keeps the new restore joinable when a disconnected attempt settles late', async () => {
+    const completions: Array<(account: AccountInfo) => void> = [];
+    const adapter = {
+      ...createFakeAdapter(),
+      hasPendingConnection: () => true,
+      connect: vi.fn(() => new Promise<AccountInfo>((resolve) => completions.push(resolve))),
+    };
+    const manager = new WalletManager({ adapters: [adapter], storage: new MemoryStorageAdapter() });
+    const stale = manager.reconnect();
+    await vi.waitFor(() => expect(completions).toHaveLength(1));
+    await manager.disconnect();
+    const fresh = manager.reconnect();
+    await vi.waitFor(() => expect(completions).toHaveLength(2));
+    completions[0](ACCOUNT);
+    await expect(stale).resolves.toBeNull();
+    const joined = manager.reconnect();
+    completions[1](ACCOUNT);
+    await expect(Promise.all([fresh, joined])).resolves.toEqual([ACCOUNT, ACCOUNT]);
+    expect(adapter.connect).toHaveBeenCalledTimes(2);
+  });
+
+  it('shares the failure, respects the caller error policy and permits a retry', async () => {
     const failure = createWalletError.operationTimeout('Authorization');
     const adapter = {
       ...createFakeAdapter(),

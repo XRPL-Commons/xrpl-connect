@@ -16,9 +16,18 @@ separate operations:
 
 ## Configuration
 
-Enable the desired login methods in the Privy dashboard, configure the app's
-allowed origin and callback URL, and obtain its public app ID. Supply a client ID
-when using a specific Privy client. The adapter fetches the dashboard settings
+Before testing each deployment, check the following settings in your Privy dashboard.
+
+- Add the **application origin** (scheme, host and port) to **Allowed origins**.
+  Local development, preview tunnels and production each have their own origin.
+- For OAuth, add the full **redirect URI**, including the callback path, to the
+  OAuth redirect allowlist. The callback page must restore the same manager.
+- Enable the login methods offered by the app and configure the embedded XRPL wallet.
+- When enabling passkey transaction MFA, test both approval and cancellation on
+  the origin where users sign.
+
+Use the public app ID and supply a client ID when targeting a specific Privy
+client. The adapter fetches the dashboard settings
 every time **Sign in with socials** opens, bypassing cached browser responses.
 There is no provider list to duplicate
 in application code or environment variables.
@@ -128,6 +137,56 @@ Neither the application nor Privy can recover the account. Offer guest login onl
 for disposable use, such as testnet demos, and warn users not to fund a guest
 wallet they want to keep.
 
+## Authenticate requests to your backend
+
+Read a fresh access token from the connected adapter for each request.
+
+```js
+const token = await adapter.getAccessToken();
+if (!token) throw new Error('Sign in to continue');
+await fetch('/api/payments', {
+  method: 'POST',
+  headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ address: manager.account.address }),
+});
+```
+
+On the server, verify the token and resolve its subject to a linked XRPL wallet
+before authorizing an operation for the address. The access token identifies a
+Privy user who can have several wallets. The following server-side helper uses
+`jose` and the app credentials from the server environment.
+
+```js
+import { createRemoteJWKSet, jwtVerify } from 'jose';
+
+const appId = process.env.PRIVY_APP_ID;
+const appSecret = process.env.PRIVY_APP_SECRET;
+const jwks = createRemoteJWKSet(new URL(`https://auth.privy.io/api/v1/apps/${appId}/jwks.json`));
+
+async function verifyWallet(token, address) {
+  const { payload } = await jwtVerify(token, jwks, {
+    issuer: 'privy.io', audience: appId, algorithms: ['ES256'], requiredClaims: ['sub', 'exp'],
+  });
+  const response = await fetch(`https://auth.privy.io/api/v1/users/${encodeURIComponent(payload.sub)}`, {
+    headers: {
+      'privy-app-id': appId,
+      Authorization: `Basic ${Buffer.from(`${appId}:${appSecret}`).toString('base64')}`,
+    },
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Could not verify the Privy user');
+  const user = await response.json();
+  if (user.id !== payload.sub || !user.linked_accounts?.some(
+    (a) => a.type === 'wallet' && a.chain_type === 'xrpl' && a.address === address,
+  )) throw new Error('Address is not linked to this user');
+  return user.id;
+}
+```
+
+Keep the app secret on the server. If your API restricts access to particular
+Privy app clients, also validate the `app_client_id` claim.
+See [Privy's access token guide](https://docs.privy.io/authentication/user-authentication/access-tokens).
+
 ## Content Security Policy
 
 Under an enforced CSP, allow the origins this integration uses in addition to
@@ -236,6 +295,50 @@ const privy = new PrivyAdapter({
 Only an explicit `true` approves; any other answer rejects with `SIGN_REJECTED`,
 and a thrown error fails the request with `SIGN_FAILED`.
 
+If your app already has an approval sheet, the simplest integration is to open
+that sheet from `transactionReview` using the supplied review. If the sheet
+must come first, bind a single approval to the exact prepared transaction, the
+network and the requested action. For example, keep this state in the component
+that owns the connected manager, discard it on logout, and consume it once.
+
+```js
+import { encode } from 'xrpl';
+
+let approved;
+const adapter = new PrivyAdapter({
+  appId, redirectUri,
+  transactionReview(review) {
+    const expected = approved;
+    approved = undefined;
+    return expected !== undefined && review.action === 'sign'
+      && review.network.id === expected.network
+      && encode(review.transaction) === expected.bytes;
+  },
+});
+
+async function approveAndSign(prepared) {
+  // Prepare Fee, Sequence, Account, SigningPubKey and LastLedgerSequence before showing the sheet.
+  const transaction = structuredClone(prepared);
+  const network = manager.account.network.id;
+  const bytes = encode(transaction);
+  if (!(await showPaymentSheet(transaction, network))) return;
+  approved = { network, bytes };
+  try {
+    return await manager.sign(transaction);
+  } finally {
+    approved = undefined;
+  }
+}
+```
+
+Allow only one open approval sheet per manager in this example. The returned
+`signed.hash` identifies the blob at this stage. If a backend attaches a
+sponsor signature later, use the hash of the final submitted blob for tracking.
+The adapter signs locally serialized, single-signer transactions using
+`raw_sign`, including supported transaction types your installed `xrpl`
+codec can encode. A dedicated multisign or BatchSigner signature uses a
+different signing payload.
+
 `transactionReview: 'none'` turns the review off: the adapter signs headlessly,
 whenever any code calls `sign` or `signAndSubmit`. **Any script running in the
 page, including a compromised dependency or injected code, can then sign and
@@ -255,6 +358,39 @@ included in this package. See also
 
 ## Session lifecycle
 
+### Transaction MFA
+
+Enable passkey MFA in Privy and keep a connector mounted wherever users sign.
+When Privy requests a second factor for a signature, the default
+`mfa: 'prompt'` flow asks the user to confirm with their passkey. The user
+can cancel either the connector prompt or the browser passkey sheet.
+Applications that render their own prompt can pass an MFA callback and invoke
+`request.authenticate()` from their confirmation button. Its abort signal ends
+the prompt when the session or challenge expires.
+
+```js
+const adapter = new PrivyAdapter({
+  appId, redirectUri,
+  mfa: 'prompt',
+  requestTimeoutMs: 15_000,
+  userActionTimeoutMs: 60_000,
+  teardownTimeoutMs: 5_000,
+});
+
+// In a connected account's settings, start linking from the user's button.
+const { credentialId } = await adapter.mfa.linkPasskey();
+await adapter.mfa.enrollPasskey({ credentialIds: [credentialId] });
+const { enrolled } = await adapter.mfa.status();
+```
+
+Signing in with a passkey and enrolling that passkey for transaction MFA are
+separate actions. With `mfa: 'none'`, a required challenge fails with
+`error.reason === 'mfa_required'`. Applications can distinguish cancellation
+(`mfa_cancelled`) from timeout (`mfa_timeout`). A cold embedded iframe that
+never responds reports `iframe_not_ready`.
+
+### Restoration and teardown
+
 - Authentication does not emit a wallet connection. Account/public-key readiness
   must finish first, so applications can use the existing manager events.
 - The adapter reuses the user's embedded XRPL wallet on returning login. Manager
@@ -271,8 +407,8 @@ included in this package. See also
   monitoring. SDK logout runs after any already-started SDK requests settle,
   preventing a late response from restoring authentication. The secure iframe
   stays available for pending requests and the SDK's logout acknowledgement,
-  then is removed along with its listeners. Every wait is bounded by
-  `timeoutMs` (15 seconds by default): a request that never settles is
+  then is removed along with its listeners. Cleanup waits are bounded by
+  `teardownTimeoutMs` (defaults to `timeoutMs`, then 15 seconds). A request that never settles is
   abandoned so it cannot block later logins, and if it completes afterwards
   the adapter logs out once more. Privy keeps one signed-in user per browser,
   so if such a late login replaces a newer connection's user, the adapter logs
@@ -286,6 +422,17 @@ included in this package. See also
 - Authentication failures, blocked storage, iframe readiness failures, and
   signing failures surface as wallet errors. The UI permits retry with the same
   selected social method.
+
+### Browser and CI tests
+
+Import `MockPrivyAdapter` from `@xrpl-commons/xrpl-connect-privy/testing` to
+exercise manager restoration, email-code dialogs and the production transaction
+review and signature checks offline. `connect('privy')` connects immediately.
+Selecting the email method prompts for the test code `000000`. Use transactions
+with `Fee` and `Sequence` so signing needs no ledger RPC. The fixture generates
+an ephemeral test key. Supply the same test-only `Uint8Array` private key when
+recreating the adapter across page loads. Use a real Privy test app for OAuth,
+access token verification and passkey enrollment.
 
 ## Custom authentication and other OAuth integrations
 
