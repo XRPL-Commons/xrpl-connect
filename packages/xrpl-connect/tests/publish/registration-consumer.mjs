@@ -15,10 +15,7 @@ try {
     path.join(appRoot, 'index.html'),
     '<!doctype html><html><body><script type="module" src="/src/main.js"></script></body></html>\n'
   );
-  writeFileSync(
-    path.join(appRoot, 'src/main.js'),
-    "import 'xrpl-connect/register';\n"
-  );
+  writeFileSync(path.join(appRoot, 'src/main.js'), "import 'xrpl-connect/register';\n");
 
   await build({
     root: appRoot,
@@ -30,7 +27,9 @@ try {
     },
   });
 
-  const assetName = readdirSync(path.join(outputRoot, 'assets')).find((name) => name.endsWith('.js'));
+  const assetName = readdirSync(path.join(outputRoot, 'assets')).find((name) =>
+    name.endsWith('.js')
+  );
   assert(assetName, 'The optimized registration consumer did not emit a JavaScript asset');
   const asset = readFileSync(path.join(outputRoot, 'assets', assetName), 'utf8');
   assert.match(asset, /customElements\.define/);
@@ -47,7 +46,10 @@ try {
     'WalletConnectAdapter',
     'MetaMaskSnapAdapter',
   ]) {
-    assert(!asset.includes(adapterRuntimeMarker), `The registration consumer bundled ${adapterRuntimeMarker}`);
+    assert(
+      !asset.includes(adapterRuntimeMarker),
+      `The registration consumer bundled ${adapterRuntimeMarker}`
+    );
   }
 
   const dom = new JSDOM('<!doctype html><html><body></body></html>', {

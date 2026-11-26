@@ -180,11 +180,7 @@ function operationTimeout(label: string, reason: WalletErrorReason): WalletError
 function originNotAllowed(error: unknown): boolean {
   const record = asRecord(error);
   const code = record?.code ?? record?.privyErrorCode;
-  return (
-    code === 'invalid_origin' ||
-    (record?.status === 403 && /origin\s+not\s+allowed/i.test(errorMessage(error))) ||
-    /origin\s+not\s+allowed/i.test(errorMessage(error))
-  );
+  return code === 'invalid_origin' || /origin\s+not\s+allowed/i.test(errorMessage(error));
 }
 
 function originConfigurationError(origin: string, originalError?: unknown): WalletError {

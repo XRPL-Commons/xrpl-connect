@@ -906,6 +906,12 @@ try {
     cwd: consumerFolder,
   });
   verifyPackedReactConsumer(consumerFolder, 18, tscPath, runOptions);
+  copyFileSync(
+    path.join(fixturesFolder, 'registration-consumer.mjs'),
+    path.join(consumerFolder, 'registration-consumer.mjs')
+  );
+  console.log('→ Building and executing the optimized focused registration consumer');
+  run(process.execPath, ['registration-consumer.mjs'], { ...runOptions, cwd: consumerFolder });
 
   const react19ConsumerFolder = path.join(temporaryRoot, 'consumer-react-19');
   writeConsumerManifest(react19ConsumerFolder, 'xrpl-connect-publish-consumer-react-19');
@@ -932,15 +938,6 @@ try {
   verifyConsumerDependencies(react19ConsumerFolder, RELEASE_PACKAGE_NAMES.slice(0, 2), runOptions);
   copyReactFixtures(react19ConsumerFolder);
   verifyPackedReactConsumer(react19ConsumerFolder, 19, tscPath, runOptions);
-  copyFileSync(
-    path.join(fixturesFolder, 'registration-consumer.mjs'),
-    path.join(react19ConsumerFolder, 'registration-consumer.mjs')
-  );
-  console.log('→ Building and executing the optimized focused registration consumer');
-  run(process.execPath, ['registration-consumer.mjs'], {
-    ...runOptions,
-    cwd: react19ConsumerFolder,
-  });
   console.log('→ Building packed React and umbrella ESM with Next.js and Turbopack');
   const nextAppFolder = path.join(react19ConsumerFolder, 'app');
   mkdirSync(nextAppFolder);
