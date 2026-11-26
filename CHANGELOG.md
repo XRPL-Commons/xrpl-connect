@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Privy apps can authenticate backend requests with `adapter.getAccessToken()`, handle passkey transaction MFA, and link or enroll a passkey from account settings. Separate request, user-action and teardown timeouts and stable wallet error reasons support recovery.
+- Wallet connectors support a headless launcher and can open a selected login method directly. The transaction review lists Batch entries individually, groups ledger details and honors primary button styling.
+- The umbrella package exposes smaller entry points for core, UI and individual adapters. Privy provides an offline adapter through its `/testing` entry point.
+
 ### Fixed
 
+- Concurrent calls to `WalletManager.reconnect()` share one restore attempt. Callers can opt into restore errors and manager event listeners infer their payload types.
+- Privy retries the iframe readiness check on cold loads and reports the current origin when Privy denies access.
 - Packaging: the `xrpl-connect` ESM bundle no longer carries the AMD fallbacks of bundled CommonJS dependencies (crypto-js, fetch-ponyfill, qr-code-styling). Next.js builds with Turbopack failed with `Can't resolve './core'`, and pages with an AMD loader could capture fetch-ponyfill's export. Packed-consumer verification now builds a Next.js App Router page with Turbopack.
 - Packaging: importing `xrpl-connect` on Node 20 preserves the native `Headers`, `Request`, and `Response` constructors. The bundled Xaman dependency previously replaced them during import, breaking Next.js prerendering.
 - Documentation: install commands use `xrpl@^5`, the current supported major; v3 and v4 remain supported.
