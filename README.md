@@ -42,6 +42,13 @@ The available subpaths are `core`, `ui`, `register`, `xaman`, `crossmark`, `gemw
 explicit side-effect-only registration import from framework bindings. The root
 entry point continues to register it as before.
 
+For a Privy-only app, import `WalletManager` from `xrpl-connect/core` and
+`PrivyAdapter` from `@xrpl-commons/xrpl-connect-privy`. Add
+`import 'xrpl-connect/register'` if you use the raw connector element.
+The npm installation includes the SDK declarations used by the public root
+exports. These reference `@types/chrome` and `@types/node`. The focused runtime
+imports keep the other wallet adapters out of the browser bundle.
+
 ## Documentation
 
 Please read the documentation here [DOCS](https://xrpl-commons.github.io/xrpl-connect/) as it is way more detailed than the README.
