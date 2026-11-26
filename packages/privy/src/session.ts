@@ -16,10 +16,7 @@ import type {
   PrivySessionOptions,
   PrivyWallet,
 } from './session-types';
-import {
-  PrivyMfaController,
-  type PrivyMfaApi,
-} from './mfa';
+import { PrivyMfaController, type PrivyMfaApi } from './mfa';
 import {
   asPasskeyCredential,
   base64UrlToBytes,
@@ -507,9 +504,10 @@ export class PrivySession {
     try {
       const client = await this.ensureClient(signal, generation);
       const redirectUri = this.redirectURL();
-      const callback = redirectUri && this.browserWindow()
-        ? extractOAuthCallback(this.browserWindow()!.location, redirectUri)
-        : null;
+      const callback =
+        redirectUri && this.browserWindow()
+          ? extractOAuthCallback(this.browserWindow()!.location, redirectUri)
+          : null;
       const marker = this.readPendingMarker();
       const validMarker = marker && marker.expiresAt > Date.now() ? marker : null;
 
@@ -532,7 +530,9 @@ export class PrivySession {
             callback.error === 'invalid_origin'
               ? originConfigurationError(this.browserWindow()?.location.origin ?? 'this origin')
               : new Error(
-                  callback.errorDescription ?? callback.error ?? 'Privy OAuth login did not complete'
+                  callback.errorDescription ??
+                    callback.error ??
+                    'Privy OAuth login did not complete'
                 );
           // Only a denial is the user's choice; any other provider error keeps
           // its own message so the application can act on it.
@@ -768,10 +768,18 @@ export class PrivySession {
     return () => this.authPromptCallbacks.delete(callback);
   }
 
-  async getAccessToken(): Promise<string | null> {
-    if (!this.client || !this.currentWallet || !this.currentUserId || this.sessionLost) return null;
-    const token = await this.client.getAccessToken();
-    if (!token || accessTokenUserId(token) !== this.currentUserId) return null;
+  async getAccessToken(signal: AbortSignal = new AbortController().signal): Promise<string | null> {
+    const client = this.client;
+    const wallet = this.currentWallet;
+    if (!client || !wallet || this.sessionLost) return null;
+    const token = await this.runOperation(
+      () => client.getAccessToken(),
+      signal,
+      this.lifecycleGeneration,
+      'Privy access token'
+    );
+    if (wallet !== this.currentWallet || !token || accessTokenUserId(token) !== wallet.userId)
+      return null;
     return token;
   }
 
@@ -813,6 +821,7 @@ export class PrivySession {
     id: string,
     dashboard?: ResolvedLoginMethod
   ): ResolvedLoginMethod | undefined {
+    if (this.options.allowedLoginMethods && !this.options.allowedLoginMethods.includes(id)) return;
     const method = this.loginMethods.find((candidate) => candidate.id === id);
     if (!method) return undefined;
     const label = isNonEmptyString(method.label) ? method.label.trim() : undefined;
@@ -901,31 +910,12 @@ export class PrivySession {
       });
     }
 
-    const dashboardMethods = new Map(methods);
-    if (this.options.loginMethodsMode === 'allowlist') {
-      methods.clear();
-      for (const id of this.options.allowedLoginMethods ?? []) {
-        const dashboard = dashboardMethods.get(id);
-        if (dashboard) methods.set(id, dashboard);
-      }
-    }
-
-    // Explicit methods are extensions by default, but an explicit id is authoritative.
     for (const method of this.loginMethods) {
-      if (
-        this.options.loginMethodsMode === 'allowlist' &&
-        this.options.allowedLoginMethods?.length &&
-        !this.options.allowedLoginMethods.includes(method.id)
-      ) {
-        continue;
-      }
-      const explicit = this.resolveExplicitLoginMethod(
-        method.id,
-        dashboardMethods.get(method.id)
-      );
+      const explicit = this.resolveExplicitLoginMethod(method.id, methods.get(method.id));
       if (explicit) methods.set(method.id, explicit);
     }
-    return [...methods.values()];
+    const allowed = this.options.allowedLoginMethods;
+    return [...methods.values()].filter((method) => !allowed || allowed.includes(method.id));
   }
 
   private resolveLoginMethod(id: string, config: DashboardConfig): ResolvedLoginMethod | undefined {
@@ -2190,11 +2180,14 @@ export class PrivySession {
     const armTimeout = (): void => {
       if (timeoutSettled) return;
       if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
-      timeoutTimer = setTimeout(() => {
-        timeoutSettled = true;
-        if (pauseForMfa) this.mfaController.cancelActive();
-        rejectTimeout(operationTimeout(label, timeoutReason));
-      }, Math.max(1, timeoutBudget));
+      timeoutTimer = setTimeout(
+        () => {
+          timeoutSettled = true;
+          if (pauseForMfa) this.mfaController.cancelActive();
+          rejectTimeout(operationTimeout(label, timeoutReason));
+        },
+        Math.max(1, timeoutBudget)
+      );
     };
     if (pauseForMfa) {
       unsubscribeMfa = this.mfaController.onUserAction((active) => {
@@ -2222,7 +2215,10 @@ export class PrivySession {
       return value;
     } catch (error) {
       if (originNotAllowed(error)) {
-        throw originConfigurationError(this.browserWindow()?.location.origin ?? 'this origin', error);
+        throw originConfigurationError(
+          this.browserWindow()?.location.origin ?? 'this origin',
+          error
+        );
       }
       throw error;
     } finally {
@@ -2376,10 +2372,7 @@ export class PrivySession {
     });
     const timedOut = new Promise<never>((_, reject) => {
       timeoutTimer = setTimeout(
-        () =>
-          reject(
-            operationTimeout('Privy disconnect cleanup', 'teardown_timeout')
-          ),
+        () => reject(operationTimeout('Privy disconnect cleanup', 'teardown_timeout')),
         // Cleanup waits for pending work, then for logout, each within `timeoutMs`.
         this.teardownTimeoutMs * 2
       );

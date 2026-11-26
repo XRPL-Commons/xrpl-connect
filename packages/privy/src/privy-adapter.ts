@@ -56,19 +56,7 @@ export interface PrivyAdapterOptions extends PrivySessionOptions {
   transactionReview?: PrivyTransactionReviewOption;
 }
 
-type PrivySessionLike = Pick<
-  PrivySession,
-  | 'connect'
-  | 'disconnect'
-  | 'signHash'
-  | 'hasPendingConnection'
-  | 'onAuthPrompt'
-  | 'onSessionLost'
-  | 'getLoginMethods'
-> & {
-  mfa?: PrivyMfaApi;
-  getAccessToken?: () => Promise<string | null>;
-};
+type PrivySessionLike = Pick<PrivySession, keyof PrivySession>;
 
 /** How long an unused ledger connection stays open for the next signature. */
 const LEDGER_IDLE_MS = 30_000;
@@ -138,7 +126,6 @@ export class PrivyWalletAdapter implements WalletAdapter {
   };
   readonly keepsSessionOnRestoreTimeout = true;
 
-  protected readonly session: PrivySessionLike;
   private readonly listeners = new Map<WalletAdapterEvent, Set<(data: unknown) => void>>();
   private controller: AbortController | null = null;
   private wallet: PrivyWallet | null = null;
@@ -151,21 +138,11 @@ export class PrivyWalletAdapter implements WalletAdapter {
 
   readonly mfa: PrivyMfaApi;
 
-  constructor(private readonly options: PrivyAdapterOptions, session: PrivySessionLike) {
-    this.session = session;
-    this.mfa =
-      session.mfa ??
-      ({
-        status: async () => {
-          throw new Error('Privy MFA is unavailable before the session is initialized');
-        },
-        linkPasskey: async () => {
-          throw new Error('Privy MFA is unavailable before the session is initialized');
-        },
-        enrollPasskey: async () => {
-          throw new Error('Privy MFA is unavailable before the session is initialized');
-        },
-      } satisfies PrivyMfaApi);
+  constructor(
+    private readonly options: PrivyAdapterOptions,
+    private readonly session: PrivySessionLike
+  ) {
+    this.mfa = session.mfa;
     this.session.onSessionLost(() => {
       const connected = this.account !== null;
       this.controller?.abort();
@@ -269,8 +246,15 @@ export class PrivyWalletAdapter implements WalletAdapter {
   }
 
   async getAccessToken(): Promise<string | null> {
-    if (!this.wallet || !this.account || !this.session.getAccessToken) return null;
-    return this.session.getAccessToken();
+    const controller = this.controller;
+    if (!controller || !this.account) return null;
+    try {
+      const token = await this.session.getAccessToken(controller.signal);
+      return controller.signal.aborted ? null : token;
+    } catch (error) {
+      if (controller.signal.aborted) return null;
+      throw error;
+    }
   }
 
   async disconnect(): Promise<void> {
@@ -467,7 +451,9 @@ export class PrivyWalletAdapter implements WalletAdapter {
   ): Promise<boolean> {
     if (this.promptListeners.size === 0) {
       // Nothing can show the review or answer it, so the signature could never be approved.
-      return Promise.reject(createWalletError.signFailed(new Error(NO_REVIEWER_MESSAGE)));
+      return Promise.reject(
+        new WalletError(WalletErrorCode.SIGN_FAILED, NO_REVIEWER_MESSAGE, undefined, 'no_reviewer')
+      );
     }
     return new Promise<boolean>((resolve, reject) => {
       let settled = false;

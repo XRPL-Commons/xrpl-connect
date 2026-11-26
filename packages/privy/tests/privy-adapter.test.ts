@@ -143,6 +143,19 @@ describe('PrivyAdapter', () => {
     await adapter.disconnect();
   });
 
+  it('discards a token refresh that completes after signing in again', async () => {
+    const adapter = new PrivyAdapter(options);
+    await adapter.connect();
+    const refreshed = deferred<string>();
+    mocks.getAccessToken.mockReturnValueOnce(refreshed.promise);
+    const token = adapter.getAccessToken();
+    await adapter.disconnect();
+    await adapter.connect();
+    refreshed.resolve('previous-session');
+    await expect(token).resolves.toBeNull();
+    await adapter.disconnect();
+  });
+
   it('connects only once the session has a validated XRPL wallet and saves identity only', async () => {
     const ready = deferred<typeof wallet>();
     mocks.connect.mockReturnValueOnce(ready.promise);
@@ -623,6 +636,7 @@ describe('PrivyAdapter transaction review', () => {
     const adapter = await connected();
     const failure = {
       code: WalletErrorCode.SIGN_FAILED,
+      reason: 'no_reviewer',
       message: expect.stringContaining('subscribe with onAuthPrompt() first'),
     };
     await expect(adapter.sign(payment)).rejects.toMatchObject(failure);

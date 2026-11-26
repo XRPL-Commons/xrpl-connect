@@ -539,13 +539,16 @@ describe('PrivySession', () => {
     });
     const session = new PrivySession({
       appId: 'app-216',
-      loginMethodsMode: 'allowlist',
+      loginMethods: [{ id: 'company', getCustomToken: async () => 'custom-token' }],
       allowedLoginMethods: ['email'],
     });
 
     await expect(session.getLoginMethods()).resolves.toEqual([
       expect.objectContaining({ id: 'email', connectOptions: { loginMethod: 'email' } }),
     ]);
+    await expect(session.connect('company', new AbortController().signal)).rejects.toThrow(
+      'not configured'
+    );
     await session.disconnect();
   });
 

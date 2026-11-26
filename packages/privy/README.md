@@ -101,6 +101,10 @@ provide that callback. Each entry accepts an optional `label` for its button;
 without one the button uses the dashboard label of the method it overrides, then
 the OAuth provider's name, then the `id`.
 
+Set `allowedLoginMethods: ['email', 'google']` to offer just those configured
+methods. The same list applies when calling `manager.connect('privy', { loginMethod })`
+directly. Email, phone and passkey-only configurations can omit `redirectUri`.
+
 Choosing a login method always authenticates with that method. If a previous
 Privy session is still present, for example because an earlier logout could not
 complete, it is ended first and is never handed to the next person who signs in.
@@ -284,7 +288,7 @@ approved and then submitted within the same window. Supply your own
 autofill.
 
 The review fails closed. When nothing is subscribed with `onAuthPrompt()`,
-signing fails with a `SIGN_FAILED` wallet error instead of signing, so keep a
+signing fails with a `SIGN_FAILED` wallet error and reason `no_reviewer`, so keep a
 connector on the page while users sign. To use your own interface, subscribe with
 `adapter.onAuthPrompt()` and answer prompts that carry a `review` with
 `prompt.submit({})` or `prompt.cancel()`, or pass a function:
