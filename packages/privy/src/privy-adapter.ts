@@ -3,6 +3,8 @@ import {
   createWalletError,
   isStandardNetworkId,
   isWalletError,
+  WalletError,
+  WalletErrorCode,
   resolveNetwork,
   type AccountInfo,
   type ConnectOptions,
@@ -16,6 +18,7 @@ import {
   type WalletAdapterEvent,
   type WalletAuthPrompt,
   type WalletCapabilities,
+  type WalletErrorReason,
   type WalletLoginMethod,
   type WalletTransactionReview,
 } from 'xrpl-connect/core';
@@ -91,6 +94,35 @@ export interface PrivyConnectOptions {
 
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
+}
+
+function mfaWalletError(error: unknown): WalletError | undefined {
+  const reason = (error as { reason?: WalletErrorReason } | null)?.reason;
+  if (reason === 'mfa_timeout') {
+    return new WalletError(
+      WalletErrorCode.OPERATION_TIMEOUT,
+      'Privy MFA timed out.',
+      asError(error),
+      reason
+    );
+  }
+  if (reason === 'mfa_cancelled') {
+    return new WalletError(
+      WalletErrorCode.SIGN_REJECTED,
+      'Privy MFA was cancelled.',
+      asError(error),
+      reason
+    );
+  }
+  if (reason === 'mfa_required') {
+    return new WalletError(
+      WalletErrorCode.SIGN_FAILED,
+      'Privy MFA requires a passkey confirmation.',
+      asError(error),
+      reason
+    );
+  }
+  return undefined;
 }
 
 export class PrivyWalletAdapter implements WalletAdapter {
@@ -289,6 +321,8 @@ export class PrivyWalletAdapter implements WalletAdapter {
       return await this.signPrepared(prepared, wallet, account.network, controller, 'sign');
     } catch (error) {
       if (isWalletError(error)) throw error;
+      const mfaFailure = mfaWalletError(error);
+      if (mfaFailure) throw mfaFailure;
       throw createWalletError.signFailed(asError(error));
     }
   }
@@ -325,6 +359,8 @@ export class PrivyWalletAdapter implements WalletAdapter {
       });
     } catch (error) {
       if (isWalletError(error)) throw error;
+      const mfaFailure = mfaWalletError(error);
+      if (mfaFailure) throw mfaFailure;
       throw createWalletError.signFailed(asError(error));
     }
   }

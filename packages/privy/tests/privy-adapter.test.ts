@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   connect: vi.fn(),
   disconnect: vi.fn(),
   signHash: vi.fn(),
+  getAccessToken: vi.fn(),
   pending: vi.fn(),
   onAuthPrompt: vi.fn(),
   lost: undefined as (() => void) | undefined,
@@ -35,6 +36,7 @@ vi.mock('../src/session', () => ({
     connect = mocks.connect;
     disconnect = mocks.disconnect;
     signHash = mocks.signHash;
+    getAccessToken = mocks.getAccessToken;
     hasPendingConnection = mocks.pending;
     onAuthPrompt = mocks.onAuthPrompt;
     onSessionLost(callback: () => void) {
@@ -110,6 +112,7 @@ beforeEach(() => {
   mocks.signHash.mockImplementation(
     async (_wallet, hash: string) => `0x${secp256k1.sign(hash.slice(2), privateKey).toCompactHex()}`
   );
+  mocks.getAccessToken.mockResolvedValue(null);
   mocks.submit.mockResolvedValue({
     result: { hash: 'validated-hash', meta: { TransactionResult: 'tesSUCCESS' } },
   });
@@ -117,6 +120,29 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('PrivyAdapter', () => {
+  it('exposes the active Privy access token without exposing the session', async () => {
+    mocks.getAccessToken.mockResolvedValue('privy-access-token');
+    const adapter = new PrivyAdapter(options);
+    await adapter.connect();
+
+    await expect(adapter.getAccessToken()).resolves.toBe('privy-access-token');
+    await adapter.disconnect();
+    await expect(adapter.getAccessToken()).resolves.toBeNull();
+  });
+
+  it.each([
+    ['mfa_required', WalletErrorCode.SIGN_FAILED],
+    ['mfa_cancelled', WalletErrorCode.SIGN_REJECTED],
+    ['mfa_timeout', WalletErrorCode.OPERATION_TIMEOUT],
+  ] as const)('preserves the top-level MFA reason (%s)', async (reason, code) => {
+    const adapter = new PrivyAdapter(options);
+    await adapter.connect();
+    mocks.signHash.mockRejectedValueOnce(Object.assign(new Error('MFA failed'), { reason }));
+
+    await expect(adapter.sign(transaction)).rejects.toMatchObject({ code, reason });
+    await adapter.disconnect();
+  });
+
   it('connects only once the session has a validated XRPL wallet and saves identity only', async () => {
     const ready = deferred<typeof wallet>();
     mocks.connect.mockReturnValueOnce(ready.promise);

@@ -3,9 +3,11 @@ import { AppConfig } from '@privy-io/routes';
 import {
   createWalletError,
   isWalletError,
+  WalletError,
   WalletErrorCode,
   type WalletAuthPrompt,
   type WalletLoginMethod,
+  type WalletErrorReason,
 } from 'xrpl-connect/core';
 import { resolveLoginIcon } from './login-icons';
 import type {
@@ -18,6 +20,16 @@ import {
   PrivyMfaController,
   type PrivyMfaApi,
 } from './mfa';
+import {
+  asPasskeyCredential,
+  base64UrlToBytes,
+  passkeyAuthenticationOptions,
+  passkeyChallenge,
+  passkeyRegistrationOptions,
+  passkeyRelyingParty,
+  toAuthenticationResponse,
+  toRegistrationResponse,
+} from './webauthn';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const SESSION_CHECK_INTERVAL_MS = 60_000;
@@ -154,21 +166,6 @@ interface PromptStep {
   controller: AbortController;
 }
 
-interface PasskeyCredentialLike {
-  id: string;
-  rawId: ArrayBuffer;
-  type: string;
-  response: {
-    clientDataJSON: ArrayBuffer;
-    authenticatorData?: ArrayBuffer;
-    signature?: ArrayBuffer;
-    userHandle?: ArrayBuffer | null;
-    attestationObject?: ArrayBuffer;
-    getTransports?: () => string[];
-  };
-  getClientExtensionResults(): Record<string, unknown>;
-}
-
 type UnknownRecord = Record<string, unknown>;
 
 function asRecord(value: unknown): UnknownRecord | null {
@@ -179,12 +176,8 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function withReason<T extends Error>(error: T, reason: string): T {
-  return Object.assign(error, { reason });
-}
-
-function operationTimeout(label: string, reason: string): Error {
-  return withReason(createWalletError.operationTimeout(label), reason);
+function operationTimeout(label: string, reason: WalletErrorReason): WalletError {
+  return createWalletError.operationTimeout(label, undefined, reason);
 }
 
 function originNotAllowed(error: unknown): boolean {
@@ -197,11 +190,13 @@ function originNotAllowed(error: unknown): boolean {
   );
 }
 
-function originConfigurationError(origin: string, originalError?: unknown): Error {
-  const error = createWalletError.configurationRequired('Privy', ['Allowed origins']);
-  error.message = `Origin not allowed. Add ${origin} to Allowed origins.`;
-  if (originalError instanceof Error) Object.assign(error, { originalError });
-  return withReason(error, 'origin_not_allowed');
+function originConfigurationError(origin: string, originalError?: unknown): WalletError {
+  return new WalletError(
+    WalletErrorCode.CONFIGURATION_REQUIRED,
+    `Origin not allowed. Add ${origin} to Allowed origins.`,
+    originalError instanceof Error ? originalError : undefined,
+    'origin_not_allowed'
+  );
 }
 
 function isAuthenticationLoss(error: unknown): boolean {
@@ -307,124 +302,6 @@ function dashboardMethodToPublic(method: ResolvedLoginMethod): WalletLoginMethod
     label: method.label,
     connectOptions: { loginMethod: method.id },
     icon: resolveLoginIcon(method),
-  };
-}
-
-function base64UrlToBytes(value: string): Uint8Array {
-  const normalized = value
-    .replace(/-/g, '+')
-    .replace(/_/g, '/')
-    .padEnd(Math.ceil(value.length / 4) * 4, '=');
-  if (typeof atob !== 'function') throw new Error('Privy passkeys require browser base64 support');
-  const decoded = atob(normalized);
-  const bytes = new Uint8Array(decoded.length);
-  for (let index = 0; index < decoded.length; index += 1) bytes[index] = decoded.charCodeAt(index);
-  return bytes;
-}
-
-function bytesToBase64Url(value: ArrayBuffer | ArrayBufferView): string {
-  if (typeof btoa !== 'function') throw new Error('Privy passkeys require browser base64 support');
-  const bytes =
-    value instanceof ArrayBuffer
-      ? new Uint8Array(value)
-      : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-}
-
-function passkeyExtensions(value: unknown): AuthenticationExtensionsClientInputs | undefined {
-  const extensions = asRecord(value);
-  if (!extensions) return undefined;
-
-  const result: AuthenticationExtensionsClientInputs = {};
-  if (isNonEmptyString(extensions.app_id)) result.appid = extensions.app_id;
-  if (typeof extensions.cred_props === 'boolean') {
-    result.credProps = extensions.cred_props;
-  } else if (extensions.cred_props !== undefined && extensions.cred_props !== null) {
-    // Registration responses describe cred_props as an object, while the
-    // browser input is the boolean request flag.
-    result.credProps = true;
-  }
-  if (typeof extensions.hmac_create_secret === 'boolean') {
-    result.hmacCreateSecret = extensions.hmac_create_secret;
-  }
-  return Object.keys(result).length > 0 ? result : undefined;
-}
-
-function passkeyCredentialDescriptors(value: unknown): PublicKeyCredentialDescriptor[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  return value.flatMap((entry) => {
-    const descriptor = asRecord(entry);
-    if (!descriptor || !isNonEmptyString(descriptor.id) || descriptor.type !== 'public-key')
-      return [];
-    const transports = Array.isArray(descriptor.transports)
-      ? descriptor.transports
-          .filter(isNonEmptyString)
-          .map((transport) => transport as AuthenticatorTransport)
-      : undefined;
-    return [
-      {
-        id: base64UrlToBytes(descriptor.id) as unknown as ArrayBuffer,
-        type: 'public-key' as const,
-        ...(transports && transports.length > 0 ? { transports } : {}),
-      },
-    ];
-  });
-}
-
-function asPasskeyCredential(value: Credential | null): PasskeyCredentialLike {
-  const credential = value as unknown as PasskeyCredentialLike | null;
-  if (
-    !credential ||
-    !isNonEmptyString(credential.id) ||
-    !isNonEmptyString(credential.type) ||
-    !(credential.rawId instanceof ArrayBuffer) ||
-    !credential.response ||
-    typeof credential.getClientExtensionResults !== 'function'
-  ) {
-    throw new Error('Privy did not receive a valid browser passkey credential');
-  }
-  return credential;
-}
-
-function toAuthenticationResponse(credential: PasskeyCredentialLike): Record<string, unknown> {
-  const response = credential.response;
-  if (
-    !(response.authenticatorData instanceof ArrayBuffer) ||
-    !(response.signature instanceof ArrayBuffer)
-  ) {
-    throw new Error('Privy passkey authentication response is incomplete');
-  }
-  return {
-    id: credential.id,
-    rawId: bytesToBase64Url(credential.rawId),
-    response: {
-      clientDataJSON: bytesToBase64Url(response.clientDataJSON),
-      authenticatorData: bytesToBase64Url(response.authenticatorData),
-      signature: bytesToBase64Url(response.signature),
-      userHandle: response.userHandle ? bytesToBase64Url(response.userHandle) : null,
-    },
-    type: credential.type,
-    clientExtensionResults: credential.getClientExtensionResults(),
-  };
-}
-
-function toRegistrationResponse(credential: PasskeyCredentialLike): Record<string, unknown> {
-  const response = credential.response;
-  if (!(response.attestationObject instanceof ArrayBuffer)) {
-    throw new Error('Privy passkey registration response is incomplete');
-  }
-  return {
-    id: credential.id,
-    rawId: bytesToBase64Url(credential.rawId),
-    response: {
-      clientDataJSON: bytesToBase64Url(response.clientDataJSON),
-      attestationObject: bytesToBase64Url(response.attestationObject),
-      transports: response.getTransports?.() ?? [],
-    },
-    type: credential.type,
-    clientExtensionResults: credential.getClientExtensionResults(),
   };
 }
 
@@ -818,22 +695,27 @@ export class PrivySession {
       };
     }
 
-    const result = await this.runOperation(
-      () =>
-        rawSign(client, (request) => client.embeddedWallet.signWithUserSigner(request), {
-          wallet_id: wallet.id,
-          params: { hash },
-        }),
-      signal,
-      expectedGeneration,
-      'Privy hash signing',
-      this.requestTimeoutMs,
-      true
-    ).catch((error: unknown) => {
+    let result: Awaited<ReturnType<typeof rawSign>>;
+    try {
+      result = await this.runOperation(
+        () =>
+          rawSign(client, (request) => client.embeddedWallet.signWithUserSigner(request), {
+            wallet_id: wallet.id,
+            params: { hash },
+          }),
+        signal,
+        expectedGeneration,
+        'Privy hash signing',
+        this.requestTimeoutMs,
+        true
+      );
+    } catch (error) {
       // Whatever failed may be what the verification covers; check again next time.
       this.verifiedSigner = undefined;
       throw error;
-    });
+    } finally {
+      this.mfaController.finish();
+    }
     if (result.data.encoding !== 'hex' || !/^0x[0-9a-f]+$/i.test(result.data.signature)) {
       throw new Error('Privy returned an invalid raw signature');
     }
@@ -1440,7 +1322,7 @@ export class PrivySession {
             generation,
             'Privy passkey initialization'
           );
-          const authenticationOptions = this.passkeyAuthenticationOptions(authentication);
+          const authenticationOptions = passkeyAuthenticationOptions(authentication);
           const credential = asPasskeyCredential(
             await this.waitForBrowserCredential(
               (credentialSignal) =>
@@ -1457,8 +1339,8 @@ export class PrivySession {
             () =>
               client.auth.passkey.loginWithPasskey(
                 toAuthenticationResponse(credential) as never,
-                this.passkeyChallenge(authentication),
-                this.passkeyRelyingParty(authentication)
+                passkeyChallenge(authentication),
+                passkeyRelyingParty(authentication)
               ),
             signal,
             generation,
@@ -1508,7 +1390,7 @@ export class PrivySession {
       generation,
       'Privy passkey signup initialization'
     );
-    const registrationOptions = this.passkeyRegistrationOptions(registration);
+    const registrationOptions = passkeyRegistrationOptions(registration);
     const registrationCredential = asPasskeyCredential(
       await this.waitForBrowserCredential(
         (credentialSignal) =>
@@ -1525,119 +1407,13 @@ export class PrivySession {
       () =>
         client.auth.passkey.signupWithPasskey(
           toRegistrationResponse(registrationCredential) as never,
-          this.passkeyRelyingParty(registration)
+          passkeyRelyingParty(registration)
         ),
       signal,
       generation,
       'Privy passkey signup'
     );
     return userFromResponse(signedUp);
-  }
-
-  private passkeyChallenge(value: unknown): string {
-    const response = asRecord(value);
-    const options = asRecord(response?.options);
-    if (!options || !isNonEmptyString(options.challenge)) {
-      throw new Error('Privy passkey response did not include a challenge');
-    }
-    return options.challenge;
-  }
-
-  private passkeyRelyingParty(value: unknown): string | undefined {
-    const response = asRecord(value);
-    return isNonEmptyString(response?.relying_party) ? response.relying_party : undefined;
-  }
-
-  private passkeyAuthenticationOptions(value: unknown): PublicKeyCredentialRequestOptions {
-    const response = asRecord(value);
-    const options = asRecord(response?.options);
-    if (!options || !isNonEmptyString(options.challenge)) {
-      throw new Error('Privy passkey response did not include authentication options');
-    }
-    const allowCredentials = passkeyCredentialDescriptors(options.allow_credentials);
-    const extensions = passkeyExtensions(options.extensions);
-    return {
-      challenge: base64UrlToBytes(options.challenge) as unknown as ArrayBuffer,
-      ...(isNonEmptyString(options.rp_id) ? { rpId: options.rp_id } : {}),
-      ...(allowCredentials ? { allowCredentials } : {}),
-      ...(typeof options.timeout === 'number' ? { timeout: options.timeout } : {}),
-      ...(isNonEmptyString(options.user_verification)
-        ? { userVerification: options.user_verification as UserVerificationRequirement }
-        : {}),
-      ...(extensions ? { extensions } : {}),
-    };
-  }
-
-  private passkeyRegistrationOptions(value: unknown): PublicKeyCredentialCreationOptions {
-    const response = asRecord(value);
-    const options = asRecord(response?.options);
-    const relyingParty = asRecord(options?.rp);
-    const user = asRecord(options?.user);
-    if (
-      !options ||
-      !isNonEmptyString(options.challenge) ||
-      !relyingParty ||
-      !isNonEmptyString(relyingParty.name) ||
-      !user ||
-      !isNonEmptyString(user.id) ||
-      !isNonEmptyString(user.name) ||
-      !isNonEmptyString(user.display_name)
-    ) {
-      throw new Error('Privy passkey response did not include registration options');
-    }
-    const pubKeyCredParams = Array.isArray(options.pub_key_cred_params)
-      ? options.pub_key_cred_params.flatMap((entry) => {
-          const parameter = asRecord(entry);
-          return typeof parameter?.alg === 'number'
-            ? [{ type: 'public-key' as const, alg: parameter.alg }]
-            : [];
-        })
-      : [];
-    if (pubKeyCredParams.length === 0)
-      throw new Error('Privy passkey response did not include algorithms');
-    const excludeCredentials = passkeyCredentialDescriptors(options.exclude_credentials);
-    const extensions = passkeyExtensions(options.extensions);
-    const selection = asRecord(options.authenticator_selection);
-    return {
-      challenge: base64UrlToBytes(options.challenge) as unknown as ArrayBuffer,
-      rp: {
-        name: relyingParty.name,
-        ...(isNonEmptyString(relyingParty.id) ? { id: relyingParty.id } : {}),
-      },
-      user: {
-        id: base64UrlToBytes(user.id) as unknown as ArrayBuffer,
-        name: user.name,
-        displayName: user.display_name,
-      },
-      pubKeyCredParams,
-      ...(typeof options.timeout === 'number' ? { timeout: options.timeout } : {}),
-      ...(isNonEmptyString(options.attestation)
-        ? { attestation: options.attestation as AttestationConveyancePreference }
-        : {}),
-      ...(selection
-        ? {
-            authenticatorSelection: {
-              ...(isNonEmptyString(selection.authenticator_attachment)
-                ? {
-                    authenticatorAttachment:
-                      selection.authenticator_attachment as AuthenticatorAttachment,
-                  }
-                : {}),
-              ...(typeof selection.require_resident_key === 'boolean'
-                ? { requireResidentKey: selection.require_resident_key }
-                : {}),
-              ...(isNonEmptyString(selection.resident_key)
-                ? { residentKey: selection.resident_key as ResidentKeyRequirement }
-                : {}),
-              ...(isNonEmptyString(selection.user_verification)
-                ? { userVerification: selection.user_verification as UserVerificationRequirement }
-                : {}),
-            },
-          }
-        : {}),
-      ...(excludeCredentials ? { excludeCredentials } : {}),
-      ...(extensions ? { extensions } : {}),
-    };
   }
 
   private async waitForBrowserCredential<T>(
@@ -1780,7 +1556,7 @@ export class PrivySession {
         await this.delayWithAbort(FARCASTER_POLL_INTERVAL_MS, signal, generation);
       }
       if (controls.isActive(step))
-        throw createWalletError.operationTimeout('Privy Farcaster authentication');
+        throw operationTimeout('Privy Farcaster authentication', 'request_timeout');
     } catch (error) {
       if (controls.isActive(step)) controls.fail(error);
     }
@@ -2281,10 +2057,7 @@ export class PrivySession {
         }
       }
       if (!ready) {
-        throw withReason(
-          createWalletError.operationTimeout('Privy embedded wallet readiness'),
-          'iframe_not_ready'
-        );
+        throw operationTimeout('Privy embedded wallet readiness', 'iframe_not_ready');
       }
     } catch (error) {
       if (this.iframe === iframe) this.cleanupIframe();
@@ -2402,7 +2175,7 @@ export class PrivySession {
     label: string,
     timeoutMs = this.requestTimeoutMs,
     pauseForMfa = false,
-    timeoutReason = 'request_timeout'
+    timeoutReason: WalletErrorReason = 'request_timeout'
   ): Promise<T> {
     this.assertGeneration(generation, signal);
     let abortHandler: (() => void) | undefined;
@@ -2419,6 +2192,7 @@ export class PrivySession {
       if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
       timeoutTimer = setTimeout(() => {
         timeoutSettled = true;
+        if (pauseForMfa) this.mfaController.cancelActive();
         rejectTimeout(operationTimeout(label, timeoutReason));
       }, Math.max(1, timeoutBudget));
     };
