@@ -38,8 +38,8 @@ const THEMES: Record<WalletConnectorTheme, Record<string, string>> = {
  * provider's `WalletManager`, maps the component's events to typed props, and
  * applies theme / `--xc-*` overrides. Open it with `useWalletModal().open()`.
  *
- * The web component registers itself when `xrpl-connect` is imported; ensure your
- * app imports it once (e.g. at the entry point). (#33)
+ * The web component is registered by the focused `xrpl-connect/register` entry;
+ * ensure the binding is imported once (the wrapper does this automatically). (#33)
  */
 export const WalletConnector = forwardRef<WalletConnectorElement, WalletConnectorProps>(
   function WalletConnector(
