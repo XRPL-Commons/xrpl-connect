@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
   phoneLoginWithCode: vi.fn(),
   guestCreate: vi.fn(),
   passkeyGenerateAuthenticationOptions: vi.fn(),
+  passkeyGenerateRegistrationOptions: vi.fn(),
+  passkeyLinkWithPasskey: vi.fn(),
   passkeyGenerateSignupOptions: vi.fn(),
   passkeyLoginWithPasskey: vi.fn(),
   passkeySignupWithPasskey: vi.fn(),
@@ -36,6 +38,8 @@ const mocks = vi.hoisted(() => ({
   onMessage: vi.fn(),
   ping: vi.fn(),
   signWithUserSigner: vi.fn(),
+  mfaGenerateAuthenticationOptions: vi.fn(),
+  mfaSubmitEnrollMfa: vi.fn(),
   create: vi.fn(),
   getWallet: vi.fn(),
   rawSign: vi.fn(),
@@ -209,6 +213,8 @@ function configureClient(): void {
         guest: { create: mocks.guestCreate },
         passkey: {
           generateAuthenticationOptions: mocks.passkeyGenerateAuthenticationOptions,
+          generateRegistrationOptions: mocks.passkeyGenerateRegistrationOptions,
+          linkWithPasskey: mocks.passkeyLinkWithPasskey,
           generateSignupOptions: mocks.passkeyGenerateSignupOptions,
           loginWithPasskey: mocks.passkeyLoginWithPasskey,
           signupWithPasskey: mocks.passkeySignupWithPasskey,
@@ -221,6 +227,15 @@ function configureClient(): void {
         telegram: { authenticate: mocks.telegramAuthenticate },
         customProvider: { syncWithToken: mocks.syncWithToken },
         logout: mocks.logout,
+      },
+      mfa: {
+        passkey: { generateAuthenticationOptions: mocks.mfaGenerateAuthenticationOptions },
+        submitEnrollMfa: mocks.mfaSubmitEnrollMfa,
+      },
+      mfaPromises: {
+        rootPromise: { current: null },
+        on: vi.fn(),
+        off: vi.fn(),
       },
       embeddedWallet: {
         getURL: mocks.getURL,
@@ -336,6 +351,15 @@ beforeEach(() => {
   mocks.passkeyGenerateAuthenticationOptions.mockResolvedValue({
     options: { challenge: 'Y2hhbGxlbmdl' },
   });
+  mocks.passkeyGenerateRegistrationOptions.mockResolvedValue({
+    options: {
+      challenge: 'Y2hhbGxlbmdl',
+      rp: { name: 'XRPL Connect' },
+      user: { id: 'dXNlcg', name: 'user', display_name: 'User' },
+      pub_key_cred_params: [{ type: 'public-key', alg: -7 }],
+    },
+  });
+  mocks.passkeyLinkWithPasskey.mockResolvedValue({ user: user() });
   mocks.passkeyGenerateSignupOptions.mockResolvedValue({
     options: {
       challenge: 'Y2hhbGxlbmdl',
@@ -346,6 +370,10 @@ beforeEach(() => {
   });
   mocks.passkeyLoginWithPasskey.mockResolvedValue({ user: user() });
   mocks.passkeySignupWithPasskey.mockResolvedValue({ user: user() });
+  mocks.mfaGenerateAuthenticationOptions.mockResolvedValue({
+    options: { challenge: 'Y2hhbGxlbmdl', rp_id: 'localhost' },
+  });
+  mocks.mfaSubmitEnrollMfa.mockResolvedValue(undefined);
   mocks.farcasterInitializeAuth.mockResolvedValue({
     channel_token: 'channel-token',
     connect_uri: 'https://warpcast.com/~/sign-in?channelToken=channel-token',
@@ -583,6 +611,36 @@ describe('PrivySession', () => {
     await expect(session.getAccessToken()).resolves.toBeNull();
     await session.disconnect();
     await expect(session.getAccessToken()).resolves.toBeNull();
+  });
+
+  it('requires a connected, owned wallet for public MFA helpers', async () => {
+    const session = makeSession();
+    await expect(session.mfa.status()).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+
+    configureExistingUser();
+    await session.connect('custom', new AbortController().signal);
+    mocks.userGet.mockResolvedValueOnce({
+      user: { id: 'did:privy:other', linked_accounts: [embeddedAccount()] },
+    });
+    await expect(session.mfa.status()).rejects.toThrow('authenticated user mismatch');
+    await session.disconnect();
+  });
+
+  it('cancels a native passkey link when the connected session is torn down', async () => {
+    configureExistingUser();
+    const session = makeSession();
+    await session.connect('custom', new AbortController().signal);
+    let nativeSignal: AbortSignal | undefined;
+    const create = vi.fn(({ signal }: { signal?: AbortSignal }) => {
+      nativeSignal = signal;
+      return new Promise<Credential>(() => undefined);
+    });
+    const linking = session.mfa.linkPasskey({ credentials: { create } });
+
+    await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
+    await session.disconnect();
+    await expect(linking).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+    expect(nativeSignal?.aborted).toBe(true);
   });
 
   it('does not initialize a fresh client after an immediate discovery disconnect', async () => {
@@ -1710,6 +1768,37 @@ describe('PrivySession', () => {
       params: { hash: `0x${'12'.repeat(32)}` },
     });
     expect(mocks.signWithUserSigner).toHaveBeenCalledWith({ message: 'wallet-api-request' });
+    await session.disconnect();
+  });
+
+  it('quarantines a timed-out raw sign until its SDK invocation settles', async () => {
+    configureExistingUser();
+    let release!: (value: unknown) => void;
+    mocks.rawSign.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        })
+    );
+    const session = new PrivySession({ ...options(), requestTimeoutMs: 25 });
+    const wallet = await session.connect('custom', new AbortController().signal);
+    const hash = `0x${'12'.repeat(32)}` as const;
+    const first = session.signHash(wallet, hash, new AbortController().signal);
+    const firstFailure = expect(first).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+
+    await vi.waitFor(() => expect(mocks.rawSign).toHaveBeenCalledOnce());
+    await firstFailure;
+
+    const second = session.signHash(wallet, hash, new AbortController().signal);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(mocks.rawSign).toHaveBeenCalledOnce();
+
+    release({
+      method: 'raw_sign',
+      data: { encoding: 'hex', signature: `0x${'ab'.repeat(64)}` },
+    });
+    await expect(second).resolves.toBe(`0x${'ab'.repeat(64)}`);
+    expect(mocks.rawSign).toHaveBeenCalledTimes(2);
     await session.disconnect();
   });
 

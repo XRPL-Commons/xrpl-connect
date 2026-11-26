@@ -1,4 +1,5 @@
 import { type WalletAuthPrompt } from 'xrpl-connect';
+import { WalletError, WalletErrorCode } from 'xrpl-connect/core';
 import {
   asPasskeyCredential,
   bytesToBase64Url,
@@ -18,6 +19,15 @@ type Deferred<T = unknown> = {
 };
 
 type DeferredValue = NonNullable<Deferred['current']>;
+
+type SubmitDeferredValue = {
+  resolve: (value: undefined) => void;
+  reject: (error: unknown) => void;
+};
+
+type SubmitPromise = {
+  current: SubmitDeferredValue | null;
+};
 
 type MfaClient = {
   auth?: {
@@ -39,6 +49,7 @@ type MfaClient = {
     on?: (event: 'mfaRequired', callback: () => void) => unknown;
     off?: (event: 'mfaRequired', callback: () => void) => unknown;
     rootPromise?: Deferred;
+    submitPromise?: SubmitPromise;
   };
 };
 
@@ -84,12 +95,25 @@ export interface PrivyMfaStatus {
 }
 
 export interface PrivyMfaApi {
-  status(): Promise<PrivyMfaStatus>;
+  status(options?: { signal?: AbortSignal }): Promise<PrivyMfaStatus>;
   linkPasskey(options?: {
     credentials?: Pick<CredentialsContainer, 'create'>;
     signal?: AbortSignal;
   }): Promise<{ credentialId: string; status: PrivyMfaStatus }>;
-  enrollPasskey(options?: { credentialIds?: readonly string[] }): Promise<PrivyMfaStatus>;
+  enrollPasskey(options?: {
+    credentialIds?: readonly string[];
+    signal?: AbortSignal;
+  }): Promise<PrivyMfaStatus>;
+}
+
+export interface PrivyMfaInvocation {
+  readonly token: symbol;
+}
+
+type MfaReason = 'mfa_required' | 'mfa_cancelled' | 'mfa_timeout';
+
+function isMissingOrInvalidMfa(error: unknown): boolean {
+  return (error as { type?: unknown })?.type === 'missing_or_invalid_mfa';
 }
 
 const ROOT_WAIT_MS = 2_000;
@@ -162,9 +186,16 @@ function reasoned(error: Error, reason: string): Error {
 function mfaError(
   message: string,
   reason: 'mfa_required' | 'mfa_cancelled' | 'mfa_timeout'
-): Error {
-  const error = Object.assign(new Error(message), { type: reason });
-  return reasoned(error, reason);
+): WalletError {
+  const code =
+    reason === 'mfa_timeout'
+      ? WalletErrorCode.OPERATION_TIMEOUT
+      : reason === 'mfa_cancelled'
+        ? WalletErrorCode.SIGN_REJECTED
+        : WalletErrorCode.SIGN_FAILED;
+  const error = new WalletError(code, message, undefined, reason);
+  Object.defineProperty(error, 'type', { value: reason, enumerable: true });
+  return error;
 }
 
 function wait(ms: number): Promise<void> {
@@ -198,6 +229,12 @@ async function withAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T
   });
 }
 
+function assertNotAborted(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw mfaError('MFA request was cancelled', 'mfa_cancelled');
+  }
+}
+
 function passkeyStatus(user: unknown): PrivyMfaStatus {
   const record = asRecord(user);
   const linkedAccounts = Array.isArray(record?.linked_accounts) ? record.linked_accounts : [];
@@ -217,13 +254,31 @@ function passkeyStatus(user: unknown): PrivyMfaStatus {
 export class PrivyMfaController implements PrivyMfaApi {
   private client: MfaClient | undefined;
   private listener: (() => void) | undefined;
+  private invocation:
+    | {
+        token: symbol;
+        abandoned: boolean;
+        reason?: MfaReason;
+        challenged: boolean;
+      }
+    | undefined;
   private active:
     | {
         token: symbol;
         controller: AbortController;
         previous: DeferredValue | null;
         rootPromise: Deferred;
+        invocation?: {
+          token: symbol;
+          abandoned: boolean;
+          reason?: MfaReason;
+          challenged: boolean;
+        };
         deferred?: DeferredValue;
+        submitPromise?: SubmitPromise;
+        submitOriginal?: SubmitDeferredValue | null;
+        submitWrapped?: SubmitDeferredValue;
+        cancelled?: boolean;
       }
     | undefined;
   private readonly userActionListeners = new Set<(active: boolean) => void>();
@@ -253,6 +308,8 @@ export class PrivyMfaController implements PrivyMfaApi {
       // read rootPromise.current while rejecting a completed challenge: a
       // later sign may have installed a different deferred by then.
       const previous = rootPromise.current;
+      const invocation = this.invocation;
+      if (invocation) invocation.challenged = true;
       if (this.active) {
         queueMicrotask(() => {
           const current = rootPromise.current;
@@ -264,11 +321,11 @@ export class PrivyMfaController implements PrivyMfaApi {
       }
       const token = Symbol('mfa');
       const controller = new AbortController();
-      this.active = { token, controller, previous, rootPromise };
+      this.active = { token, controller, previous, rootPromise, invocation };
       queueMicrotask(() => {
         const deferred = rootPromise.current;
         if (this.active?.token === token) this.active.deferred = deferred ?? undefined;
-        void this.handle(token, controller, previous, deferred ?? undefined);
+        void this.handle(token, controller, previous, deferred ?? undefined, invocation);
       });
     };
     candidate.mfaPromises.on('mfaRequired', this.listener);
@@ -279,9 +336,48 @@ export class PrivyMfaController implements PrivyMfaApi {
       this.client.mfaPromises.off('mfaRequired', this.listener);
     }
     this.listener = undefined;
-    this.active?.controller.abort();
-    this.active = undefined;
+    if (this.active) this.cancelActive('mfa_cancelled');
+    if (this.invocation) {
+      this.invocation.abandoned = true;
+      this.invocation.reason = 'mfa_cancelled';
+    }
+    if (!this.invocation) this.active = undefined;
     this.client = undefined;
+  }
+
+  beginInvocation(): PrivyMfaInvocation {
+    if (this.invocation) throw new Error('Another Privy signing invocation is still active');
+    const invocation: {
+      token: symbol;
+      abandoned: boolean;
+      reason?: MfaReason;
+      challenged: boolean;
+    } = {
+      token: Symbol('signing'),
+      abandoned: false,
+      challenged: false,
+    };
+    this.invocation = invocation;
+    return invocation;
+  }
+
+  abandonInvocation(invocation: PrivyMfaInvocation, reason: MfaReason = 'mfa_timeout'): void {
+    if (this.invocation?.token !== invocation.token) return;
+    this.invocation.reason = reason;
+    this.invocation.abandoned = true;
+    if (this.active?.invocation?.token === invocation.token) this.cancelActive(reason);
+  }
+
+  finishInvocation(invocation: PrivyMfaInvocation): MfaReason | undefined {
+    if (this.invocation?.token !== invocation.token) return;
+    const reason =
+      this.invocation.reason ?? (this.invocation.challenged ? 'mfa_required' : undefined);
+    if (this.active?.invocation?.token === invocation.token) {
+      this.cleanupSubmitObserver(this.active);
+      this.active = undefined;
+    }
+    this.invocation = undefined;
+    return reason;
   }
 
   /** Internal hook used to pause the enclosing signing request timer. */
@@ -292,23 +388,50 @@ export class PrivyMfaController implements PrivyMfaApi {
 
   /** End the challenge after the enclosing signing operation has settled. */
   finish(): void {
-    this.active = undefined;
+    if (this.active) this.cancelActive('mfa_timeout');
+    if (this.invocation) {
+      this.invocation.abandoned = true;
+      this.invocation.reason = 'mfa_timeout';
+    }
   }
 
   /** Reject a challenge that outlived its enclosing signing operation. */
-  cancelActive(): void {
+  cancelActive(reason: MfaReason = 'mfa_timeout'): void {
     const active = this.active;
     if (!active) return;
-    const error = mfaError('Privy MFA timed out', 'mfa_timeout');
+    if (active.invocation) {
+      active.invocation.abandoned = true;
+      active.invocation.reason = reason;
+    }
+    const error = mfaError(
+      reason === 'mfa_cancelled' ? 'Passkey MFA was cancelled' : 'Privy MFA timed out',
+      reason
+    );
     active.controller.abort();
     active.deferred?.reject(error);
     const current = active.rootPromise.current;
     if (current && current !== active.deferred) current.reject(error);
-    this.active = undefined;
+    if (active.invocation) {
+      active.cancelled = true;
+      this.rejectLateDeferred(
+        active.rootPromise,
+        active.previous,
+        active.deferred,
+        active.invocation.token,
+        error
+      );
+    } else {
+      this.active = undefined;
+    }
   }
 
-  async status(): Promise<PrivyMfaStatus> {
-    const user = await this.requireClient().user?.get?.();
+  async status(options: { signal?: AbortSignal } = {}): Promise<PrivyMfaStatus> {
+    const signal = options.signal ?? new AbortController().signal;
+    const user = await withAbort(
+      this.requireClient().user?.get?.() ?? Promise.resolve(undefined),
+      signal
+    );
+    assertNotAborted(signal);
     return passkeyStatus(user?.user);
   }
 
@@ -331,31 +454,44 @@ export class PrivyMfaController implements PrivyMfaApi {
       passkey.generateRegistrationOptions(this.origin()),
       signal
     );
+    assertNotAborted(signal);
     const creation = this.registrationOptions(registration);
-    const credential = await withAbort(
-      credentials.create({ publicKey: creation, signal }),
+    const credential = await this.withUserAction(
+      (actionSignal) =>
+        withAbort(
+          credentials.create({ publicKey: creation, signal: actionSignal }),
+          actionSignal
+        ).catch((error: unknown) => {
+          if ((error as { name?: string })?.name === 'NotAllowedError') {
+            throw reasoned(new Error('Passkey enrollment was cancelled'), 'mfa_cancelled');
+          }
+          throw error;
+        }),
       signal
-    ).catch((error: unknown) => {
-      if ((error as { name?: string })?.name === 'NotAllowedError') {
-        throw reasoned(new Error('Passkey enrollment was cancelled'), 'mfa_cancelled');
-      }
-      throw error;
-    });
+    );
+    assertNotAborted(signal);
     const json = this.registrationResponse(credential);
     await withAbort(passkey.linkWithPasskey(json, this.origin()), signal);
-    return { credentialId: json.id, status: await this.status() };
+    assertNotAborted(signal);
+    return {
+      credentialId: json.id,
+      status: await this.status({ signal }),
+    };
   }
 
   async enrollPasskey(
-    options: { credentialIds?: readonly string[] } = {}
+    options: { credentialIds?: readonly string[]; signal?: AbortSignal } = {}
   ): Promise<PrivyMfaStatus> {
     const client = this.requireClient();
-    const status = await this.status();
+    const signal = options.signal ?? new AbortController().signal;
+    const status = await this.status({ signal });
+    assertNotAborted(signal);
     const credentialIds = [...(options.credentialIds ?? status.credentialIds)];
     if (credentialIds.length === 0) throw new Error('Link a passkey before enrolling MFA');
     if (!client.mfa?.submitEnrollMfa) throw new Error('Privy MFA enrollment is unavailable');
-    await client.mfa.submitEnrollMfa({ method: 'passkey', credentialIds });
-    return this.status();
+    await withAbort(client.mfa.submitEnrollMfa({ method: 'passkey', credentialIds }), signal);
+    assertNotAborted(signal);
+    return this.status({ signal });
   }
 
   private requireClient(): MfaClient {
@@ -367,7 +503,12 @@ export class PrivyMfaController implements PrivyMfaApi {
     token: symbol,
     controller: AbortController,
     previous: DeferredValue | null,
-    captured?: DeferredValue
+    captured?: DeferredValue,
+    invocation?: {
+      token: symbol;
+      abandoned: boolean;
+      reason: MfaReason;
+    }
   ): Promise<void> {
     const client = this.client;
     const rootPromise = client?.mfaPromises?.rootPromise;
@@ -379,6 +520,17 @@ export class PrivyMfaController implements PrivyMfaApi {
       controller.abort();
     }, this.timeoutMs);
     try {
+      const ownedInvocation = invocation;
+      if (ownedInvocation?.abandoned) {
+        const root = await this.challengeDeferred(
+          rootPromise,
+          previous,
+          captured,
+          controller.signal
+        );
+        root?.reject(mfaError('Privy MFA request was abandoned', ownedInvocation.reason));
+        return;
+      }
       if (this.mode === 'none') {
         const root = await this.challengeDeferred(
           rootPromise,
@@ -399,6 +551,7 @@ export class PrivyMfaController implements PrivyMfaApi {
           controller.signal
         )
       );
+      assertNotAborted(controller.signal);
       const authenticate = (): Promise<PrivyMfaAnswer> =>
         this.authenticate(options, controller.signal);
       const request: PrivyMfaRequest = {
@@ -410,20 +563,40 @@ export class PrivyMfaController implements PrivyMfaApi {
       const mode = this.mode;
       const answer =
         typeof mode === 'function'
-          ? await this.withUserAction(() => mode(request, controller.signal), controller.signal)
+          ? await this.withUserAction((signal) => mode(request, signal), controller.signal)
           : await this.prompt(request, controller.signal, () => controller.abort());
       if (this.active?.token !== token) return;
       const root = await this.challengeDeferred(rootPromise, previous, captured, controller.signal);
       if (!root) throw mfaError('Privy MFA did not start', 'mfa_required');
+      if (ownedInvocation?.abandoned) {
+        root.reject(mfaError('Privy MFA request was abandoned', ownedInvocation.reason));
+        return;
+      }
       root.resolve(answer);
       keepActive = true;
+      const submitPromise = client.mfaPromises?.submitPromise;
+      const active = this.active;
+      if (submitPromise && active?.token === token) {
+        this.installSubmitObserver(active, submitPromise, rootPromise, root);
+      }
     } catch (error) {
       const mapped = this.mapError(error, controller.signal, timedOut);
-      const root = this.active?.token === token ? this.active.deferred : captured;
+      if (invocation && (mapped as { reason?: MfaReason }).reason) {
+        invocation.reason = (mapped as { reason: MfaReason }).reason;
+        invocation.abandoned = invocation.reason !== 'mfa_required';
+      }
+      let root = this.active?.token === token ? this.active.deferred : captured;
+      if (!root && this.active?.token === token) {
+        const current = rootPromise.current;
+        if (current && current !== previous) root = current;
+      }
       root?.reject(mapped);
     } finally {
       clearTimeout(timer);
-      if (!keepActive && this.active?.token === token) this.active = undefined;
+      if (!keepActive && this.active?.token === token && !this.active.cancelled) {
+        this.cleanupSubmitObserver(this.active);
+        this.active = undefined;
+      }
     }
   }
 
@@ -438,6 +611,100 @@ export class PrivyMfaController implements PrivyMfaApi {
     // microtask.  Poll only until this challenge's bounded wait expires, and
     // accept a changed deferred (never a previous challenge's object).
     return await waitForDeferred(rootPromise, previous, signal, ROOT_WAIT_MS);
+  }
+
+  private installSubmitObserver(
+    active: NonNullable<PrivyMfaController['active']>,
+    submitPromise: SubmitPromise,
+    rootPromise: Deferred,
+    baseline: DeferredValue
+  ): void {
+    const original = submitPromise.current;
+    active.submitPromise = submitPromise;
+    const wrapped: SubmitDeferredValue = {
+      resolve: (value) => {
+        try {
+          original?.resolve(value);
+        } finally {
+          if (submitPromise.current === wrapped) submitPromise.current = original;
+        }
+      },
+      reject: (error) => {
+        try {
+          original?.reject(error);
+        } finally {
+          if (submitPromise.current === wrapped) submitPromise.current = original;
+        }
+        if (isMissingOrInvalidMfa(error)) {
+          queueMicrotask(() => {
+            if (this.active?.token !== active.token) return;
+            const replacement = rootPromise.current;
+            if (replacement && replacement !== baseline) {
+              this.rejectReplacementRoot(active, replacement);
+            }
+          });
+        }
+      },
+    };
+    active.submitOriginal = original;
+    active.submitWrapped = wrapped;
+    submitPromise.current = wrapped;
+  }
+
+  private rejectReplacementRoot(
+    active: NonNullable<PrivyMfaController['active']>,
+    replacement: DeferredValue
+  ): void {
+    if (active.invocation) {
+      const reason = active.invocation.reason ?? 'mfa_required';
+      active.invocation.reason = reason;
+      active.invocation.abandoned = true;
+      replacement.reject(
+        mfaError(
+          reason === 'mfa_required'
+            ? 'Privy MFA assertion was rejected'
+            : reason === 'mfa_cancelled'
+              ? 'Passkey MFA was cancelled'
+              : 'Privy MFA timed out',
+          reason
+        )
+      );
+    } else {
+      replacement.reject(mfaError('Privy MFA assertion was rejected', 'mfa_required'));
+    }
+  }
+
+  private cleanupSubmitObserver(active: NonNullable<PrivyMfaController['active']>): void {
+    if (
+      active.submitPromise &&
+      active.submitWrapped &&
+      active.submitPromise.current === active.submitWrapped
+    ) {
+      active.submitPromise.current = active.submitOriginal ?? null;
+    }
+    active.submitPromise = undefined;
+    active.submitOriginal = undefined;
+    active.submitWrapped = undefined;
+  }
+
+  private rejectLateDeferred(
+    rootPromise: Deferred,
+    previous: DeferredValue | null,
+    captured: DeferredValue | undefined,
+    invocationToken: symbol,
+    error: Error
+  ): void {
+    const deadline = Date.now() + ROOT_WAIT_MS;
+    const check = (): void => {
+      if (this.invocation?.token !== invocationToken) return;
+      const current = rootPromise.current;
+      if (current && current !== previous && current !== captured) {
+        current.reject(error);
+        return;
+      }
+      if (Date.now() < deadline) setTimeout(check, 5);
+    };
+    queueMicrotask(check);
   }
 
   private async prompt(
@@ -484,11 +751,30 @@ export class PrivyMfaController implements PrivyMfaApi {
     });
   }
 
-  private async withUserAction<T>(operation: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  private async withUserAction<T>(
+    operation: (signal: AbortSignal) => Promise<T>,
+    signal: AbortSignal
+  ): Promise<T> {
+    const controller = new AbortController();
+    let timedOut = false;
+    const onAbort = (): void => controller.abort();
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.timeoutMs);
+    signal.addEventListener('abort', onAbort, { once: true });
     this.notifyUserAction(true);
     try {
-      return await withAbort(operation(), signal);
+      return await withAbort(
+        Promise.resolve().then(() => operation(controller.signal)),
+        controller.signal
+      );
+    } catch (error) {
+      if (timedOut) throw mfaError('Passkey interaction timed out', 'mfa_timeout');
+      throw error;
     } finally {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
       this.notifyUserAction(false);
     }
   }

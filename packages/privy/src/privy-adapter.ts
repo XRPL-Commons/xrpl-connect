@@ -581,10 +581,7 @@ export class PrivyWalletAdapter implements WalletAdapter {
     });
   }
 
-  private promptForApproval(
-    review: PrivyTransactionReview,
-    signal: AbortSignal
-  ): Promise<boolean> {
+  private promptForApproval(review: PrivyTransactionReview, signal: AbortSignal): Promise<boolean> {
     if (this.promptListeners.size === 0) {
       // Nothing can show the review or answer it, so the signature could never be approved.
       return Promise.reject(

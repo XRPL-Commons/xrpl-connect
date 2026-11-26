@@ -2,18 +2,9 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { webcrypto } from 'node:crypto';
 import { secp256k1 } from '@noble/curves/secp256k1';
-import {
-  decode,
-  deriveAddress,
-  encodeForSigningBatch,
-  hashes,
-  verifyKeypairSignature,
-} from 'xrpl';
+import { decode, deriveAddress, encodeForSigningBatch, hashes, verifyKeypairSignature } from 'xrpl';
 import type { Transaction } from 'xrpl-connect';
-import {
-  prepareBatchSignerInput,
-  signPreparedBatchSignerTransaction,
-} from '../src/batch-signing';
+import { prepareBatchSignerInput, signPreparedBatchSignerTransaction } from '../src/batch-signing';
 
 const privateKey = '1'.padStart(64, '0');
 const publicKey = Array.from(secp256k1.getPublicKey(privateKey), (value) =>
@@ -107,7 +98,12 @@ describe('Privy XLS-56 BatchSigner serialization', () => {
       account: batch.Account,
       sequence: batch.Sequence,
       flags: batch.Flags,
-      txIDs: [hashes.hashSignedTx((prepared.transaction as never as { RawTransactions: [{ RawTransaction: Transaction }] }).RawTransactions[0].RawTransaction)],
+      txIDs: [
+        hashes.hashSignedTx(
+          (prepared.transaction as never as { RawTransactions: [{ RawTransaction: Transaction }] })
+            .RawTransactions[0].RawTransaction
+        ),
+      ],
       batchAccount: otherBatchAccount,
       signerAccount: wallet.address,
     });
@@ -151,10 +147,7 @@ describe('Privy XLS-56 BatchSigner serialization', () => {
       )
     ).toThrow('must not contain signatures');
     expect(() =>
-      prepareBatchSignerInput(
-        { ...batch, Sequence: 1, TicketSequence: 2 } as Transaction,
-        wallet
-      )
+      prepareBatchSignerInput({ ...batch, Sequence: 1, TicketSequence: 2 } as Transaction, wallet)
     ).toThrow('Sequence must be 0 when TicketSequence is provided');
     expect(() => prepareBatchSignerInput(batch, wallet, { batchAccount: null } as never)).toThrow(
       'BatchSigner Account'
@@ -174,4 +167,3 @@ describe('Privy XLS-56 BatchSigner serialization', () => {
     expect(prepared.transaction).toMatchObject({ Sequence: 0, TicketSequence: 19 });
   });
 });
-

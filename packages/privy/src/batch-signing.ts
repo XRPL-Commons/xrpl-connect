@@ -1,10 +1,5 @@
 import * as xrpl from 'xrpl';
-import {
-  encode,
-  hashes,
-  isValidClassicAddress,
-  validate,
-} from 'xrpl';
+import { encode, hashes, isValidClassicAddress, validate } from 'xrpl';
 import { createWalletError, type SignedTransaction, type Transaction } from 'xrpl-connect/core';
 import type { PrivyWallet } from './session-types';
 import { signEncodedPayload, type SignHash } from './signing';
@@ -59,7 +54,9 @@ function requireAddress(value: unknown, label: string): string {
 
 function requireFee(value: unknown): void {
   if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) {
-    throw new Error('BatchSigner requires a prepared transaction with Fee and Sequence or TicketSequence');
+    throw new Error(
+      'BatchSigner requires a prepared transaction with Fee and Sequence or TicketSequence'
+    );
   }
 }
 
@@ -145,7 +142,10 @@ export function prepareBatchSignerInput(
   }
   for (const [index, raw] of rawTransactions.entries()) {
     const rawRecord = asRecord(raw, `Batch RawTransactions[${index}]`);
-    const inner = asRecord(rawRecord.RawTransaction, `Batch RawTransactions[${index}].RawTransaction`);
+    const inner = asRecord(
+      rawRecord.RawTransaction,
+      `Batch RawTransactions[${index}].RawTransaction`
+    );
     if (inner.TxnSignature !== undefined || inner.Signers !== undefined) {
       throw new Error(`Batch RawTransactions[${index}] must not contain signatures`);
     }
@@ -161,7 +161,10 @@ export function prepareBatchSignerInput(
         asRecord(raw, `Batch RawTransactions[${index}]`).RawTransaction,
         `Batch RawTransactions[${index}].RawTransaction`
       );
-      return requireAddress(inner.Account, `Batch RawTransactions[${index}].RawTransaction.Account`);
+      return requireAddress(
+        inner.Account,
+        `Batch RawTransactions[${index}].RawTransaction.Account`
+      );
     })
   );
   if (!involvedAccounts.has(batchAccount)) {
@@ -225,9 +228,7 @@ export function assertBatchSubmissionReady(transaction: Transaction): void {
   const outerAccount = requireAddress(input.Account, 'Batch Account');
   const rawTransactions = input.RawTransactions;
   if (!Array.isArray(rawTransactions) || rawTransactions.length === 0) {
-    throw createWalletError.unsupportedMethod(
-      'Privy cannot submit a malformed Batch transaction'
-    );
+    throw createWalletError.unsupportedMethod('Privy cannot submit a malformed Batch transaction');
   }
   const innerAccounts = new Set<string>();
   for (const [index, raw] of rawTransactions.entries()) {
@@ -274,7 +275,10 @@ export function assertBatchSubmissionReady(transaction: Transaction): void {
       );
     }
     for (const [signerIndex, nestedValue] of nested.entries()) {
-      const nestedRecord = asRecord(nestedValue, `BatchSigners[${index}].BatchSigner.Signers[${signerIndex}]`);
+      const nestedRecord = asRecord(
+        nestedValue,
+        `BatchSigners[${index}].BatchSigner.Signers[${signerIndex}]`
+      );
       const nestedSigner = asRecord(
         nestedRecord.Signer,
         `BatchSigners[${index}].BatchSigner.Signers[${signerIndex}].Signer`
@@ -340,4 +344,3 @@ export async function signPreparedBatchSignerTransaction(
     signerAddress: wallet.address,
   };
 }
-

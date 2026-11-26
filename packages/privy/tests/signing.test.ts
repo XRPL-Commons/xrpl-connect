@@ -148,7 +148,11 @@ describe('Privy XRPL serialization', () => {
       },
     ]);
     expect(
-      verifyKeypairSignature(encodeForMultiSigning(input, wallet.address), signed.signature!, publicKey)
+      verifyKeypairSignature(
+        encodeForMultiSigning(input, wallet.address),
+        signed.signature!,
+        publicKey
+      )
     ).toBe(true);
   });
 
@@ -162,8 +166,8 @@ describe('Privy XRPL serialization', () => {
     expect(() => prepareMultisigningInput({ ...transaction, Signers: [] }, wallet)).toThrow(
       'signatures'
     );
-    expect(() => prepareMultisigningInput({ ...transaction, SigningPubKey: publicKey }, wallet)).toThrow(
-      'empty'
-    );
+    expect(() =>
+      prepareMultisigningInput({ ...transaction, SigningPubKey: publicKey }, wallet)
+    ).toThrow('empty');
   });
 });

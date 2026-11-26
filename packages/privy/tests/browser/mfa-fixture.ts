@@ -104,10 +104,13 @@ document.querySelector<HTMLButtonElement>('#register')!.onclick = async () => {
   status.textContent = 'registered';
 };
 document.querySelector<HTMLButtonElement>('#sign')!.onclick = async () => {
+  const invocation = mfa.beginInvocation();
   try {
     const result = await client.embeddedWallet.signWithUserSigner({ message: 'fixture' });
     status.textContent = result.signature;
   } catch (error) {
     status.textContent = (error as { reason?: string }).reason ?? String(error);
+  } finally {
+    mfa.finishInvocation(invocation);
   }
 };

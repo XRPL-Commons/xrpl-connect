@@ -682,7 +682,9 @@ describe('PrivyAdapter transaction review', () => {
       label: 'Batch account',
       value: wallet.address,
     });
-    expect(contributionPrompt.review?.details.find(({ name }) => name === 'RawTransactions')).toBeDefined();
+    expect(
+      contributionPrompt.review?.details.find(({ name }) => name === 'RawTransactions')
+    ).toBeDefined();
     await contributionPrompt.submit!({});
 
     const contribution = await contributionPromise;
@@ -696,9 +698,9 @@ describe('PrivyAdapter transaction review', () => {
       txIDs: [hashes.hashSignedTx(batchTransaction.RawTransactions![0].RawTransaction as never)],
       batchAccount: wallet.address,
     });
-    expect(
-      verifyKeypairSignature(contributionPreimage, contribution.signature!, publicKey)
-    ).toBe(true);
+    expect(verifyKeypairSignature(contributionPreimage, contribution.signature!, publicKey)).toBe(
+      true
+    );
 
     const outerPromise = adapter.sign(batchTransaction);
     const outerPrompt = await nextReview(2);

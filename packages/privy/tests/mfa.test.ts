@@ -30,6 +30,7 @@ function credential(overrides: Record<string, unknown> = {}): Record<string, unk
 function clientFixture() {
   let listener: (() => void) | undefined;
   const rootPromise = { current: null as Deferred | null };
+  const submitPromise = { current: null as Deferred | null };
   const passkey = {
     generateRegistrationOptions: vi.fn(function (this: unknown, relyingParty?: string) {
       expect(this).toBe(passkey);
@@ -79,6 +80,7 @@ function clientFixture() {
     },
     mfaPromises: {
       rootPromise,
+      submitPromise,
       on: vi.fn((_event: 'mfaRequired', callback: () => void) => {
         listener = callback;
       }),
@@ -88,6 +90,7 @@ function clientFixture() {
   return {
     client,
     rootPromise,
+    submitPromise,
     emitMfaRequired(): void {
       if (!listener) throw new Error('MFA listener was not attached');
       listener();
@@ -109,6 +112,7 @@ describe('Privy transaction MFA', () => {
       1_000
     );
     controller.attach(fixture.client);
+    const invocation = controller.beginInvocation();
 
     const challenge = deferred();
     fixture.emitMfaRequired();
@@ -146,8 +150,142 @@ describe('Privy transaction MFA', () => {
     // without another event; the enclosing request must be able to reject it.
     const retry = deferred();
     fixture.rootPromise.current = retry;
-    controller.cancelActive();
+    controller.abandonInvocation(invocation);
     expect(retry.reject).toHaveBeenCalledWith(expect.objectContaining({ reason: 'mfa_timeout' }));
+    controller.finishInvocation(invocation);
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects an MFA event that arrives after its signing request timed out without showing a prompt', async () => {
+    const fixture = clientFixture();
+    const prompts: Array<Record<string, unknown> | null> = [];
+    const controller = new PrivyMfaController(
+      'prompt',
+      (prompt) => {
+        prompts.push(prompt as Record<string, unknown> | null);
+        return true;
+      },
+      () => 'https://wallet.example',
+      1_000
+    );
+    controller.attach(fixture.client);
+    const invocation = controller.beginInvocation();
+    controller.abandonInvocation(invocation);
+
+    const challenge = deferred();
+    fixture.emitMfaRequired();
+    fixture.rootPromise.current = challenge;
+
+    await vi.waitFor(() =>
+      expect(challenge.reject).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'mfa_timeout' })
+      )
+    );
+    expect(prompts.filter((prompt) => prompt !== null)).toHaveLength(0);
+    controller.finishInvocation(invocation);
+  });
+
+  it('turns a pinned SDK invalid assertion retry into an immediate structured MFA failure', async () => {
+    const fixture = clientFixture();
+    const prompts: Array<Record<string, unknown> | null> = [];
+    const controller = new PrivyMfaController(
+      'prompt',
+      (prompt) => {
+        prompts.push(prompt as Record<string, unknown> | null);
+        return true;
+      },
+      () => 'https://wallet.example',
+      1_000
+    );
+    controller.attach(fixture.client);
+    const invocation = controller.beginInvocation();
+    const challenge = deferred();
+    fixture.emitMfaRequired();
+    fixture.rootPromise.current = challenge;
+    await vi.waitFor(() => expect(prompts.some((prompt) => prompt !== null)).toBe(true));
+
+    vi.stubGlobal('navigator', { credentials: { get: vi.fn().mockResolvedValue(credential()) } });
+    fixture.submitPromise.current = deferred();
+    const prompt = prompts.find((value) => value !== null);
+    await (prompt?.submit as () => Promise<void>)();
+    await vi.waitFor(() => expect(fixture.submitPromise.current).not.toBeNull());
+
+    const replacement = deferred();
+    const invalid = Object.assign(new Error('MFA verification failed'), {
+      type: 'missing_or_invalid_mfa',
+    });
+    const submit = fixture.submitPromise.current!;
+    submit.reject(invalid);
+    // The real SDK installs this replacement synchronously after rejecting its
+    // submit deferred and does not emit another mfaRequired event.
+    fixture.rootPromise.current = replacement;
+
+    await vi.waitFor(() =>
+      expect(replacement.reject).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'mfa_required' })
+      )
+    );
+    expect(prompts.filter((value) => value !== null)).toHaveLength(1);
+    controller.finishInvocation(invocation);
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects a deferred assigned after an active challenge is abandoned', async () => {
+    const fixture = clientFixture();
+    const controller = new PrivyMfaController(
+      'prompt',
+      () => true,
+      () => 'https://wallet.example',
+      1_000
+    );
+    controller.attach(fixture.client);
+    const invocation = controller.beginInvocation();
+    fixture.emitMfaRequired();
+    controller.abandonInvocation(invocation);
+
+    const challenge = deferred();
+    fixture.rootPromise.current = challenge;
+    await vi.waitFor(() =>
+      expect(challenge.reject).toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'mfa_timeout' })
+      )
+    );
+    controller.finishInvocation(invocation);
+  });
+
+  it('allows a new invocation after the abandoned SDK deferred has been rejected', async () => {
+    const fixture = clientFixture();
+    const prompts: Array<Record<string, unknown> | null> = [];
+    const controller = new PrivyMfaController(
+      'prompt',
+      (prompt) => {
+        prompts.push(prompt as Record<string, unknown> | null);
+        return true;
+      },
+      () => 'https://wallet.example',
+      1_000
+    );
+    controller.attach(fixture.client);
+
+    const oldInvocation = controller.beginInvocation();
+    controller.abandonInvocation(oldInvocation);
+    const oldChallenge = deferred();
+    fixture.emitMfaRequired();
+    fixture.rootPromise.current = oldChallenge;
+    await vi.waitFor(() => expect(oldChallenge.reject).toHaveBeenCalled());
+    controller.finishInvocation(oldInvocation);
+
+    const newInvocation = controller.beginInvocation();
+    const newChallenge = deferred();
+    fixture.emitMfaRequired();
+    fixture.rootPromise.current = newChallenge;
+    await vi.waitFor(() => expect(prompts.filter((prompt) => prompt !== null)).toHaveLength(1));
+    const get = vi.fn().mockResolvedValue(credential());
+    vi.stubGlobal('navigator', { credentials: { get } });
+    await (prompts.find((prompt) => prompt !== null)?.submit as () => Promise<void>)();
+    await vi.waitFor(() => expect(newChallenge.resolve).toHaveBeenCalled());
+    expect(oldChallenge.resolve).not.toHaveBeenCalled();
+    controller.finishInvocation(newInvocation);
     vi.unstubAllGlobals();
   });
 
