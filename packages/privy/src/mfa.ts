@@ -219,6 +219,7 @@ export class PrivyMfaController implements PrivyMfaApi {
         token: symbol;
         controller: AbortController;
         previous: DeferredValue | null;
+        rootPromise: Deferred;
         deferred?: DeferredValue;
       }
     | undefined;
@@ -260,7 +261,7 @@ export class PrivyMfaController implements PrivyMfaApi {
       }
       const token = Symbol('mfa');
       const controller = new AbortController();
-      this.active = { token, controller, previous };
+      this.active = { token, controller, previous, rootPromise };
       queueMicrotask(() => {
         const deferred = rootPromise.current;
         if (this.active?.token === token) this.active.deferred = deferred ?? undefined;
@@ -284,6 +285,23 @@ export class PrivyMfaController implements PrivyMfaApi {
   onUserAction(callback: (active: boolean) => void): () => void {
     this.userActionListeners.add(callback);
     return () => this.userActionListeners.delete(callback);
+  }
+
+  /** End the challenge after the enclosing signing operation has settled. */
+  finish(): void {
+    this.active = undefined;
+  }
+
+  /** Reject a challenge that outlived its enclosing signing operation. */
+  cancelActive(): void {
+    const active = this.active;
+    if (!active) return;
+    const error = mfaError('Privy MFA timed out', 'mfa_timeout');
+    active.controller.abort();
+    active.deferred?.reject(error);
+    const current = active.rootPromise.current;
+    if (current && current !== active.deferred) current.reject(error);
+    this.active = undefined;
   }
 
   async status(): Promise<PrivyMfaStatus> {
@@ -344,6 +362,7 @@ export class PrivyMfaController implements PrivyMfaApi {
     const client = this.client;
     const rootPromise = client?.mfaPromises?.rootPromise;
     if (!client || !rootPromise) return;
+    let keepActive = false;
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -395,13 +414,14 @@ export class PrivyMfaController implements PrivyMfaApi {
       );
       if (!root) throw mfaError('Privy MFA did not start', 'mfa_required');
       root.resolve(answer);
+      keepActive = true;
     } catch (error) {
       const mapped = this.mapError(error, controller.signal, timedOut);
       const root = this.active?.token === token ? this.active.deferred : captured;
       root?.reject(mapped);
     } finally {
       clearTimeout(timer);
-      if (this.active?.token === token) this.active = undefined;
+      if (!keepActive && this.active?.token === token) this.active = undefined;
     }
   }
 

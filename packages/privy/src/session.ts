@@ -695,22 +695,27 @@ export class PrivySession {
       };
     }
 
-    const result = await this.runOperation(
-      () =>
-        rawSign(client, (request) => client.embeddedWallet.signWithUserSigner(request), {
-          wallet_id: wallet.id,
-          params: { hash },
-        }),
-      signal,
-      expectedGeneration,
-      'Privy hash signing',
-      this.requestTimeoutMs,
-      true
-    ).catch((error: unknown) => {
+    let result: Awaited<ReturnType<typeof rawSign>>;
+    try {
+      result = await this.runOperation(
+        () =>
+          rawSign(client, (request) => client.embeddedWallet.signWithUserSigner(request), {
+            wallet_id: wallet.id,
+            params: { hash },
+          }),
+        signal,
+        expectedGeneration,
+        'Privy hash signing',
+        this.requestTimeoutMs,
+        true
+      );
+    } catch (error) {
       // Whatever failed may be what the verification covers; check again next time.
       this.verifiedSigner = undefined;
       throw error;
-    });
+    } finally {
+      this.mfaController.finish();
+    }
     if (result.data.encoding !== 'hex' || !/^0x[0-9a-f]+$/i.test(result.data.signature)) {
       throw new Error('Privy returned an invalid raw signature');
     }
@@ -2187,6 +2192,7 @@ export class PrivySession {
       if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
       timeoutTimer = setTimeout(() => {
         timeoutSettled = true;
+        if (pauseForMfa) this.mfaController.cancelActive();
         rejectTimeout(operationTimeout(label, timeoutReason));
       }, Math.max(1, timeoutBudget));
     };

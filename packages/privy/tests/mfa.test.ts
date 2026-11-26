@@ -142,6 +142,14 @@ describe('Privy transaction MFA', () => {
         }),
       })
     );
+    // A bad assertion makes js-sdk-core install a replacement root deferred
+    // without another event; the enclosing request must be able to reject it.
+    const retry = deferred();
+    fixture.rootPromise.current = retry;
+    controller.cancelActive();
+    expect(retry.reject).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'mfa_timeout' })
+    );
     vi.unstubAllGlobals();
   });
 
