@@ -151,9 +151,41 @@ if (!rolled.includes("'xrpl-wallet-connector': WalletConnectorElementInstance"))
   rolled += walletConnectorTagDeclaration;
 }
 writeFileSync(rolledPath, rolled);
+const publishedFolder = path.dirname(rolledPath);
+
+// Project each entry's public names from the canonical declarations. This keeps
+// nominal types shared when consumers mix imports from the root and subpaths.
+const manifest = JSON.parse(readFileSync(path.join(projectFolder, 'package.json'), 'utf8'));
+const focusedEntries = Object.entries(manifest.exports)
+  .filter(([name, entry]) => name !== '.' && entry.types)
+  .map(([, entry]) => path.resolve(projectFolder, entry.types));
+const program = ts.createProgram(focusedEntries, {
+  module: ts.ModuleKind.NodeNext,
+  moduleResolution: ts.ModuleResolutionKind.NodeNext,
+  skipLibCheck: true,
+});
+const checker = program.getTypeChecker();
+for (const entryPath of focusedEntries) {
+  const source = program.getSourceFile(entryPath);
+  const entrySymbol = source && checker.getSymbolAtLocation(source);
+  if (!entrySymbol) throw new Error(`Missing built declaration entry ${entryPath}`);
+  const specifiers = checker
+    .getExportsOfModule(entrySymbol)
+    .map((symbol) => {
+      const target =
+        symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+      const hasRuntimeValue =
+        target.flags & ts.SymbolFlags.Value && !checker.getTypeOnlyAliasDeclaration(symbol);
+      return hasRuntimeValue ? symbol.name : `type ${symbol.name}`;
+    })
+    .sort();
+  const declaration = specifiers.length
+    ? `export { ${specifiers.join(', ')} } from './index.js';`
+    : 'export {};';
+  writeFileSync(path.join(publishedFolder, path.basename(entryPath)), declaration + '\n');
+}
 
 const importedModules = new Set();
-const publishedFolder = path.dirname(rolledPath);
 for (const relative of readdirSync(publishedFolder, { recursive: true })) {
   if (!relative.endsWith('.d.ts')) continue;
   const file = path.join(publishedFolder, relative);

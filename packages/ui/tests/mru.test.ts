@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { MemoryStorageAdapter, WalletManager } from '@xrpl-connect/core';
 import type { AccountInfo, NetworkInfo, WalletAdapter } from '@xrpl-connect/core';
-import '../src/wallet-connector';
+import '../src/register';
 import { orderWalletsByMru } from '../src/utils';
 
 const wallets = [{ id: 'xaman' }, { id: 'crossmark' }, { id: 'gemwallet' }, { id: 'ledger' }];

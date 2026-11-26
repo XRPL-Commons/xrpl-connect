@@ -7,7 +7,7 @@ modal component — so you configure your wallets once and never re-create objec
 ## Install
 
 ```bash
-npm install @xrpl-commons/xrpl-connect-react@rc xrpl-connect@rc xrpl@^4 react react-dom
+npm install @xrpl-commons/xrpl-connect-react@rc xrpl-connect@rc xrpl@^5 react react-dom
 ```
 
 > `react` / `react-dom` are peer dependencies. Importing any named export from
@@ -106,7 +106,9 @@ first manager session has been saved.
   `WalletError` (`error.code`, `error.category`), e.g. `SIGN_REJECTED` on user cancel.
 - `useWalletModal()` → `{ ready, open, openAndWait, close }` — drive the active
   `<WalletConnector>` modal. `open()` is awaitable, and `openAndWait()` resolves with the
-  connected account or rejects if opening fails or the modal closes first.
+  connected account or rejects if opening fails or the modal closes first. Pass
+  `{ loginMethod: 'email' }` (an adapter method ID or label) to target a sign-in flow;
+  concurrent calls for the same method share the connection attempt.
 
 Besides connection failures, `error` holds `NETWORK_MISMATCH` when the connected wallet switches
 away from the requested network; it clears once the wallet is back on that network.
@@ -133,7 +135,8 @@ typed `CONFIGURATION_REQUIRED` error.
 
 React wrapper around the web component. Props: `primaryWallet`, `wallets`, `socialLogins`
 (`SocialLogin` entries for the **Sign in with socials** chooser), `showUnavailable`, `theme`
-(`'dark' | 'light' | 'purple'`), `cssVars` (`--xc-*` overrides), `style`, `className`,
+(`'dark' | 'light' | 'purple'`), `headless` (hide the launcher while retaining modal portals),
+`cssVars` (`--xc-*` overrides), `style`, `className`,
 typed callbacks `onConnecting(walletId)`, `onConnect(account)`, `onError(WalletError)`, and
 standard host attributes such as `id`, `title`, `data-*`, and `aria-*`.
 
@@ -168,6 +171,16 @@ function WalletModal() {
 Explicit connector props are authoritative when raw forwarded attributes overlap: `primaryWallet`,
 `wallets`, and `className` set their native host attributes after passthrough. Per CSS property,
 inline `style` overrides `cssVars`, which overrides the selected `theme`.
+
+For an application-owned launcher, set `headless` and target the flow from the hook:
+
+```tsx
+const { ready, openAndWait } = useWalletModal();
+<WalletConnector headless />
+<button disabled={!ready} onClick={() => void openAndWait({ loginMethod: 'email' })}>
+  Sign in with email
+</button>
+```
 
 Unavailable wallets are hidden by default. Set `showUnavailable` to show an Install action when a
 wallet provides a download URL, or a disabled Unavailable row otherwise. Setting it to `false`

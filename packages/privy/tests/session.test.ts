@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
   phoneLoginWithCode: vi.fn(),
   guestCreate: vi.fn(),
   passkeyGenerateAuthenticationOptions: vi.fn(),
+  passkeyGenerateRegistrationOptions: vi.fn(),
+  passkeyLinkWithPasskey: vi.fn(),
   passkeyGenerateSignupOptions: vi.fn(),
   passkeyLoginWithPasskey: vi.fn(),
   passkeySignupWithPasskey: vi.fn(),
@@ -36,6 +38,8 @@ const mocks = vi.hoisted(() => ({
   onMessage: vi.fn(),
   ping: vi.fn(),
   signWithUserSigner: vi.fn(),
+  mfaGenerateAuthenticationOptions: vi.fn(),
+  mfaSubmitEnrollMfa: vi.fn(),
   create: vi.fn(),
   getWallet: vi.fn(),
   rawSign: vi.fn(),
@@ -209,6 +213,8 @@ function configureClient(): void {
         guest: { create: mocks.guestCreate },
         passkey: {
           generateAuthenticationOptions: mocks.passkeyGenerateAuthenticationOptions,
+          generateRegistrationOptions: mocks.passkeyGenerateRegistrationOptions,
+          linkWithPasskey: mocks.passkeyLinkWithPasskey,
           generateSignupOptions: mocks.passkeyGenerateSignupOptions,
           loginWithPasskey: mocks.passkeyLoginWithPasskey,
           signupWithPasskey: mocks.passkeySignupWithPasskey,
@@ -221,6 +227,15 @@ function configureClient(): void {
         telegram: { authenticate: mocks.telegramAuthenticate },
         customProvider: { syncWithToken: mocks.syncWithToken },
         logout: mocks.logout,
+      },
+      mfa: {
+        passkey: { generateAuthenticationOptions: mocks.mfaGenerateAuthenticationOptions },
+        submitEnrollMfa: mocks.mfaSubmitEnrollMfa,
+      },
+      mfaPromises: {
+        rootPromise: { current: null },
+        on: vi.fn(),
+        off: vi.fn(),
       },
       embeddedWallet: {
         getURL: mocks.getURL,
@@ -336,6 +351,15 @@ beforeEach(() => {
   mocks.passkeyGenerateAuthenticationOptions.mockResolvedValue({
     options: { challenge: 'Y2hhbGxlbmdl' },
   });
+  mocks.passkeyGenerateRegistrationOptions.mockResolvedValue({
+    options: {
+      challenge: 'Y2hhbGxlbmdl',
+      rp: { name: 'XRPL Connect' },
+      user: { id: 'dXNlcg', name: 'user', display_name: 'User' },
+      pub_key_cred_params: [{ type: 'public-key', alg: -7 }],
+    },
+  });
+  mocks.passkeyLinkWithPasskey.mockResolvedValue({ user: user() });
   mocks.passkeyGenerateSignupOptions.mockResolvedValue({
     options: {
       challenge: 'Y2hhbGxlbmdl',
@@ -346,6 +370,10 @@ beforeEach(() => {
   });
   mocks.passkeyLoginWithPasskey.mockResolvedValue({ user: user() });
   mocks.passkeySignupWithPasskey.mockResolvedValue({ user: user() });
+  mocks.mfaGenerateAuthenticationOptions.mockResolvedValue({
+    options: { challenge: 'Y2hhbGxlbmdl', rp_id: 'localhost' },
+  });
+  mocks.mfaSubmitEnrollMfa.mockResolvedValue(undefined);
   mocks.farcasterInitializeAuth.mockResolvedValue({
     channel_token: 'channel-token',
     connect_uri: 'https://warpcast.com/~/sign-in?channelToken=channel-token',
@@ -529,6 +557,90 @@ describe('PrivySession', () => {
       expect(options.query).toBeUndefined();
     }
     await session.disconnect();
+  });
+
+  it('can select built-in dashboard methods explicitly in allowlist mode', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValue({
+      email_auth: true,
+      google_oauth: true,
+      passkey_auth: true,
+    });
+    const session = new PrivySession({
+      appId: 'app-216',
+      loginMethods: [{ id: 'company', getCustomToken: async () => 'custom-token' }],
+      allowedLoginMethods: ['email'],
+    });
+
+    await expect(session.getLoginMethods()).resolves.toEqual([
+      expect.objectContaining({ id: 'email', connectOptions: { loginMethod: 'email' } }),
+    ]);
+    await expect(session.connect('company', new AbortController().signal)).rejects.toThrow(
+      'not configured'
+    );
+    await session.disconnect();
+  });
+
+  it('allows non-OAuth sessions to omit redirectUri', async () => {
+    mocks.fetchPrivyRoute.mockResolvedValue({ email_auth: true });
+    const session = new PrivySession({ appId: 'app-216' });
+
+    await expect(session.getLoginMethods()).resolves.toEqual([
+      expect.objectContaining({ id: 'email' }),
+    ]);
+    await session.disconnect();
+  });
+
+  it('retries an iframe readiness ping that resolves false', async () => {
+    mocks.ping.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const session = new PrivySession({ ...options(), requestTimeoutMs: 1_000 });
+
+    await expect(session.connect('custom', new AbortController().signal)).resolves.toMatchObject({
+      id: walletId,
+    });
+    expect(mocks.ping).toHaveBeenCalledTimes(2);
+    await session.disconnect();
+  });
+
+  it('returns a token only while it belongs to the connected user', async () => {
+    mocks.getAccessToken.mockResolvedValue(accessToken(userId));
+    const session = makeSession();
+    await session.connect('custom', new AbortController().signal);
+
+    await expect(session.getAccessToken()).resolves.toBe(accessToken(userId));
+    mocks.getAccessToken.mockResolvedValue(accessToken('did:privy:other'));
+    await expect(session.getAccessToken()).resolves.toBeNull();
+    await session.disconnect();
+    await expect(session.getAccessToken()).resolves.toBeNull();
+  });
+
+  it('requires a connected, owned wallet for public MFA helpers', async () => {
+    const session = makeSession();
+    await expect(session.mfa.status()).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+
+    configureExistingUser();
+    await session.connect('custom', new AbortController().signal);
+    mocks.userGet.mockResolvedValueOnce({
+      user: { id: 'did:privy:other', linked_accounts: [embeddedAccount()] },
+    });
+    await expect(session.mfa.status()).rejects.toThrow('authenticated user mismatch');
+    await session.disconnect();
+  });
+
+  it('cancels a native passkey link when the connected session is torn down', async () => {
+    configureExistingUser();
+    const session = makeSession();
+    await session.connect('custom', new AbortController().signal);
+    let nativeSignal: AbortSignal | undefined;
+    const create = vi.fn(({ signal }: { signal?: AbortSignal }) => {
+      nativeSignal = signal;
+      return new Promise<Credential>(() => undefined);
+    });
+    const linking = session.mfa.linkPasskey({ credentials: { create } });
+
+    await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
+    await session.disconnect();
+    await expect(linking).rejects.toMatchObject({ code: 'NOT_CONNECTED' });
+    expect(nativeSignal?.aborted).toBe(true);
   });
 
   it('does not initialize a fresh client after an immediate discovery disconnect', async () => {
@@ -1546,7 +1658,16 @@ describe('PrivySession', () => {
     const lost = vi.fn();
     session.onSessionLost(lost);
 
-    await expect(session.connect('google', new AbortController().signal)).rejects.toBe(failure);
+    if (details.code === 'invalid_origin') {
+      await expect(session.connect('google', new AbortController().signal)).rejects.toMatchObject({
+        code: 'CONFIGURATION_REQUIRED',
+        reason: 'origin_not_allowed',
+        message: 'Origin not allowed. Add http://localhost:3000 to Allowed origins.',
+        originalError: failure,
+      });
+    } else {
+      await expect(session.connect('google', new AbortController().signal)).rejects.toBe(failure);
+    }
     expect(lost).not.toHaveBeenCalled();
     expect(window.location.assign).not.toHaveBeenCalled();
     expect(window.sessionStorage.length).toBe(0);
@@ -1650,6 +1771,63 @@ describe('PrivySession', () => {
     await session.disconnect();
   });
 
+  it('allows signing again after the wallet API times out and refuses its late signer request', async () => {
+    configureExistingUser();
+    let lateSign!: () => Promise<unknown>;
+    mocks.rawSign.mockImplementationOnce(
+      (_client, sign) =>
+        new Promise(() => {
+          lateSign = () => sign({ message: 'expired' });
+        })
+    );
+    const session = new PrivySession({ ...options(), requestTimeoutMs: 25 });
+    const wallet = await session.connect('custom', new AbortController().signal);
+    const hash = `0x${'12'.repeat(32)}` as const;
+    const first = session.signHash(wallet, hash, new AbortController().signal);
+    const firstFailure = expect(first).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+
+    await vi.waitFor(() => expect(mocks.rawSign).toHaveBeenCalledOnce());
+    await firstFailure;
+
+    await expect(session.signHash(wallet, hash, new AbortController().signal)).resolves.toBe(
+      `0x${'ab'.repeat(64)}`
+    );
+    await expect(lateSign()).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+    expect(mocks.signWithUserSigner).not.toHaveBeenCalled();
+    expect(mocks.rawSign).toHaveBeenCalledTimes(2);
+    await session.disconnect();
+  });
+
+  it('creates a fresh signer after disconnecting a stalled embedded MFA invocation', async () => {
+    configureExistingUser();
+    mocks.rawSign.mockImplementation(async (_client, sign) => {
+      await sign({ message: 'wallet-api-request' });
+      return { data: { encoding: 'hex', signature: `0x${'ab'.repeat(64)}` } };
+    });
+    let release!: () => void;
+    mocks.signWithUserSigner.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        })
+    );
+    const session = new PrivySession({ ...options(), requestTimeoutMs: 30, teardownTimeoutMs: 10 });
+    const signal = new AbortController().signal;
+    const hash = `0x${'12'.repeat(32)}` as const;
+    const wallet = await session.connect('custom', signal);
+    await expect(session.signHash(wallet, hash, signal)).rejects.toMatchObject({
+      code: 'OPERATION_TIMEOUT',
+    });
+    await expect(session.signHash(wallet, hash, signal)).rejects.toThrow('previous hash signing');
+    expect(mocks.signWithUserSigner).toHaveBeenCalledOnce();
+    await session.disconnect();
+    const restored = await session.connect('custom', signal);
+    expect(mocks.Privy).toHaveBeenCalledTimes(2);
+    await expect(session.signHash(restored, hash, signal)).resolves.toBe(`0x${'ab'.repeat(64)}`);
+    release();
+    await session.disconnect();
+  });
+
   it('verifies the signer once for a burst of signatures and again after a failure', async () => {
     configureExistingUser();
     const session = makeSession();
@@ -1744,6 +1922,7 @@ describe('PrivySession', () => {
 
     await expect(session.connect('custom', new AbortController().signal)).rejects.toMatchObject({
       code: 'OPERATION_TIMEOUT',
+      reason: 'iframe_not_ready',
     });
     expect(mocks.create).not.toHaveBeenCalled();
     await session.disconnect();
@@ -2130,8 +2309,11 @@ describe('PrivySession', () => {
       .catch((error: unknown) => error);
 
     expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toBe('Origin not allowed');
-    expect((failure as { code?: string }).code).not.toBe('CONNECTION_REJECTED');
+    expect((failure as Error).message).toBe(
+      'Origin not allowed. Add http://localhost:3000 to Allowed origins.'
+    );
+    expect((failure as { code?: string }).code).toBe('CONFIGURATION_REQUIRED');
+    expect((failure as { reason?: string }).reason).toBe('origin_not_allowed');
 
     await first.disconnect();
     await second.disconnect();

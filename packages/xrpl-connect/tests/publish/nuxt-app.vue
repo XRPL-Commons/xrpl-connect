@@ -1,9 +1,13 @@
 <script setup>
-import { XamanAdapter } from 'xrpl-connect';
+import 'xrpl-connect/register';
+import { XamanAdapter } from 'xrpl-connect/xaman';
 
 const adapter = new XamanAdapter({ apiKey: 'publish-smoke-test' });
 </script>
 
 <template>
-  <main>{{ adapter.name }}</main>
+  <main>
+    {{ adapter.name }}
+    <xrpl-wallet-connector />
+  </main>
 </template>

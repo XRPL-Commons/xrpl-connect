@@ -15,13 +15,18 @@ import type {
   WalletError,
   WalletManagerOptions,
 } from '@xrpl-connect/core';
-import type { ConnectOptionsFor, SocialLogin, WalletIdentifier } from 'xrpl-connect';
+import type {
+  ConnectOptionsFor,
+  SocialLogin,
+  WalletConnectorOpenOptions,
+  WalletIdentifier,
+} from 'xrpl-connect';
 
 export interface WalletConnectorElement extends HTMLElement {
   socialLogins: readonly SocialLogin[];
   setWalletManager(manager: WalletManager): void;
   open(): Promise<void>;
-  openAndWait(): Promise<AccountInfo>;
+  openAndWait(options?: WalletConnectorOpenOptions): Promise<AccountInfo>;
   close(): void;
   toggle(): void;
 }
@@ -50,7 +55,7 @@ interface InternalContext extends XrplConnectContextValue {
   reportModalError(attempt: symbol | null, error: WalletError): boolean;
   reportModalClosed(attempts: readonly symbol[]): void;
   openModal(): Promise<void>;
-  openAndWaitModal(): Promise<AccountInfo>;
+  openAndWaitModal(options?: WalletConnectorOpenOptions): Promise<AccountInfo>;
   closeModal(): void;
 }
 
@@ -206,8 +211,8 @@ export function createXrplConnect(config: XrplConnectConfig): Plugin {
         openModal() {
           return runWithActiveConnector((connector) => connector.open());
         },
-        openAndWaitModal() {
-          return runWithActiveConnector((connector) => connector.openAndWait());
+        openAndWaitModal(options?: WalletConnectorOpenOptions) {
+          return runWithActiveConnector((connector) => connector.openAndWait(options));
         },
         closeModal() {
           const mountedConnectors = [...connectors];

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
-import '../src/wallet-connector';
+import '../src/register';
 import { MemoryStorageAdapter, WalletManager } from '@xrpl-connect/core';
 import type { AccountInfo, NetworkInfo, WalletAdapter } from '@xrpl-connect/core';
 
@@ -168,6 +168,96 @@ describe('<xrpl-wallet-connector>.openAndWait()', () => {
 
     await expect(first).resolves.toEqual(ACCOUNT);
     await expect(second).resolves.toEqual(ACCOUNT);
+  });
+
+  it('selects a targeted login method once while coalescing same-method waits', async () => {
+    vi.useFakeTimers();
+    try {
+      const getLoginMethods = vi.fn<NonNullable<WalletAdapter['getLoginMethods']>>(async () => [
+        { id: 'email', label: 'Email', connectOptions: { loginMethod: 'email' } },
+      ]);
+      const connect = vi.fn(async () => ACCOUNT);
+      const adapter = { ...fakeAdapter('privy'), getLoginMethods, connect };
+      const element = mountConnector(createManager([adapter]));
+
+      const first = element.openAndWait({ loginMethod: 'email' });
+      const second = element.openAndWait({ loginMethod: 'email' });
+      await vi.advanceTimersByTimeAsync(1000);
+      await flushPromises();
+
+      expect(getLoginMethods).toHaveBeenCalledOnce();
+      expect(connect).toHaveBeenCalledOnce();
+      await expect(first).resolves.toEqual(ACCOUNT);
+      await expect(second).resolves.toEqual(ACCOUNT);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels targeted discovery when the modal closes or the user opens the picker', async () => {
+    const methods = deferred<readonly { id: string; label: string }[]>();
+    const getLoginMethods = vi.fn(() => methods.promise);
+    const connect = vi.fn(async () => ACCOUNT);
+    const adapter = { ...fakeAdapter('privy'), getLoginMethods, connect };
+    const element = mountConnector(createManager([adapter]));
+
+    const pending = element.openAndWait({ loginMethod: 'email' });
+    await flushPromises();
+    (element as unknown as { showWalletList(): void }).showWalletList();
+    methods.resolve([{ id: 'email', label: 'Email' }]);
+    await flushPromises();
+
+    expect(connect).not.toHaveBeenCalled();
+    element.close();
+    await expect(pending).rejects.toThrow(/closed/i);
+  });
+
+  it('restarts targeted discovery for a replacement manager without starting the old wallet', async () => {
+    vi.useFakeTimers();
+    try {
+      const oldMethods = deferred<readonly { id: string; label: string }[]>();
+      const oldConnect = vi.fn(async () => ({ ...ACCOUNT, address: 'rOld' }));
+      const oldAdapter = {
+        ...fakeAdapter('old', { ...ACCOUNT, address: 'rOld' }),
+        getLoginMethods: vi.fn(() => oldMethods.promise),
+        connect: oldConnect,
+      };
+      const newConnect = vi.fn(async () => ({ ...ACCOUNT, address: 'rNew' }));
+      const newAdapter = {
+        ...fakeAdapter('new', { ...ACCOUNT, address: 'rNew' }),
+        getLoginMethods: vi.fn(async () => [{ id: 'email', label: 'Email' }]),
+        connect: newConnect,
+      };
+      const element = mountConnector(createManager([oldAdapter]));
+      const pending = element.openAndWait({ loginMethod: 'email' });
+      await flushPromises();
+
+      element.setWalletManager(createManager([newAdapter]));
+      await vi.advanceTimersByTimeAsync(1000);
+      await flushPromises();
+      await expect(pending).resolves.toEqual({ ...ACCOUNT, address: 'rNew' });
+      expect(newConnect).toHaveBeenCalledOnce();
+
+      oldMethods.resolve([{ id: 'email', label: 'Email' }]);
+      await flushPromises();
+      expect(oldConnect).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rejects an ambiguous login label instead of choosing an adapter arbitrarily', async () => {
+    const first = {
+      ...fakeAdapter('first'),
+      getLoginMethods: async () => [{ id: 'first-email', label: 'Email' }],
+    };
+    const second = {
+      ...fakeAdapter('second'),
+      getLoginMethods: async () => [{ id: 'second-email', label: 'Email' }],
+    };
+    const element = mountConnector(createManager([first, second]));
+
+    await expect(element.openAndWait({ loginMethod: 'Email' })).rejects.toThrow(/ambiguous/i);
   });
 
   it('resolves a connection that completes while availability is still pending', async () => {

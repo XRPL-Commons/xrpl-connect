@@ -25,6 +25,30 @@ The `xrpl-connect` package includes everything you need:
 - **UI**: Beautiful pre-built web component with QR codes and wallet selection
 - **Adapters**: All nine XRPL wallet adapters (Xaman, Crossmark, GemWallet, WalletConnect, Ledger, Xyra, GHOSTSIG, Otsu, and MetaMask Snap)
 
+### Focused imports
+
+The root entry point keeps the one-package setup backwards compatible and
+includes every adapter and the UI. Use focused subpaths when bundle size
+matters:
+
+```ts
+import { WalletManager } from 'xrpl-connect/core';
+import { XamanAdapter } from 'xrpl-connect/xaman';
+```
+
+The available subpaths are `core`, `ui`, `register`, `xaman`, `crossmark`, `gemwallet`,
+`walletconnect`, `ledger`, `xyra`, `ghostsig`, `otsu`, and `metamask-snap`.
+`ui` registers the `<xrpl-wallet-connector>` element. Use `register` as an
+explicit side-effect-only registration import from framework bindings. The root
+entry point continues to register it as before.
+
+For a Privy-only app, import `WalletManager` from `xrpl-connect/core` and
+`PrivyAdapter` from `@xrpl-commons/xrpl-connect-privy`. Add
+`import 'xrpl-connect/register'` if you use the raw connector element.
+The npm installation includes the SDK declarations used by the public root
+exports. These reference `@types/chrome` and `@types/node`. The focused runtime
+imports keep the other wallet adapters out of the browser bundle.
+
 ## Documentation
 
 Please read the documentation here [DOCS](https://xrpl-commons.github.io/xrpl-connect/) as it is way more detailed than the README.
@@ -34,7 +58,7 @@ Please read the documentation here [DOCS](https://xrpl-commons.github.io/xrpl-co
 ### Installation
 
 ```bash
-npm install xrpl-connect@rc xrpl@^4
+npm install xrpl-connect@rc xrpl@^5
 ```
 
 That's it! Everything you need in one package.

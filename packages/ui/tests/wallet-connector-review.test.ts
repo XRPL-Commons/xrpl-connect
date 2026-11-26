@@ -7,7 +7,7 @@ import type {
   WalletTransactionReview,
 } from '@xrpl-connect/core';
 import { TIMINGS } from '../src/constants';
-import '../src/wallet-connector';
+import '../src/register';
 
 const NETWORK: NetworkInfo = { id: 'testnet', name: 'Testnet', wss: 'wss://example' };
 
@@ -242,6 +242,51 @@ describe('WalletConnector transaction review', () => {
     expect((globalThis as { __reviewXss?: boolean }).__reviewXss).toBeUndefined();
   });
 
+  it('renders wrapped Batch inner transactions as readable rows', async () => {
+    const { emit, dialog } = await connectedSetup();
+    emit(
+      createReviewPrompt({
+        review: {
+          ...review,
+          details: [
+            {
+              name: 'RawTransactions',
+              label: 'Inner transactions',
+              value: JSON.stringify([
+                {
+                  RawTransaction: {
+                    TransactionType: 'Payment',
+                    Account: 'rInnerOne',
+                    Amount: '10',
+                  },
+                },
+                {
+                  RawTransaction: {
+                    TransactionType: 'OfferCreate',
+                    Account: 'rInnerTwo',
+                    Sequence: 3,
+                  },
+                },
+              ]),
+            },
+          ],
+        },
+      })
+    );
+
+    const shown = dialog()!;
+    expect(shown.querySelector('.auth-prompt-review-batch')?.textContent).toContain(
+      'Transaction 1: Payment'
+    );
+    expect(shown.querySelector('.auth-prompt-review-batch')?.textContent).toContain(
+      'Transaction 2: OfferCreate'
+    );
+    expect(shown.querySelector('.auth-prompt-review-batch')?.textContent).toContain('rInnerOne');
+    expect(shown.querySelector('.auth-prompt-review-batch')?.textContent).not.toContain(
+      'RawTransaction'
+    );
+  });
+
   it.each([
     ['no details', { review: { ...review, details: [] } }],
     ['no approval handler', { submit: undefined }],
@@ -313,6 +358,54 @@ describe('WalletConnector transaction review', () => {
 
     signing.emit(createReviewPrompt());
     expect(connector.getOverlayRoot()?.querySelector('.auth-prompt-review')).not.toBeNull();
+  });
+
+  it('opens connected MFA in a headless portal and only submits from the user action', async () => {
+    const { connector, emit, dialog } = await connectedSetup();
+    connector.setAttribute('headless', '');
+    expect(connector.shadowRoot?.querySelector('#connect-wallet-button')).toBeNull();
+
+    const submit = vi.fn(async () => undefined);
+    const cancel = vi.fn();
+    emit({
+      kind: 'mfa',
+      title: 'Confirm with your passkey',
+      description: 'Use your passkey to approve this signing request.',
+      submit,
+      cancel,
+    });
+
+    expect(dialog()?.querySelector('#wallet-dialog-title')?.textContent).toBe(
+      'Confirm with your passkey'
+    );
+    expect(submit).not.toHaveBeenCalled();
+    await connector.submitAuthPrompt();
+    expect(submit).toHaveBeenCalledOnce();
+
+    connector.close();
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('subscribes to connected MFA when mounted after the wallet is already connected', async () => {
+    const signing = createSigningAdapter();
+    const manager = new WalletManager({ adapters: [signing.adapter], autoConnect: false });
+    await manager.connect(signing.adapter.id);
+    const connector = mountConnector(manager);
+    connector.setAttribute('headless', '');
+
+    const cancel = vi.fn();
+    signing.emit({
+      kind: 'mfa',
+      title: 'Confirm with your passkey',
+      submit: vi.fn(async () => undefined),
+      cancel,
+    });
+
+    expect(connector.getOverlayRoot()?.querySelector('#wallet-dialog-title')?.textContent).toBe(
+      'Confirm with your passkey'
+    );
+    connector.close();
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   it('shows a review shared by several connectors in only one modal', async () => {

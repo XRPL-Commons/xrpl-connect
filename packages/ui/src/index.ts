@@ -3,7 +3,13 @@
  * Web component UI library for XRPL Connect
  */
 
-export { WalletConnectorElement, type WalletConnectorElementInstance } from './wallet-connector';
+import './register';
+
+export {
+  WalletConnectorElement,
+  type WalletConnectorElementInstance,
+  type WalletConnectorOpenOptions,
+} from './wallet-connector';
 export * from './customization';
 
 // Export constants and utilities for advanced use cases

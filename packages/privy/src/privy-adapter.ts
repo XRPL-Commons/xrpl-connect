@@ -3,6 +3,8 @@ import {
   createWalletError,
   isStandardNetworkId,
   isWalletError,
+  WalletError,
+  WalletErrorCode,
   resolveNetwork,
   type AccountInfo,
   type ConnectOptions,
@@ -15,30 +17,52 @@ import {
   type WalletAdapter,
   type WalletAdapterEvent,
   type WalletAuthPrompt,
+  type WalletCapabilities,
+  type WalletErrorReason,
   type WalletLoginMethod,
   type WalletTransactionReview,
-} from 'xrpl-connect';
+} from 'xrpl-connect/core';
 import { PrivySession } from './session';
+import type { PrivyMfaApi } from './mfa';
 import { PRIVY_ATTRIBUTION, PRIVY_SYMBOL } from './branding';
 import { createTransactionReview } from './review';
 import type { PrivySessionOptions, PrivyWallet } from './session-types';
 import {
   assertFeeWithinLimit,
   MAX_FEE_XRP,
+  prepareMultisigningInput,
   prepareSigningInput,
+  signPreparedMultisignedTransaction,
   signPreparedTransaction,
   validateWallet,
 } from './signing';
+import {
+  assertBatchSubmissionReady,
+  prepareBatchSignerInput,
+  signPreparedBatchSignerTransaction,
+  type PrivyBatchSigningOptions,
+} from './batch-signing';
 
 /**
  * How the user approves a transaction before the embedded wallet signs it.
  * A function receives the review and a signal that aborts when the connection
  * ends, and approves only by returning `true`.
  */
+export type PrivySigningRole = 'single' | 'multisign' | 'batch';
+
+/** Privy review metadata identifying the signature produced by approval. */
+export type PrivyTransactionReview = WalletTransactionReview & {
+  readonly signingRole: PrivySigningRole;
+  /** Inner account authorized by a BatchSigner contribution. */
+  readonly batchAccount?: string;
+  /** Nested multisign account authorized by a BatchSigner contribution. */
+  readonly signerAccount?: string;
+};
+
 export type PrivyTransactionReviewOption =
   | 'prompt'
   | 'none'
-  | ((review: WalletTransactionReview, signal: AbortSignal) => boolean | Promise<boolean>);
+  | ((review: PrivyTransactionReview, signal: AbortSignal) => boolean | Promise<boolean>);
 
 export interface PrivyAdapterOptions extends PrivySessionOptions {
   /**
@@ -50,6 +74,8 @@ export interface PrivyAdapterOptions extends PrivySessionOptions {
    */
   transactionReview?: PrivyTransactionReviewOption;
 }
+
+type PrivySessionLike = Pick<PrivySession, keyof PrivySession>;
 
 /** How long an unused ledger connection stays open for the next signature. */
 const LEDGER_IDLE_MS = 30_000;
@@ -77,16 +103,48 @@ function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-export class PrivyAdapter implements WalletAdapter {
+function mfaWalletError(error: unknown): WalletError | undefined {
+  const reason = (error as { reason?: WalletErrorReason } | null)?.reason;
+  if (reason === 'mfa_timeout') {
+    return new WalletError(
+      WalletErrorCode.OPERATION_TIMEOUT,
+      'Privy MFA timed out.',
+      asError(error),
+      reason
+    );
+  }
+  if (reason === 'mfa_cancelled') {
+    return new WalletError(
+      WalletErrorCode.SIGN_REJECTED,
+      'Privy MFA was cancelled.',
+      asError(error),
+      reason
+    );
+  }
+  if (reason === 'mfa_required') {
+    return new WalletError(
+      WalletErrorCode.SIGN_FAILED,
+      'Privy MFA requires a passkey confirmation.',
+      asError(error),
+      reason
+    );
+  }
+  return undefined;
+}
+
+export class PrivyWalletAdapter implements WalletAdapter {
   readonly id = 'privy';
   readonly name = 'Privy';
   readonly icon = PRIVY_SYMBOL;
   readonly loginBranding = { label: 'Protected by Privy', logo: PRIVY_ATTRIBUTION } as const;
   readonly url = 'https://privy.io';
-  readonly capabilities = { sign: true, signAndSubmit: true, signMessage: false } as const;
+  readonly capabilities: Readonly<Required<WalletCapabilities>> = {
+    sign: true,
+    signAndSubmit: true,
+    signMessage: false,
+  };
   readonly keepsSessionOnRestoreTimeout = true;
 
-  private readonly session: PrivySession;
   private readonly listeners = new Map<WalletAdapterEvent, Set<(data: unknown) => void>>();
   private controller: AbortController | null = null;
   private wallet: PrivyWallet | null = null;
@@ -94,11 +152,16 @@ export class PrivyAdapter implements WalletAdapter {
   private teardown: Promise<void> | null = null;
   private ledger: LedgerConnection | null = null;
   private readonly promptListeners = new Set<(prompt: WalletAuthPrompt | null) => void>();
-  /** Settles once the latest review is answered; reviews never overlap. */
+  /** Settles once the latest review-to-sign operation finishes. */
   private reviewQueue: Promise<void> = Promise.resolve();
 
-  constructor(private readonly options: PrivyAdapterOptions) {
-    this.session = new PrivySession(options);
+  readonly mfa: PrivyMfaApi;
+
+  constructor(
+    private readonly options: PrivyAdapterOptions,
+    private readonly session: PrivySessionLike
+  ) {
+    this.mfa = session.mfa;
     this.session.onSessionLost(() => {
       const connected = this.account !== null;
       this.controller?.abort();
@@ -113,7 +176,6 @@ export class PrivyAdapter implements WalletAdapter {
   getMissingConfiguration(): readonly string[] {
     const missing: string[] = [];
     if (!this.options.appId?.trim()) missing.push('appId');
-    if (!this.options.redirectUri?.trim()) missing.push('redirectUri');
     return missing;
   }
 
@@ -202,6 +264,18 @@ export class PrivyAdapter implements WalletAdapter {
     }
   }
 
+  async getAccessToken(): Promise<string | null> {
+    const controller = this.controller;
+    if (!controller || !this.account) return null;
+    try {
+      const token = await this.session.getAccessToken(controller.signal);
+      return controller.signal.aborted ? null : token;
+    } catch (error) {
+      if (controller.signal.aborted) return null;
+      throw error;
+    }
+  }
+
   async disconnect(): Promise<void> {
     await this.endSession(true);
   }
@@ -242,14 +316,76 @@ export class PrivyAdapter implements WalletAdapter {
   async sign(transaction: Transaction): Promise<SignedTransaction> {
     try {
       const { wallet, account, controller } = this.signingContext();
+      if (transaction.SigningPubKey === '') {
+        const prepared = prepareMultisigningInput(transaction, wallet);
+        return await this.signPrepared(
+          prepared,
+          account.network,
+          controller,
+          'sign',
+          'multisign',
+          undefined,
+          () =>
+            signPreparedMultisignedTransaction(prepared, wallet, (hash) => {
+              this.assertActive(controller);
+              return this.session.signHash(wallet, hash, controller.signal);
+            })
+        );
+      }
       const input = prepareSigningInput(transaction, wallet);
       const prepared =
         input.Fee !== undefined && input.Sequence !== undefined
           ? input
           : await this.autofill(input, account.network, controller);
-      return await this.signPrepared(prepared, wallet, account.network, controller, 'sign');
+      return await this.signPrepared(
+        prepared,
+        account.network,
+        controller,
+        'sign',
+        'single',
+        undefined,
+        () =>
+          signPreparedTransaction(prepared, wallet, (hash) => {
+            this.assertActive(controller);
+            return this.session.signHash(wallet, hash, controller.signal);
+          })
+      );
     } catch (error) {
       if (isWalletError(error)) throw error;
+      const mfaFailure = mfaWalletError(error);
+      if (mfaFailure) throw mfaFailure;
+      throw createWalletError.signFailed(asError(error));
+    }
+  }
+
+  /**
+   * Sign one XLS-56 BatchSigner contribution. This never submits: callers must
+   * combine contributions before submitting the outer Batch transaction.
+   */
+  async signBatch(
+    transaction: Transaction,
+    options: PrivyBatchSigningOptions = {}
+  ): Promise<SignedTransaction> {
+    try {
+      const { wallet, account, controller } = this.signingContext();
+      const prepared = prepareBatchSignerInput(transaction, wallet, options);
+      return await this.signPrepared(
+        prepared.transaction,
+        account.network,
+        controller,
+        'sign',
+        'batch',
+        { batchAccount: prepared.batchAccount, signerAccount: prepared.signerAccount },
+        () =>
+          signPreparedBatchSignerTransaction(prepared, wallet, (hash) => {
+            this.assertActive(controller);
+            return this.session.signHash(wallet, hash, controller.signal);
+          })
+      );
+    } catch (error) {
+      if (isWalletError(error)) throw error;
+      const mfaFailure = mfaWalletError(error);
+      if (mfaFailure) throw mfaFailure;
       throw createWalletError.signFailed(asError(error));
     }
   }
@@ -257,6 +393,12 @@ export class PrivyAdapter implements WalletAdapter {
   async signAndSubmit(transaction: Transaction): Promise<SubmittedTransaction> {
     try {
       const { wallet, account, controller } = this.signingContext();
+      if (transaction.SigningPubKey === '') {
+        throw createWalletError.unsupportedMethod(
+          'Privy ordinary multisigning returns one contribution; combine and submit contributions separately'
+        );
+      }
+      if (transaction.TransactionType === 'Batch') assertBatchSubmissionReady(transaction);
       const input = prepareSigningInput(transaction, wallet);
       // submitAndWait requires a ledger bound, even when Fee and Sequence are supplied.
       const prepared = await this.autofill(input, account.network, controller);
@@ -264,10 +406,16 @@ export class PrivyAdapter implements WalletAdapter {
       // no connection open and a rejection leaves the shared one intact.
       const signed = await this.signPrepared(
         prepared,
-        wallet,
         account.network,
         controller,
-        'signAndSubmit'
+        'signAndSubmit',
+        'single',
+        undefined,
+        () =>
+          signPreparedTransaction(prepared, wallet, (hash) => {
+            this.assertActive(controller);
+            return this.session.signHash(wallet, hash, controller.signal);
+          })
       );
       return await this.withClient(account.network, async (client) => {
         this.assertActive(controller);
@@ -286,6 +434,8 @@ export class PrivyAdapter implements WalletAdapter {
       });
     } catch (error) {
       if (isWalletError(error)) throw error;
+      const mfaFailure = mfaWalletError(error);
+      if (mfaFailure) throw mfaFailure;
       throw createWalletError.signFailed(asError(error));
     }
   }
@@ -326,21 +476,29 @@ export class PrivyAdapter implements WalletAdapter {
 
   private async signPrepared(
     transaction: Transaction,
-    wallet: PrivyWallet,
     network: NetworkInfo,
     controller: AbortController,
-    action: WalletTransactionReview['action']
+    action: WalletTransactionReview['action'],
+    signingRole: PrivySigningRole,
+    reviewMetadata: Pick<PrivyTransactionReview, 'batchAccount' | 'signerAccount'> | undefined,
+    sign: () => Promise<SignedTransaction>
   ): Promise<SignedTransaction> {
     this.assertActive(controller);
     assertFeeWithinLimit(transaction);
-    await this.review(transaction, network, action, controller);
-    this.assertActive(controller);
-    const signed = await signPreparedTransaction(transaction, wallet, (hash) => {
+    const previous = this.reviewQueue;
+    let finished!: () => void;
+    this.reviewQueue = new Promise<void>((resolve) => (finished = resolve));
+    try {
+      await previous;
       this.assertActive(controller);
-      return this.session.signHash(wallet, hash, controller.signal);
-    });
-    this.assertActive(controller);
-    return signed;
+      await this.review(transaction, network, action, signingRole, reviewMetadata, controller);
+      this.assertActive(controller);
+      const signed = await sign();
+      this.assertActive(controller);
+      return signed;
+    } finally {
+      finished();
+    }
   }
 
   /**
@@ -351,27 +509,64 @@ export class PrivyAdapter implements WalletAdapter {
     transaction: Transaction,
     network: NetworkInfo,
     action: WalletTransactionReview['action'],
+    signingRole: PrivySigningRole,
+    reviewMetadata: Pick<PrivyTransactionReview, 'batchAccount' | 'signerAccount'> | undefined,
     controller: AbortController
   ): Promise<void> {
     const reviewer = this.options.transactionReview;
     if (reviewer === 'none') return;
+    const review = this.createReview(transaction, network, action, signingRole, reviewMetadata);
+    const approved =
+      typeof reviewer === 'function'
+        ? await this.untilAborted(controller.signal, () => reviewer(review, controller.signal))
+        : await this.promptForApproval(review, controller.signal);
+    this.assertActive(controller);
+    // Anything but an explicit `true`, such as a forgotten return, rejects.
+    if (approved !== true) throw createWalletError.signRejected();
+  }
+
+  private createReview(
+    transaction: Transaction,
+    network: NetworkInfo,
+    action: WalletTransactionReview['action'],
+    signingRole: PrivySigningRole,
+    reviewMetadata: Pick<PrivyTransactionReview, 'batchAccount' | 'signerAccount'> | undefined
+  ): PrivyTransactionReview {
     const review = createTransactionReview(transaction, network, action);
-    const previous = this.reviewQueue;
-    let finished!: () => void;
-    this.reviewQueue = new Promise<void>((resolve) => (finished = resolve));
-    try {
-      await previous;
-      this.assertActive(controller);
-      const approved =
-        typeof reviewer === 'function'
-          ? await this.untilAborted(controller.signal, () => reviewer(review, controller.signal))
-          : await this.promptForApproval(review, controller.signal);
-      this.assertActive(controller);
-      // Anything but an explicit `true`, such as a forgotten return, rejects.
-      if (approved !== true) throw createWalletError.signRejected();
-    } finally {
-      finished();
+    if (signingRole === 'single') {
+      return Object.freeze({ ...review, signingRole, ...reviewMetadata });
     }
+    const roleLabel = signingRole === 'multisign' ? 'Ordinary multisignature' : 'BatchSigner';
+    const roleDetail = Object.freeze({
+      name: 'signingRole',
+      label: 'Signing role',
+      value: roleLabel,
+    });
+    const contributionDetails: WalletTransactionReview['details'][number][] = [roleDetail];
+    if (reviewMetadata?.batchAccount !== undefined) {
+      contributionDetails.push(
+        Object.freeze({
+          name: 'batchAccount',
+          label: 'Batch account',
+          value: reviewMetadata.batchAccount,
+        })
+      );
+    }
+    if (reviewMetadata?.signerAccount !== undefined) {
+      contributionDetails.push(
+        Object.freeze({
+          name: 'signerAccount',
+          label: 'Nested signer account',
+          value: reviewMetadata.signerAccount,
+        })
+      );
+    }
+    return Object.freeze({
+      ...review,
+      signingRole,
+      ...reviewMetadata,
+      details: Object.freeze([...contributionDetails, ...review.details]),
+    });
   }
 
   private untilAborted<T>(signal: AbortSignal, operation: () => T | Promise<T>): Promise<T> {
@@ -386,13 +581,12 @@ export class PrivyAdapter implements WalletAdapter {
     });
   }
 
-  private promptForApproval(
-    review: WalletTransactionReview,
-    signal: AbortSignal
-  ): Promise<boolean> {
+  private promptForApproval(review: PrivyTransactionReview, signal: AbortSignal): Promise<boolean> {
     if (this.promptListeners.size === 0) {
       // Nothing can show the review or answer it, so the signature could never be approved.
-      return Promise.reject(createWalletError.signFailed(new Error(NO_REVIEWER_MESSAGE)));
+      return Promise.reject(
+        new WalletError(WalletErrorCode.SIGN_FAILED, NO_REVIEWER_MESSAGE, undefined, 'no_reviewer')
+      );
     }
     return new Promise<boolean>((resolve, reject) => {
       let settled = false;
@@ -410,10 +604,7 @@ export class PrivyAdapter implements WalletAdapter {
       this.emitPrompt(
         Object.freeze({
           title: 'Review transaction',
-          description:
-            review.action === 'signAndSubmit'
-              ? 'Approving signs this transaction with your Privy wallet and submits it to the XRP Ledger.'
-              : 'Approving signs this transaction with your Privy wallet. The app can then submit it to the XRP Ledger.',
+          description: this.reviewDescription(review),
           review,
           submitLabel: 'Approve',
           submit: async () => settle(true),
@@ -421,6 +612,18 @@ export class PrivyAdapter implements WalletAdapter {
         })
       );
     });
+  }
+
+  private reviewDescription(review: PrivyTransactionReview): string {
+    if (review.signingRole === 'multisign') {
+      return 'Approving creates one ordinary multisignature contribution with your Privy wallet. Combine it with the other signer contributions before submitting.';
+    }
+    if (review.signingRole === 'batch') {
+      return 'Approving creates one BatchSigner contribution with your Privy wallet. Combine all contributions before submitting the outer Batch transaction.';
+    }
+    return review.action === 'signAndSubmit'
+      ? 'Approving signs this transaction with your Privy wallet and submits it to the XRP Ledger.'
+      : 'Approving signs this transaction with your Privy wallet. The app can then submit it to the XRP Ledger.';
   }
 
   private emitPrompt(prompt: WalletAuthPrompt | null): void {
@@ -490,5 +693,11 @@ export class PrivyAdapter implements WalletAdapter {
     // Closing the socket must not replace an operation's outcome: a failed
     // close after a validated submission would invite a duplicate retry.
     void ledger.client.disconnect().catch(() => undefined);
+  }
+}
+
+export class PrivyAdapter extends PrivyWalletAdapter {
+  constructor(options: PrivyAdapterOptions) {
+    super(options, new PrivySession(options));
   }
 }

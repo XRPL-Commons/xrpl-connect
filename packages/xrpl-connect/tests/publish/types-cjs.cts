@@ -27,6 +27,11 @@ import {
   type XamanReturnUrl,
   type XyraConnectOptions,
 } from 'xrpl-connect';
+import { WalletManager as CoreWalletManager } from 'xrpl-connect/core';
+import { XamanAdapter as FocusedXamanAdapter } from 'xrpl-connect/xaman';
+// @ts-expect-error The core entry intentionally excludes adapter exports.
+import { XamanAdapter as CoreXamanAdapter } from 'xrpl-connect/core';
+import { WalletManager as UiWalletManager } from 'xrpl-connect/ui';
 
 interface TypedCustomWalletOptions {
   credential: string;
@@ -54,6 +59,13 @@ const packagedAdapters = createAdapters({
   walletconnect: { projectId: 'project-id' },
 });
 const manager = new WalletManager({ adapters: packagedAdapters });
+const focusedManager = new CoreWalletManager({ adapters: packagedAdapters });
+const focusedXaman = new FocusedXamanAdapter({ apiKey: 'focused-api-key' });
+void focusedManager;
+void focusedXaman;
+void CoreXamanAdapter;
+// @ts-expect-error The UI exposes the manager type, but the constructor lives in core.
+void UiWalletManager;
 declare const preparedTransaction: import('xrpl').SubmittableTransaction;
 void manager.sign(preparedTransaction);
 void manager.signAndSubmit(preparedTransaction);

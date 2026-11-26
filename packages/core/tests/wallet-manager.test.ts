@@ -1352,6 +1352,74 @@ describe('WalletManager.connect()', () => {
 });
 
 describe('WalletManager.reconnect()', () => {
+  it('joins a restore during storage loading and adapter connection', async () => {
+    let finish!: (account: AccountInfo) => void;
+    const adapter = {
+      ...createFakeAdapter(),
+      hasPendingConnection: () => true,
+      connect: vi.fn(() => new Promise<AccountInfo>((resolve) => (finish = resolve))),
+    };
+    const other = { ...createFakeAdapter(), id: 'other' };
+    const manager = new WalletManager({
+      adapters: [adapter, other],
+      storage: new MemoryStorageAdapter(),
+    });
+    const onConnect = vi.fn();
+    manager.on('connect', onConnect);
+    const first = manager.reconnect();
+    const early = manager.reconnect();
+    await vi.waitFor(() => expect(adapter.connect).toHaveBeenCalledOnce());
+    const late = manager.reconnect();
+    await expect(manager.connect(other.id)).rejects.toMatchObject({ code: 'ALREADY_CONNECTED' });
+    finish(ACCOUNT);
+    const results = await Promise.all([first, early, late]);
+    expect(results).toEqual([ACCOUNT, ACCOUNT, ACCOUNT]);
+    expect(results[0]).not.toBe(results[1]);
+    expect(onConnect).toHaveBeenCalledOnce();
+    expect(adapter.connect).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the new restore joinable when a disconnected attempt settles late', async () => {
+    const completions: Array<(account: AccountInfo) => void> = [];
+    const adapter = {
+      ...createFakeAdapter(),
+      hasPendingConnection: () => true,
+      connect: vi.fn(() => new Promise<AccountInfo>((resolve) => completions.push(resolve))),
+    };
+    const manager = new WalletManager({ adapters: [adapter], storage: new MemoryStorageAdapter() });
+    const stale = manager.reconnect();
+    await vi.waitFor(() => expect(completions).toHaveLength(1));
+    await manager.disconnect();
+    const fresh = manager.reconnect();
+    await vi.waitFor(() => expect(completions).toHaveLength(2));
+    completions[0](ACCOUNT);
+    await expect(stale).resolves.toBeNull();
+    const joined = manager.reconnect();
+    completions[1](ACCOUNT);
+    await expect(Promise.all([fresh, joined])).resolves.toEqual([ACCOUNT, ACCOUNT]);
+    expect(adapter.connect).toHaveBeenCalledTimes(2);
+  });
+
+  it('shares the failure, respects the caller error policy and permits a retry', async () => {
+    const failure = createWalletError.operationTimeout('Authorization');
+    const adapter = {
+      ...createFakeAdapter(),
+      hasPendingConnection: () => true,
+      connect: vi.fn().mockRejectedValueOnce(failure).mockResolvedValue(ACCOUNT),
+    };
+    const manager = new WalletManager({ adapters: [adapter], storage: new MemoryStorageAdapter() });
+    const results = await Promise.allSettled([
+      manager.reconnect(),
+      manager.reconnect({ throwOnError: true }),
+    ]);
+    expect(results).toEqual([
+      { status: 'fulfilled', value: null },
+      { status: 'rejected', reason: failure },
+    ]);
+    expect(adapter.connect).toHaveBeenCalledOnce();
+    await expect(manager.reconnect({ throwOnError: true })).resolves.toEqual(ACCOUNT);
+  });
+
   /**
    * Build an adapter that records every ConnectOptions it receives, so a test
    * can assert what reconnect() replayed. Mirrors a hardware wallet where the

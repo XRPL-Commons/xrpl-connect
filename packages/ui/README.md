@@ -76,6 +76,7 @@ The native `nonce` attribute authorizes connector styles under CSP. Set it befor
 | `primary-wallet`   | string  | -       | Wallet ID to display first (e.g., `'xaman'`)                                              |
 | `wallets`          | string  | -       | Comma-separated list of wallet IDs to include (e.g., `'xaman,crossmark,walletconnect'`)   |
 | `show-unavailable` | boolean | false   | Show unavailable wallets with an Install link, or a disabled row when no URL is available |
+| `headless`         | boolean | false   | Keep the body-level modal portals without rendering a focusable launcher                  |
 
 Use the supported CSS variables and stable shadow parts documented in the
 [Customization Guide](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/docs/guide/customization.md).
@@ -109,7 +110,7 @@ interface WalletConnectorElementInstance extends HTMLElement {
   socialLogins: readonly SocialLogin[];
   setWalletManager(manager: WalletManager): void;
   open(): Promise<void>;
-  openAndWait(): Promise<AccountInfo>;
+  openAndWait(options?: { loginMethod?: string }): Promise<AccountInfo>;
   close(): void;
   toggle(): void;
 }
@@ -161,15 +162,29 @@ const connector = document.querySelector('xrpl-wallet-connector');
 connector.open();
 ```
 
-#### `openAndWait()`
+#### `openAndWait(options?)`
 
 Opens the modal and resolves with the connected account. It resolves immediately
 if the manager is already connected, and rejects if no manager is configured or
-the user closes the modal first.
+the user closes the modal first. Pass a discovered login method ID or label to
+open the matching flow directly; concurrent calls for the same method share the
+same connection attempt.
 
 ```typescript
 const account = await connector.openAndWait();
 console.log(account.address);
+```
+
+For an application-owned launcher, combine `headless` with a targeted method:
+
+```html
+<xrpl-wallet-connector id="connector" headless></xrpl-wallet-connector>
+<button
+  type="button"
+  onclick="void document.getElementById('connector').openAndWait({ loginMethod: 'email' })"
+>
+  Sign in with email
+</button>
 ```
 
 Successful connections also update the most-recently-used ordering stored at
@@ -739,6 +754,12 @@ host so fixed positioning is not constrained by transformed ancestors:
 ```
 
 ### Styling
+
+The modal portal exposes `::part(overlay)`, `::part(modal)`, and
+`::part(close-button)` plus `::part(approve-button)`, `::part(reject-button)`,
+and `::part(input)` while a transaction review or authentication prompt is open.
+Use the portal host selectors `[data-xrpl-overlay-portal]` and
+`[data-xrpl-account-modal-portal]` when styling body-level portals.
 
 The component includes comprehensive CSS for:
 

@@ -8,12 +8,13 @@ import type {
 import type {
   ConnectOptionsFor,
   SocialLogin,
+  WalletConnectorOpenOptions,
   WalletConnectorCssVars,
   WalletIdentifier,
 } from 'xrpl-connect';
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
 
-export type { SocialLogin } from 'xrpl-connect';
+export type { SocialLogin, WalletConnectorOpenOptions } from 'xrpl-connect';
 
 /**
  * Configuration for {@link XrplConnectProvider}. Identical to the core
@@ -53,7 +54,7 @@ export interface XrplConnectContextValue {
   /** @internal — cancels modal attempts owned by a closing connector. */
   reportModalClosed: (attempts: readonly symbol[]) => void;
   openModal: () => Promise<void>;
-  openAndWaitModal: () => Promise<AccountInfo>;
+  openAndWaitModal: (options?: WalletConnectorOpenOptions) => Promise<AccountInfo>;
   closeModal: () => void;
 }
 
@@ -65,7 +66,7 @@ export interface WalletConnectorElement extends HTMLElement {
   socialLogins: readonly SocialLogin[];
   setWalletManager(manager: WalletManager): void;
   open(): Promise<void>;
-  openAndWait(): Promise<AccountInfo>;
+  openAndWait(options?: WalletConnectorOpenOptions): Promise<AccountInfo>;
   close(): void;
   toggle(): void;
 }
@@ -97,6 +98,8 @@ export interface WalletConnectorProps
   socialLogins?: readonly SocialLogin[];
   /** Show unavailable wallets (maps to the `show-unavailable` boolean attribute). */
   showUnavailable?: boolean;
+  /** Keep the launcher hidden while retaining the body-level modal portals. */
+  headless?: boolean;
   /** Built-in theme preset. Overridden per-token by `cssVars`. */
   theme?: WalletConnectorTheme;
   /** Supported `--xc-*` custom properties to override modal styling. */

@@ -17,6 +17,7 @@ export type {
   WalletConnectorProps,
   WalletConnectorTheme,
   WalletConnectorElement,
+  WalletConnectorOpenOptions,
   SocialLogin,
 } from './types';
 export type { WalletConnectorIntrinsicProps } from './jsx';

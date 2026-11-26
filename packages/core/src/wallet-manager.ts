@@ -14,7 +14,7 @@ import type {
   SignedTransaction,
   SignedMessage,
   SubmittedTransaction,
-  WalletEvent,
+  WalletEventMap,
   ConnectOptions,
   ConnectOptionsFor,
   NetworkConfig,
@@ -43,6 +43,8 @@ import { TIME } from './constants';
 import { withTimeout } from './async';
 
 const AVAILABILITY_TIMED_OUT = Symbol('availability-timed-out');
+
+type RestoreResult = AccountInfo | null | { error: unknown };
 
 /**
  * Compare the network an adapter reports with the network a session requested.
@@ -128,7 +130,7 @@ function describeFailure(error: WalletError): Record<string, string> {
 /**
  * Main class for managing wallet connections
  */
-export class WalletManager extends EventEmitter<WalletEvent> {
+export class WalletManager extends EventEmitter<WalletEventMap> {
   adapters: Map<string, WalletAdapter> = new Map();
   private currentAdapter: WalletAdapter | null = null;
   private currentAccount: AccountInfo | null = null;
@@ -148,6 +150,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   private sessionGeneration = 0;
   private connectionAttemptGeneration = 0;
   private reconnectGeneration = 0;
+  private pendingRestore?: Promise<RestoreResult>;
   private pendingReconnects = 0;
   /** A reconnect left a stored session it could not restore in place for a later retry. */
   private retainedStoredSession = false;
@@ -415,6 +418,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
    */
   async disconnect(): Promise<void> {
     this.reconnectGeneration += 1;
+    this.pendingRestore = undefined;
     let signalFailed = false;
     let signalError: unknown;
     try {
@@ -535,16 +539,36 @@ export class WalletManager extends EventEmitter<WalletEvent> {
   }
 
   /**
-   * Restore a previous session or complete a returned wallet authorization
+   * Restore a previous session or complete a returned wallet authorization.
+   * Concurrent callers share the attempt. Set throwOnError to distinguish a
+   * failed restore from the absence of a saved session.
    */
-  async reconnect(): Promise<AccountInfo | null> {
-    if (this.currentAdapter && this.currentAccount) {
-      return this.cloneAccount(this.currentAccount);
-    }
-    if (this.connectingAdapter) {
-      throw createWalletError.alreadyConnected(this.connectingAdapter.name);
+  async reconnect(options?: { throwOnError?: boolean }): Promise<AccountInfo | null> {
+    let restore = this.pendingRestore;
+    if (!restore) {
+      if (this.currentAdapter && this.currentAccount) {
+        return this.cloneAccount(this.currentAccount);
+      }
+      if (this.connectingAdapter) {
+        throw createWalletError.alreadyConnected(this.connectingAdapter.name);
+      }
+      restore = this.restoreSession();
+      this.pendingRestore = restore;
     }
 
+    try {
+      const result = await restore;
+      if (result && 'error' in result) {
+        if (options?.throwOnError) throw result.error;
+        return null;
+      }
+      return result && this.cloneAccount(result);
+    } finally {
+      if (this.pendingRestore === restore) this.pendingRestore = undefined;
+    }
+  }
+
+  private async restoreSession(): Promise<RestoreResult> {
     const reconnectGeneration = this.reconnectGeneration;
     this.pendingReconnects += 1;
     this.retainedStoredSession = false;
@@ -631,7 +655,7 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       if (completingAuthorization) {
         this.logger.warn('Returned wallet authorization failed:', error);
         this.retainedStoredSession = attemptedStateSnapshot !== null;
-        return null;
+        return { error };
       }
       // For adapters that restore without user interaction, a timeout says
       // nothing about whether the session is still valid. Keep it until it
@@ -644,11 +668,11 @@ export class WalletManager extends EventEmitter<WalletEvent> {
       ) {
         this.logger.warn('Reconnection timed out; keeping the stored session:', error);
         this.retainedStoredSession = true;
-        return null;
+        return { error };
       }
       this.logger.warn('Reconnection failed:', error);
       await this.clearStateIfSnapshotMatches(reconnectGeneration, attemptedStateSnapshot);
-      return null;
+      return { error };
     } finally {
       this.pendingReconnects -= 1;
     }

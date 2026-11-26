@@ -9,7 +9,7 @@ import { renderErrorView } from '../src/views/ErrorView';
 import { renderLoadingView } from '../src/views/LoadingView';
 import { renderQRView } from '../src/views/QRView';
 import { renderWalletListView } from '../src/views/WalletListView';
-import '../src/wallet-connector';
+import '../src/register';
 
 const HOSTILE_TEXT = `"><img data-xss onerror="globalThis.__xssExecuted=true"><script data-xss></script>`;
 

@@ -1,3 +1,5 @@
+import 'xrpl-connect/register';
+
 import {
   defineComponent,
   h,
@@ -51,6 +53,7 @@ export const WalletConnector = defineComponent({
     wallets: Array as PropType<WalletIdentifier[]>,
     socialLogins: Array as PropType<readonly SocialLogin[]>,
     showUnavailable: Boolean,
+    headless: Boolean,
     theme: String as PropType<WalletConnectorTheme>,
     cssVars: Object as PropType<WalletConnectorCssVars>,
   },
@@ -239,6 +242,7 @@ export const WalletConnector = defineComponent({
         'primary-wallet': props.primaryWallet,
         wallets: props.wallets?.join(','),
         'show-unavailable': props.showUnavailable ? '' : undefined,
+        headless: props.headless ? '' : undefined,
         style: [props.theme ? THEMES[props.theme] : undefined, props.cssVars, attrs.style],
       });
   },

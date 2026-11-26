@@ -32,6 +32,7 @@ export type {
   WalletConnectionOptionsById,
   ReconnectOptions,
   WalletEvent,
+  WalletEventMap,
   WalletAdapterEvent,
   StorageAdapter,
   StoredState,
@@ -67,6 +68,7 @@ export {
 // Errors
 export {
   WalletError,
+  type WalletErrorReason,
   createWalletError,
   isWalletError,
   getErrorMessage,

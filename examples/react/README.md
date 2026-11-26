@@ -85,7 +85,7 @@ The monorepo uses workspace links. When copying this example into a standalone p
 the published packages explicitly:
 
 ```bash
-pnpm add @xrpl-commons/xrpl-connect-react@rc @xrpl-commons/xrpl-connect-privy@rc xrpl-connect@rc xrpl@^4 react react-dom
+pnpm add @xrpl-commons/xrpl-connect-react@rc @xrpl-commons/xrpl-connect-privy@rc xrpl-connect@rc xrpl@^5 react react-dom
 ```
 
 ### 4. Run Development Server

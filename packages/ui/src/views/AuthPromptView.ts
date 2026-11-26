@@ -31,6 +31,86 @@ export function isTransactionReviewPrompt(prompt: WalletAuthPrompt): boolean {
 /** Values longer than this, such as addresses and keys, get a line of their own. */
 const INLINE_REVIEW_VALUE_LENGTH = 24;
 
+const REVIEW_BOOKKEEPING_FIELDS = new Set([
+  'Sequence',
+  'TicketSequence',
+  'LastLedgerSequence',
+  'NetworkID',
+  'SigningPubKey',
+]);
+
+function appendReviewRow(
+  list: HTMLElement,
+  detail: WalletTransactionReview['details'][number]
+): void {
+  const row = document.createElement('div');
+  row.className =
+    detail.value.includes('\n') || detail.value.length > INLINE_REVIEW_VALUE_LENGTH
+      ? 'auth-prompt-review-row auth-prompt-review-row--block'
+      : 'auth-prompt-review-row';
+  const label = document.createElement('dt');
+  label.textContent = detail.label;
+  const value = document.createElement('dd');
+  value.textContent = detail.value;
+  row.append(label, value);
+  list.append(row);
+}
+
+function appendBatchTransactions(
+  list: HTMLElement,
+  detail: WalletTransactionReview['details'][number]
+): boolean {
+  let transactions: unknown;
+  try {
+    transactions = JSON.parse(detail.value);
+  } catch {
+    return false;
+  }
+  if (
+    !Array.isArray(transactions) ||
+    transactions.length === 0 ||
+    !transactions.every((transaction) => typeof transaction === 'object' && transaction !== null)
+  ) {
+    return false;
+  }
+
+  const batch = document.createElement('details');
+  batch.className = 'auth-prompt-review-batch';
+  const summary = document.createElement('summary');
+  summary.textContent = detail.label;
+  batch.append(summary);
+  transactions.forEach((transaction, index) => {
+    const transactionObject = transaction as Record<string, unknown>;
+    const inner = transactionObject.RawTransaction;
+    const fieldsObject =
+      typeof inner === 'object' && inner !== null && !Array.isArray(inner)
+        ? (inner as Record<string, unknown>)
+        : transactionObject;
+    const transactionDetails = document.createElement('details');
+    transactionDetails.className = 'auth-prompt-review-batch-transaction';
+    const transactionSummary = document.createElement('summary');
+    const transactionType =
+      typeof fieldsObject.TransactionType === 'string' ? `: ${fieldsObject.TransactionType}` : '';
+    transactionSummary.textContent = `Transaction ${index + 1}${transactionType}`;
+    transactionDetails.append(transactionSummary);
+    const fields = document.createElement('dl');
+    fields.className = 'auth-prompt-review-batch-fields';
+    for (const [name, value] of Object.entries(fieldsObject)) {
+      const formatted =
+        typeof value === 'string'
+          ? value
+          : typeof value === 'number' || typeof value === 'boolean'
+            ? String(value)
+            : (JSON.stringify(value, null, 2) ?? String(value));
+      appendReviewRow(fields, { name, label: name, value: formatted });
+    }
+    transactionDetails.append(fields);
+    batch.append(transactionDetails);
+  });
+  list.append(batch);
+  return true;
+}
+
 /**
  * List every detail of the review; values are text, never markup. The list
  * scrolls on its own so the approve and reject actions stay in view.
@@ -40,18 +120,25 @@ function appendTransactionReview(form: HTMLFormElement, review: WalletTransactio
   list.className = 'auth-prompt-review';
   list.setAttribute('aria-label', 'Transaction details');
   list.tabIndex = 0;
+  let bookkeeping: HTMLDetailsElement | null = null;
+  let bookkeepingList: HTMLDListElement | null = null;
   for (const detail of review.details) {
-    const row = document.createElement('div');
-    row.className =
-      detail.value.includes('\n') || detail.value.length > INLINE_REVIEW_VALUE_LENGTH
-        ? 'auth-prompt-review-row auth-prompt-review-row--block'
-        : 'auth-prompt-review-row';
-    const label = document.createElement('dt');
-    label.textContent = detail.label;
-    const value = document.createElement('dd');
-    value.textContent = detail.value;
-    row.append(label, value);
-    list.append(row);
+    if (detail.name === 'RawTransactions' && appendBatchTransactions(list, detail)) continue;
+    if (REVIEW_BOOKKEEPING_FIELDS.has(detail.name)) {
+      if (!bookkeeping) {
+        bookkeeping = document.createElement('details');
+        bookkeeping.className = 'auth-prompt-review-details';
+        const summary = document.createElement('summary');
+        summary.textContent = 'Details';
+        bookkeepingList = document.createElement('dl');
+        bookkeepingList.className = 'auth-prompt-review-details-list';
+        bookkeeping.append(summary, bookkeepingList);
+        list.append(bookkeeping);
+      }
+      appendReviewRow(bookkeepingList!, detail);
+      continue;
+    }
+    appendReviewRow(list, detail);
   }
   form.before(list);
 }
@@ -113,6 +200,7 @@ function appendRegularAuthField(
   input.name = field.name;
   input.type = field.type;
   input.dataset.authField = '';
+  input.setAttribute('part', WALLET_CONNECTOR_PARTS.walletModal.input);
   input.disabled = options.busy ?? false;
   input.value = getInitialValue(options.values, field.name);
   if (field.autocomplete) input.setAttribute('autocomplete', field.autocomplete);
@@ -167,6 +255,7 @@ function appendCodeAuthField(
   input.className = 'auth-prompt-code-input';
   input.dataset.authField = '';
   input.dataset.authCode = '';
+  input.setAttribute('part', WALLET_CONNECTOR_PARTS.walletModal.input);
   input.autocomplete = 'one-time-code';
   input.inputMode = 'numeric';
   input.pattern = '[0-9]*';
@@ -370,6 +459,7 @@ export function renderAuthPromptView(
   const submitButton = getViewElement<HTMLButtonElement>(view, '#auth-prompt-submit-button');
   if (prompt.submit) {
     submitButton.setAttribute('form', 'auth-prompt-form');
+    if (review) submitButton.setAttribute('part', WALLET_CONNECTOR_PARTS.walletModal.approveButton);
     submitButton.textContent = getSubmitLabel(prompt, busy);
     submitButton.disabled = busy || (options.submitLocked ?? false);
   } else {
@@ -379,6 +469,7 @@ export function renderAuthPromptView(
     const rejectButton = document.createElement('button');
     rejectButton.className = 'error-button error-button-secondary';
     rejectButton.id = 'auth-prompt-reject-button';
+    rejectButton.setAttribute('part', WALLET_CONNECTOR_PARTS.walletModal.rejectButton);
     rejectButton.type = 'button';
     rejectButton.textContent = 'Reject';
     rejectButton.disabled = busy;

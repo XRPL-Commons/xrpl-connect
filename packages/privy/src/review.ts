@@ -3,7 +3,7 @@ import type {
   Transaction,
   WalletTransactionReview,
   WalletTransactionReviewDetail,
-} from 'xrpl-connect';
+} from 'xrpl-connect/core';
 
 /**
  * Details are ordered by what the user needs first: what moves and where, then
@@ -28,6 +28,9 @@ const BOOKKEEPING_FIELDS: ReadonlySet<string> = new Set([
   'NetworkID',
   'SigningPubKey',
 ]);
+
+/** SponsorFlags bit 0 means that the sponsor pays the transaction fee. */
+const SPONSOR_PAYS_FEE_FLAG = 1;
 
 /** Fields holding an XRPL amount: XRP drops, an issued currency, or an MPT amount. */
 const AMOUNT_FIELDS: ReadonlySet<string> = new Set([
@@ -102,10 +105,18 @@ export function createTransactionReview(
   const fields: Record<string, unknown> = JSON.parse(JSON.stringify(transaction));
   const details: WalletTransactionReviewDetail[] = [];
   const shown = new Set<string>();
+  const sponsorFlags = Number(fields.SponsorFlags);
+  const sponsorPaysFee =
+    Number.isSafeInteger(sponsorFlags) && (sponsorFlags & SPONSOR_PAYS_FEE_FLAG) !== 0;
   const show = (name: string, label = name): void => {
     if (shown.has(name) || !Object.prototype.hasOwnProperty.call(fields, name)) return;
     shown.add(name);
-    details.push({ name, label, value: formatField(name, fields[name]) });
+    const value = formatField(name, fields[name]);
+    details.push({
+      name,
+      label,
+      value: name === 'Fee' && sponsorPaysFee ? `${value} (paid by sponsor)` : value,
+    });
   };
 
   for (const [name, label] of LEADING_DETAILS) show(name, label);

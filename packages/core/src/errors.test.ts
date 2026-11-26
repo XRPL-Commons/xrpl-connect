@@ -19,6 +19,19 @@ describe('isWalletError', () => {
 });
 
 describe('createWalletError failure factories', () => {
+  it('preserves the specific timeout reason through wrapping and JSON', () => {
+    const error = createWalletError.operationTimeout(
+      'Iframe readiness',
+      undefined,
+      'iframe_not_ready'
+    );
+    expect(createWalletError.connectionFailed('Privy', error).reason).toBe('iframe_not_ready');
+    expect(error.toJSON()).toMatchObject({
+      code: WalletErrorCode.OPERATION_TIMEOUT,
+      reason: 'iframe_not_ready',
+    });
+  });
+
   it('identifies missing adapter configuration as invalid input', () => {
     expect(createWalletError.configurationRequired('Test Wallet', ['apiKey'])).toMatchObject({
       code: WalletErrorCode.CONFIGURATION_REQUIRED,

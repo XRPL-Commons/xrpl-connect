@@ -131,7 +131,7 @@ export interface WalletConnectorContext extends HTMLElement {
     walletName: string,
     walletIcon?: string
   ): void;
-  /** The wallet withdrew its review: close the modal that showed it. */
+  /** The wallet withdrew its connected prompt: close the modal that showed it. */
   endTransactionReview(walletId: string): void;
 
   showQRCodeView(walletId: string, uri?: string): void;

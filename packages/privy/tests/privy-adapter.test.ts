@@ -2,7 +2,15 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { webcrypto } from 'node:crypto';
 import { secp256k1 } from '@noble/curves/secp256k1';
-import { deriveAddress, verifyKeypairSignature, encodeForSigning } from 'xrpl';
+import {
+  decode,
+  deriveAddress,
+  encodeForMultiSigning,
+  encodeForSigning,
+  encodeForSigningBatch,
+  hashes,
+  verifyKeypairSignature,
+} from 'xrpl';
 import {
   createWalletError,
   MemoryStorageAdapter,
@@ -21,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   connect: vi.fn(),
   disconnect: vi.fn(),
   signHash: vi.fn(),
+  getAccessToken: vi.fn(),
   pending: vi.fn(),
   onAuthPrompt: vi.fn(),
   lost: undefined as (() => void) | undefined,
@@ -35,6 +44,7 @@ vi.mock('../src/session', () => ({
     connect = mocks.connect;
     disconnect = mocks.disconnect;
     signHash = mocks.signHash;
+    getAccessToken = mocks.getAccessToken;
     hasPendingConnection = mocks.pending;
     onAuthPrompt = mocks.onAuthPrompt;
     onSessionLost(callback: () => void) {
@@ -84,6 +94,32 @@ const transaction: Transaction = {
   LastLedgerSequence: 100,
 };
 
+const otherAddress = deriveAddress(
+  Array.from(secp256k1.getPublicKey('2'.padStart(64, '0')), (v) =>
+    v.toString(16).padStart(2, '0')
+  ).join('')
+);
+
+const batchTransaction: Transaction = {
+  TransactionType: 'Batch',
+  Account: wallet.address,
+  Fee: '12',
+  Sequence: 7,
+  Flags: 0,
+  RawTransactions: [
+    {
+      RawTransaction: {
+        TransactionType: 'AccountSet',
+        Account: wallet.address,
+        Fee: '0',
+        Sequence: 1,
+        Flags: 0x40000000,
+        SigningPubKey: '',
+      },
+    },
+  ],
+} as Transaction;
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -110,6 +146,7 @@ beforeEach(() => {
   mocks.signHash.mockImplementation(
     async (_wallet, hash: string) => `0x${secp256k1.sign(hash.slice(2), privateKey).toCompactHex()}`
   );
+  mocks.getAccessToken.mockResolvedValue(null);
   mocks.submit.mockResolvedValue({
     result: { hash: 'validated-hash', meta: { TransactionResult: 'tesSUCCESS' } },
   });
@@ -117,6 +154,42 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('PrivyAdapter', () => {
+  it('exposes the active Privy access token without exposing the session', async () => {
+    mocks.getAccessToken.mockResolvedValue('privy-access-token');
+    const adapter = new PrivyAdapter(options);
+    await adapter.connect();
+
+    await expect(adapter.getAccessToken()).resolves.toBe('privy-access-token');
+    await adapter.disconnect();
+    await expect(adapter.getAccessToken()).resolves.toBeNull();
+  });
+
+  it.each([
+    ['mfa_required', WalletErrorCode.SIGN_FAILED],
+    ['mfa_cancelled', WalletErrorCode.SIGN_REJECTED],
+    ['mfa_timeout', WalletErrorCode.OPERATION_TIMEOUT],
+  ] as const)('preserves the top-level MFA reason (%s)', async (reason, code) => {
+    const adapter = new PrivyAdapter(options);
+    await adapter.connect();
+    mocks.signHash.mockRejectedValueOnce(Object.assign(new Error('MFA failed'), { reason }));
+
+    await expect(adapter.sign(transaction)).rejects.toMatchObject({ code, reason });
+    await adapter.disconnect();
+  });
+
+  it('discards a token refresh that completes after signing in again', async () => {
+    const adapter = new PrivyAdapter(options);
+    await adapter.connect();
+    const refreshed = deferred<string>();
+    mocks.getAccessToken.mockReturnValueOnce(refreshed.promise);
+    const token = adapter.getAccessToken();
+    await adapter.disconnect();
+    await adapter.connect();
+    refreshed.resolve('previous-session');
+    await expect(token).resolves.toBeNull();
+    await adapter.disconnect();
+  });
+
   it('connects only once the session has a validated XRPL wallet and saves identity only', async () => {
     const ready = deferred<typeof wallet>();
     mocks.connect.mockReturnValueOnce(ready.promise);
@@ -548,6 +621,219 @@ describe('PrivyAdapter transaction review', () => {
     await adapter.disconnect();
   });
 
+  it('manages an ordinary multisign contribution and labels its signing role', async () => {
+    const adapter = new PrivyAdapter(reviewedOptions);
+    const manager = new WalletManager({ adapters: [adapter], autoConnect: false });
+    await manager.connect('privy', { network: 'testnet' });
+    const { nextReview } = watchPrompts(adapter);
+    const multisigned = {
+      ...payment,
+      Account: otherAddress,
+      SigningPubKey: '',
+    } as Transaction;
+    const signing = manager.sign(multisigned);
+    const prompt = await nextReview(1);
+
+    expect(prompt.review?.signingRole).toBe('multisign');
+    expect(prompt.review?.details[0]).toEqual({
+      name: 'signingRole',
+      label: 'Signing role',
+      value: 'Ordinary multisignature',
+    });
+    expect(prompt.description).toContain('multisignature contribution');
+    await prompt.submit!({});
+
+    const signed = await signing;
+    expect(signed.hash).toBe('');
+    expect(signed.signerAddress).toBe(wallet.address);
+    expect(signed.tx_json).toMatchObject({ Account: otherAddress, SigningPubKey: '' });
+    expect(signed.tx_json?.TxnSignature).toBeUndefined();
+    expect(signed.tx_json?.Signers).toHaveLength(1);
+    expect(
+      verifyKeypairSignature(
+        encodeForMultiSigning(signed.tx_json!, wallet.address),
+        signed.signature!,
+        publicKey
+      )
+    ).toBe(true);
+
+    await expect(manager.signAndSubmit(multisigned)).rejects.toMatchObject({
+      code: WalletErrorCode.UNSUPPORTED_METHOD,
+    });
+    await manager.disconnect();
+  });
+
+  it('creates an explicit BatchSigner contribution without changing outer Batch signing', async () => {
+    const adapter = await connected();
+    const { nextReview } = watchPrompts(adapter);
+    const contributionPromise = adapter.signBatch(batchTransaction);
+    const contributionPrompt = await nextReview(1);
+
+    expect(contributionPrompt.review?.signingRole).toBe('batch');
+    expect(contributionPrompt.review?.details[0]).toEqual({
+      name: 'signingRole',
+      label: 'Signing role',
+      value: 'BatchSigner',
+    });
+    expect(contributionPrompt.review?.batchAccount).toBe(wallet.address);
+    expect(contributionPrompt.review?.signerAccount).toBeUndefined();
+    expect(contributionPrompt.review?.details[1]).toEqual({
+      name: 'batchAccount',
+      label: 'Batch account',
+      value: wallet.address,
+    });
+    expect(
+      contributionPrompt.review?.details.find(({ name }) => name === 'RawTransactions')
+    ).toBeDefined();
+    await contributionPrompt.submit!({});
+
+    const contribution = await contributionPromise;
+    expect(contribution.hash).toBe('');
+    expect(contribution.tx_json?.BatchSigners).toHaveLength(1);
+    expect(decode(contribution.tx_blob!).BatchSigners).toHaveLength(1);
+    const contributionPreimage = encodeForSigningBatch({
+      account: batchTransaction.Account,
+      sequence: batchTransaction.Sequence,
+      flags: batchTransaction.Flags,
+      txIDs: [hashes.hashSignedTx(batchTransaction.RawTransactions![0].RawTransaction as never)],
+      batchAccount: wallet.address,
+    });
+    expect(verifyKeypairSignature(contributionPreimage, contribution.signature!, publicKey)).toBe(
+      true
+    );
+
+    const outerPromise = adapter.sign(batchTransaction);
+    const outerPrompt = await nextReview(2);
+    await outerPrompt.submit!({});
+    const outer = await outerPromise;
+    expect(outer.hash).not.toBe('');
+    expect(outer.tx_json).toMatchObject({
+      TransactionType: 'Batch',
+      SigningPubKey: publicKey,
+    });
+    const submitting = adapter.signAndSubmit(batchTransaction);
+    const submitPrompt = await nextReview(3);
+    await submitPrompt.submit!({});
+    await expect(submitting).resolves.toMatchObject({
+      hash: 'validated-hash',
+      tx_json: { TransactionType: 'Batch' },
+    });
+    await adapter.disconnect();
+  });
+
+  it('distinguishes BatchSigner account contexts in sequential prompts', async () => {
+    const adapter = await connected();
+    const { nextReview } = watchPrompts(adapter);
+    const first = adapter.signBatch(batchTransaction);
+    const firstPrompt = await nextReview(1);
+    expect(firstPrompt.review?.batchAccount).toBe(wallet.address);
+    firstPrompt.cancel();
+    await expect(first).rejects.toMatchObject({ code: WalletErrorCode.SIGN_REJECTED });
+
+    const foreignBatch = {
+      ...batchTransaction,
+      RawTransactions: [
+        {
+          RawTransaction: {
+            ...(batchTransaction.RawTransactions![0].RawTransaction as Record<string, unknown>),
+            Account: otherAddress,
+          },
+        },
+      ],
+    } as Transaction;
+    const second = adapter.signBatch(foreignBatch, {
+      batchAccount: otherAddress,
+      multisign: true,
+    });
+    const secondPrompt = await nextReview(2);
+    expect(secondPrompt.review?.batchAccount).toBe(otherAddress);
+    expect(secondPrompt.review?.signerAccount).toBe(wallet.address);
+    expect(secondPrompt.review?.details).toEqual(
+      expect.arrayContaining([
+        { name: 'batchAccount', label: 'Batch account', value: otherAddress },
+        { name: 'signerAccount', label: 'Nested signer account', value: wallet.address },
+      ])
+    );
+    secondPrompt.cancel();
+    await expect(second).rejects.toMatchObject({ code: WalletErrorCode.SIGN_REJECTED });
+    await adapter.disconnect();
+  });
+
+  it('serializes the full review-to-sign operation with transactionReview none', async () => {
+    const adapter = await connected({ ...reviewedOptions, transactionReview: 'none' });
+    const firstSign = deferred<string>();
+    const secondSign = deferred<string>();
+    mocks.signHash.mockReset();
+    mocks.signHash.mockReturnValueOnce(firstSign.promise).mockReturnValueOnce(secondSign.promise);
+
+    const first = adapter.sign(payment);
+    await vi.waitFor(() => expect(mocks.signHash).toHaveBeenCalledOnce());
+    const second = adapter.sign({ ...payment, Sequence: 8 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mocks.signHash).toHaveBeenCalledOnce();
+
+    const firstHash = mocks.signHash.mock.calls[0][1] as string;
+    firstSign.resolve(`0x${secp256k1.sign(firstHash.slice(2), privateKey).toCompactHex()}`);
+    await first;
+    await vi.waitFor(() => expect(mocks.signHash).toHaveBeenCalledTimes(2));
+    const secondHash = mocks.signHash.mock.calls[1][1] as string;
+    secondSign.resolve(`0x${secp256k1.sign(secondHash.slice(2), privateKey).toCompactHex()}`);
+    await second;
+    await adapter.disconnect();
+  });
+
+  it('does not submit a partial foreign-account BatchSigner payload', async () => {
+    const adapter = await connected({ ...reviewedOptions, transactionReview: 'none' });
+    const partial = {
+      ...batchTransaction,
+      RawTransactions: [
+        {
+          RawTransaction: {
+            ...(batchTransaction.RawTransactions![0].RawTransaction as Record<string, unknown>),
+            Account: otherAddress,
+          },
+        },
+      ],
+    } as Transaction;
+
+    await expect(adapter.signAndSubmit(partial)).rejects.toMatchObject({
+      code: WalletErrorCode.UNSUPPORTED_METHOD,
+    });
+    expect(mocks.autofill).not.toHaveBeenCalled();
+    expect(mocks.submit).not.toHaveBeenCalled();
+    await adapter.disconnect();
+  });
+
+  it('submits a complete foreign-account BatchSigner payload as an outer Batch', async () => {
+    const adapter = await connected({ ...reviewedOptions, transactionReview: 'none' });
+    const complete = {
+      ...batchTransaction,
+      RawTransactions: [
+        {
+          RawTransaction: {
+            ...(batchTransaction.RawTransactions![0].RawTransaction as Record<string, unknown>),
+            Account: otherAddress,
+          },
+        },
+      ],
+      BatchSigners: [
+        {
+          BatchSigner: {
+            Account: otherAddress,
+            SigningPubKey: publicKey,
+            TxnSignature: 'A'.repeat(128),
+          },
+        },
+      ],
+    } as Transaction;
+
+    await expect(adapter.signAndSubmit(complete)).resolves.toMatchObject({
+      hash: 'validated-hash',
+      tx_json: { TransactionType: 'Batch' },
+    });
+    await adapter.disconnect();
+  });
+
   it('reviews the autofilled transaction before submitting it', async () => {
     const adapter = await connected();
     const { nextReview } = watchPrompts(adapter);
@@ -597,6 +883,7 @@ describe('PrivyAdapter transaction review', () => {
     const adapter = await connected();
     const failure = {
       code: WalletErrorCode.SIGN_FAILED,
+      reason: 'no_reviewer',
       message: expect.stringContaining('subscribe with onAuthPrompt() first'),
     };
     await expect(adapter.sign(payment)).rejects.toMatchObject(failure);

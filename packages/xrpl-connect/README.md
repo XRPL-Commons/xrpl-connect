@@ -701,20 +701,29 @@ remain. See the [full policy and multisign limitations](https://github.com/XRPL-
 
 ### Issue: Large Bundle Size
 
-**Problem**: The meta-package includes all adapters, but your app only needs one.
+The root `xrpl-connect` entry point intentionally includes the UI and every
+packaged adapter for the simplest setup. Named imports from that entry point do
+not guarantee that an unused adapter SDK disappears because the umbrella keeps
+the adapter namespace available.
 
-**Solution**: Use tree-shaking by importing specific adapters:
+Use a focused subpath when an application only needs one adapter or supplies
+its own UI:
 
 ```typescript
-import { WalletManager, XamanAdapter } from 'xrpl-connect';
+import { WalletManager } from 'xrpl-connect/core';
+import { XamanAdapter } from 'xrpl-connect/xaman';
 
 const manager = new WalletManager({
-  adapters: [new XamanAdapter({ apiKey })], // Only includes Xaman
+  adapters: [new XamanAdapter({ apiKey })],
 });
 ```
 
-The individual `@xrpl-connect/*` packages are not published, so import adapters
-from `xrpl-connect` by name.
+Available focused entry points are `core`, `ui`, `register`, `xaman`, `crossmark`,
+`gemwallet`, `walletconnect`, `ledger`, `xyra`, `ghostsig`, `otsu`, and
+`metamask-snap`. The `ui` entry registers the `<xrpl-wallet-connector>` custom
+element. Use `register` as a side-effect-only custom-element registration import
+from framework bindings. The root entry remains backwards compatible and
+includes that UI.
 
 ---
 

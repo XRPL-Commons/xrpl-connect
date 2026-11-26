@@ -125,10 +125,10 @@ const distPkg = {
   license: mainPkg.license,
   engines: mainPkg.engines,
   // Intentionally NO `"type": "module"`: the ESM entry is already `.mjs`, while
-  // the `require` entry below is the UMD `.js` which must be parsed as CommonJS.
-  // Setting `type: module` would make Node/TypeScript treat the UMD file as ESM
-  // and break `require('xrpl-connect')` for CommonJS consumers (TS1479).
-  main: './xrpl-connect.umd.js',
+  // the `require` entry below is the transpiled CommonJS `.js` which must be
+  // parsed as CommonJS. Setting `type: module` would make Node/TypeScript
+  // treat the CommonJS entry as ESM and break `require('xrpl-connect')` (TS1479).
+  main: './xrpl-connect.js',
   module: './xrpl-connect.mjs',
   // Rolled-up declaration file emitted by api-extractor (see scripts/build-types.mjs).
   // Required so `npm install xrpl-connect` consumers get full TypeScript types
@@ -139,9 +139,48 @@ const distPkg = {
       // `types` must come first so TypeScript resolves it before import/require.
       types: './index.d.ts',
       import: './xrpl-connect.mjs',
-      require: './xrpl-connect.umd.js',
+      require: './xrpl-connect.js',
     },
+    ...Object.fromEntries(
+      [
+        'core',
+        'ui',
+        'register',
+        'xaman',
+        'crossmark',
+        'gemwallet',
+        'walletconnect',
+        'ledger',
+        'xyra',
+        'ghostsig',
+        'otsu',
+        'metamask-snap',
+      ].map((name) => [
+        `./${name}`,
+        {
+          // Each focused declaration is an explicit projection of the canonical
+          // root declaration. This prevents TypeScript from accepting adapter or
+          // UI symbols that the focused runtime entry does not export.
+          types: `./${name}.d.ts`,
+          import: `./${name}.mjs`,
+          require: `./${name}.js`,
+        },
+      ])
+    ),
   },
+  // The umbrella, UI, and explicit registration entries register the custom
+  // element. Keep these modules observable to consumer bundlers while allowing
+  // core and adapter subpaths to be tree-shaken independently.
+  sideEffects: [
+    './xrpl-connect.mjs',
+    './xrpl-connect.js',
+    './ui.mjs',
+    './ui.js',
+    './register.mjs',
+    './register.js',
+    './chunks/*.mjs',
+    './chunks/*.js',
+  ],
   // External declaration imports must be installed alongside the package.
   dependencies: externalDependencies,
   // Carry the `xrpl` peer dependency into the published manifest. The rolled

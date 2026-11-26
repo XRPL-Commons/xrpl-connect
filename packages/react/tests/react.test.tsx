@@ -19,8 +19,12 @@ import {
   WalletConnector,
   WalletErrorCode,
   type WalletConnectorElement,
+  type WalletConnectorOpenOptions,
   type WalletConnectorProps,
 } from '../src';
+
+// These wrapper tests register a controllable connector in the same DOM.
+vi.mock('xrpl-connect/register', () => ({}));
 
 const ACCOUNT: AccountInfo = { address: 'rTEST', network: STANDARD_NETWORKS.testnet };
 
@@ -606,7 +610,9 @@ describe('<WalletConnector>', () => {
     type WalletModal = ReturnType<typeof useWalletModal>;
     expectTypeOf<WalletModal['ready']>().toEqualTypeOf<boolean>();
     expectTypeOf<WalletModal['open']>().toEqualTypeOf<() => Promise<void>>();
-    expectTypeOf<WalletModal['openAndWait']>().toEqualTypeOf<() => Promise<AccountInfo>>();
+    expectTypeOf<WalletModal['openAndWait']>().toEqualTypeOf<
+      (options?: WalletConnectorOpenOptions) => Promise<AccountInfo>
+    >();
     expectTypeOf<WalletModal['close']>().toEqualTypeOf<() => void>();
   });
 

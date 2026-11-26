@@ -1,8 +1,18 @@
 import assert from 'node:assert/strict';
-import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   NPM_REGISTRY,
   PUBLISH_CONFIG,
@@ -18,7 +28,7 @@ import { verifyConsumerDependencies } from './consumer-dependencies.mjs';
 
 const cliArgs = process.argv.slice(2);
 const xrplVersionIndex = cliArgs.indexOf('--xrpl-version');
-const xrplVersion = xrplVersionIndex === -1 ? '^4' : cliArgs[xrplVersionIndex + 1];
+const xrplVersion = xrplVersionIndex === -1 ? '^5' : cliArgs[xrplVersionIndex + 1];
 assert(['^4', '5.0.0', '^5'].includes(xrplVersion), 'Unsupported xrpl compatibility version');
 if (xrplVersionIndex !== -1) cliArgs.splice(xrplVersionIndex, 2);
 const channelIndex = cliArgs.indexOf('--channel');
@@ -30,7 +40,7 @@ const CANDIDATE_VERSION = releaseConfig.version;
 const FRAMEWORK_PEER_RANGE = `^${CANDIDATE_VERSION}`;
 const NPM_ORGANIZATION = 'xrpl-commons';
 const SUPPORTED_NODE_RANGE = '^20.19.0 || ^22.18.0 || >=24.11.0';
-const DOCUMENTED_XRPL_SPEC = 'xrpl@^4';
+const DOCUMENTED_XRPL_SPEC = 'xrpl@^5';
 const DOCUMENTED_INSTALL_PATHS = [
   'README.md',
   'packages/react/README.md',
@@ -82,11 +92,37 @@ const candidatePackages = [
       'licenses/XRPL-ISC-LICENSE.txt',
       'licenses/NODE-FORGE-TYPES-MIT-LICENSE.txt',
       'index.d.ts',
+      'register.d.ts',
       'types/crossmark/build/src/sdk/index.d.ts',
       'types/crossmark/build/src/crossmark/models/common/tx.d.ts',
       'types/forge.d.ts',
       'xrpl-connect.mjs',
+      'xrpl-connect.js',
       'xrpl-connect.umd.js',
+      'core.mjs',
+      'core.js',
+      'ui.mjs',
+      'ui.js',
+      'register.mjs',
+      'register.js',
+      'xaman.mjs',
+      'xaman.js',
+      'crossmark.mjs',
+      'crossmark.js',
+      'gemwallet.mjs',
+      'gemwallet.js',
+      'walletconnect.mjs',
+      'walletconnect.js',
+      'ledger.mjs',
+      'ledger.js',
+      'xyra.mjs',
+      'xyra.js',
+      'ghostsig.mjs',
+      'ghostsig.js',
+      'otsu.mjs',
+      'otsu.js',
+      'metamask-snap.mjs',
+      'metamask-snap.js',
     ],
   },
   {
@@ -126,6 +162,9 @@ const candidatePackages = [
       'dist/index.d.mts',
       'dist/index.js',
       'dist/index.mjs',
+      'dist/testing.d.ts',
+      'dist/testing.js',
+      'dist/testing.mjs',
     ],
   },
 ];
@@ -177,7 +216,7 @@ function verifyDocumentedXrplSpecs() {
       assert.equal(
         spec,
         DOCUMENTED_XRPL_SPEC,
-        `${relativePath} does not pin documented xrpl to v4`
+        `${relativePath} does not pin documented xrpl to v5`
       );
     }
     const releaseSpecCount = installCommands.reduce(
@@ -189,7 +228,7 @@ function verifyDocumentedXrplSpecs() {
   }
 
   console.log(
-    `✓ Current install documentation consistently pins xrpl to v4 and the ${releaseConfig.channel} channel`
+    `✓ Current install documentation consistently pins xrpl to v5 and the ${releaseConfig.channel} channel`
   );
   return findInstallCommand(
     path.join(repositoryRoot, 'packages', 'react', 'README.md'),
@@ -470,6 +509,103 @@ try {
   }
 
   const installedUmbrellaFolder = path.join(consumerFolder, 'node_modules', 'xrpl-connect');
+  const umbrellaManifest = installedManifests['xrpl-connect'];
+  const subpathExports = {
+    core: { exportName: 'WalletManager', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
+    ui: {
+      exportName: 'WALLET_CONNECTOR_CSS_VARIABLES',
+      forbidden: ['WalletManager', 'XamanAdapter'],
+    },
+    register: { exportName: null, forbidden: ['WalletManager', 'XamanAdapter'] },
+    xaman: {
+      exportName: 'XamanAdapter',
+      forbidden: ['CrossmarkAdapter', 'WalletConnectorElement'],
+    },
+    crossmark: {
+      exportName: 'CrossmarkAdapter',
+      forbidden: ['XamanAdapter', 'WalletConnectorElement'],
+    },
+    gemwallet: {
+      exportName: 'GemWalletAdapter',
+      forbidden: ['XamanAdapter', 'WalletConnectorElement'],
+    },
+    walletconnect: {
+      exportName: 'WalletConnectAdapter',
+      forbidden: ['XamanAdapter', 'WalletConnectorElement'],
+    },
+    ledger: { exportName: 'LedgerAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
+    xyra: { exportName: 'XyraAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
+    ghostsig: {
+      exportName: 'GhostsigAdapter',
+      forbidden: ['XamanAdapter', 'WalletConnectorElement'],
+    },
+    otsu: { exportName: 'OtsuAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
+    'metamask-snap': {
+      exportName: 'MetaMaskSnapAdapter',
+      forbidden: ['XamanAdapter', 'WalletConnectorElement'],
+    },
+  };
+  for (const [name, { exportName, forbidden }] of Object.entries(subpathExports)) {
+    assert(umbrellaManifest.exports?.[`./${name}`], `Missing published export ./` + name);
+    const esm = await import(pathToFileURL(path.join(installedUmbrellaFolder, `${name}.mjs`)));
+    if (exportName) {
+      assert(
+        name === 'ui' ? esm[exportName] !== undefined : typeof esm[exportName] === 'function',
+        `./${name} is missing ${exportName}`
+      );
+    }
+    for (const forbiddenName of forbidden) {
+      assert.equal(
+        typeof esm[forbiddenName],
+        'undefined',
+        `./${name} unexpectedly exports ${forbiddenName}`
+      );
+    }
+    const cjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, `${name}.js`));
+    if (exportName) {
+      assert(
+        name === 'ui' ? cjs[exportName] !== undefined : typeof cjs[exportName] === 'function',
+        `CommonJS ./${name} is missing ${exportName}`
+      );
+    }
+    for (const forbiddenName of forbidden) {
+      assert.equal(
+        typeof cjs[forbiddenName],
+        'undefined',
+        `CommonJS ./${name} unexpectedly exports ${forbiddenName}`
+      );
+    }
+  }
+  const rootEsm = await import(
+    pathToFileURL(path.join(installedUmbrellaFolder, 'xrpl-connect.mjs'))
+  );
+  const coreEsm = await import(pathToFileURL(path.join(installedUmbrellaFolder, 'core.mjs')));
+  const uiEsm = await import(pathToFileURL(path.join(installedUmbrellaFolder, 'ui.mjs')));
+  const xamanEsm = await import(pathToFileURL(path.join(installedUmbrellaFolder, 'xaman.mjs')));
+  assert.strictEqual(rootEsm.WalletManager, coreEsm.WalletManager);
+  assert.strictEqual(rootEsm.XamanAdapter, xamanEsm.XamanAdapter);
+  assert.strictEqual(rootEsm.WalletConnectorElement, uiEsm.WalletConnectorElement);
+  assert.equal(typeof coreEsm.XamanAdapter, 'undefined');
+  const rootCjs = createRequire(import.meta.url)(
+    path.join(installedUmbrellaFolder, 'xrpl-connect.js')
+  );
+  const coreCjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, 'core.js'));
+  const uiCjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, 'ui.js'));
+  const xamanCjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, 'xaman.js'));
+  assert.strictEqual(rootCjs.WalletManager, coreCjs.WalletManager);
+  assert.strictEqual(rootCjs.XamanAdapter, xamanCjs.XamanAdapter);
+  assert.strictEqual(rootCjs.WalletConnectorElement, uiCjs.WalletConnectorElement);
+  assert.equal(typeof coreCjs.XamanAdapter, 'undefined');
+  assert.deepEqual(umbrellaManifest.sideEffects, [
+    './xrpl-connect.mjs',
+    './xrpl-connect.js',
+    './ui.mjs',
+    './ui.js',
+    './register.mjs',
+    './register.js',
+    './chunks/*.mjs',
+    './chunks/*.js',
+  ]);
   const thirdPartyNotices = readFileSync(
     path.join(installedUmbrellaFolder, 'THIRD_PARTY_NOTICES.md'),
     'utf-8'
@@ -511,7 +647,50 @@ try {
     /import\s*\(\s*(?:\/\*[\s\S]*?\*\/\s*)?[`'"]@xyrawallet\/sdk[`'"]\s*\)/;
   const optionalChainConstructor = /new\s*\(\s*globalThis\?\.MockedWebSocket\s*\)/;
   const directMockedWebSocketConstructor = /new\s+globalThis\.MockedWebSocket\s*\(/;
-  for (const entry of ['xrpl-connect.mjs', 'xrpl-connect.umd.js']) {
+  const relativeModuleSpecifier =
+    /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)["']([^"']+)["']/g;
+  const resolveBundledModule = (sourceFile, specifier) => {
+    if (!specifier.startsWith('.')) return undefined;
+    const candidate = path.resolve(path.dirname(sourceFile), specifier);
+    for (const file of [candidate, `${candidate}.mjs`, `${candidate}.js`]) {
+      if (existsSync(file)) return file;
+    }
+    return undefined;
+  };
+  const collectReachableModules = (entryFile) => {
+    const pending = [entryFile];
+    const visited = new Set();
+    while (pending.length > 0) {
+      const sourceFile = pending.pop();
+      if (visited.has(sourceFile)) continue;
+      assert(existsSync(sourceFile), `Missing published module ${sourceFile}`);
+      visited.add(sourceFile);
+      const contents = readFileSync(sourceFile, 'utf-8');
+      for (const [, specifier] of contents.matchAll(relativeModuleSpecifier)) {
+        const resolved = resolveBundledModule(sourceFile, specifier);
+        if (resolved) pending.push(resolved);
+      }
+    }
+    return visited;
+  };
+  const bundledModuleFiles = readdirSync(installedUmbrellaFolder, { recursive: true }).filter(
+    (file) => /\.m?js$/.test(file)
+  );
+  for (const [format, entry] of [
+    ['ESM', 'xrpl-connect.mjs'],
+    ['CommonJS', 'xrpl-connect.js'],
+  ]) {
+    const reachableModules = collectReachableModules(path.join(installedUmbrellaFolder, entry));
+    const modernBundle = [...reachableModules]
+      .map((sourceFile) => readFileSync(sourceFile, 'utf-8'))
+      .join('\n');
+    assert.match(
+      modernBundle,
+      directMockedWebSocketConstructor,
+      `${format} shared graph does not contain the guarded direct MockedWebSocket constructor`
+    );
+  }
+  for (const entry of bundledModuleFiles) {
     const contents = readFileSync(path.join(installedUmbrellaFolder, entry), 'utf-8');
     assert.doesNotMatch(
       contents,
@@ -523,10 +702,17 @@ try {
       optionalChainConstructor,
       `${entry} contains an optional-chain constructor that consumer builds cannot parse`
     );
-    assert.match(
-      contents,
-      directMockedWebSocketConstructor,
-      `${entry} does not contain the guarded direct MockedWebSocket constructor`
+  }
+  // Consumer bundlers such as Turbopack resolve the dependencies of AMD fallbacks left in
+  // bundled UMD modules (crypto-js `define(["./core"], ...)`). Only the UMD wrapper may use AMD.
+  for (const entry of bundledModuleFiles) {
+    const amdChecks = readFileSync(path.join(installedUmbrellaFolder, entry), 'utf-8').match(
+      /\bdefine\.amd\b/g
+    );
+    assert.equal(
+      amdChecks?.length ?? 0,
+      entry === 'xrpl-connect.umd.js' ? 1 : 0,
+      `${entry} contains a bundled dependency's AMD fallback`
     );
   }
 
@@ -601,7 +787,6 @@ try {
     'xrpl-connect': FRAMEWORK_PEER_RANGE,
   });
 
-  const umbrellaManifest = installedManifests['xrpl-connect'];
   assert.equal(
     umbrellaManifest.dependencies?.['@xrpl-commons/xrpl-connect-privy'],
     undefined,
@@ -721,6 +906,12 @@ try {
     cwd: consumerFolder,
   });
   verifyPackedReactConsumer(consumerFolder, 18, tscPath, runOptions);
+  copyFileSync(
+    path.join(fixturesFolder, 'registration-consumer.mjs'),
+    path.join(consumerFolder, 'registration-consumer.mjs')
+  );
+  console.log('→ Building and executing the optimized focused registration consumer');
+  run(process.execPath, ['registration-consumer.mjs'], { ...runOptions, cwd: consumerFolder });
 
   const react19ConsumerFolder = path.join(temporaryRoot, 'consumer-react-19');
   writeConsumerManifest(react19ConsumerFolder, 'xrpl-connect-publish-consumer-react-19');
@@ -738,6 +929,7 @@ try {
       '@types/react@19',
       '@types/react-dom@19',
       'jsdom@^22.1.0',
+      'next@16.4.6',
     ],
     { ...runOptions, cwd: react19ConsumerFolder }
   );
@@ -746,6 +938,28 @@ try {
   verifyConsumerDependencies(react19ConsumerFolder, RELEASE_PACKAGE_NAMES.slice(0, 2), runOptions);
   copyReactFixtures(react19ConsumerFolder);
   verifyPackedReactConsumer(react19ConsumerFolder, 19, tscPath, runOptions);
+  console.log('→ Building packed React and umbrella ESM with Next.js and Turbopack');
+  const nextAppFolder = path.join(react19ConsumerFolder, 'app');
+  mkdirSync(nextAppFolder);
+  for (const page of ['layout', 'page', 'wallet']) {
+    copyFileSync(
+      path.join(reactFixturesFolder, `next-${page}.jsx`),
+      path.join(nextAppFolder, `${page}.jsx`)
+    );
+  }
+  run(
+    process.execPath,
+    [
+      path.join(react19ConsumerFolder, 'node_modules', 'next', 'dist', 'bin', 'next'),
+      'build',
+      '--turbopack',
+    ],
+    {
+      ...runOptions,
+      env: { ...runOptions.env, NEXT_TELEMETRY_DISABLED: '1' },
+      cwd: react19ConsumerFolder,
+    }
+  );
 
   console.log('→ Type-checking packed Vue ESM and CommonJS consumers');
   run(process.execPath, [tscPath, '--project', 'tsconfig.vue.json'], {
@@ -786,9 +1000,9 @@ try {
   rmSync(temporaryRoot, { recursive: true, force: true });
 }
 
-// Reuse all consumer checks for the v5 floor and current v5 release, not just imports.
+// Reuse all consumer checks for xrpl v4 and the v5 floor, not just imports.
 if (xrplVersionIndex === -1) {
-  for (const version of ['5.0.0', '^5']) {
+  for (const version of ['^4', '5.0.0']) {
     run(
       process.execPath,
       [

@@ -12,7 +12,7 @@ These commands install the coordinated `1.1.0-rc.0` release candidate from npm's
 the SDK and React binding on the same release.
 
 ```bash
-pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-react@rc xrpl@^4 react react-dom
+pnpm add xrpl-connect@rc @xrpl-commons/xrpl-connect-react@rc xrpl@^5 react react-dom
 ```
 
 ## Configure the provider
@@ -253,6 +253,72 @@ export function WalletProviders({ children }: { children: ReactNode }) {
 ```
 
 Expose browser identifiers with `NEXT_PUBLIC_*`; do not expose secrets. Dynamic import with `ssr: false` is optional for route-level code splitting, not required to make the package importable.
+
+### Privy email and OAuth
+
+Mount the provider in a shared layout that also wraps the OAuth callback page.
+Supply the public app ID and an absolute callback URL for each deployment.
+`autoConnect` completes a returned OAuth login and restores existing sessions.
+The connector can handle OTP, review and MFA dialogs behind your own login button.
+
+```tsx
+'use client';
+
+import { useState, type ReactNode } from 'react';
+import { PrivyAdapter } from '@xrpl-commons/xrpl-connect-privy';
+import {
+  WalletConnector,
+  XrplConnectProvider,
+  useWalletModal,
+} from '@xrpl-commons/xrpl-connect-react';
+
+export function WalletProviders({ children }: { children: ReactNode }) {
+  const [config] = useState(() => ({
+    adapters: [
+      new PrivyAdapter({
+        appId: process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
+        redirectUri: process.env.NEXT_PUBLIC_PRIVY_REDIRECT_URI,
+      }),
+    ],
+    network: 'testnet' as const,
+    autoConnect: true,
+  }));
+  return (
+    <XrplConnectProvider config={config}>
+      {children}
+      <WalletConnector headless />
+    </XrplConnectProvider>
+  );
+}
+
+export function EmailLogin() {
+  const { ready, openAndWait } = useWalletModal();
+  const [error, setError] = useState('');
+  return (
+    <>
+      <button
+        disabled={!ready}
+        onClick={async () => {
+          setError('');
+          try {
+            await openAndWait({ loginMethod: 'email' });
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : 'Could not sign in');
+          }
+        }}
+      >
+        Continue with email
+      </button>
+      {error && <p role="alert">{error}</p>}
+    </>
+  );
+}
+```
+
+Add the app origin to Privy's **Allowed origins** and the full callback URL to
+its OAuth redirect settings. An email-only app can omit `redirectUri`. For the
+raw custom element in React 19, import the React bindings to load their JSX
+declarations. See the [Privy adapter guide](/guide/social-login).
 
 ## Lifecycle guarantees
 

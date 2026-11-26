@@ -3,10 +3,12 @@ import { AppConfig } from '@privy-io/routes';
 import {
   createWalletError,
   isWalletError,
+  WalletError,
   WalletErrorCode,
   type WalletAuthPrompt,
   type WalletLoginMethod,
-} from 'xrpl-connect';
+  type WalletErrorReason,
+} from 'xrpl-connect/core';
 import { resolveLoginIcon } from './login-icons';
 import type {
   PrivyLoginMethod,
@@ -14,6 +16,17 @@ import type {
   PrivySessionOptions,
   PrivyWallet,
 } from './session-types';
+import { PrivyMfaController, type PrivyMfaApi, type PrivyMfaInvocation } from './mfa';
+import {
+  asPasskeyCredential,
+  base64UrlToBytes,
+  passkeyAuthenticationOptions,
+  passkeyChallenge,
+  passkeyRegistrationOptions,
+  passkeyRelyingParty,
+  toAuthenticationResponse,
+  toRegistrationResponse,
+} from './webauthn';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const SESSION_CHECK_INTERVAL_MS = 60_000;
@@ -150,21 +163,6 @@ interface PromptStep {
   controller: AbortController;
 }
 
-interface PasskeyCredentialLike {
-  id: string;
-  rawId: ArrayBuffer;
-  type: string;
-  response: {
-    clientDataJSON: ArrayBuffer;
-    authenticatorData?: ArrayBuffer;
-    signature?: ArrayBuffer;
-    userHandle?: ArrayBuffer | null;
-    attestationObject?: ArrayBuffer;
-    getTransports?: () => string[];
-  };
-  getClientExtensionResults(): Record<string, unknown>;
-}
-
 type UnknownRecord = Record<string, unknown>;
 
 function asRecord(value: unknown): UnknownRecord | null {
@@ -173,6 +171,25 @@ function asRecord(value: unknown): UnknownRecord | null {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function operationTimeout(label: string, reason: WalletErrorReason): WalletError {
+  return createWalletError.operationTimeout(label, undefined, reason);
+}
+
+function originNotAllowed(error: unknown): boolean {
+  const record = asRecord(error);
+  const code = record?.code ?? record?.privyErrorCode;
+  return code === 'invalid_origin' || /origin\s+not\s+allowed/i.test(errorMessage(error));
+}
+
+function originConfigurationError(origin: string, originalError?: unknown): WalletError {
+  return new WalletError(
+    WalletErrorCode.CONFIGURATION_REQUIRED,
+    `Origin not allowed. Add ${origin} to Allowed origins.`,
+    originalError instanceof Error ? originalError : undefined,
+    'origin_not_allowed'
+  );
 }
 
 function isAuthenticationLoss(error: unknown): boolean {
@@ -281,124 +298,6 @@ function dashboardMethodToPublic(method: ResolvedLoginMethod): WalletLoginMethod
   };
 }
 
-function base64UrlToBytes(value: string): Uint8Array {
-  const normalized = value
-    .replace(/-/g, '+')
-    .replace(/_/g, '/')
-    .padEnd(Math.ceil(value.length / 4) * 4, '=');
-  if (typeof atob !== 'function') throw new Error('Privy passkeys require browser base64 support');
-  const decoded = atob(normalized);
-  const bytes = new Uint8Array(decoded.length);
-  for (let index = 0; index < decoded.length; index += 1) bytes[index] = decoded.charCodeAt(index);
-  return bytes;
-}
-
-function bytesToBase64Url(value: ArrayBuffer | ArrayBufferView): string {
-  if (typeof btoa !== 'function') throw new Error('Privy passkeys require browser base64 support');
-  const bytes =
-    value instanceof ArrayBuffer
-      ? new Uint8Array(value)
-      : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-}
-
-function passkeyExtensions(value: unknown): AuthenticationExtensionsClientInputs | undefined {
-  const extensions = asRecord(value);
-  if (!extensions) return undefined;
-
-  const result: AuthenticationExtensionsClientInputs = {};
-  if (isNonEmptyString(extensions.app_id)) result.appid = extensions.app_id;
-  if (typeof extensions.cred_props === 'boolean') {
-    result.credProps = extensions.cred_props;
-  } else if (extensions.cred_props !== undefined && extensions.cred_props !== null) {
-    // Registration responses describe cred_props as an object, while the
-    // browser input is the boolean request flag.
-    result.credProps = true;
-  }
-  if (typeof extensions.hmac_create_secret === 'boolean') {
-    result.hmacCreateSecret = extensions.hmac_create_secret;
-  }
-  return Object.keys(result).length > 0 ? result : undefined;
-}
-
-function passkeyCredentialDescriptors(value: unknown): PublicKeyCredentialDescriptor[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  return value.flatMap((entry) => {
-    const descriptor = asRecord(entry);
-    if (!descriptor || !isNonEmptyString(descriptor.id) || descriptor.type !== 'public-key')
-      return [];
-    const transports = Array.isArray(descriptor.transports)
-      ? descriptor.transports
-          .filter(isNonEmptyString)
-          .map((transport) => transport as AuthenticatorTransport)
-      : undefined;
-    return [
-      {
-        id: base64UrlToBytes(descriptor.id) as unknown as ArrayBuffer,
-        type: 'public-key' as const,
-        ...(transports && transports.length > 0 ? { transports } : {}),
-      },
-    ];
-  });
-}
-
-function asPasskeyCredential(value: Credential | null): PasskeyCredentialLike {
-  const credential = value as unknown as PasskeyCredentialLike | null;
-  if (
-    !credential ||
-    !isNonEmptyString(credential.id) ||
-    !isNonEmptyString(credential.type) ||
-    !(credential.rawId instanceof ArrayBuffer) ||
-    !credential.response ||
-    typeof credential.getClientExtensionResults !== 'function'
-  ) {
-    throw new Error('Privy did not receive a valid browser passkey credential');
-  }
-  return credential;
-}
-
-function toAuthenticationResponse(credential: PasskeyCredentialLike): Record<string, unknown> {
-  const response = credential.response;
-  if (
-    !(response.authenticatorData instanceof ArrayBuffer) ||
-    !(response.signature instanceof ArrayBuffer)
-  ) {
-    throw new Error('Privy passkey authentication response is incomplete');
-  }
-  return {
-    id: credential.id,
-    rawId: bytesToBase64Url(credential.rawId),
-    response: {
-      clientDataJSON: bytesToBase64Url(response.clientDataJSON),
-      authenticatorData: bytesToBase64Url(response.authenticatorData),
-      signature: bytesToBase64Url(response.signature),
-      userHandle: response.userHandle ? bytesToBase64Url(response.userHandle) : null,
-    },
-    type: credential.type,
-    clientExtensionResults: credential.getClientExtensionResults(),
-  };
-}
-
-function toRegistrationResponse(credential: PasskeyCredentialLike): Record<string, unknown> {
-  const response = credential.response;
-  if (!(response.attestationObject instanceof ArrayBuffer)) {
-    throw new Error('Privy passkey registration response is incomplete');
-  }
-  return {
-    id: credential.id,
-    rawId: bytesToBase64Url(credential.rawId),
-    response: {
-      clientDataJSON: bytesToBase64Url(response.clientDataJSON),
-      attestationObject: bytesToBase64Url(response.attestationObject),
-      transports: response.getTransports?.() ?? [],
-    },
-    type: credential.type,
-    clientExtensionResults: credential.getClientExtensionResults(),
-  };
-}
-
 function userFromResponse(value: unknown): PrivyUser {
   const response = asRecord(value);
   const candidate = asRecord(response?.user) ?? response;
@@ -482,11 +381,15 @@ function clearOAuthCallback(location: Location): void {
  * availability/configuration checks to the adapter.
  */
 export class PrivySession {
-  private readonly timeoutMs: number;
+  private readonly requestTimeoutMs: number;
+  private readonly userActionTimeoutMs: number;
+  private readonly teardownTimeoutMs: number;
   private readonly markerKey: string;
   private readonly loginMethods: readonly PrivyLoginMethod[];
   private readonly sessionLostCallbacks = new Set<() => void>();
   private readonly authPromptCallbacks = new Set<(prompt: WalletAuthPrompt | null) => void>();
+  readonly mfa: PrivyMfaApi;
+  private readonly mfaController: PrivyMfaController;
 
   private client: PrivyClient | undefined;
   private initializePromise: Promise<void> | undefined;
@@ -501,14 +404,50 @@ export class PrivySession {
   private visibilityListener: (() => void) | undefined;
   private pendingOAuthOperation: Promise<unknown> | undefined;
   private readonly pendingOperations = new Set<Promise<unknown>>();
+  private readonly mfaOperations = new Set<AbortController>();
   private disconnectPromise: Promise<void> | undefined;
   private disconnectLogsOut = false;
   private activePromptReject: (() => void) | undefined;
+  private signingInvocation: { promise: Promise<unknown>; mfa: PrivyMfaInvocation } | undefined;
 
   constructor(private readonly options: PrivySessionOptions) {
-    this.timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    this.requestTimeoutMs = Math.max(
+      1,
+      options.requestTimeoutMs ?? options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    );
+    this.userActionTimeoutMs = Math.max(
+      1,
+      options.userActionTimeoutMs ?? Math.max(options.timeoutMs ?? 0, 60_000)
+    );
+    this.teardownTimeoutMs = Math.max(
+      1,
+      options.teardownTimeoutMs ?? options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    );
     this.loginMethods = (options.loginMethods ?? []).slice();
     this.markerKey = `xrpl-connect:privy:pending:${options.appId}:${options.clientId ?? 'default'}`;
+    this.mfaController = new PrivyMfaController(
+      options.mfa ?? 'prompt',
+      (prompt) => this.emitAuthPrompt(prompt),
+      () => this.browserWindow()?.location.origin ?? '',
+      this.userActionTimeoutMs
+    );
+    this.mfa = {
+      status: (options = {}) =>
+        this.runMfaOperation('Privy MFA status', options.signal, (signal) =>
+          this.mfaController.status({ signal })
+        ),
+      linkPasskey: (options = {}) =>
+        this.runMfaOperation(
+          'Privy passkey linking',
+          options.signal,
+          (signal) => this.mfaController.linkPasskey({ credentials: options.credentials, signal }),
+          true
+        ),
+      enrollPasskey: (options = {}) =>
+        this.runMfaOperation('Privy MFA enrollment', options.signal, (signal) =>
+          this.mfaController.enrollPasskey({ credentialIds: options.credentialIds, signal })
+        ),
+    };
   }
 
   /**
@@ -579,11 +518,10 @@ export class PrivySession {
     try {
       const client = await this.ensureClient(signal, generation);
       const redirectUri = this.redirectURL();
-      if (!redirectUri) throw new Error('Privy redirectUri must be an absolute browser URL');
-
-      const callback = this.browserWindow()
-        ? extractOAuthCallback(this.browserWindow()!.location, redirectUri)
-        : null;
+      const callback =
+        redirectUri && this.browserWindow()
+          ? extractOAuthCallback(this.browserWindow()!.location, redirectUri)
+          : null;
       const marker = this.readPendingMarker();
       const validMarker = marker && marker.expiresAt > Date.now() ? marker : null;
 
@@ -602,9 +540,14 @@ export class PrivySession {
         clearOAuthCallback(this.browserWindow()!.location);
         this.clearPendingMarker(validMarker.attemptId);
         if (callback.error || callback.errorDescription || !callback.code || !callback.state) {
-          const failure = new Error(
-            callback.errorDescription ?? callback.error ?? 'Privy OAuth login did not complete'
-          );
+          const failure =
+            callback.error === 'invalid_origin'
+              ? originConfigurationError(this.browserWindow()?.location.origin ?? 'this origin')
+              : new Error(
+                  callback.errorDescription ??
+                    callback.error ??
+                    'Privy OAuth login did not complete'
+                );
           // Only a denial is the user's choice; any other provider error keeps
           // its own message so the application can act on it.
           throw isOAuthRejection(callback.error ?? failure) ? connectionRejected(failure) : failure;
@@ -766,24 +709,92 @@ export class PrivySession {
       };
     }
 
-    const result = await this.runOperation(
-      () =>
-        rawSign(client, (request) => client.embeddedWallet.signWithUserSigner(request), {
-          wallet_id: wallet.id,
-          params: { hash },
-        }),
-      signal,
-      expectedGeneration,
-      'Privy hash signing'
-    ).catch((error: unknown) => {
+    await this.waitForSigningInvocation(signal, expectedGeneration);
+    let acceptingSignerRequests = true;
+    let mfaInvocation: PrivyMfaInvocation | undefined;
+    let mfaReason: 'mfa_required' | 'mfa_cancelled' | 'mfa_timeout' | undefined;
+    let result: Awaited<ReturnType<typeof rawSign>>;
+    try {
+      result = await this.runOperation(
+        () =>
+          rawSign(
+            client,
+            async (request) => {
+              this.assertGeneration(expectedGeneration, signal);
+              if (!acceptingSignerRequests)
+                throw operationTimeout('Privy hash signing', 'request_timeout');
+              // Only the embedded signer uses Privy's shared MFA deferred. The
+              // subsequent wallet API request may outlive its network deadline.
+              const invocation = this.mfaController.beginInvocation();
+              mfaInvocation = invocation;
+              const finish = () => {
+                if (this.signingInvocation?.mfa === invocation) this.signingInvocation = undefined;
+                return this.mfaController.finishInvocation(invocation);
+              };
+              try {
+                const promise = client.embeddedWallet.signWithUserSigner(request);
+                this.signingInvocation = { promise, mfa: invocation };
+                const signedRequest = await promise;
+                finish();
+                return signedRequest;
+              } catch (error) {
+                mfaReason = finish();
+                throw error;
+              }
+            },
+            { wallet_id: wallet.id, params: { hash } }
+          ),
+        signal,
+        expectedGeneration,
+        'Privy hash signing',
+        this.requestTimeoutMs,
+        true
+      );
+    } catch (error) {
       // Whatever failed may be what the verification covers; check again next time.
       this.verifiedSigner = undefined;
+      const reason =
+        signal.aborted || (error as { reason?: string })?.reason === 'mfa_cancelled'
+          ? 'mfa_cancelled'
+          : 'mfa_timeout';
+      if (mfaInvocation) this.mfaController.abandonInvocation(mfaInvocation, reason);
+      if (!(error as { reason?: unknown })?.reason && mfaReason) {
+        const original = error instanceof Error ? error : new Error(String(error));
+        const wrapped = new Error(original.message);
+        Object.defineProperty(wrapped, 'cause', { value: original, configurable: true });
+        Object.defineProperty(wrapped, 'reason', { value: mfaReason, enumerable: true });
+        throw wrapped;
+      }
       throw error;
-    });
+    } finally {
+      acceptingSignerRequests = false;
+    }
     if (result.data.encoding !== 'hex' || !/^0x[0-9a-f]+$/i.test(result.data.signature)) {
       throw new Error('Privy returned an invalid raw signature');
     }
     return result.data.signature;
+  }
+
+  private async waitForSigningInvocation(signal: AbortSignal, generation: number): Promise<void> {
+    while (this.signingInvocation) {
+      const previous = this.signingInvocation;
+      await this.runOperation(
+        () => previous.promise.catch(() => undefined),
+        signal,
+        generation,
+        'Privy previous hash signing'
+      );
+    }
+  }
+
+  private retireStalledSigner(): void {
+    if (!this.signingInvocation) return;
+    // An iframe call can outlive teardown. A new session must own a fresh
+    // client and MFA deferred even if that old call never settles.
+    this.mfaController.finishInvocation(this.signingInvocation.mfa);
+    this.signingInvocation = undefined;
+    this.client = undefined;
+    this.initializePromise = undefined;
   }
 
   /**
@@ -796,10 +807,12 @@ export class PrivySession {
     if (this.disconnectPromise) {
       // A logout request joining a cleanup that preserves the session upgrades it.
       if (logout) this.disconnectLogsOut = true;
-      await this.settleWithin(this.disconnectPromise, this.timeoutMs);
+      await this.settleWithin(this.disconnectPromise, this.teardownTimeoutMs);
       return;
     }
     this.lifecycleGeneration += 1;
+    this.abortMfaOperations();
+    this.mfaController.detach();
     this.activePromptReject?.();
     this.activePromptReject = undefined;
     const attempt = this.activeAttempt;
@@ -818,7 +831,7 @@ export class PrivySession {
     this.disconnectLogsOut = logout;
     const cleanup = this.finishDisconnect(userId);
     this.disconnectPromise = cleanup;
-    await this.settleWithin(cleanup, this.timeoutMs);
+    await this.settleWithin(cleanup, this.teardownTimeoutMs);
   }
 
   onSessionLost(callback: () => void): () => void {
@@ -829,6 +842,91 @@ export class PrivySession {
   onAuthPrompt(callback: (prompt: WalletAuthPrompt | null) => void): () => void {
     this.authPromptCallbacks.add(callback);
     return () => this.authPromptCallbacks.delete(callback);
+  }
+
+  async getAccessToken(signal: AbortSignal = new AbortController().signal): Promise<string | null> {
+    const client = this.client;
+    const wallet = this.currentWallet;
+    if (!client || !wallet || this.sessionLost) return null;
+    const token = await this.runOperation(
+      () => client.getAccessToken(),
+      signal,
+      this.lifecycleGeneration,
+      'Privy access token'
+    );
+    if (wallet !== this.currentWallet || !token || accessTokenUserId(token) !== wallet.userId)
+      return null;
+    return token;
+  }
+
+  private async runMfaOperation<T>(
+    label: string,
+    callerSignal: AbortSignal | undefined,
+    operation: (signal: AbortSignal) => Promise<T>,
+    pauseForUserAction = false
+  ): Promise<T> {
+    const generation = this.lifecycleGeneration;
+    const wallet = this.currentWallet;
+    const userId = this.currentUserId;
+    if (!wallet || !userId || this.sessionLost) throw createWalletError.notConnected();
+
+    const controller = new AbortController();
+    const onCallerAbort = (): void => controller.abort();
+    callerSignal?.addEventListener('abort', onCallerAbort, { once: true });
+    if (callerSignal?.aborted) controller.abort();
+    this.mfaOperations.add(controller);
+    try {
+      this.assertMfaContext(generation, controller.signal, wallet, userId);
+      const client = await this.ensureClient(controller.signal, generation);
+      this.assertMfaContext(generation, controller.signal, wallet, userId);
+      const user = await this.requireAuthenticatedUser(client, controller.signal, generation);
+      this.assertMfaContext(generation, controller.signal, wallet, userId);
+      this.assertUserIdentity(user, userId);
+      const account = this.findOwnedXrplAccount(user, wallet.id);
+      if (!account || account.address !== wallet.address) {
+        throw new Error('Privy wallet is no longer owned by the authenticated user');
+      }
+
+      const result = await this.runOperation(
+        () => operation(controller.signal),
+        controller.signal,
+        generation,
+        label,
+        this.requestTimeoutMs,
+        false,
+        'request_timeout',
+        pauseForUserAction
+      );
+      this.assertMfaContext(generation, controller.signal, wallet, userId);
+      return result;
+    } finally {
+      controller.abort();
+      callerSignal?.removeEventListener('abort', onCallerAbort);
+      this.mfaOperations.delete(controller);
+    }
+  }
+
+  private assertMfaContext(
+    generation: number,
+    signal: AbortSignal,
+    wallet: PrivyWallet,
+    userId: string
+  ): void {
+    this.assertGeneration(generation, signal);
+    const current = this.currentWallet;
+    if (
+      this.currentUserId !== userId ||
+      !current ||
+      current.id !== wallet.id ||
+      current.userId !== wallet.userId ||
+      current.address !== wallet.address
+    ) {
+      throw createWalletError.notConnected();
+    }
+  }
+
+  private abortMfaOperations(): void {
+    for (const controller of [...this.mfaOperations]) controller.abort();
   }
 
   private browserWindow(): Window | undefined {
@@ -852,6 +950,7 @@ export class PrivySession {
   }
 
   private redirectURL(): URL | null {
+    if (!this.options.redirectUri) return null;
     try {
       return new URL(this.options.redirectUri);
     } catch {
@@ -868,6 +967,7 @@ export class PrivySession {
     id: string,
     dashboard?: ResolvedLoginMethod
   ): ResolvedLoginMethod | undefined {
+    if (this.options.allowedLoginMethods && !this.options.allowedLoginMethods.includes(id)) return;
     const method = this.loginMethods.find((candidate) => candidate.id === id);
     if (!method) return undefined;
     const label = isNonEmptyString(method.label) ? method.label.trim() : undefined;
@@ -956,12 +1056,12 @@ export class PrivySession {
       });
     }
 
-    // Explicit methods are extensions, but an explicit id is authoritative.
     for (const method of this.loginMethods) {
       const explicit = this.resolveExplicitLoginMethod(method.id, methods.get(method.id));
       if (explicit) methods.set(method.id, explicit);
     }
-    return [...methods.values()];
+    const allowed = this.options.allowedLoginMethods;
+    return [...methods.values()].filter((method) => !allowed || allowed.includes(method.id));
   }
 
   private resolveLoginMethod(id: string, config: DashboardConfig): ResolvedLoginMethod | undefined {
@@ -992,14 +1092,17 @@ export class PrivySession {
     return config as DashboardConfig;
   }
 
-  private emitAuthPrompt(prompt: WalletAuthPrompt | null): void {
+  private emitAuthPrompt(prompt: WalletAuthPrompt | null): boolean {
+    let delivered = false;
     for (const callback of this.authPromptCallbacks) {
       try {
+        delivered = true;
         callback(prompt);
       } catch {
         // UI observers are isolated from the authentication operation.
       }
     }
+    return delivered;
   }
 
   private async waitForPrompt<T>(
@@ -1355,7 +1458,7 @@ export class PrivySession {
             generation,
             'Privy passkey initialization'
           );
-          const authenticationOptions = this.passkeyAuthenticationOptions(authentication);
+          const authenticationOptions = passkeyAuthenticationOptions(authentication);
           const credential = asPasskeyCredential(
             await this.waitForBrowserCredential(
               (credentialSignal) =>
@@ -1372,8 +1475,8 @@ export class PrivySession {
             () =>
               client.auth.passkey.loginWithPasskey(
                 toAuthenticationResponse(credential) as never,
-                this.passkeyChallenge(authentication),
-                this.passkeyRelyingParty(authentication)
+                passkeyChallenge(authentication),
+                passkeyRelyingParty(authentication)
               ),
             signal,
             generation,
@@ -1423,7 +1526,7 @@ export class PrivySession {
       generation,
       'Privy passkey signup initialization'
     );
-    const registrationOptions = this.passkeyRegistrationOptions(registration);
+    const registrationOptions = passkeyRegistrationOptions(registration);
     const registrationCredential = asPasskeyCredential(
       await this.waitForBrowserCredential(
         (credentialSignal) =>
@@ -1440,119 +1543,13 @@ export class PrivySession {
       () =>
         client.auth.passkey.signupWithPasskey(
           toRegistrationResponse(registrationCredential) as never,
-          this.passkeyRelyingParty(registration)
+          passkeyRelyingParty(registration)
         ),
       signal,
       generation,
       'Privy passkey signup'
     );
     return userFromResponse(signedUp);
-  }
-
-  private passkeyChallenge(value: unknown): string {
-    const response = asRecord(value);
-    const options = asRecord(response?.options);
-    if (!options || !isNonEmptyString(options.challenge)) {
-      throw new Error('Privy passkey response did not include a challenge');
-    }
-    return options.challenge;
-  }
-
-  private passkeyRelyingParty(value: unknown): string | undefined {
-    const response = asRecord(value);
-    return isNonEmptyString(response?.relying_party) ? response.relying_party : undefined;
-  }
-
-  private passkeyAuthenticationOptions(value: unknown): PublicKeyCredentialRequestOptions {
-    const response = asRecord(value);
-    const options = asRecord(response?.options);
-    if (!options || !isNonEmptyString(options.challenge)) {
-      throw new Error('Privy passkey response did not include authentication options');
-    }
-    const allowCredentials = passkeyCredentialDescriptors(options.allow_credentials);
-    const extensions = passkeyExtensions(options.extensions);
-    return {
-      challenge: base64UrlToBytes(options.challenge) as unknown as ArrayBuffer,
-      ...(isNonEmptyString(options.rp_id) ? { rpId: options.rp_id } : {}),
-      ...(allowCredentials ? { allowCredentials } : {}),
-      ...(typeof options.timeout === 'number' ? { timeout: options.timeout } : {}),
-      ...(isNonEmptyString(options.user_verification)
-        ? { userVerification: options.user_verification as UserVerificationRequirement }
-        : {}),
-      ...(extensions ? { extensions } : {}),
-    };
-  }
-
-  private passkeyRegistrationOptions(value: unknown): PublicKeyCredentialCreationOptions {
-    const response = asRecord(value);
-    const options = asRecord(response?.options);
-    const relyingParty = asRecord(options?.rp);
-    const user = asRecord(options?.user);
-    if (
-      !options ||
-      !isNonEmptyString(options.challenge) ||
-      !relyingParty ||
-      !isNonEmptyString(relyingParty.name) ||
-      !user ||
-      !isNonEmptyString(user.id) ||
-      !isNonEmptyString(user.name) ||
-      !isNonEmptyString(user.display_name)
-    ) {
-      throw new Error('Privy passkey response did not include registration options');
-    }
-    const pubKeyCredParams = Array.isArray(options.pub_key_cred_params)
-      ? options.pub_key_cred_params.flatMap((entry) => {
-          const parameter = asRecord(entry);
-          return typeof parameter?.alg === 'number'
-            ? [{ type: 'public-key' as const, alg: parameter.alg }]
-            : [];
-        })
-      : [];
-    if (pubKeyCredParams.length === 0)
-      throw new Error('Privy passkey response did not include algorithms');
-    const excludeCredentials = passkeyCredentialDescriptors(options.exclude_credentials);
-    const extensions = passkeyExtensions(options.extensions);
-    const selection = asRecord(options.authenticator_selection);
-    return {
-      challenge: base64UrlToBytes(options.challenge) as unknown as ArrayBuffer,
-      rp: {
-        name: relyingParty.name,
-        ...(isNonEmptyString(relyingParty.id) ? { id: relyingParty.id } : {}),
-      },
-      user: {
-        id: base64UrlToBytes(user.id) as unknown as ArrayBuffer,
-        name: user.name,
-        displayName: user.display_name,
-      },
-      pubKeyCredParams,
-      ...(typeof options.timeout === 'number' ? { timeout: options.timeout } : {}),
-      ...(isNonEmptyString(options.attestation)
-        ? { attestation: options.attestation as AttestationConveyancePreference }
-        : {}),
-      ...(selection
-        ? {
-            authenticatorSelection: {
-              ...(isNonEmptyString(selection.authenticator_attachment)
-                ? {
-                    authenticatorAttachment:
-                      selection.authenticator_attachment as AuthenticatorAttachment,
-                  }
-                : {}),
-              ...(typeof selection.require_resident_key === 'boolean'
-                ? { requireResidentKey: selection.require_resident_key }
-                : {}),
-              ...(isNonEmptyString(selection.resident_key)
-                ? { residentKey: selection.resident_key as ResidentKeyRequirement }
-                : {}),
-              ...(isNonEmptyString(selection.user_verification)
-                ? { userVerification: selection.user_verification as UserVerificationRequirement }
-                : {}),
-            },
-          }
-        : {}),
-      ...(excludeCredentials ? { excludeCredentials } : {}),
-      ...(extensions ? { extensions } : {}),
-    };
   }
 
   private async waitForBrowserCredential<T>(
@@ -1592,8 +1589,12 @@ export class PrivySession {
     signal: AbortSignal,
     generation: number
   ): Promise<PrivyUser> {
+    const redirectUri = this.redirectURL();
+    if (!redirectUri) {
+      throw new Error('Privy Farcaster login requires redirectUri');
+    }
     const initialized = await this.runOperation(
-      () => client.auth.farcaster.initializeAuth({ redirectUrl: this.options.redirectUri }),
+      () => client.auth.farcaster.initializeAuth({ redirectUrl: redirectUri.toString() }),
       signal,
       generation,
       'Privy Farcaster initialization'
@@ -1691,7 +1692,7 @@ export class PrivySession {
         await this.delayWithAbort(FARCASTER_POLL_INTERVAL_MS, signal, generation);
       }
       if (controls.isActive(step))
-        throw createWalletError.operationTimeout('Privy Farcaster authentication');
+        throw operationTimeout('Privy Farcaster authentication', 'request_timeout');
     } catch (error) {
       if (controls.isActive(step)) controls.fail(error);
     }
@@ -1764,7 +1765,7 @@ export class PrivySession {
       clientId: this.options.clientId ?? null,
       methodId,
       attemptId,
-      expiresAt: Date.now() + Math.max(this.timeoutMs * 4, OAUTH_MARKER_TTL_MS),
+      expiresAt: Date.now() + Math.max(this.requestTimeoutMs * 4, OAUTH_MARKER_TTL_MS),
     };
     try {
       browser.sessionStorage.setItem(this.markerKey, JSON.stringify(marker));
@@ -1812,6 +1813,7 @@ export class PrivySession {
       }
       throw error;
     }
+    this.mfaController.attach(this.client);
     return this.client;
   }
 
@@ -1985,7 +1987,9 @@ export class PrivySession {
     const browser = this.browserWindow();
     if (!browser) throw createWalletError.notAvailable('Privy');
     const redirectUri = this.redirectURL();
-    if (!redirectUri) throw new Error('Privy redirectUri must be an absolute browser URL');
+    if (!redirectUri) {
+      throw new Error(`Privy login method "${methodId}" requires redirectUri`);
+    }
 
     await this.waitForPreviousOAuthOperation(signal, generation);
     this.assertGeneration(generation, signal);
@@ -2168,13 +2172,29 @@ export class PrivySession {
         );
       }
       this.assertGeneration(generation, signal);
-      const ready = await this.runOperation(
-        () => client.embeddedWallet.ping(this.timeoutMs),
-        signal,
-        generation,
-        'Privy embedded wallet readiness'
-      );
-      if (!ready) throw createWalletError.operationTimeout('Privy embedded wallet readiness');
+      const deadline = Date.now() + this.requestTimeoutMs;
+      let ready = false;
+      while (!ready && Date.now() < deadline) {
+        const remaining = deadline - Date.now();
+        try {
+          ready = await this.runOperation(
+            () => client.embeddedWallet.ping(Math.min(500, remaining)),
+            signal,
+            generation,
+            'Privy embedded wallet readiness',
+            remaining
+          );
+        } catch (error) {
+          if (isWalletError(error) && error.code === WalletErrorCode.NOT_CONNECTED) throw error;
+          ready = false;
+        }
+        if (!ready && Date.now() < deadline) {
+          await this.delayWithAbort(Math.min(400, deadline - Date.now()), signal, generation);
+        }
+      }
+      if (!ready) {
+        throw operationTimeout('Privy embedded wallet readiness', 'iframe_not_ready');
+      }
     } catch (error) {
       if (this.iframe === iframe) this.cleanupIframe();
       throw error;
@@ -2262,6 +2282,9 @@ export class PrivySession {
     if (this.sessionLost) return;
     this.sessionLost = true;
     this.lifecycleGeneration += 1;
+    this.abortMfaOperations();
+    this.mfaController.detach();
+    this.retireStalledSigner();
     this.activePromptReject?.();
     this.activePromptReject = undefined;
     this.currentWallet = undefined;
@@ -2287,30 +2310,70 @@ export class PrivySession {
     operation: () => Promise<T>,
     signal: AbortSignal,
     generation: number,
-    label: string
+    label: string,
+    timeoutMs = this.requestTimeoutMs,
+    pauseForMfa = false,
+    timeoutReason: WalletErrorReason = 'request_timeout',
+    pauseTimerOnUserAction = pauseForMfa
   ): Promise<T> {
     this.assertGeneration(generation, signal);
-    const request = this.trackOperation(operation, () => this.assertGeneration(generation, signal));
     let abortHandler: (() => void) | undefined;
     let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+    let unsubscribeMfa: (() => void) | undefined;
+    let timeoutBudget = timeoutMs;
+    let timeoutSettled = false;
+    let rejectTimeout!: (error: Error) => void;
+    const timeout = new Promise<never>((_, reject) => {
+      rejectTimeout = reject;
+    });
+    const armTimeout = (): void => {
+      if (timeoutSettled) return;
+      if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
+      timeoutTimer = setTimeout(
+        () => {
+          timeoutSettled = true;
+          if (pauseForMfa) this.mfaController.cancelActive();
+          rejectTimeout(operationTimeout(label, timeoutReason));
+        },
+        Math.max(1, timeoutBudget)
+      );
+    };
+    if (pauseTimerOnUserAction) {
+      unsubscribeMfa = this.mfaController.onUserAction((active) => {
+        if (active) {
+          if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
+          timeoutTimer = undefined;
+        } else {
+          // A fresh request budget applies after each user answer.  Time spent
+          // waiting for Face ID is governed only by userActionTimeoutMs.
+          timeoutBudget = timeoutMs;
+          armTimeout();
+        }
+      });
+    }
+    armTimeout();
+    const request = this.trackOperation(operation, () => this.assertGeneration(generation, signal));
     const aborted = new Promise<never>((_, reject) => {
       abortHandler = () => reject(createWalletError.notConnected());
       signal.addEventListener('abort', abortHandler, { once: true });
       if (signal.aborted) abortHandler();
     });
     try {
-      const timedOut = new Promise<never>((_, reject) => {
-        timeoutTimer = setTimeout(
-          () => reject(createWalletError.operationTimeout(label)),
-          this.timeoutMs
-        );
-      });
-      const value = await Promise.race([request, aborted, timedOut]);
+      const value = await Promise.race([request, aborted, timeout]);
       this.assertGeneration(generation, signal);
       return value;
+    } catch (error) {
+      if (originNotAllowed(error)) {
+        throw originConfigurationError(
+          this.browserWindow()?.location.origin ?? 'this origin',
+          error
+        );
+      }
+      throw error;
     } finally {
       if (abortHandler) signal.removeEventListener('abort', abortHandler);
       if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
+      unsubscribeMfa?.();
     }
   }
 
@@ -2371,7 +2434,7 @@ export class PrivySession {
       // Local session state is already cleared; provider failures must not block teardown.
       const providerLogout = (): Promise<unknown> =>
         client.auth.logout(userId ? { userId } : undefined);
-      await this.settleWithin(Promise.resolve().then(providerLogout), this.timeoutMs);
+      await this.settleWithin(Promise.resolve().then(providerLogout), this.teardownTimeoutMs);
       if (abandoned.length > 0) {
         // A login that outlived the wait can still complete and sign its user
         // in after the logout above, so log out again once it settles. A newer
@@ -2387,6 +2450,7 @@ export class PrivySession {
     } finally {
       this.disconnectPromise = undefined;
       this.cleanupIframe();
+      this.retireStalledSigner();
     }
   }
 
@@ -2430,7 +2494,7 @@ export class PrivySession {
 
   /** Wait for in-flight SDK work, returning whatever is still pending at the deadline. */
   private async waitForPendingOperations(): Promise<Promise<unknown>[]> {
-    const deadline = Date.now() + this.timeoutMs;
+    const deadline = Date.now() + this.teardownTimeoutMs;
     while (this.pendingOperations.size > 0) {
       const pending = [...this.pendingOperations];
       const remaining = deadline - Date.now();
@@ -2458,9 +2522,9 @@ export class PrivySession {
     });
     const timedOut = new Promise<never>((_, reject) => {
       timeoutTimer = setTimeout(
-        () => reject(createWalletError.operationTimeout('Privy disconnect cleanup')),
+        () => reject(operationTimeout('Privy disconnect cleanup', 'teardown_timeout')),
         // Cleanup waits for pending work, then for logout, each within `timeoutMs`.
-        this.timeoutMs * 2
+        this.teardownTimeoutMs * 2
       );
     });
     try {

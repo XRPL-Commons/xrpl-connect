@@ -2,6 +2,7 @@ import { secp256k1 } from '@noble/curves/secp256k1';
 import {
   deriveAddress,
   encode,
+  encodeForMultiSigning,
   encodeForSigning,
   hashes,
   isValidClassicAddress,
@@ -9,8 +10,10 @@ import {
   verifyKeypairSignature,
   xrpToDrops,
 } from 'xrpl';
-import { createWalletError, type SignedTransaction, type Transaction } from 'xrpl-connect';
+import { createWalletError, type SignedTransaction, type Transaction } from 'xrpl-connect/core';
 import type { PrivyWallet } from './session-types';
+
+export type SignHash = (hash: `0x${string}`) => Promise<string>;
 
 /**
  * Highest fee the adapter signs: xrpl.js's default autofill cap, which the
@@ -73,14 +76,65 @@ export function prepareSigningInput(transaction: Transaction, wallet: PrivyWalle
   return tx;
 }
 
-export async function signPreparedTransaction(
+/**
+ * Snapshot a prepared transaction for an ordinary XRPL multisign contribution.
+ *
+ * Unlike a single-signature request, a multisigned transaction must be
+ * prepared once for every signer. In particular, the adapter must not
+ * autofill `Fee`, `Sequence`, or `LastLedgerSequence` independently for each
+ * contribution.
+ */
+export function prepareMultisigningInput(
   transaction: Transaction,
+  _wallet: PrivyWallet
+): Transaction {
+  if (transaction.TxnSignature !== undefined || transaction.Signers !== undefined) {
+    throw new Error('Multisigning input must not contain signatures');
+  }
+  if (typeof transaction.Account !== 'string' || !isValidClassicAddress(transaction.Account)) {
+    throw new Error('Multisigning requires a valid source Account');
+  }
+  if (transaction.SigningPubKey !== undefined && transaction.SigningPubKey !== '') {
+    throw new Error('Multisigning requires SigningPubKey to be empty');
+  }
+  assertPreparedTransaction(transaction, 'Multisigning');
+
+  const tx: Transaction = JSON.parse(JSON.stringify(transaction));
+  tx.SigningPubKey = '';
+  validate(tx);
+  return tx;
+}
+
+function assertPreparedTransaction(transaction: Transaction, label: string): void {
+  if (typeof transaction.Fee !== 'string' || !/^[0-9]+$/.test(transaction.Fee)) {
+    throw new Error(`${label} requires a prepared transaction with Fee and Sequence`);
+  }
+  if (
+    typeof transaction.Sequence !== 'number' ||
+    !Number.isSafeInteger(transaction.Sequence) ||
+    transaction.Sequence < 0
+  ) {
+    throw new Error(`${label} requires a prepared transaction with Fee and Sequence`);
+  }
+}
+
+function decodeHex(value: string): Uint8Array {
+  if (!/^[0-9a-f]+$/i.test(value) || value.length % 2 !== 0) {
+    throw new Error('XRPL signing payload must be an even-length hexadecimal string');
+  }
+  return Uint8Array.from(value.match(/../g) ?? [], (part) => parseInt(part, 16));
+}
+
+/** Sign an XRPL binary-codec preimage with Privy's raw hash signer. */
+export async function signEncodedPayload(
+  signingBytes: string,
   wallet: PrivyWallet,
-  signHash: (hash: `0x${string}`) => Promise<string>
-): Promise<SignedTransaction> {
-  const signingBytes = encodeForSigning(transaction);
-  const bytes = Uint8Array.from(signingBytes.match(/../g) ?? [], (value) => parseInt(value, 16));
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-512', bytes)).slice(0, 32);
+  signHash: SignHash
+): Promise<string> {
+  const bytes = decodeHex(signingBytes);
+  const digest = new Uint8Array(
+    await crypto.subtle.digest('SHA-512', bytes as unknown as BufferSource)
+  ).slice(0, 32);
   const hash =
     `0x${Array.from(digest, (value) => value.toString(16).padStart(2, '0')).join('')}` as const;
   const compact = await signHash(hash);
@@ -95,6 +149,57 @@ export async function signPreparedTransaction(
   if (!verifyKeypairSignature(signingBytes, signature, wallet.publicKey)) {
     throw new Error('Privy signature does not match the connected XRPL account');
   }
+  return signature;
+}
+
+function contributionResult(
+  tx_json: Transaction,
+  signature: string,
+  wallet: PrivyWallet
+): SignedTransaction {
+  const tx_blob = encode(tx_json);
+  return {
+    // A contribution is not a final transaction and therefore has no hash to
+    // track. The combined blob receives its hash after all signatures exist.
+    hash: '',
+    tx_blob,
+    tx_json,
+    signature,
+    signerAddress: wallet.address,
+  };
+}
+
+/** Sign a prepared ordinary XRPL multisign preimage and return one contribution. */
+export async function signPreparedMultisignedTransaction(
+  transaction: Transaction,
+  wallet: PrivyWallet,
+  signHash: SignHash
+): Promise<SignedTransaction> {
+  const signingBytes = encodeForMultiSigning(transaction, wallet.address);
+  const signature = await signEncodedPayload(signingBytes, wallet, signHash);
+  const tx_json = {
+    ...transaction,
+    SigningPubKey: '',
+    Signers: [
+      {
+        Signer: {
+          Account: wallet.address,
+          SigningPubKey: wallet.publicKey.toUpperCase(),
+          TxnSignature: signature,
+        },
+      },
+    ],
+  } as Transaction;
+  return contributionResult(tx_json, signature, wallet);
+}
+
+export async function signPreparedTransaction(
+  transaction: Transaction,
+  wallet: PrivyWallet,
+  signHash: SignHash
+): Promise<SignedTransaction> {
+  const signingBytes = encodeForSigning(transaction);
+  const signature = await signEncodedPayload(signingBytes, wallet, signHash);
   const tx_json = { ...transaction, TxnSignature: signature } as Transaction;
   const tx_blob = encode(tx_json);
   return {
