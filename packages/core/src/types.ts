@@ -269,6 +269,8 @@ export interface WalletAuthField {
 
 /** A pending authentication step. Input values stay between the UI and adapter. */
 export interface WalletAuthPrompt {
+  /** An additional authentication step requested while the wallet is connected. */
+  kind?: 'mfa';
   title: string;
   /** Optional provider icon displayed by authentication prompt UIs. */
   icon?: string;
