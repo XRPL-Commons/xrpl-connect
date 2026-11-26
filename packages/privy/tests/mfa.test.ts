@@ -120,7 +120,7 @@ describe('Privy transaction MFA', () => {
     expect(prompt?.kind).toBe('mfa');
     const get = vi.fn().mockResolvedValue(credential());
     vi.stubGlobal('navigator', { credentials: { get } });
-    await (prompt?.submit as ((values: Record<string, string>) => Promise<void>))({});
+    await (prompt?.submit as (values: Record<string, string>) => Promise<void>)({});
 
     await vi.waitFor(() =>
       expect(challenge.resolve).toHaveBeenCalledWith(
@@ -147,9 +147,7 @@ describe('Privy transaction MFA', () => {
     const retry = deferred();
     fixture.rootPromise.current = retry;
     controller.cancelActive();
-    expect(retry.reject).toHaveBeenCalledWith(
-      expect.objectContaining({ reason: 'mfa_timeout' })
-    );
+    expect(retry.reject).toHaveBeenCalledWith(expect.objectContaining({ reason: 'mfa_timeout' }));
     vi.unstubAllGlobals();
   });
 
@@ -177,7 +175,9 @@ describe('Privy transaction MFA', () => {
       return new Promise<never>(() => undefined);
     });
     vi.stubGlobal('navigator', { credentials: { get } });
-    const submitting = (prompts[0]?.submit as (values: Record<string, string>) => Promise<void>)({});
+    const submitting = (prompts[0]?.submit as (values: Record<string, string>) => Promise<void>)(
+      {}
+    );
     await vi.waitFor(() => expect(get).toHaveBeenCalled());
     (prompts[0]?.cancel as () => void)();
     await submitting;
@@ -233,9 +233,9 @@ describe('Privy transaction MFA', () => {
       )
     );
 
-    const create = vi.fn().mockResolvedValue(
-      credential({ attestationObject: new Uint8Array([4, 5, 6]).buffer })
-    );
+    const create = vi
+      .fn()
+      .mockResolvedValue(credential({ attestationObject: new Uint8Array([4, 5, 6]).buffer }));
     const linked = await controller.linkPasskey({ credentials: { create } });
     expect(linked.credentialId).toBe('credential-id');
     expect(create).toHaveBeenCalledOnce();

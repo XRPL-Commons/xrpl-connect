@@ -509,15 +509,33 @@ try {
   const umbrellaManifest = installedManifests['xrpl-connect'];
   const subpathExports = {
     core: { exportName: 'WalletManager', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
-    ui: { exportName: 'WALLET_CONNECTOR_CSS_VARIABLES', forbidden: ['WalletManager', 'XamanAdapter'] },
+    ui: {
+      exportName: 'WALLET_CONNECTOR_CSS_VARIABLES',
+      forbidden: ['WalletManager', 'XamanAdapter'],
+    },
     register: { exportName: null, forbidden: ['WalletManager', 'XamanAdapter'] },
-    xaman: { exportName: 'XamanAdapter', forbidden: ['CrossmarkAdapter', 'WalletConnectorElement'] },
-    crossmark: { exportName: 'CrossmarkAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
-    gemwallet: { exportName: 'GemWalletAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
-    walletconnect: { exportName: 'WalletConnectAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
+    xaman: {
+      exportName: 'XamanAdapter',
+      forbidden: ['CrossmarkAdapter', 'WalletConnectorElement'],
+    },
+    crossmark: {
+      exportName: 'CrossmarkAdapter',
+      forbidden: ['XamanAdapter', 'WalletConnectorElement'],
+    },
+    gemwallet: {
+      exportName: 'GemWalletAdapter',
+      forbidden: ['XamanAdapter', 'WalletConnectorElement'],
+    },
+    walletconnect: {
+      exportName: 'WalletConnectAdapter',
+      forbidden: ['XamanAdapter', 'WalletConnectorElement'],
+    },
     ledger: { exportName: 'LedgerAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
     xyra: { exportName: 'XyraAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
-    ghostsig: { exportName: 'GhostsigAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
+    ghostsig: {
+      exportName: 'GhostsigAdapter',
+      forbidden: ['XamanAdapter', 'WalletConnectorElement'],
+    },
     otsu: { exportName: 'OtsuAdapter', forbidden: ['XamanAdapter', 'WalletConnectorElement'] },
     'metamask-snap': {
       exportName: 'MetaMaskSnapAdapter',
@@ -555,7 +573,9 @@ try {
       );
     }
   }
-  const rootEsm = await import(pathToFileURL(path.join(installedUmbrellaFolder, 'xrpl-connect.mjs')));
+  const rootEsm = await import(
+    pathToFileURL(path.join(installedUmbrellaFolder, 'xrpl-connect.mjs'))
+  );
   const coreEsm = await import(pathToFileURL(path.join(installedUmbrellaFolder, 'core.mjs')));
   const uiEsm = await import(pathToFileURL(path.join(installedUmbrellaFolder, 'ui.mjs')));
   const xamanEsm = await import(pathToFileURL(path.join(installedUmbrellaFolder, 'xaman.mjs')));
@@ -563,7 +583,9 @@ try {
   assert.strictEqual(rootEsm.XamanAdapter, xamanEsm.XamanAdapter);
   assert.strictEqual(rootEsm.WalletConnectorElement, uiEsm.WalletConnectorElement);
   assert.equal(typeof coreEsm.XamanAdapter, 'undefined');
-  const rootCjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, 'xrpl-connect.js'));
+  const rootCjs = createRequire(import.meta.url)(
+    path.join(installedUmbrellaFolder, 'xrpl-connect.js')
+  );
   const coreCjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, 'core.js'));
   const uiCjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, 'ui.js'));
   const xamanCjs = createRequire(import.meta.url)(path.join(installedUmbrellaFolder, 'xaman.js'));
@@ -646,8 +668,8 @@ try {
     }
     return visited;
   };
-  const bundledModuleFiles = readdirSync(installedUmbrellaFolder, { recursive: true }).filter((file) =>
-    /\.m?js$/.test(file)
+  const bundledModuleFiles = readdirSync(installedUmbrellaFolder, { recursive: true }).filter(
+    (file) => /\.m?js$/.test(file)
   );
   for (const [format, entry] of [
     ['ESM', 'xrpl-connect.mjs'],

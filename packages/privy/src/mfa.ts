@@ -138,7 +138,7 @@ function assertion(value: unknown): PrivyMfaAssertion {
   }
   return {
     id: credential.id,
-      raw_id: bytesToBase64Url(credential.rawId),
+    raw_id: bytesToBase64Url(credential.rawId),
     type: 'public-key',
     ...(nonEmptyString(credential.authenticatorAttachment)
       ? { authenticator_attachment: credential.authenticatorAttachment }
@@ -159,7 +159,10 @@ function reasoned(error: Error, reason: string): Error {
   return Object.assign(error, { reason });
 }
 
-function mfaError(message: string, reason: 'mfa_required' | 'mfa_cancelled' | 'mfa_timeout'): Error {
+function mfaError(
+  message: string,
+  reason: 'mfa_required' | 'mfa_cancelled' | 'mfa_timeout'
+): Error {
   const error = Object.assign(new Error(message), { type: reason });
   return reasoned(error, reason);
 }
@@ -309,10 +312,12 @@ export class PrivyMfaController implements PrivyMfaApi {
     return passkeyStatus(user?.user);
   }
 
-  async linkPasskey(options: {
-    credentials?: Pick<CredentialsContainer, 'create'>;
-    signal?: AbortSignal;
-  } = {}): Promise<{ credentialId: string; status: PrivyMfaStatus }> {
+  async linkPasskey(
+    options: {
+      credentials?: Pick<CredentialsContainer, 'create'>;
+      signal?: AbortSignal;
+    } = {}
+  ): Promise<{ credentialId: string; status: PrivyMfaStatus }> {
     const client = this.requireClient();
     const passkey = client.auth?.passkey;
     if (!passkey?.generateRegistrationOptions || !passkey.linkWithPasskey) {
@@ -322,7 +327,10 @@ export class PrivyMfaController implements PrivyMfaApi {
     const credentials =
       options.credentials ?? (typeof navigator === 'undefined' ? undefined : navigator.credentials);
     if (!credentials?.create) throw new Error('Passkeys are unavailable in this browser');
-    const registration = await withAbort(passkey.generateRegistrationOptions(this.origin()), signal);
+    const registration = await withAbort(
+      passkey.generateRegistrationOptions(this.origin()),
+      signal
+    );
     const creation = this.registrationOptions(registration);
     const credential = await withAbort(
       credentials.create({ publicKey: creation, signal }),
@@ -338,7 +346,9 @@ export class PrivyMfaController implements PrivyMfaApi {
     return { credentialId: json.id, status: await this.status() };
   }
 
-  async enrollPasskey(options: { credentialIds?: readonly string[] } = {}): Promise<PrivyMfaStatus> {
+  async enrollPasskey(
+    options: { credentialIds?: readonly string[] } = {}
+  ): Promise<PrivyMfaStatus> {
     const client = this.requireClient();
     const status = await this.status();
     const credentialIds = [...(options.credentialIds ?? status.credentialIds)];
@@ -400,18 +410,10 @@ export class PrivyMfaController implements PrivyMfaApi {
       const mode = this.mode;
       const answer =
         typeof mode === 'function'
-          ? await this.withUserAction(
-              () => mode(request, controller.signal),
-              controller.signal
-            )
+          ? await this.withUserAction(() => mode(request, controller.signal), controller.signal)
           : await this.prompt(request, controller.signal, () => controller.abort());
       if (this.active?.token !== token) return;
-      const root = await this.challengeDeferred(
-        rootPromise,
-        previous,
-        captured,
-        controller.signal
-      );
+      const root = await this.challengeDeferred(rootPromise, previous, captured, controller.signal);
       if (!root) throw mfaError('Privy MFA did not start', 'mfa_required');
       root.resolve(answer);
       keepActive = true;
@@ -512,15 +514,16 @@ export class PrivyMfaController implements PrivyMfaApi {
   ): Promise<PrivyMfaAnswer> {
     const credentials = typeof navigator === 'undefined' ? undefined : navigator.credentials;
     if (!credentials?.get) throw new Error('Passkeys are unavailable in this browser');
-    const credential = await withAbort(credentials.get({ publicKey: options, signal }), signal).catch(
-      (error: unknown) => {
-        const name = (error as { name?: string })?.name;
-        if (name === 'NotAllowedError' || name === 'AbortError') {
-          throw mfaError('Passkey MFA was cancelled', 'mfa_cancelled');
-        }
-        throw error;
+    const credential = await withAbort(
+      credentials.get({ publicKey: options, signal }),
+      signal
+    ).catch((error: unknown) => {
+      const name = (error as { name?: string })?.name;
+      if (name === 'NotAllowedError' || name === 'AbortError') {
+        throw mfaError('Passkey MFA was cancelled', 'mfa_cancelled');
       }
-    );
+      throw error;
+    });
     return {
       mfaMethod: 'passkey',
       mfaCode: assertion(credential),

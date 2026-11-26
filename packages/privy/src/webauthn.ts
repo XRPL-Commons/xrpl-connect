@@ -47,7 +47,9 @@ export function bytesToBase64Url(value: ArrayBuffer | ArrayBufferView): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
-export function passkeyExtensions(value: unknown): AuthenticationExtensionsClientInputs | undefined {
+export function passkeyExtensions(
+  value: unknown
+): AuthenticationExtensionsClientInputs | undefined {
   const extensions = asRecord(value);
   if (!extensions) return undefined;
 

@@ -32,7 +32,9 @@ every time **Sign in with socials** opens, bypassing cached browser responses.
 There is no provider list to duplicate
 in application code or environment variables.
 
-The integration pins `@privy-io/js-sdk-core` to `0.79.4`. Privy describes this as a
+The integration pins `@privy-io/js-sdk-core` to `0.79.4`. The adapter also
+installs `viem` because this SDK version imports it and declares it as an
+optional peer. Privy describes js-sdk-core as a
 low-level SDK and asks developers to discuss their use with its team. See the
 [vanilla SDK guide](https://docs.privy.io/recipes/core-js) and
 [extended-chain support](https://docs.privy.io/wallets/overview/chains).

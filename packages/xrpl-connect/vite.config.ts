@@ -74,15 +74,12 @@ async function emitCommonJsGraph() {
   const esmFiles = findEsmFiles(publishDir);
   await Promise.all(
     esmFiles.map(async (esmPath) => {
-      const { code } = await transformWithEsbuild(
-        readFileSync(esmPath, 'utf8'),
-        esmPath,
-        { format: 'cjs', target: 'node20', sourcemap: false }
-      );
-      writeFileSync(
-        esmPath.replace(/\.mjs$/, '.js'),
-        code.replace(/\.mjs(?=["'])/g, '.js')
-      );
+      const { code } = await transformWithEsbuild(readFileSync(esmPath, 'utf8'), esmPath, {
+        format: 'cjs',
+        target: 'node20',
+        sourcemap: false,
+      });
+      writeFileSync(esmPath.replace(/\.mjs$/, '.js'), code.replace(/\.mjs(?=["'])/g, '.js'));
     })
   );
 }
