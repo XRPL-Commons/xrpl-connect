@@ -266,34 +266,52 @@ The connector can handle OTP, review and MFA dialogs behind your own login butto
 
 import { useState, type ReactNode } from 'react';
 import { PrivyAdapter } from '@xrpl-commons/xrpl-connect-privy';
-import { WalletConnector, XrplConnectProvider, useWalletModal } from '@xrpl-commons/xrpl-connect-react';
+import {
+  WalletConnector,
+  XrplConnectProvider,
+  useWalletModal,
+} from '@xrpl-commons/xrpl-connect-react';
 
 export function WalletProviders({ children }: { children: ReactNode }) {
   const [config] = useState(() => ({
-    adapters: [new PrivyAdapter({
-      appId: process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
-      redirectUri: process.env.NEXT_PUBLIC_PRIVY_REDIRECT_URI,
-    })],
+    adapters: [
+      new PrivyAdapter({
+        appId: process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
+        redirectUri: process.env.NEXT_PUBLIC_PRIVY_REDIRECT_URI,
+      }),
+    ],
     network: 'testnet' as const,
     autoConnect: true,
   }));
-  return <XrplConnectProvider config={config}>
-    {children}
-    <WalletConnector headless />
-  </XrplConnectProvider>;
+  return (
+    <XrplConnectProvider config={config}>
+      {children}
+      <WalletConnector headless />
+    </XrplConnectProvider>
+  );
 }
 
 export function EmailLogin() {
   const { ready, openAndWait } = useWalletModal();
   const [error, setError] = useState('');
-  return <>
-    <button disabled={!ready} onClick={async () => {
-      setError('');
-      try { await openAndWait({ loginMethod: 'email' }); }
-      catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not sign in'); }
-    }}>Continue with email</button>
-    {error && <p role="alert">{error}</p>}
-  </>;
+  return (
+    <>
+      <button
+        disabled={!ready}
+        onClick={async () => {
+          setError('');
+          try {
+            await openAndWait({ loginMethod: 'email' });
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : 'Could not sign in');
+          }
+        }}
+      >
+        Continue with email
+      </button>
+      {error && <p role="alert">{error}</p>}
+    </>
+  );
 }
 ```
 

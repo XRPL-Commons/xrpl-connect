@@ -1,11 +1,9 @@
-import { secp256k1 } from '@noble/curves/secp256k1';
 import { WalletManager, type Transaction } from '@xrpl-connect/core';
-import { PrivyAdapter } from '../../../privy/src/privy-adapter';
+import { MockPrivyAdapter } from '../../../privy/src/testing';
 import '../../src/wallet-connector';
 
-// Deterministic test keys: private keys 1 and 2 on secp256k1.
-const PRIVATE_KEY = '1'.padStart(64, '0');
-const PUBLIC_KEY = '0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798';
+const PRIVATE_KEY = new Uint8Array(32);
+PRIVATE_KEY[31] = 1;
 const ACCOUNT = 'rBgGZ9tc4him9KBzD8fKFiQz3fSZpaSwMH';
 const DESTINATION = 'rcM6pp3HTU5AS3Z122kH3w3AzerJRnZ1P';
 const ISSUER = 'rU74NBjYiU8pyrSd57Mo62K75hAFPspaLb';
@@ -19,30 +17,10 @@ let signatureCount = 0;
 let nextSequence = 1;
 const outcomes: Outcome[] = [];
 
-// The real adapter performs the review, fee limit, and signature checks; only
-// the Privy network session is replaced by a local signer.
-const privy = new PrivyAdapter({
-  appId: 'transaction-review-fixture',
-  redirectUri: `${location.origin}/wallet/privy`,
+const privy = new MockPrivyAdapter({
+  privateKey: PRIVATE_KEY,
+  onSign: () => signatureCount++,
 });
-const localSession = {
-  connect: async () => ({
-    id: 'wallet-1',
-    userId: 'did:privy:fixture',
-    address: ACCOUNT,
-    publicKey: PUBLIC_KEY,
-  }),
-  disconnect: async () => {},
-  hasPendingConnection: () => false,
-  getLoginMethods: async () => [],
-  onAuthPrompt: () => () => {},
-  onSessionLost: () => () => {},
-  signHash: async (_wallet: unknown, hash: `0x${string}`) => {
-    signatureCount += 1;
-    return `0x${secp256k1.sign(hash.slice(2), PRIVATE_KEY).toCompactHex()}`;
-  },
-};
-(privy as unknown as { session: typeof localSession }).session = localSession;
 
 const manager = new WalletManager({ adapters: [privy], network: 'testnet', autoConnect: false });
 const connector = document.querySelector('#wallet-connector') as HTMLElement & {

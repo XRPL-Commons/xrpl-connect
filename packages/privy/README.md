@@ -165,20 +165,30 @@ const jwks = createRemoteJWKSet(new URL(`https://auth.privy.io/api/v1/apps/${app
 
 async function verifyWallet(token, address) {
   const { payload } = await jwtVerify(token, jwks, {
-    issuer: 'privy.io', audience: appId, algorithms: ['ES256'], requiredClaims: ['sub', 'exp'],
+    issuer: 'privy.io',
+    audience: appId,
+    algorithms: ['ES256'],
+    requiredClaims: ['sub', 'exp'],
   });
-  const response = await fetch(`https://auth.privy.io/api/v1/users/${encodeURIComponent(payload.sub)}`, {
-    headers: {
-      'privy-app-id': appId,
-      Authorization: `Basic ${Buffer.from(`${appId}:${appSecret}`).toString('base64')}`,
-    },
-    cache: 'no-store',
-  });
+  const response = await fetch(
+    `https://auth.privy.io/api/v1/users/${encodeURIComponent(payload.sub)}`,
+    {
+      headers: {
+        'privy-app-id': appId,
+        Authorization: `Basic ${Buffer.from(`${appId}:${appSecret}`).toString('base64')}`,
+      },
+      cache: 'no-store',
+    }
+  );
   if (!response.ok) throw new Error('Could not verify the Privy user');
   const user = await response.json();
-  if (user.id !== payload.sub || !user.linked_accounts?.some(
-    (a) => a.type === 'wallet' && a.chain_type === 'xrpl' && a.address === address,
-  )) throw new Error('Address is not linked to this user');
+  if (
+    user.id !== payload.sub ||
+    !user.linked_accounts?.some(
+      (a) => a.type === 'wallet' && a.chain_type === 'xrpl' && a.address === address
+    )
+  )
+    throw new Error('Address is not linked to this user');
   return user.id;
 }
 ```
@@ -306,13 +316,17 @@ import { encode } from 'xrpl';
 
 let approved;
 const adapter = new PrivyAdapter({
-  appId, redirectUri,
+  appId,
+  redirectUri,
   transactionReview(review) {
     const expected = approved;
     approved = undefined;
-    return expected !== undefined && review.action === 'sign'
-      && review.network.id === expected.network
-      && encode(review.transaction) === expected.bytes;
+    return (
+      expected !== undefined &&
+      review.action === 'sign' &&
+      review.network.id === expected.network &&
+      encode(review.transaction) === expected.bytes
+    );
   },
 });
 
@@ -370,7 +384,8 @@ the prompt when the session or challenge expires.
 
 ```js
 const adapter = new PrivyAdapter({
-  appId, redirectUri,
+  appId,
+  redirectUri,
   mfa: 'prompt',
   requestTimeoutMs: 15_000,
   userActionTimeoutMs: 60_000,
