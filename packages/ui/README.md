@@ -76,7 +76,7 @@ The native `nonce` attribute authorizes connector styles under CSP. Set it befor
 | `primary-wallet`   | string  | -       | Wallet ID to display first (e.g., `'xaman'`)                                              |
 | `wallets`          | string  | -       | Comma-separated list of wallet IDs to include (e.g., `'xaman,crossmark,walletconnect'`)   |
 | `show-unavailable` | boolean | false   | Show unavailable wallets with an Install link, or a disabled row when no URL is available |
-| `headless`         | boolean | false   | Keep the body-level modal portals without rendering a focusable launcher                 |
+| `headless`         | boolean | false   | Keep the body-level modal portals without rendering a focusable launcher                  |
 
 Use the supported CSS variables and stable shadow parts documented in the
 [Customization Guide](https://github.com/XRPL-Commons/xrpl-connect/blob/develop/docs/guide/customization.md).
@@ -179,7 +179,10 @@ For an application-owned launcher, combine `headless` with a targeted method:
 
 ```html
 <xrpl-wallet-connector id="connector" headless></xrpl-wallet-connector>
-<button type="button" onclick="void document.getElementById('connector').openAndWait({ loginMethod: 'email' })">
+<button
+  type="button"
+  onclick="void document.getElementById('connector').openAndWait({ loginMethod: 'email' })"
+>
   Sign in with email
 </button>
 ```

@@ -204,7 +204,9 @@ describe('wallet connector customization contract', () => {
       );
       expect(partNames(connector.getOverlayRoot()!)).toEqual(
         Object.values(WALLET_CONNECTOR_PARTS.walletModal)
-          .filter((part) => ['overlay', 'modal', 'close-button', 'approve-button', 'reject-button'].includes(part))
+          .filter((part) =>
+            ['overlay', 'modal', 'close-button', 'approve-button', 'reject-button'].includes(part)
+          )
           .sort()
       );
 

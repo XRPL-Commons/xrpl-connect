@@ -23,9 +23,7 @@ const privy = new MockPrivyAdapter({
 });
 
 const manager = new WalletManager({ adapters: [privy], network: 'testnet', autoConnect: false });
-const connector = document.querySelector('#wallet-connector') as HTMLElement & {
-  setWalletManager(walletManager: WalletManager): void;
-};
+const connector = document.querySelector('xrpl-wallet-connector')!;
 connector.setWalletManager(manager);
 
 function track(signing: Promise<{ tx_json?: Transaction }>): number {
@@ -88,6 +86,21 @@ window.getOutcomes = () => outcomes.map((outcome) => ({ ...outcome }));
 window.getSignatureCount = () => signatureCount;
 window.signPayment = signPayment;
 
-void manager.connect('privy').then(() => {
-  document.body.dataset.ready = 'true';
-});
+if (new URLSearchParams(location.search).has('headless')) {
+  connector.setAttribute('headless', '');
+  const login = document.querySelector<HTMLButtonElement>('#sign-in')!;
+  login.hidden = false;
+  login.onclick = async () => {
+    await connector.openAndWait({ loginMethod: 'email' });
+    document.body.dataset.ready = 'true';
+  };
+  // A pay-link route can start restoration both on mount and in its approval flow.
+  void manager.reconnect();
+  void manager.reconnect({ throwOnError: true }).then((account) => {
+    if (account) document.body.dataset.ready = 'true';
+  });
+} else {
+  void manager.connect('privy').then(() => {
+    document.body.dataset.ready = 'true';
+  });
+}

@@ -1627,10 +1627,7 @@ if (typeof window !== 'undefined' && typeof HTMLElement !== 'undefined') {
 
     public endTransactionReview(walletId: string): void {
       const state = this.authPromptData;
-      if (
-        state?.walletId !== walletId ||
-        (!state.prompt.review && state.prompt.kind !== 'mfa')
-      )
+      if (state?.walletId !== walletId || (!state.prompt.review && state.prompt.kind !== 'mfa'))
         return;
       // The wallet already settled this connected prompt; there is nothing to cancel.
       this.clearAuthPromptState(false);

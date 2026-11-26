@@ -107,11 +107,7 @@ describe('transaction review', () => {
       STANDARD_NETWORKS.testnet,
       'sign'
     );
-    const sponsorFlagOmitted = createTransactionReview(
-      base,
-      STANDARD_NETWORKS.testnet,
-      'sign'
-    );
+    const sponsorFlagOmitted = createTransactionReview(base, STANDARD_NETWORKS.testnet, 'sign');
 
     expect(detail(sponsorPays, 'Fee')).toBe('0.000015 XRP (paid by sponsor)');
     expect(detail(sponsorDoesNotPay, 'Fee')).toBe('0.000015 XRP');
