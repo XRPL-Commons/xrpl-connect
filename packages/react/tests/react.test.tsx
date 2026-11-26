@@ -19,6 +19,7 @@ import {
   WalletConnector,
   WalletErrorCode,
   type WalletConnectorElement,
+  type WalletConnectorOpenOptions,
   type WalletConnectorProps,
 } from '../src';
 
@@ -606,7 +607,9 @@ describe('<WalletConnector>', () => {
     type WalletModal = ReturnType<typeof useWalletModal>;
     expectTypeOf<WalletModal['ready']>().toEqualTypeOf<boolean>();
     expectTypeOf<WalletModal['open']>().toEqualTypeOf<() => Promise<void>>();
-    expectTypeOf<WalletModal['openAndWait']>().toEqualTypeOf<() => Promise<AccountInfo>>();
+    expectTypeOf<WalletModal['openAndWait']>().toEqualTypeOf<
+      (options?: WalletConnectorOpenOptions) => Promise<AccountInfo>
+    >();
     expectTypeOf<WalletModal['close']>().toEqualTypeOf<() => void>();
   });
 

@@ -170,8 +170,27 @@ xrpl-wallet-connector {
   --xc-modal-background: #000637;
   --xc-modal-border-radius: 12px;
   --xc-modal-box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  --xc-modal-width: 343px;
+  --xc-modal-z-index: 9999;
 }
 ```
+
+Set `headless` when the application supplies its own launcher. The body-level
+modal portals remain available, but no focusable launcher is rendered in the
+connector's shadow root:
+
+```html
+<xrpl-wallet-connector id="connector" headless></xrpl-wallet-connector>
+<button type="button" onclick="void document.getElementById('connector').openAndWait({ loginMethod: 'email' })">
+  Sign in with email
+</button>
+```
+
+`openAndWait({ loginMethod })` accepts an adapter login method id or label and
+coalesces concurrent calls. React and Vue expose the same option through their
+`useWalletModal().openAndWait` helpers. The modal approve/reject controls and
+authentication inputs expose `::part(approve-button)`, `::part(reject-button)`,
+and `::part(input)` on the wallet portal host.
 
 ## Usage Examples
 
@@ -271,6 +290,7 @@ The component supports the following HTML attributes:
 
 - `primary-wallet` - Specifies which wallet should be featured/highlighted (e.g., `primary-wallet="xaman"`)
 - `wallets` - Comma-separated list of wallet IDs to include (e.g., `wallets="xaman,crossmark,walletconnect"`)
+- `headless` - Keep modal portals mounted without rendering the connector launcher
 
 All styling is controlled exclusively via CSS variables using the `style` attribute or CSS stylesheets.
 

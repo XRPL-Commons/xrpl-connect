@@ -46,6 +46,7 @@ export const WalletConnector = forwardRef<WalletConnectorElement, WalletConnecto
       wallets,
       socialLogins,
       showUnavailable,
+      headless,
       theme,
       cssVars,
       style,
@@ -252,6 +253,7 @@ export const WalletConnector = forwardRef<WalletConnectorElement, WalletConnecto
         primary-wallet={primaryWallet}
         wallets={wallets?.join(',')}
         show-unavailable={showUnavailable ? '' : undefined}
+        headless={headless ? '' : undefined}
         class={className}
         style={mergedStyle}
       />

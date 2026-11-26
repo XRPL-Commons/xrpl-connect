@@ -7,6 +7,7 @@ export type WalletConnectorIntrinsicProps = DetailedHTMLProps<
     'primary-wallet'?: string;
     wallets?: string;
     'show-unavailable'?: true | '';
+    headless?: true | '';
     class?: string;
   },
   WalletConnectorElement

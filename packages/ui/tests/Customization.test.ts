@@ -147,6 +147,17 @@ describe('wallet connector customization contract', () => {
       open(): Promise<void>;
       disconnectedCallback(): void;
       getOverlayRoot(): ShadowRoot | null;
+      showAuthPrompt(
+        prompt: {
+          title: string;
+          fields?: readonly { name: string; label: string; type: 'text' }[];
+          submit: () => Promise<void>;
+          cancel: () => void;
+          review?: unknown;
+        },
+        walletId: string,
+        walletName: string
+      ): void;
     };
     connector.setWalletManager(new WalletManager({ adapters: [] }));
     document.body.appendChild(connector);
@@ -157,7 +168,44 @@ describe('wallet connector customization contract', () => {
         Object.values(WALLET_CONNECTOR_PARTS.connector)
       );
       expect(partNames(connector.getOverlayRoot()!)).toEqual(
-        Object.values(WALLET_CONNECTOR_PARTS.walletModal).sort()
+        Object.values(WALLET_CONNECTOR_PARTS.walletModal)
+          .filter((part) => ['overlay', 'modal', 'close-button'].includes(part))
+          .sort()
+      );
+      connector.showAuthPrompt(
+        {
+          title: 'Authenticate',
+          fields: [{ name: 'email', label: 'Email', type: 'text' }],
+          submit: async () => undefined,
+          cancel: () => undefined,
+        },
+        'fake',
+        'Fake Wallet'
+      );
+      expect(partNames(connector.getOverlayRoot()!)).toEqual(
+        Object.values(WALLET_CONNECTOR_PARTS.walletModal)
+          .filter((part) => ['overlay', 'modal', 'close-button', 'input'].includes(part))
+          .sort()
+      );
+      connector.showAuthPrompt(
+        {
+          title: 'Review',
+          submit: async () => undefined,
+          cancel: () => undefined,
+          review: {
+            action: 'sign',
+            network: { id: 'testnet', name: 'Testnet', wss: 'wss://example' },
+            transaction: { TransactionType: 'Payment' },
+            details: [{ name: 'Fee', label: 'Fee', value: '1 XRP' }],
+          },
+        },
+        'fake',
+        'Fake Wallet'
+      );
+      expect(partNames(connector.getOverlayRoot()!)).toEqual(
+        Object.values(WALLET_CONNECTOR_PARTS.walletModal)
+          .filter((part) => ['overlay', 'modal', 'close-button', 'approve-button', 'reject-button'].includes(part))
+          .sort()
       );
 
       const accountMarkup = document.createElement('div');

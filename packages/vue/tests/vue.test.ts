@@ -18,6 +18,7 @@ import {
   useWalletModal,
   WalletConnector,
   type WalletConnectorElement,
+  type WalletConnectorOpenOptions,
 } from '../src';
 
 const ACCOUNT: AccountInfo = {
@@ -433,13 +434,15 @@ describe('<WalletConnector>', () => {
   it('exposes the complete custom-element control contract', () => {
     expectTypeOf<WalletConnectorElement['open']>().toEqualTypeOf<() => Promise<void>>();
     expectTypeOf<WalletConnectorElement['openAndWait']>().toEqualTypeOf<
-      () => Promise<AccountInfo>
+      (options?: WalletConnectorOpenOptions) => Promise<AccountInfo>
     >();
     expectTypeOf<WalletConnectorElement['toggle']>().toEqualTypeOf<() => void>();
     type WalletModal = ReturnType<typeof useWalletModal>;
     expectTypeOf<WalletModal['ready']['value']>().toEqualTypeOf<boolean>();
     expectTypeOf<WalletModal['open']>().toEqualTypeOf<() => Promise<void>>();
-    expectTypeOf<WalletModal['openAndWait']>().toEqualTypeOf<() => Promise<AccountInfo>>();
+    expectTypeOf<WalletModal['openAndWait']>().toEqualTypeOf<
+      (options?: WalletConnectorOpenOptions) => Promise<AccountInfo>
+    >();
     expectTypeOf<WalletModal['close']>().toEqualTypeOf<() => void>();
   });
 
