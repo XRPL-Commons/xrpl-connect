@@ -15,10 +15,12 @@ import {
   type WalletAdapter,
   type WalletAdapterEvent,
   type WalletAuthPrompt,
+  type WalletCapabilities,
   type WalletLoginMethod,
   type WalletTransactionReview,
 } from 'xrpl-connect';
 import { PrivySession } from './session';
+import type { PrivyMfaApi } from './mfa';
 import { PRIVY_ATTRIBUTION, PRIVY_SYMBOL } from './branding';
 import { createTransactionReview } from './review';
 import type { PrivySessionOptions, PrivyWallet } from './session-types';
@@ -51,6 +53,20 @@ export interface PrivyAdapterOptions extends PrivySessionOptions {
   transactionReview?: PrivyTransactionReviewOption;
 }
 
+type PrivySessionLike = Pick<
+  PrivySession,
+  | 'connect'
+  | 'disconnect'
+  | 'signHash'
+  | 'hasPendingConnection'
+  | 'onAuthPrompt'
+  | 'onSessionLost'
+  | 'getLoginMethods'
+> & {
+  mfa?: PrivyMfaApi;
+  getAccessToken?: () => Promise<string | null>;
+};
+
 /** How long an unused ledger connection stays open for the next signature. */
 const LEDGER_IDLE_MS = 30_000;
 
@@ -77,16 +93,20 @@ function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-export class PrivyAdapter implements WalletAdapter {
+export class PrivyWalletAdapter implements WalletAdapter {
   readonly id = 'privy';
   readonly name = 'Privy';
   readonly icon = PRIVY_SYMBOL;
   readonly loginBranding = { label: 'Protected by Privy', logo: PRIVY_ATTRIBUTION } as const;
   readonly url = 'https://privy.io';
-  readonly capabilities = { sign: true, signAndSubmit: true, signMessage: false } as const;
+  readonly capabilities: Readonly<Required<WalletCapabilities>> = {
+    sign: true,
+    signAndSubmit: true,
+    signMessage: false,
+  };
   readonly keepsSessionOnRestoreTimeout = true;
 
-  private readonly session: PrivySession;
+  protected readonly session: PrivySessionLike;
   private readonly listeners = new Map<WalletAdapterEvent, Set<(data: unknown) => void>>();
   private controller: AbortController | null = null;
   private wallet: PrivyWallet | null = null;
@@ -97,8 +117,23 @@ export class PrivyAdapter implements WalletAdapter {
   /** Settles once the latest review is answered; reviews never overlap. */
   private reviewQueue: Promise<void> = Promise.resolve();
 
-  constructor(private readonly options: PrivyAdapterOptions) {
-    this.session = new PrivySession(options);
+  readonly mfa: PrivyMfaApi;
+
+  constructor(private readonly options: PrivyAdapterOptions, session: PrivySessionLike) {
+    this.session = session;
+    this.mfa =
+      session.mfa ??
+      ({
+        status: async () => {
+          throw new Error('Privy MFA is unavailable before the session is initialized');
+        },
+        linkPasskey: async () => {
+          throw new Error('Privy MFA is unavailable before the session is initialized');
+        },
+        enrollPasskey: async () => {
+          throw new Error('Privy MFA is unavailable before the session is initialized');
+        },
+      } satisfies PrivyMfaApi);
     this.session.onSessionLost(() => {
       const connected = this.account !== null;
       this.controller?.abort();
@@ -113,7 +148,6 @@ export class PrivyAdapter implements WalletAdapter {
   getMissingConfiguration(): readonly string[] {
     const missing: string[] = [];
     if (!this.options.appId?.trim()) missing.push('appId');
-    if (!this.options.redirectUri?.trim()) missing.push('redirectUri');
     return missing;
   }
 
@@ -200,6 +234,11 @@ export class PrivyAdapter implements WalletAdapter {
       if (isWalletError(error)) throw error;
       throw createWalletError.connectionFailed(this.name, asError(error));
     }
+  }
+
+  async getAccessToken(): Promise<string | null> {
+    if (!this.wallet || !this.account || !this.session.getAccessToken) return null;
+    return this.session.getAccessToken();
   }
 
   async disconnect(): Promise<void> {
@@ -490,5 +529,11 @@ export class PrivyAdapter implements WalletAdapter {
     // Closing the socket must not replace an operation's outcome: a failed
     // close after a validated submission would invite a duplicate retry.
     void ledger.client.disconnect().catch(() => undefined);
+  }
+}
+
+export class PrivyAdapter extends PrivyWalletAdapter {
+  constructor(options: PrivyAdapterOptions) {
+    super(options, new PrivySession(options));
   }
 }
